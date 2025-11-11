@@ -1,9 +1,8 @@
 import { Pool } from 'pg';
-import dotenv from 'dotenv';
-dotenv.config();
+import '../config/index.js';
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL ?? 'postgres://modula:modula@localhost:5432/modula'
+  connectionString: process.env.DATABASE_URL
 });
 
 export async function ping() {
