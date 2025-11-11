@@ -10,10 +10,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "NODE_ENV=development tsx watch src/server.ts",
-    "migrate": "NODE_ENV=development tsx src/platform/db/migrate.ts",
-    "test": "NODE_ENV=test tsx vitest",
-    "start": "NODE_ENV=production node dist/server.js"
+    "dev": "cross-env NODE_ENV=development tsx watch src/server.ts",
+    "migrate": "cross-env NODE_ENV=development tsx src/platform/db/migrate.ts",
+    "start": "cross-env NODE_ENV=production node dist/server.js"
   },
   "keywords": [],
   "author": "",

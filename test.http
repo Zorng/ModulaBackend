@@ -3,5 +3,5 @@ POST http://localhost:3000/v1/tenants
 Content-Type: application/json
 
 {
-    "name": "xxxxx"
+    "name": "Loki"
 }
