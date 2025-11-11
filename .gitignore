@@ -1,0 +1,78 @@
+# =========================
+#  Node & TypeScript
+# =========================
+node_modules/
+dist/
+build/
+*.log
+*.tsbuildinfo
+
+# TypeScript temporary cache
+*.tsbuildinfo
+
+# pnpm store (if any)
+.pnpm-store/
+
+# =========================
+#  Environment files
+# =========================
+.env
+.env.local
+.env.*.local
+# (Keep .env.example and .env.development tracked)
+
+# =========================
+#  Logs & temp files
+# =========================
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+debug.log
+
+# macOS / system junk
+.DS_Store
+Thumbs.db
+
+# =========================
+#  Editor & IDE settings
+# =========================
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# =========================
+#  Coverage / testing
+# =========================
+coverage/
+.nyc_output/
+*.lcov
+
+# =========================
+#  Environment & runtime artifacts
+# =========================
+*.pid
+*.seed
+*.pid.lock
+
+# =========================
+#  Local data / DB dumps
+# =========================
+*.sqlite
+*.db
+*.dump
+*.sql
+
+# =========================
+#  Optional: generated docs or reports
+# =========================
+docs/
+reports/
+
+# =========================
+#  Misc
+# =========================
+tmp/
+temp/
