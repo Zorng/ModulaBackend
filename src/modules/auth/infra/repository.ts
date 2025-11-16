@@ -1,14 +1,14 @@
 import { pool } from '#db'; // Use your existing pool import
 import { 
-  User, 
-  UserStatus, 
-  UserRole, 
+  Employee, 
+  EmployeeStatus, 
+  EmployeeRole, 
   Tenant, 
   Branch, 
   Invite, 
   Session, 
   ActivityLog, 
-  UserBranchAssignment 
+  EmployeeBranchAssignment 
 } from '../domain/entities.js';
 
 export class AuthRepository {
@@ -44,73 +44,73 @@ export class AuthRepository {
     return result.rows.length ? this.mapBranch(result.rows[0]) : null;
   }
 
-  async createUser(user: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User> {
+  async createEmployee(employee: Omit<Employee, 'id' | 'created_at' | 'updated_at'>): Promise<Employee> {
     const query = `
-      INSERT INTO users (tenant_id, phone, email, password_hash, first_name, last_name, status)
+      INSERT INTO employees (tenant_id, phone, email, password_hash, first_name, last_name, status)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `;
     const values = [
-      user.tenant_id,
-      user.phone,
-      user.email,
-      user.password_hash,
-      user.first_name,
-      user.last_name,
-      user.status
+      employee.tenant_id,
+      employee.phone,
+      employee.email,
+      employee.password_hash,
+      employee.first_name,
+      employee.last_name,
+      employee.status
     ];
     const result = await this.db.query(query, values);
-    return this.mapUser(result.rows[0]);
+    return this.mapEmployee(result.rows[0]);
   }
 
-  async findUserById(id: string): Promise<User | null> {
-    const result = await this.db.query('SELECT * FROM users WHERE id = $1', [id]);
-    return result.rows.length ? this.mapUser(result.rows[0]) : null;
+  async findEmployeeById(id: string): Promise<Employee | null> {
+    const result = await this.db.query('SELECT * FROM employees WHERE id = $1', [id]);
+    return result.rows.length ? this.mapEmployee(result.rows[0]) : null;
   }
 
-  async findUserByPhone(tenantId: string, phone: string): Promise<User | null> {
+  async findEmployeeByPhone(tenantId: string, phone: string): Promise<Employee | null> {
     const result = await this.db.query(
-      'SELECT * FROM users WHERE tenant_id = $1 AND phone = $2', 
+      'SELECT * FROM employees WHERE tenant_id = $1 AND phone = $2', 
       [tenantId, phone]
     );
-    return result.rows.length ? this.mapUser(result.rows[0]) : null;
+    return result.rows.length ? this.mapEmployee(result.rows[0]) : null;
   }
 
-  async findUserByPhoneAnyTenant(phone: string): Promise<User | null> {
+  async findEmployeeByPhoneAnyTenant(phone: string): Promise<Employee | null> {
     const result = await this.db.query(
-      'SELECT * FROM users WHERE phone = $1 LIMIT 1', 
+      'SELECT * FROM employees WHERE phone = $1 LIMIT 1', 
       [phone]
     );
-    return result.rows.length ? this.mapUser(result.rows[0]) : null;
+    return result.rows.length ? this.mapEmployee(result.rows[0]) : null;
   }
 
-  async createUserBranchAssignment(
-    assignment: Omit<UserBranchAssignment, 'id' | 'assigned_at'>
-  ): Promise<UserBranchAssignment> {
+  async createEmployeeBranchAssignment(
+    assignment: Omit<EmployeeBranchAssignment, 'id' | 'assigned_at'>
+  ): Promise<EmployeeBranchAssignment> {
     const query = `
-      INSERT INTO user_branch_assignments (user_id, branch_id, role, active)
+      INSERT INTO employee_branch_assignments (employee_id, branch_id, role, active)
       VALUES ($1, $2, $3, $4)
       RETURNING *
     `;
     const result = await this.db.query(query, [
-      assignment.user_id,
+      assignment.employee_id,
       assignment.branch_id,
       assignment.role,
       assignment.active
     ]);
-    return this.mapUserBranchAssignment(result.rows[0]);
+    return this.mapEmployeeBranchAssignment(result.rows[0]);
   }
 
-  async findUserBranchAssignments(userId: string): Promise<UserBranchAssignment[]> {
+  async findEmployeeBranchAssignments(employeeId: string): Promise<EmployeeBranchAssignment[]> {
     const result = await this.db.query(
-      `SELECT uba.*, b.name as branch_name
-       FROM user_branch_assignments uba
-       JOIN branches b ON uba.branch_id = b.id
-       WHERE uba.user_id = $1 AND uba.active = true
-       ORDER BY uba.assigned_at DESC`,
-      [userId]
+      `SELECT eba.*, b.name as branch_name
+       FROM employee_branch_assignments eba
+       JOIN branches b ON eba.branch_id = b.id
+       WHERE eba.employee_id = $1 AND eba.active = true
+       ORDER BY eba.assigned_at DESC`,
+      [employeeId]
     );
-    return result.rows.map(row => this.mapUserBranchAssignment(row));
+    return result.rows.map(row => this.mapEmployeeBranchAssignment(row));
   }
 
   async createInvite(invite: Omit<Invite, 'id' | 'created_at'>): Promise<Invite> {
@@ -157,12 +157,12 @@ export class AuthRepository {
 
   async createSession(session: Omit<Session, 'id' | 'created_at'>): Promise<Session> {
     const query = `
-      INSERT INTO sessions (user_id, refresh_token_hash, expires_at)
+      INSERT INTO sessions (employee_id, refresh_token_hash, expires_at)
       VALUES ($1, $2, $3)
       RETURNING *
     `;
     const result = await this.db.query(query, [
-      session.user_id,
+      session.employee_id,
       session.refresh_token_hash,
       session.expires_at
     ]);
@@ -183,14 +183,14 @@ export class AuthRepository {
 
   async createActivityLog(activity: Omit<ActivityLog, 'id' | 'created_at'>): Promise<ActivityLog> {
     const query = `
-      INSERT INTO activity_log (tenant_id, branch_id, user_id, action_type, resource_type, resource_id, details, ip_address, user_agent)
+      INSERT INTO activity_log (tenant_id, branch_id, employee_id, action_type, resource_type, resource_id, details, ip_address, user_agent)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
     const values = [
       activity.tenant_id,
       activity.branch_id,
-      activity.user_id,
+      activity.employee_id,
       activity.action_type,
       activity.resource_type,
       activity.resource_id,
@@ -225,7 +225,7 @@ export class AuthRepository {
     };
   }
 
-  private mapUser(row: any): User {
+  private mapEmployee(row: any): Employee {
     return {
       id: row.id,
       tenant_id: row.tenant_id,
@@ -240,10 +240,10 @@ export class AuthRepository {
     };
   }
 
-  private mapUserBranchAssignment(row: any): UserBranchAssignment {
+  private mapEmployeeBranchAssignment(row: any): EmployeeBranchAssignment {
     return {
       id: row.id,
-      user_id: row.user_id,
+      employee_id: row.employee_id,
       branch_id: row.branch_id,
       role: row.role,
       active: row.active,
@@ -273,7 +273,7 @@ export class AuthRepository {
   private mapSession(row: any): Session {
     return {
       id: row.id,
-      user_id: row.user_id,
+      employee_id: row.employee_id,
       refresh_token_hash: row.refresh_token_hash,
       created_at: new Date(row.created_at),
       revoked_at: row.revoked_at ? new Date(row.revoked_at) : undefined,
@@ -286,7 +286,7 @@ export class AuthRepository {
       id: row.id,
       tenant_id: row.tenant_id,
       branch_id: row.branch_id,
-      user_id: row.user_id,
+      employee_id: row.employee_id,
       action_type: row.action_type,
       resource_type: row.resource_type,
       resource_id: row.resource_id,

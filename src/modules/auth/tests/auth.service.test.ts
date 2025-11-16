@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@jest/globals';
-import { TokenService } from '../domain/token.service.js';
-import { PasswordService } from '../domain/password.service.js';
+import { TokenService } from '../app/token.service.js';
+import { PasswordService } from '../app/password.service.js';
 
 describe('AuthService Unit Tests', () => {
   describe('Token and Password Services Integration', () => {
@@ -10,7 +10,7 @@ describe('AuthService Unit Tests', () => {
       
       const tokenService = new TokenService('test-secret', 'test-refresh-secret', '1h', '7d');
       const accessToken = tokenService.generateAccessToken({
-        userId: 'user-123',
+        employeeId: 'employee-123',
         tenantId: 'tenant-123',
         branchId: 'branch-123',
         role: 'ADMIN'
@@ -29,15 +29,15 @@ describe('AuthService Unit Tests', () => {
       // Verify token
       const claims = tokenService.verifyAccessToken(accessToken);
       expect(claims).not.toBeNull();
-      expect(claims?.userId).toBe('user-123');
+      expect(claims?.employeeId).toBe('employee-123');
     });
 
     it('should validate complete authentication cycle', async () => {
-      // Step 1: User registers - password is hashed
-      const userPassword = 'SecurePassword123!';
-      const storedHash = await PasswordService.hashPassword(userPassword);
+      // Step 1: Employee registers - password is hashed
+      const employeePassword = 'SecurePassword123!';
+      const storedHash = await PasswordService.hashPassword(employeePassword);
 
-      // Step 2: User logs in - password is verified
+      // Step 2: Employee logs in - password is verified
       const loginAttempt = 'SecurePassword123!';
       const isAuthenticated = await PasswordService.verifyPassword(loginAttempt, storedHash);
       expect(isAuthenticated).toBe(true);
@@ -46,7 +46,7 @@ describe('AuthService Unit Tests', () => {
       const tokenService = new TokenService('secret', 'refresh-secret');
       const tokens = {
         accessToken: tokenService.generateAccessToken({
-          userId: 'user-456',
+          employeeId: 'employee-456',
           tenantId: 'tenant-456',
           role: 'CASHIER'
         }),

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { PasswordService } from '../domain/password.service.js';
+import { PasswordService } from '../app/password.service.js';
 
 describe('PasswordService', () => {
   describe('hashPassword', () => {

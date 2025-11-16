@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { AuthService } from '../../domain/auth.service.js';
+import { AuthService } from '../../app/auth.service.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 
 export class AuthController {
@@ -26,12 +26,12 @@ export class AuthController {
 
         res.status(201).json({
             tenant: result.tenant,
-            user: {
-            id: result.user.id,
-            first_name: result.user.first_name,
-            last_name: result.user.last_name,
-            phone: result.user.phone,
-            status: result.user.status
+            employee: {
+            id: result.employee.id,
+            first_name: result.employee.first_name,
+            last_name: result.employee.last_name,
+            phone: result.employee.phone,
+            status: result.employee.status
             },
             tokens: result.tokens
         });
@@ -55,12 +55,12 @@ export class AuthController {
         const result = await this.authService.login({ phone, password });
 
         res.json({
-            user: {
-            id: result.user.id,
-            first_name: result.user.first_name,
-            last_name: result.user.last_name,
-            phone: result.user.phone,
-            status: result.user.status
+            employee: {
+            id: result.employee.id,
+            first_name: result.employee.first_name,
+            last_name: result.employee.last_name,
+            phone: result.employee.phone,
+            status: result.employee.status
             },
             tokens: result.tokens,
             branch_assignments: result.branchAssignments
@@ -128,7 +128,7 @@ export class AuthController {
 
         const invite = await this.authService.createInvite(
             req.user.tenantId,
-            req.user.userId,
+            req.user.employeeId,
             { first_name, last_name, phone, role, branch_id, note, expires_in_hours }
         );
 
@@ -165,12 +165,12 @@ export class AuthController {
         const result = await this.authService.acceptInvite(token, { password });
 
         res.json({
-            user: {
-            id: result.user.id,
-            first_name: result.user.first_name,
-            last_name: result.user.last_name,
-            phone: result.user.phone,
-            status: result.user.status
+            employee: {
+            id: result.employee.id,
+            first_name: result.employee.first_name,
+            last_name: result.employee.last_name,
+            phone: result.employee.phone,
+            status: result.employee.status
             },
             tokens: result.tokens
         });
@@ -188,7 +188,7 @@ export class AuthController {
         }
 
         const { inviteId } = req.params;
-        const invite = await this.authService.revokeInvite(req.user.tenantId, inviteId, req.user.userId);
+        const invite = await this.authService.revokeInvite(req.user.tenantId, inviteId, req.user.employeeId);
 
         res.json({ invite });
         } catch (error) {

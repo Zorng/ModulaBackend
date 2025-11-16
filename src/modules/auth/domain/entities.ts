@@ -1,5 +1,5 @@
-export type UserStatus = 'ACTIVE' | 'INVITED' | 'DISABLED';
-export type UserRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'CLERK';
+export type EmployeeStatus = 'ACTIVE' | 'INVITED' | 'DISABLED';
+export type EmployeeRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'CLERK';
 export type AuthActionType = 
   | 'AUTH_INVITE_CREATED'
   | 'AUTH_INVITE_ACCEPTED'
@@ -7,7 +7,7 @@ export type AuthActionType =
   | 'AUTH_INVITE_REVOKED'
   | 'AUTH_ROLE_CHANGED'
   | 'AUTH_BRANCH_TRANSFERRED'
-  | 'AUTH_USER_DISABLED'
+  | 'AUTH_EMPLOYEE_DISABLED'
   | 'AUTH_NAME_EDITED_BY_ADMIN';
 
 export interface Tenant {
@@ -28,7 +28,7 @@ export interface Branch {
   updated_at: Date;
 }
 
-export interface User {
+export interface Employee {
   id: string;
   tenant_id: string;
   phone: string;
@@ -36,16 +36,16 @@ export interface User {
   password_hash: string;
   first_name: string;
   last_name: string;
-  status: UserStatus;
+  status: EmployeeStatus;
   created_at: Date;
   updated_at: Date;
 }
 
-export interface UserBranchAssignment {
+export interface EmployeeBranchAssignment {
   id: string;
-  user_id: string;
+  employee_id: string;
   branch_id: string;
-  role: UserRole;
+  role: EmployeeRole;
   active: boolean;
   assigned_at: Date;
   branch_name?: string;
@@ -55,7 +55,7 @@ export interface Invite {
   id: string;
   tenant_id: string;
   branch_id: string;
-  role: UserRole;
+  role: EmployeeRole;
   phone: string;
   token_hash: string;
   first_name: string;
@@ -69,7 +69,7 @@ export interface Invite {
 
 export interface Session {
   id: string;
-  user_id: string;
+  employee_id: string;
   refresh_token_hash: string;
   created_at: Date;
   revoked_at?: Date;
@@ -91,7 +91,7 @@ export interface ActivityLog {
   id: string;
   tenant_id: string;
   branch_id?: string;
-  user_id?: string;
+  employee_id?: string;
   action_type: AuthActionType;
   resource_type?: string;
   resource_id?: string;
@@ -102,10 +102,10 @@ export interface ActivityLog {
 }
 
 export interface JWTClaims {
-  userId: string;
+  employeeId: string;
   tenantId: string;
   branchId?: string;
-  role: UserRole;
+  role: EmployeeRole;
   exp: number;
   iat: number;
 }
@@ -128,7 +128,7 @@ export interface CreateInviteRequest {
   first_name: string;
   last_name: string;
   phone: string;
-  role: UserRole;
+  role: EmployeeRole;
   branch_id: string;
   note?: string;
   expires_in_hours?: number;

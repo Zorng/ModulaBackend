@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
-import { AuthService } from '../domain/auth.service.js';
+import { AuthService } from '../app/auth.service.js';
 import { AuthRepository } from '../infra/repository.js';
-import { TokenService } from '../domain/token.service.js';
+import { TokenService } from '../app/token.service.js';
 import { Pool } from 'pg';
 
 describe('Auth Integration Tests', () => {

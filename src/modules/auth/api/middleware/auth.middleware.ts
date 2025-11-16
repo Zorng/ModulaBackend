@@ -1,10 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import { TokenService } from '../../domain/token.service.js';
+import { TokenService } from '../../app/token.service.js';
 import { AuthRepository } from '../../infra/repository.js';
 
 export interface AuthRequest extends Request {
     user?: {
-        userId: string;
+        employeeId: string;
         tenantId: string;
         branchId?: string;
         role: string;
@@ -31,9 +31,9 @@ export interface AuthRequest extends Request {
             return res.status(401).json({ error: 'Invalid or expired token' });
         }
 
-        const user = await this.authRepo.findUserById(claims.userId);
-        if (!user || user.status !== 'ACTIVE') {
-            return res.status(401).json({ error: 'User not found or inactive' });
+        const employee = await this.authRepo.findEmployeeById(claims.employeeId);
+        if (!employee || employee.status !== 'ACTIVE') {
+            return res.status(401).json({ error: 'Employee not found or inactive' });
         }
 
         req.user = claims;

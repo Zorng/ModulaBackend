@@ -1,9 +1,9 @@
 import express from 'express';
 import { AuthController } from './controllers/auth.controller.js';
 import { AuthMiddleware } from './middleware/auth.middleware.js';
-import { AuthService } from '../domain/auth.service.js';
+import { AuthService } from '../app/auth.service.js';
 import { AuthRepository } from '../infra/repository.js';
-import { TokenService } from '../domain/token.service.js';
+import { TokenService } from '../app/token.service.js';
 import { pool } from '#db';
 import { config } from '../../../platform/config/index.js';
 

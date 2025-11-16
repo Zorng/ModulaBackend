@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { TokenService } from '../domain/token.service.js';
+import { TokenService } from '../app/token.service.js';
 
 describe('TokenService', () => {
   let tokenService: TokenService;

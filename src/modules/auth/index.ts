@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import { AuthRepository } from './infra/repository.js';
-import { AuthService } from './domain/auth.service.js';
-import { TokenService } from './domain/token.service.js';
+import { AuthService } from './app/auth.service.js';
+import { TokenService } from './app/token.service.js';
 import { AuthController } from './api/controllers/auth.controller.js';
 import { AuthMiddleware } from './api/middleware/auth.middleware.js';
 import { createAuthRoutes } from './api/routes/auth.routes.js';

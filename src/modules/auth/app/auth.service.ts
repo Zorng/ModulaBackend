@@ -1,7 +1,7 @@
 import { 
-  User, 
-  UserRole, 
-  UserStatus, 
+  Employee, 
+  EmployeeRole, 
+  EmployeeStatus, 
   Tenant, 
   Branch, 
   Invite, 
@@ -11,7 +11,7 @@ import {
   CreateInviteRequest,
   AcceptInviteRequest,
   AuthActionType
-} from './entities.js';
+} from '../domain/entities.js';
 import { AuthRepository } from '../infra/repository.js';
 import { PasswordService } from './password.service.js';
 import { TokenService } from './token.service.js';
@@ -24,7 +24,7 @@ export class AuthService {
     private defaultInviteExpiryHours: number = 72
   ) {}
 
-  async registerTenant(request: RegisterTenantRequest): Promise<{ tenant: Tenant; user: User; tokens: AuthTokens }> {
+  async registerTenant(request: RegisterTenantRequest): Promise<{ tenant: Tenant; employee: Employee; tokens: AuthTokens }> {
     // Create tenant
     const tenant = await this.authRepo.createTenant({
       name: request.business_name,
@@ -42,8 +42,8 @@ export class AuthService {
     // Hash password
     const passwordHash = await PasswordService.hashPassword(request.password);
 
-    // Create admin user
-    const user = await this.authRepo.createUser({
+    // Create admin employee
+    const employee = await this.authRepo.createEmployee({
       tenant_id: tenant.id,
       phone: request.phone,
       first_name: request.first_name,
@@ -53,8 +53,8 @@ export class AuthService {
     });
 
     // Create admin assignment
-    await this.authRepo.createUserBranchAssignment({
-      user_id: user.id,
+    await this.authRepo.createEmployeeBranchAssignment({
+      employee_id: employee.id,
       branch_id: branch.id,
       role: 'ADMIN',
       active: true
@@ -64,7 +64,7 @@ export class AuthService {
     await this.authRepo.createActivityLog({
       tenant_id: tenant.id,
       branch_id: branch.id,
-      user_id: user.id,
+      employee_id: employee.id,
       action_type: 'AUTH_INVITE_ACCEPTED',
       resource_type: 'TENANT',
       resource_id: tenant.id,
@@ -72,56 +72,56 @@ export class AuthService {
     });
 
     // Generate tokens
-    const tokens = await this.generateUserTokens(user, branch.id, 'ADMIN');
+    const tokens = await this.generateEmployeeTokens(employee, branch.id, 'ADMIN');
 
-    return { tenant, user, tokens };
+    return { tenant, employee, tokens };
   }
 
-  async login(credentials: LoginCredentials): Promise<{ user: User; tokens: AuthTokens; branchAssignments: any[] }> {
-    // Find user by phone across all tenants
-    const user = await this.authRepo.findUserByPhoneAnyTenant(credentials.phone);
+  async login(credentials: LoginCredentials): Promise<{ employee: Employee; tokens: AuthTokens; branchAssignments: any[] }> {
+    // Find employee by phone across all tenants
+    const employee = await this.authRepo.findEmployeeByPhoneAnyTenant(credentials.phone);
     
-    if (!user || user.status !== 'ACTIVE') {
+    if (!employee || employee.status !== 'ACTIVE') {
       throw new Error('Invalid credentials');
     }
 
-    const isValidPassword = await PasswordService.verifyPassword(credentials.password, user.password_hash);
+    const isValidPassword = await PasswordService.verifyPassword(credentials.password, employee.password_hash);
     if (!isValidPassword) {
       throw new Error('Invalid credentials');
     }
 
-    const branchAssignments = await this.authRepo.findUserBranchAssignments(user.id);
+    const branchAssignments = await this.authRepo.findEmployeeBranchAssignments(employee.id);
     if (branchAssignments.length === 0) {
       throw new Error('No branch assignments found');
     }
 
     // Use the first active branch assignment
     const primaryAssignment = branchAssignments[0];
-    const tokens = await this.generateUserTokens(user, primaryAssignment.branch_id, primaryAssignment.role);
+    const tokens = await this.generateEmployeeTokens(employee, primaryAssignment.branch_id, primaryAssignment.role);
 
     // Log activity
     await this.authRepo.createActivityLog({
-      tenant_id: user.tenant_id,
+      tenant_id: employee.tenant_id,
       branch_id: primaryAssignment.branch_id,
-      user_id: user.id,
+      employee_id: employee.id,
       action_type: 'AUTH_INVITE_ACCEPTED', // Reusing for login
-      resource_type: 'USER',
-      resource_id: user.id
+      resource_type: 'EMPLOYEE',
+      resource_id: employee.id
     });
 
-    return { user, tokens, branchAssignments };
+    return { employee, tokens, branchAssignments };
   }
 
-  async createInvite(tenantId: string, adminUserId: string, request: CreateInviteRequest): Promise<Invite> {
+  async createInvite(tenantId: string, adminEmployeeId: string, request: CreateInviteRequest): Promise<Invite> {
     const branch = await this.authRepo.findBranchById(request.branch_id);
     if (!branch || branch.tenant_id !== tenantId) {
       throw new Error('Invalid branch');
     }
 
     // Check for duplicate invites
-    const existingUser = await this.authRepo.findUserByPhone(tenantId, request.phone);
-    if (existingUser) {
-      throw new Error('User already exists with this phone');
+    const existingEmployee = await this.authRepo.findEmployeeByPhone(tenantId, request.phone);
+    if (existingEmployee) {
+      throw new Error('Employee already exists with this phone');
     }
 
     const token = crypto.randomBytes(32).toString('hex');
@@ -146,7 +146,7 @@ export class AuthService {
     await this.authRepo.createActivityLog({
       tenant_id: tenantId,
       branch_id: request.branch_id,
-      user_id: adminUserId,
+      employee_id: adminEmployeeId,
       action_type: 'AUTH_INVITE_CREATED',
       resource_type: 'INVITE',
       resource_id: invite.id,
@@ -156,7 +156,7 @@ export class AuthService {
     return { ...invite, token_hash: token }; // Return actual token for sending
   }
 
-  async acceptInvite(token: string, request: AcceptInviteRequest): Promise<{ user: User; tokens: AuthTokens }> {
+  async acceptInvite(token: string, request: AcceptInviteRequest): Promise<{ employee: Employee; tokens: AuthTokens }> {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const invite = await this.authRepo.findInviteByToken(tokenHash);
 
@@ -183,8 +183,8 @@ export class AuthService {
 
     const passwordHash = await PasswordService.hashPassword(request.password);
 
-    // Create user
-    const user = await this.authRepo.createUser({
+    // Create employee
+    const employee = await this.authRepo.createEmployee({
       tenant_id: invite.tenant_id,
       phone: invite.phone,
       first_name: invite.first_name,
@@ -194,8 +194,8 @@ export class AuthService {
     });
 
     // Create branch assignment
-    await this.authRepo.createUserBranchAssignment({
-      user_id: user.id,
+    await this.authRepo.createEmployeeBranchAssignment({
+      employee_id: employee.id,
       branch_id: invite.branch_id,
       role: invite.role,
       active: true
@@ -205,19 +205,19 @@ export class AuthService {
     await this.authRepo.acceptInvite(invite.id);
 
     // Generate tokens
-    const tokens = await this.generateUserTokens(user, invite.branch_id, invite.role);
+    const tokens = await this.generateEmployeeTokens(employee, invite.branch_id, invite.role);
 
     // Log activity
     await this.authRepo.createActivityLog({
       tenant_id: invite.tenant_id,
       branch_id: invite.branch_id,
-      user_id: user.id,
+      employee_id: employee.id,
       action_type: 'AUTH_INVITE_ACCEPTED',
       resource_type: 'INVITE',
       resource_id: invite.id
     });
 
-    return { user, tokens };
+    return { employee, tokens };
   }
 
   async refreshTokens(refreshToken: string): Promise<AuthTokens> {
@@ -228,18 +228,18 @@ export class AuthService {
       throw new Error('Invalid refresh token');
     }
 
-    const user = await this.authRepo.findUserById(session.user_id);
-    if (!user || user.status !== 'ACTIVE') {
-      throw new Error('User not found or inactive');
+    const employee = await this.authRepo.findEmployeeById(session.employee_id);
+    if (!employee || employee.status !== 'ACTIVE') {
+      throw new Error('Employee not found or inactive');
     }
 
-    const branchAssignments = await this.authRepo.findUserBranchAssignments(user.id);
+    const branchAssignments = await this.authRepo.findEmployeeBranchAssignments(employee.id);
     if (branchAssignments.length === 0) {
       throw new Error('No active branch assignments');
     }
 
     const primaryAssignment = branchAssignments[0];
-    return this.generateUserTokens(user, primaryAssignment.branch_id, primaryAssignment.role);
+    return this.generateEmployeeTokens(employee, primaryAssignment.branch_id, primaryAssignment.role);
   }
 
   async logout(refreshToken: string): Promise<void> {
@@ -251,13 +251,13 @@ export class AuthService {
     }
   }
 
-  async revokeInvite(tenantId: string, inviteId: string, adminUserId: string): Promise<Invite> {
+  async revokeInvite(tenantId: string, inviteId: string, adminEmployeeId: string): Promise<Invite> {
     const invite = await this.authRepo.revokeInvite(inviteId);
 
     // Log activity
     await this.authRepo.createActivityLog({
       tenant_id: tenantId,
-      user_id: adminUserId,
+      employee_id: adminEmployeeId,
       action_type: 'AUTH_INVITE_REVOKED',
       resource_type: 'INVITE',
       resource_id: invite.id
@@ -266,10 +266,10 @@ export class AuthService {
     return invite;
   }
 
-  private async generateUserTokens(user: User, branchId: string, role: UserRole): Promise<AuthTokens> {
+  private async generateEmployeeTokens(employee: Employee, branchId: string, role: EmployeeRole): Promise<AuthTokens> {
     const accessToken = this.tokenService.generateAccessToken({
-      userId: user.id,
-      tenantId: user.tenant_id,
+      employeeId: employee.id,
+      tenantId: employee.tenant_id,
       branchId,
       role
     });
@@ -280,7 +280,7 @@ export class AuthService {
 
     // Create session
     await this.authRepo.createSession({
-        user_id: user.id,
+        employee_id: employee.id,
         refresh_token_hash: refreshTokenHash,
         expires_at: refreshTokenExpiry
         });

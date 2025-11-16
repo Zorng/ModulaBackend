@@ -8,6 +8,22 @@
 
 ---
 
+## Test Accounts Available
+
+The database has been seeded with test accounts:
+
+| Role | Phone | Email | Password |
+|------|-------|-------|----------|
+| Admin | `+1234567890` | `admin@test.com` | `Test123!` |
+| Manager | `+1234567891` | `manager@test.com` | `Test123!` |
+| Cashier | `+1234567892` | `cashier@test.com` | `Test123!` |
+| Clerk | `+1234567893` | `clerk@test.com` | `Test123!` |
+
+**Tenant**: Test Restaurant
+**Branches**: Main Branch, Downtown Branch
+
+---
+
 ## 1. Register Tenant (Create First Admin User)
 
 **POST** `http://localhost:3000/v1/auth/register-tenant`
@@ -23,7 +39,7 @@ Content-Type: application/json
 ```json
 {
   "business_name": "My Coffee Shop",
-  "phone": "+1234567890",
+  "phone": "+9876543210",
   "first_name": "John",
   "last_name": "Doe",
   "password": "SecurePass123!",
@@ -41,7 +57,7 @@ Content-Type: application/json
     "business_type": "RETAIL",
     "status": "ACTIVE"
   },
-  "user": {
+  "employee": {
     "id": "uuid-here",
     "first_name": "John",
     "last_name": "Doe",
@@ -61,7 +77,7 @@ Content-Type: application/json
 Example token:
 
 ```text
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI1MTA2YmEzZS1jY2JhLTQzYTItOWQ3Zi1iNGQ3OTM0ZTY2NmUiLCJ0ZW5hbnRJZCI6ImVhYzY2MmVjLTIxMjAtNDY2My05Y2M5LWUyZjBmMzQ1Y2E0ZSIsImJyYW5jaElkIjoiOGFmZGIxZGQtYTQ2NC00N2E5LWIzZWEtYjQxYzE5YTIwZWY0Iiwicm9sZSI6IkFETUlOIiwiaWF0IjoxNzYzMjA0Mzg1LCJleHAiOjE3NjMyNDc1ODUsImlzcyI6Im1vZHVsYS1hdXRoIn0.ZglfDeQnVYsyu_W1HLGLZ_pUw6CkBzvOUyOmTP-TFKg
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbXBsb3llZUlkIjoiNTEwNmJhM2UtY2NiYS00M2EyLTlkN2YtYjRkNzkzNGU2NjZlIiwidGVuYW50SWQiOiJlYWM2NjJlYy0yMTIwLTQ2NjMtOWNjOS1lMmYwZjM0NWNhNGUiLCJicmFuY2hJZCI6IjhhZmRiMWRkLWE0NjQtNDdhOS1iM2VhLWI0MWMxOWEyMGVmNCIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc2MzIwNDM4NSwiZXhwIjoxNzYzMjQ3NTg1LCJpc3MiOiJtb2R1bGEtYXV0aCJ9.example
 ```
 
 ---
@@ -81,7 +97,16 @@ Content-Type: application/json
 ```json
 {
   "phone": "+1234567890",
-  "password": "SecurePass123!"
+  "password": "Test123!"
+}
+```
+
+**Or use any test account from the table above:**
+
+```json
+{
+  "phone": "+1234567891",
+  "password": "Test123!"
 }
 ```
 
@@ -89,7 +114,7 @@ Content-Type: application/json
 
 ```json
 {
-  "user": {
+  "employee": {
     "id": "uuid-here",
     "first_name": "John",
     "last_name": "Doe",
@@ -104,7 +129,7 @@ Content-Type: application/json
   "branch_assignments": [
     {
       "id": "uuid-here",
-      "user_id": "uuid-here",
+      "employee_id": "uuid-here",
       "branch_id": "uuid-here",
       "role": "ADMIN",
       "active": true,
@@ -115,7 +140,6 @@ Content-Type: application/json
 ```
 
 **Save the `accessToken` and `branch_id` for the next steps!**
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI1MTA2YmEzZS1jY2JhLTQzYTItOWQ3Zi1iNGQ3OTM0ZTY2NmUiLCJ0ZW5hbnRJZCI6ImVhYzY2MmVjLTIxMjAtNDY2My05Y2M5LWUyZjBmMzQ1Y2E0ZSIsImJyYW5jaElkIjoiOGFmZGIxZGQtYTQ2NC00N2E5LWIzZWEtYjQxYzE5YTIwZWY0Iiwicm9sZSI6IkFETUlOIiwiaWF0IjoxNzYzMjA1NDY3LCJleHAiOjE3NjMyNDg2NjcsImlzcyI6Im1vZHVsYS1hdXRoIn0.PUqIzFDyb1fO8lbypkVb7UALw9IYoKmVQEOxxJ9iWVc
 
 8afdb1dd-a464-47a9-b3ea-b41c19a20ef4
 
@@ -138,7 +162,7 @@ Authorization: Bearer YOUR_ACCESS_TOKEN_HERE
 {
   "first_name": "Jane",
   "last_name": "Smith",
-  "phone": "+9876543210",
+  "phone": "+1234567899",
   "role": "CASHIER",
   "branch_id": "BRANCH_ID_FROM_LOGIN_RESPONSE",
   "note": "New cashier for morning shift",
@@ -164,8 +188,6 @@ Authorization: Bearer YOUR_ACCESS_TOKEN_HERE
 ```
 
 **Save the `invite_token` - the invited user needs this to accept!**
-
-745c8dab3edc914581c9872c42dc512b1c851a1d9859e887cf2827733fb02b63
 
 ---
 
@@ -193,7 +215,7 @@ Content-Type: application/json
 
 ```json
 {
-  "user": {
+  "employee": {
     "id": "uuid-here",
     "first_name": "Jane",
     "last_name": "Smith",
@@ -208,9 +230,7 @@ Content-Type: application/json
 }
 ```
 
-The invited user is now registered and can login!
-
-605f1c73dbba5241b4f0d7a6b9ce7b87850251cd27c9d1a2608fff9e50314bb46e483a94aef009ea7f30348bec6cdf6704f8d158259f25323a2511725f848e9d
+The invited employee is now registered and can login!
 
 ---
 
@@ -322,7 +342,7 @@ Authorization: Bearer YOUR_ACCESS_TOKEN_HERE
 
 ```json
 {
-  "error": "Failed to register tenant: User already exists"
+  "error": "Failed to register tenant: Employee already exists"
 }
 ```
 
@@ -343,8 +363,8 @@ Authorization: Bearer YOUR_ACCESS_TOKEN_HERE
 1. **Register Tenant** → Get access token
 2. **Login** → Verify login works, get branch_id
 3. **Create Invite** → Get invite token
-4. **Accept Invite** → New user gets access
-5. **Login as New User** → Verify invited user can login
+4. **Accept Invite** → New employee gets access
+5. **Login as New Employee** → Verify invited employee can login
 6. **Refresh Token** → Verify token refresh works
 7. **Logout** → Clean up session
 
@@ -396,7 +416,7 @@ Bearer {{accessToken}}
 
 - Check phone number format (include country code)
 - Verify password is correct
-- Ensure user status is ACTIVE
+- Ensure employee status is ACTIVE
 
 ### "Missing or invalid authorization header"
 
@@ -406,8 +426,8 @@ Bearer {{accessToken}}
 
 ### "Insufficient permissions"
 
-- Only ADMIN users can create/revoke invites
-- Check user's role in branch_assignments
+- Only ADMIN employees can create/revoke invites
+- Check employee's role in branch_assignments
 
 ### "Invalid invite token"
 
