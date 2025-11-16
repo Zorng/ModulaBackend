@@ -2,7 +2,6 @@ import express from 'express';
 import { ping } from '#db';
 import { log } from '#logger';
 import { tenantRouter } from '#modules/tenant/api/router.js';
-import { authRouter } from '#modules/auth/api/auth.router.js';
 
 const app = express();
 app.use(express.json());
@@ -12,8 +11,7 @@ app.get('/health', async (_req, res) => {
   res.json({ status: 'ok', time: now });
 });
 
-app.use('/v1/tenants', tenantRouter); // <-- mounts /v1/tenants
-app.use('/v1/auth', authRouter);
+app.use(tenantRouter); // <-- mounts /v1/tenants
 
 const PORT = process.env.PORT ?? 3000;
 app.listen(PORT, () => log.info(`Server on http://localhost:${PORT}`));
