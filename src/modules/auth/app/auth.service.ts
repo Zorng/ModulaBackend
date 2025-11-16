@@ -10,7 +10,8 @@ import {
   RegisterTenantRequest,
   CreateInviteRequest,
   AcceptInviteRequest,
-  AuthActionType
+  AuthActionType,
+  EmployeeBranchAssignment
 } from '../domain/entities.js';
 import { AuthRepository } from '../infra/repository.js';
 import { PasswordService } from './password.service.js';
@@ -266,6 +267,150 @@ export class AuthService {
     return invite;
   }
 
+  async resendInvite(tenantId: string, inviteId: string, adminEmployeeId: string): Promise<Invite> {
+    // Find existing invite
+    const existingInvite = await this.authRepo.findInviteById(inviteId);
+    
+    if (!existingInvite) {
+      throw new Error('Invite not found');
+    }
+
+    if (existingInvite.tenant_id !== tenantId) {
+      throw new Error('Unauthorized: Invite belongs to different tenant');
+    }
+
+    if (existingInvite.accepted_at) {
+      throw new Error('Invite has already been accepted');
+    }
+
+    // Generate new token
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + this.defaultInviteExpiryHours);
+
+    // Update invite with new token and expiry
+    const updatedInvite = await this.authRepo.updateInviteToken(inviteId, tokenHash, expiresAt);
+
+    // Log activity
+    await this.authRepo.createActivityLog({
+      tenant_id: tenantId,
+      employee_id: adminEmployeeId,
+      action_type: 'AUTH_INVITE_REISSUED',
+      resource_type: 'INVITE',
+      resource_id: inviteId,
+      details: { phone: existingInvite.phone }
+    });
+
+    return { ...updatedInvite, token_hash: token }; // Return actual token for sending
+  }
+
+  async assignBranch(tenantId: string, employeeId: string, branchId: string, role: EmployeeRole, adminEmployeeId: string): Promise<EmployeeBranchAssignment> {
+    // Verify employee belongs to tenant
+    const employee = await this.authRepo.findEmployeeById(employeeId);
+    if (!employee || employee.tenant_id !== tenantId) {
+      throw new Error('Employee not found or does not belong to tenant');
+    }
+
+    // Verify branch belongs to tenant
+    const branch = await this.authRepo.findBranchById(branchId);
+    if (!branch || branch.tenant_id !== tenantId) {
+      throw new Error('Branch not found or does not belong to tenant');
+    }
+
+    // Check if assignment already exists
+    const existingAssignment = await this.authRepo.findEmployeeBranchAssignment(employeeId, branchId);
+    if (existingAssignment) {
+      throw new Error('Employee is already assigned to this branch');
+    }
+
+    // Create new branch assignment
+    const assignment = await this.authRepo.createEmployeeBranchAssignment({
+      employee_id: employeeId,
+      branch_id: branchId,
+      role,
+      active: true
+    });
+
+    // Log activity
+    await this.authRepo.createActivityLog({
+      tenant_id: tenantId,
+      branch_id: branchId,
+      employee_id: adminEmployeeId,
+      action_type: 'AUTH_BRANCH_TRANSFERRED',
+      resource_type: 'EMPLOYEE',
+      resource_id: employeeId,
+      details: { branch_id: branchId, role }
+    });
+
+    return assignment;
+  }
+
+  async updateRole(tenantId: string, employeeId: string, branchId: string, newRole: EmployeeRole, adminEmployeeId: string): Promise<EmployeeBranchAssignment> {
+    // Verify employee belongs to tenant
+    const employee = await this.authRepo.findEmployeeById(employeeId);
+    if (!employee || employee.tenant_id !== tenantId) {
+      throw new Error('Employee not found or does not belong to tenant');
+    }
+
+    // Verify branch belongs to tenant
+    const branch = await this.authRepo.findBranchById(branchId);
+    if (!branch || branch.tenant_id !== tenantId) {
+      throw new Error('Branch not found or does not belong to tenant');
+    }
+
+    // Update the role
+    const updatedAssignment = await this.authRepo.updateEmployeeBranchAssignmentRole(employeeId, branchId, newRole);
+
+    // Log activity
+    await this.authRepo.createActivityLog({
+      tenant_id: tenantId,
+      branch_id: branchId,
+      employee_id: adminEmployeeId,
+      action_type: 'AUTH_ROLE_CHANGED',
+      resource_type: 'EMPLOYEE',
+      resource_id: employeeId,
+      details: { new_role: newRole, branch_id: branchId }
+    });
+
+    return updatedAssignment;
+  }
+
+  async disableEmployee(tenantId: string, employeeId: string, adminEmployeeId: string): Promise<Employee> {
+    // Verify employee belongs to tenant
+    const employee = await this.authRepo.findEmployeeById(employeeId);
+    if (!employee || employee.tenant_id !== tenantId) {
+      throw new Error('Employee not found or does not belong to tenant');
+    }
+
+    if (employee.status === 'DISABLED') {
+      throw new Error('Employee is already disabled');
+    }
+
+    // Prevent self-disabling
+    if (employeeId === adminEmployeeId) {
+      throw new Error('Cannot disable your own account');
+    }
+
+    // Update employee status
+    const updatedEmployee = await this.authRepo.updateEmployeeStatus(employeeId, 'DISABLED');
+
+    // Deactivate all branch assignments
+    await this.authRepo.deactivateAllEmployeeBranchAssignments(employeeId);
+
+    // Log activity
+    await this.authRepo.createActivityLog({
+      tenant_id: tenantId,
+      employee_id: adminEmployeeId,
+      action_type: 'AUTH_EMPLOYEE_DISABLED',
+      resource_type: 'EMPLOYEE',
+      resource_id: employeeId
+    });
+
+    return updatedEmployee;
+  }
+
   private async generateEmployeeTokens(employee: Employee, branchId: string, role: EmployeeRole): Promise<AuthTokens> {
     const accessToken = this.tokenService.generateAccessToken({
       employeeId: employee.id,
@@ -290,22 +435,5 @@ export class AuthService {
         refreshToken,
         expiresIn: 12 * 60 * 60 // 12 hours in seconds
         };
-    }
-
-    private async getDefaultTenantId(): Promise<string> {
-        // For demo purposes - in production, you might have a default tenant or multi-tenant lookup
-        const tenants = await this.authRepo.findTenantById('00000000-0000-0000-0000-000000000000');
-        if (tenants) {
-        return tenants.id;
-        }
-        
-        // Create default tenant if doesn't exist
-        const defaultTenant = await this.authRepo.createTenant({
-        name: 'Default Tenant',
-        business_type: 'RETAIL',
-        status: 'ACTIVE'
-        });
-        
-        return defaultTenant.id;
     }
 }

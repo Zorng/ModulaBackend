@@ -84,6 +84,17 @@ export class AuthRepository {
     return result.rows.length ? this.mapEmployee(result.rows[0]) : null;
   }
 
+  async updateEmployeeStatus(employeeId: string, status: EmployeeStatus): Promise<Employee> {
+    const result = await this.db.query(
+      'UPDATE employees SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      [status, employeeId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error('Employee not found');
+    }
+    return this.mapEmployee(result.rows[0]);
+  }
+
   async createEmployeeBranchAssignment(
     assignment: Omit<EmployeeBranchAssignment, 'id' | 'assigned_at'>
   ): Promise<EmployeeBranchAssignment> {
@@ -113,6 +124,45 @@ export class AuthRepository {
     return result.rows.map(row => this.mapEmployeeBranchAssignment(row));
   }
 
+  async findEmployeeBranchAssignment(employeeId: string, branchId: string): Promise<EmployeeBranchAssignment | null> {
+    const result = await this.db.query(
+      `SELECT eba.*, b.name as branch_name
+       FROM employee_branch_assignments eba
+       JOIN branches b ON eba.branch_id = b.id
+       WHERE eba.employee_id = $1 AND eba.branch_id = $2 AND eba.active = true`,
+      [employeeId, branchId]
+    );
+    return result.rows.length ? this.mapEmployeeBranchAssignment(result.rows[0]) : null;
+  }
+
+  async updateEmployeeBranchAssignmentRole(employeeId: string, branchId: string, role: EmployeeRole): Promise<EmployeeBranchAssignment> {
+    const result = await this.db.query(
+      `UPDATE employee_branch_assignments 
+       SET role = $1 
+       WHERE employee_id = $2 AND branch_id = $3 AND active = true 
+       RETURNING *`,
+      [role, employeeId, branchId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error('Branch assignment not found');
+    }
+    return this.mapEmployeeBranchAssignment(result.rows[0]);
+  }
+
+  async deactivateAllEmployeeBranchAssignments(employeeId: string): Promise<void> {
+    await this.db.query(
+      'UPDATE employee_branch_assignments SET active = false WHERE employee_id = $1',
+      [employeeId]
+    );
+  }
+
+  async deactivateEmployeeBranchAssignment(employeeId: string, branchId: string): Promise<void> {
+    await this.db.query(
+      'UPDATE employee_branch_assignments SET active = false WHERE employee_id = $1 AND branch_id = $2',
+      [employeeId, branchId]
+    );
+  }
+
   async createInvite(invite: Omit<Invite, 'id' | 'created_at'>): Promise<Invite> {
     const query = `
       INSERT INTO invites (tenant_id, branch_id, role, phone, token_hash, first_name, last_name, note, expires_at)
@@ -139,6 +189,11 @@ export class AuthRepository {
     return result.rows.length ? this.mapInvite(result.rows[0]) : null;
   }
 
+  async findInviteById(inviteId: string): Promise<Invite | null> {
+    const result = await this.db.query('SELECT * FROM invites WHERE id = $1', [inviteId]);
+    return result.rows.length ? this.mapInvite(result.rows[0]) : null;
+  }
+
   async acceptInvite(inviteId: string): Promise<Invite> {
     const result = await this.db.query(
       'UPDATE invites SET accepted_at = NOW() WHERE id = $1 RETURNING *',
@@ -151,6 +206,14 @@ export class AuthRepository {
     const result = await this.db.query(
       'UPDATE invites SET revoked_at = NOW() WHERE id = $1 RETURNING *',
       [inviteId]
+    );
+    return this.mapInvite(result.rows[0]);
+  }
+
+  async updateInviteToken(inviteId: string, tokenHash: string, expiresAt: Date): Promise<Invite> {
+    const result = await this.db.query(
+      'UPDATE invites SET token_hash = $1, expires_at = $2, revoked_at = NULL WHERE id = $3 RETURNING *',
+      [tokenHash, expiresAt, inviteId]
     );
     return this.mapInvite(result.rows[0]);
   }

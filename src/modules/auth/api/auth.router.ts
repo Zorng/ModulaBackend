@@ -34,15 +34,36 @@ export function createAuthRouter(): express.Router {
     // Protected routes
     router.use(authMiddleware.authenticate);
 
-    // Admin routes
+    // Admin routes - Invite management
     router.post('/invites', 
         authMiddleware.requireRole(['ADMIN']),
         authController.createInvite
     );
 
+    router.post('/invites/:inviteId/resend',
+        authMiddleware.requireRole(['ADMIN']),
+        authController.resendInvite
+    );
+
     router.post('/invites/:inviteId/revoke',
         authMiddleware.requireRole(['ADMIN']),
         authController.revokeInvite
+    );
+
+    // Admin routes - User management
+    router.post('/users/:userId/assign-branch',
+        authMiddleware.requireRole(['ADMIN']),
+        authController.assignBranch
+    );
+
+    router.post('/users/:userId/role',
+        authMiddleware.requireRole(['ADMIN']),
+        authController.updateRole
+    );
+
+    router.post('/users/:userId/disable',
+        authMiddleware.requireRole(['ADMIN']),
+        authController.disableEmployee
     );
 
     return router;

@@ -294,7 +294,41 @@ Content-Type: application/json
 
 ---
 
-## 7. Revoke Invite (Admin Only)
+## 7. Resend Invite (Admin Only)
+
+**POST** `http://localhost:3000/v1/auth/invites/INVITE_ID/resend`
+
+Replace `INVITE_ID` with the actual invite ID.
+
+**Headers:**
+
+```http
+Content-Type: application/json
+Authorization: Bearer YOUR_ACCESS_TOKEN_HERE
+```
+
+**Expected Response (200 OK):**
+
+```json
+{
+  "invite": {
+    "id": "uuid-here",
+    "first_name": "Jane",
+    "last_name": "Smith",
+    "phone": "+1234567899",
+    "role": "CASHIER",
+    "branch_id": "uuid-here",
+    "expires_at": "2025-11-18T..."
+  },
+  "invite_token": "new-long-hex-token-string"
+}
+```
+
+**Note:** This generates a new token and extends the expiry. Use this when an invite has expired or was lost.
+
+---
+
+## 8. Revoke Invite (Admin Only)
 
 **POST** `http://localhost:3000/v1/auth/invites/INVITE_ID/revoke`
 
@@ -317,6 +351,119 @@ Authorization: Bearer YOUR_ACCESS_TOKEN_HERE
   }
 }
 ```
+
+---
+
+## 9. Assign Employee to Branch (Admin Only)
+
+**POST** `http://localhost:3000/v1/auth/users/EMPLOYEE_ID/assign-branch`
+
+Replace `EMPLOYEE_ID` with the target employee's ID.
+
+**Headers:**
+
+```http
+Content-Type: application/json
+Authorization: Bearer YOUR_ACCESS_TOKEN_HERE
+```
+
+**Body (raw JSON):**
+
+```json
+{
+  "branch_id": "BRANCH_ID_HERE",
+  "role": "MANAGER"
+}
+```
+
+**Expected Response (201 Created):**
+
+```json
+{
+  "assignment": {
+    "id": "uuid-here",
+    "employee_id": "uuid-here",
+    "branch_id": "uuid-here",
+    "role": "MANAGER",
+    "active": true,
+    "assigned_at": "2025-11-16T..."
+  }
+}
+```
+
+**Note:** Use this to assign an existing employee to another branch.
+
+---
+
+## 10. Update Employee Role (Admin Only)
+
+**POST** `http://localhost:3000/v1/auth/users/EMPLOYEE_ID/role`
+
+Replace `EMPLOYEE_ID` with the target employee's ID.
+
+**Headers:**
+
+```http
+Content-Type: application/json
+Authorization: Bearer YOUR_ACCESS_TOKEN_HERE
+```
+
+**Body (raw JSON):**
+
+```json
+{
+  "branch_id": "BRANCH_ID_HERE",
+  "role": "MANAGER"
+}
+```
+
+**Expected Response (200 OK):**
+
+```json
+{
+  "assignment": {
+    "id": "uuid-here",
+    "employee_id": "uuid-here",
+    "branch_id": "uuid-here",
+    "role": "MANAGER",
+    "active": true,
+    "assigned_at": "2025-11-15T..."
+  }
+}
+```
+
+**Note:** Updates the role for an existing branch assignment. Valid roles: `ADMIN`, `MANAGER`, `CASHIER`, `CLERK`.
+
+---
+
+## 11. Disable Employee (Admin Only)
+
+**POST** `http://localhost:3000/v1/auth/users/EMPLOYEE_ID/disable`
+
+Replace `EMPLOYEE_ID` with the target employee's ID.
+
+**Headers:**
+
+```http
+Content-Type: application/json
+Authorization: Bearer YOUR_ACCESS_TOKEN_HERE
+```
+
+**Expected Response (200 OK):**
+
+```json
+{
+  "employee": {
+    "id": "uuid-here",
+    "first_name": "Jane",
+    "last_name": "Smith",
+    "phone": "+1234567899",
+    "status": "DISABLED"
+  }
+}
+```
+
+**Note:** This disables the employee account and deactivates all branch assignments. Cannot disable your own account.
 
 ---
 
@@ -361,12 +508,16 @@ Authorization: Bearer YOUR_ACCESS_TOKEN_HERE
 ### Complete Registration & Invite Flow
 
 1. **Register Tenant** → Get access token
-2. **Login** → Verify login works, get branch_id
-3. **Create Invite** → Get invite token
-4. **Accept Invite** → New employee gets access
-5. **Login as New Employee** → Verify invited employee can login
-6. **Refresh Token** → Verify token refresh works
-7. **Logout** → Clean up session
+2. **Login** → Verify login works, get branch_id and employee_id
+3. **Create Invite** → Get invite token and invite_id
+4. **Resend Invite** (optional) → Get new token if needed
+5. **Accept Invite** → New employee gets access
+6. **Login as New Employee** → Verify invited employee can login
+7. **Update Employee Role** → Change the new employee's role
+8. **Assign to Another Branch** → Add employee to additional branch
+9. **Disable Employee** (when needed) → Deactivate employee account
+10. **Refresh Token** → Verify token refresh works
+11. **Logout** → Clean up session
 
 ---
 
@@ -380,8 +531,11 @@ Create a Postman environment with:
 - `accessToken`: (auto-set after login)
 - `refreshToken`: (auto-set after login)
 - `branchId`: (auto-set after login)
+- `employeeId`: (auto-set after login)
+- `inviteId`: (auto-set after create invite)
+- `inviteToken`: (auto-set after create invite)
 
-### 2. Auto-Save Tokens
+### 2. Auto-Save Tokens and IDs
 
 In the **Tests** tab for login/register requests:
 
@@ -391,6 +545,19 @@ pm.environment.set("accessToken", response.tokens.accessToken);
 pm.environment.set("refreshToken", response.tokens.refreshToken);
 if (response.branch_assignments && response.branch_assignments[0]) {
     pm.environment.set("branchId", response.branch_assignments[0].branch_id);
+}
+if (response.employee) {
+    pm.environment.set("employeeId", response.employee.id);
+}
+```
+
+In the **Tests** tab for create invite requests:
+
+```javascript
+const response = pm.response.json();
+if (response.invite) {
+    pm.environment.set("inviteId", response.invite.id);
+    pm.environment.set("inviteToken", response.invite_token);
 }
 ```
 
@@ -406,6 +573,11 @@ Bearer {{accessToken}}
 
 ```http
 {{baseUrl}}/v1/auth/invites/accept/{{inviteToken}}
+{{baseUrl}}/v1/auth/invites/{{inviteId}}/resend
+{{baseUrl}}/v1/auth/invites/{{inviteId}}/revoke
+{{baseUrl}}/v1/auth/users/{{employeeId}}/assign-branch
+{{baseUrl}}/v1/auth/users/{{employeeId}}/role
+{{baseUrl}}/v1/auth/users/{{employeeId}}/disable
 ```
 
 ---
@@ -426,7 +598,8 @@ Bearer {{accessToken}}
 
 ### "Insufficient permissions"
 
-- Only ADMIN employees can create/revoke invites
+- Only ADMIN employees can create/revoke/resend invites
+- Only ADMIN employees can assign branches, update roles, or disable employees
 - Check employee's role in branch_assignments
 
 ### "Invalid invite token"
@@ -434,3 +607,24 @@ Bearer {{accessToken}}
 - Token may have expired (72 hours default)
 - Token may have been revoked
 - Token may have already been accepted
+
+### "Employee not found or does not belong to tenant"
+
+- Verify employee ID is correct
+- Ensure employee belongs to the same tenant as the admin
+- Check that employee exists in the database
+
+### "Employee is already assigned to this branch"
+
+- Cannot assign same employee to same branch twice
+- Check existing branch assignments first
+
+### "Cannot disable your own account"
+
+- Admins cannot disable themselves
+- Use a different admin account to disable this employee
+
+### "Employee is already disabled"
+
+- Employee status is already set to DISABLED
+- No action needed
