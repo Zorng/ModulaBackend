@@ -8,7 +8,8 @@ import type { Result } from "../../../shared/result.js";
 export type MenuStockMapProps = {
   menuItemId: string;
   stockItemId: string;
-  qtyPerSale: number; // Decimal quantity deducted per sale
+  tenantId: string;
+  qtyPerSale: number;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
@@ -21,6 +22,7 @@ export class MenuStockMap {
   static create(data: {
     menuItemId: string;
     stockItemId: string;
+    tenantId: string;
     qtyPerSale: number;
     createdBy: string;
   }): Result<MenuStockMap, string> {
@@ -34,10 +36,24 @@ export class MenuStockMap {
       return { ok: false, error: "Stock item ID cannot be empty" };
     }
 
+    // Validate tenantId is not empty
+    if (!data.tenantId || data.tenantId.trim().length === 0) {
+      return { ok: false, error: "Tenant ID cannot be empty" };
+    }
+
+    // Validate menuItemId is not empty
+    if (!data.menuItemId || data.menuItemId.trim().length === 0) {
+      return { ok: false, error: "Menu item ID cannot be empty" };
+    }
+
     return {
       ok: true,
       value: new MenuStockMap({
-        ...data,
+        menuItemId: data.menuItemId,
+        stockItemId: data.stockItemId,
+        tenantId: data.tenantId,
+        qtyPerSale: data.qtyPerSale,
+        createdBy: data.createdBy,
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
@@ -55,6 +71,9 @@ export class MenuStockMap {
   get stockItemId() {
     return this.props.stockItemId;
   }
+  get tenantId() {
+    return this.props.tenantId;
+  }
   get qtyPerSale() {
     return this.props.qtyPerSale;
   }
@@ -70,12 +89,10 @@ export class MenuStockMap {
 
   // Business method
   updateQuantity(newQty: number): Result<void, string> {
-    // Validate newQty > 0
     if (newQty <= 0) {
       return { ok: false, error: "Quantity must be greater than 0" };
     }
 
-    // Update quantity and timestamp
     this.props.qtyPerSale = newQty;
     this.props.updatedAt = new Date();
 

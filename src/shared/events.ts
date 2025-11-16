@@ -124,6 +124,53 @@ export type MenuSnapshotUpdatedV1 = {
   updatedAt: string;
 };
 
+
+export type CategoryUpdatedV1 = {
+  type: "menu.category_updated";
+  v: 1;
+  tenantId: string;
+  categoryId: string;
+  changes: {
+    name?: string;
+    displayOrder?: number;
+  };
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type MenuItemDeletedV1 = {
+  type: "menu.item_deleted";
+  v: 1;
+  tenantId: string;
+  menuItemId: string;
+  categoryId: string;
+  name: string;
+  deletedBy: string;
+  deletedAt: string;
+};
+
+export type ModifierGroupCreatedV1 = {
+  type: "menu.modifier_group_created";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  name: string;
+  selectionType: "SINGLE" | "MULTI";
+  createdBy: string;
+  createdAt: string;
+};
+
+export type ModifierOptionAddedV1 = {
+  type: "menu.modifier_option_added";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  modifierOptionId: string;
+  label: string;
+  priceAdjustmentUsd: number;
+  createdAt: string;
+};
+
 // Union type of all events
 export type DomainEvent =
   | SaleFinalizedV1
@@ -135,4 +182,9 @@ export type DomainEvent =
   | MenuItemUpdatedV1
   | MenuModifierAttachedV1
   | MenuBranchAvailabilityChangedV1
-  | MenuSnapshotUpdatedV1;
+  | MenuSnapshotUpdatedV1
+  | CategoryUpdatedV1
+  | MenuItemDeletedV1
+  | ModifierGroupCreatedV1
+  | ModifierOptionAddedV1;
+  

@@ -22,13 +22,13 @@ export class Category {
 
   // Factory: Create new category (validates business rules)
   static create(data: {
-    id: string;
     tenantId: string;
     name: string;
     description?: string;
     displayOrder: number;
     createdBy: string;
   }): Result<Category, string> {
+    const id = crypto.randomUUID();
     // Validate name is not empty
     if (!data.name || data.name.trim().length === 0) {
       return { ok: false, error: "Category name cannot be empty." };
@@ -48,8 +48,13 @@ export class Category {
     return {
       ok: true,
       value: new Category({
-        ...data,
+        id,
+        tenantId: data.tenantId,
+        name: data.name.trim(),
+        description: data.description?.trim(),
+        displayOrder: data.displayOrder,
         isActive: true,
+        createdBy: data.createdBy,
         createdAt: new Date(),
         updatedAt: new Date(),
       }),

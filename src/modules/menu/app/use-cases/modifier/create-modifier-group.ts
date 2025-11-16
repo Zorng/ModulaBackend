@@ -5,62 +5,75 @@
 
 import { Ok, Err, type Result } from "../../../../../shared/result.js";
 import { ModifierGroup } from "../../../domain/entities.js";
+import type {
+  IModifierRepository,
+  IPolicyPort,
+  IEventBus,
+  ITransactionManager,
+} from "../../ports.js";
 
-// TODO: Import port interfaces
-// import type { IModifierRepository, IPolicyPort, IEventBus } from "../../ports.js";
+import { ModifierGroupCreatedV1 } from "../../../../../shared/events.js";
 
 export class CreateModifierGroupUseCase {
-  constructor() // private modifierRepo: IModifierRepository,
-  // private policyPort: IPolicyPort,
-  // private eventBus: IEventBus
-  {}
+  constructor(
+    private modifierRepo: IModifierRepository,
+    private policyPort: IPolicyPort,
+    private eventBus: IEventBus,
+    private txManager: ITransactionManager
+  ) {}
 
   async execute(input: {
     tenantId: string;
     userId: string;
     name: string;
     selectionType: "SINGLE" | "MULTI";
-    minSelections?: number;
-    maxSelections?: number;
   }): Promise<Result<ModifierGroup, string>> {
-    const {
+    const { tenantId, userId, name, selectionType } = input;
+
+    // Step 1 - Check permissions
+    const canCreate = await this.policyPort.canManageModifiers(
       tenantId,
-      userId,
+      userId
+    );
+    if (!canCreate) {
+      return Err(
+        "Permission denied: You don't have permission to manage modifiers"
+      );
+    }
+
+    // Step 2 - Create modifier group entity
+    const groupResult = ModifierGroup.create({
+      tenantId,
       name,
       selectionType,
-      minSelections,
-      maxSelections,
-    } = input;
+      createdBy: userId,
+    });
 
-    // TODO: Step 1 - Check permissions
-    // const canCreate = await this.policyPort.canManageModifiers(tenantId, userId);
-    // if (!canCreate) {
-    //   return Err("Permission denied");
-    // }
+    if (!groupResult.ok) {
+      return Err(`Validation failed: ${groupResult.error}`);
+    }
 
-    // TODO: Step 2 - Create modifier group entity
-    // const groupResult = ModifierGroup.create({
-    //   tenantId,
-    //   name,
-    //   selectionType,
-    //   minSelections,
-    //   maxSelections
-    // });
-    // if (groupResult.isErr()) {
-    //   return Err(`Validation failed: ${groupResult.error}`);
-    // }
-    // const group = groupResult.value;
+    const group = groupResult.value;
 
-    // TODO: Step 3 - Save to database
-    // await this.modifierRepo.saveGroup(group);
+    // Step 3 - Save and publish event
+    await this.txManager.withTransaction(async (client) => {
+      await this.modifierRepo.saveGroup(group);
 
-    // TODO: Step 4 - Optionally publish event (ModifierGroupCreatedV1)
+      const event: ModifierGroupCreatedV1 = {
+        type: "menu.modifier_group_created",
+        v: 1,
+        tenantId,
+        modifierGroupId: group.id,
+        name: group.name,
+        selectionType: group.selectionType,
+        createdBy: userId,
+        createdAt: new Date().toISOString(),
+      };
 
-    // TODO: Step 5 - Return success
-    // return Ok(group);
+      await this.eventBus.publishViaOutbox(event, client);
+    });
 
-    throw new Error(
-      "Not implemented - uncomment and complete the TODOs above!"
-    );
+    // Step 5 - Return success
+    return Ok(group);
   }
 }

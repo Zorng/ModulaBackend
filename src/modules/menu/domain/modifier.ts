@@ -10,7 +10,7 @@ export type ModifierGroupProps = {
   id: string;
   tenantId: string;
   name: string;
-  selectionType: "SINGLE" | "MULTI"; // SINGLE = radio buttons, MULTI = checkboxes
+  selectionType: "SINGLE" | "MULTI";
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
@@ -21,23 +21,39 @@ export class ModifierGroup {
 
   // Factory: Create new modifier group
   static create(data: {
-    id: string;
     tenantId: string;
     name: string;
     selectionType: "SINGLE" | "MULTI";
     createdBy: string;
   }): Result<ModifierGroup, string> {
-    //Validate name not empty
-    if (!data.name || data.name.trim().length === 0) return {ok:false, error: 'Modifier Group name cannot be empty.'};
-    if (data.name.length > 100) return { ok: false, error: "Modifier Group name cannot be more than 100 characters." };
+    const id = crypto.randomUUID(); // Generate UUID
+
+    // Validate name not empty
+    if (!data.name || data.name.trim().length === 0) {
+      return { ok: false, error: "Modifier Group name cannot be empty." };
+    }
+
+    // Validate name length
+    if (data.name.length > 100) {
+      return {
+        ok: false,
+        error: "Modifier Group name cannot be more than 100 characters.",
+      };
+    }
 
     // Validate selectionType is valid enum
-    if (data.selectionType !== 'SINGLE' && data.selectionType !== 'MULTI') return { ok: false, error: 'Selection type must be SINGLE or MULTI' }
+    if (data.selectionType !== "SINGLE" && data.selectionType !== "MULTI") {
+      return { ok: false, error: "Selection type must be SINGLE or MULTI" };
+    }
 
     return {
       ok: true,
       value: new ModifierGroup({
-        ...data,
+        id, // Use generated UUID
+        tenantId: data.tenantId,
+        name: data.name.trim(),
+        selectionType: data.selectionType,
+        createdBy: data.createdBy,
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
@@ -76,12 +92,11 @@ export class ModifierGroup {
   }
 }
 
-
 export type ModifierOptionProps = {
   id: string;
   modifierGroupId: string;
   label: string;
-  priceAdjustmentUsd: number; // Can be negative, zero, or positive
+  priceAdjustmentUsd: number;
   isDefault: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -93,23 +108,33 @@ export class ModifierOption {
 
   // Factory: Create new modifier option
   static create(data: {
-    id: string;
     modifierGroupId: string;
     label: string;
     priceAdjustmentUsd: number;
     isDefault?: boolean;
   }): Result<ModifierOption, string> {
-    //  Validate label not empty
-    if (!data.label || data.label.trim().length === 0)
-      return { ok: false, error: "Modifier option name cannot be empty." };
+    const id = crypto.randomUUID(); // Generate UUID
 
-    //  Validate label length (max 100 chars)
-     if (data.label.length > 100) return {ok:false, error: 'Modifier option name cannot be empty.'};
+    // Validate label not empty
+    if (!data.label || data.label.trim().length === 0) {
+      return { ok: false, error: "Modifier option label cannot be empty." };
+    }
+
+    // Validate label length (max 100 chars)
+    if (data.label.length > 100) {
+      return {
+        ok: false,
+        error: "Modifier option label cannot be more than 100 characters.",
+      };
+    }
 
     return {
       ok: true,
       value: new ModifierOption({
-        ...data,
+        id, // Use generated UUID
+        modifierGroupId: data.modifierGroupId,
+        label: data.label.trim(),
+        priceAdjustmentUsd: data.priceAdjustmentUsd,
         isDefault: data.isDefault ?? false,
         isActive: true,
         createdAt: new Date(),

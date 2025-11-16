@@ -24,7 +24,6 @@ export class MenuItem {
 
   // Factory: Create new menu item
   static create(data: {
-    id: string;
     tenantId: string;
     categoryId: string;
     name: string;
@@ -33,28 +32,53 @@ export class MenuItem {
     imageUrl?: string;
     createdBy: string;
   }): Result<MenuItem, string> {
+    const id = crypto.randomUUID(); // Generate UUID
+
     // Validate name not empty
-    if(!data.name || data.name.trim().length === 0 ) return {ok:false, error: 'Menu Item name can not be empty.'};  
+    if (!data.name || data.name.trim().length === 0) {
+      return { ok: false, error: "Menu Item name cannot be empty." };
+    }
 
     // Validate name length (max 200 chars)
-    if(data.name.length > 200) return {ok:false, error: 'Menu Item name cannot be more than 200 characters.'};
+    if (data.name.length > 200) {
+      return {
+        ok: false,
+        error: "Menu Item name cannot be more than 200 characters.",
+      };
+    }
 
     // Validate priceUsd >= 0
-    if(data.priceUsd < 0 ) return {  ok: false,  error: "Menu Item price cannot negative.",};
+    if (data.priceUsd < 0) {
+      return { ok: false, error: "Menu Item price cannot be negative." };
+    }
 
     // Validate imageUrl format if provided
     if (data.imageUrl) {
-      const validExtensions = ['.jpg', '.jpeg', '.webp', '.png'];
-      const hasValidExtension = validExtensions.some(ext => data.imageUrl?.toLowerCase().endsWith(ext));
-      
-      if(!hasValidExtension) return  {ok: false, error: 'File not supported.'};
+      const validExtensions = [".jpg", ".jpeg", ".webp", ".png"];
+      const hasValidExtension = validExtensions.some((ext) =>
+        data.imageUrl?.toLowerCase().endsWith(ext)
+      );
+
+      if (!hasValidExtension) {
+        return {
+          ok: false,
+          error: "File not supported. Use .jpg, .jpeg, .webp, or .png",
+        };
+      }
     }
 
     return {
       ok: true,
       value: new MenuItem({
-        ...data,
+        id, // Use generated UUID
+        tenantId: data.tenantId,
+        categoryId: data.categoryId,
+        name: data.name.trim(),
+        description: data.description?.trim(),
+        priceUsd: data.priceUsd,
+        imageUrl: data.imageUrl,
         isActive: true,
+        createdBy: data.createdBy,
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
@@ -103,11 +127,12 @@ export class MenuItem {
 
   // Business methods
   updatePrice(newPrice: number): Result<void, string> {
-    // Validate newPrice >= 0
-    if (newPrice < 0) return { ok: false, error: 'Price cannot be negative' }
+    if (newPrice < 0) {
+      return { ok: false, error: "Price cannot be negative" };
+    }
 
-    this.props.priceUsd = newPrice
-    this.props.updatedAt = new Date()
+    this.props.priceUsd = newPrice;
+    this.props.updatedAt = new Date();
 
     return { ok: true, value: undefined };
   }
@@ -119,15 +144,24 @@ export class MenuItem {
   }): Result<void, string> {
     // Validate name if provided
     if (data.name !== undefined) {
-        if (data.name && data.name.trim().length === 0) return { ok:false, error: 'name cannot be empty'};
-        if (data.name && data.name.length > 200) return { ok:false, error: 'name cannot be more than 200 characters.'};        
+      if (data.name.trim().length === 0) {
+        return { ok: false, error: "Name cannot be empty" };
+      }
+      if (data.name.length > 200) {
+        return { ok: false, error: "Name cannot be more than 200 characters." };
+      }
+      this.props.name = data.name.trim();
     }
 
-    if (data.name !== undefined) this.props.name = data.name.trim();
-    if (data.description !== undefined) this.props.description = data.description;
-    if (data.imageUrl !== undefined) this.props.imageUrl = data.imageUrl;
+    if (data.description !== undefined) {
+      this.props.description = data.description.trim();
+    }
 
-    this.props.updatedAt = new Date()
+    if (data.imageUrl !== undefined) {
+      this.props.imageUrl = data.imageUrl;
+    }
+
+    this.props.updatedAt = new Date();
 
     return { ok: true, value: undefined };
   }
@@ -138,13 +172,13 @@ export class MenuItem {
   }
 
   deactivate(): void {
-    this.props.isActive = false; 
+    this.props.isActive = false;
     this.props.updatedAt = new Date();
   }
 
   activate(): void {
-    this.props.isActive = true
-    this.props.updatedAt = new Date()
+    this.props.isActive = true;
+    this.props.updatedAt = new Date();
   }
 
   toPersistence(): MenuItemProps {

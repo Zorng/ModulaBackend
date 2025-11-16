@@ -1,5 +1,3 @@
-// TODO: Implement policy repositories
-
 import type { Pool } from "pg";
 
 export interface PolicyRepository {
@@ -12,17 +10,17 @@ export class PgPolicyRepository implements PolicyRepository {
   constructor(private pool: Pool) {}
 
   async getSalePolicy(tenantId: string): Promise<any> {
-    // TODO: Implement SQL query
+    // Implement SQL query
     throw new Error("Not implemented");
   }
 
   async getInventoryPolicy(tenantId: string): Promise<any> {
-    // TODO: Implement SQL query
+    // Implement SQL query
     throw new Error("Not implemented");
   }
 
   async getCapabilities(tenantId: string): Promise<any> {
-    // TODO: Implement SQL query
+    // Implement SQL query
     throw new Error("Not implemented");
   }
 }
