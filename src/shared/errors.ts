@@ -1,42 +1,35 @@
-export class AppError extends Error {
-  public readonly statusCode: number;
-  public readonly isOperational: boolean;
-
-  constructor(message: string, statusCode: number = 500, isOperational: boolean = true) {
+// Typed domain errors
+export class DomainError extends Error {
+  constructor(message: string, public readonly code: string) {
     super(message);
-    this.statusCode = statusCode;
-    this.isOperational = isOperational;
-
-    Error.captureStackTrace(this, this.constructor);
+    this.name = "DomainError";
   }
 }
 
-export class ValidationError extends AppError {
+export class NotFoundError extends DomainError {
+  constructor(resource: string, id: string) {
+    super(`${resource} with id ${id} not found`, "NOT_FOUND");
+    this.name = "NotFoundError";
+  }
+}
+
+export class ConflictError extends DomainError {
   constructor(message: string) {
-    super(message, 422);
+    super(message, "CONFLICT");
+    this.name = "ConflictError";
   }
 }
 
-export class AuthenticationError extends AppError {
-  constructor(message: string = 'Authentication failed') {
-    super(message, 401);
+export class ForbiddenError extends DomainError {
+  constructor(message: string) {
+    super(message, "FORBIDDEN");
+    this.name = "ForbiddenError";
   }
 }
 
-export class AuthorizationError extends AppError {
-  constructor(message: string = 'Insufficient permissions') {
-    super(message, 403);
-  }
-}
-
-export class NotFoundError extends AppError {
-  constructor(message: string = 'Resource not found') {
-    super(message, 404);
-  }
-}
-
-export class ConflictError extends AppError {
-  constructor(message: string = 'Resource conflict') {
-    super(message, 409);
+export class ValidationError extends DomainError {
+  constructor(message: string, public readonly details?: unknown) {
+    super(message, "VALIDATION_ERROR");
+    this.name = "ValidationError";
   }
 }
