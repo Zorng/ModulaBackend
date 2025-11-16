@@ -10,6 +10,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "setup": "tsx scripts/setup.ts",
     "dev": "cross-env NODE_ENV=development tsx watch src/server.ts",
     "migrate": "cross-env NODE_ENV=development tsx src/platform/db/migrate.ts",
     "start": "cross-env NODE_ENV=production node dist/server.js",
