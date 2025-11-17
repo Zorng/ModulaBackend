@@ -11,18 +11,16 @@ import type {
   IMenuItemRepository,
   IMenuStockMapRepository,
   IInventoryPort,
-  IPolicyPort
-} from "../../ports.js";
+  IPolicyPort,
+} from "../../../app/ports.js";
 
 export class LinkMenuItemToStockUseCase {
   constructor(
     private menuItemRepo: IMenuItemRepository,
     private stockMapRepo: IMenuStockMapRepository,
     private inventoryPort: IInventoryPort,
-    private policyPort: IPolicyPort  
-  ) 
-
-  {}
+    private policyPort: IPolicyPort
+  ) {}
 
   async execute(input: {
     tenantId: string;
@@ -46,13 +44,20 @@ export class LinkMenuItemToStockUseCase {
     }
 
     //3 - Verify stock item exists in inventory module
-    const stockExists = await this.inventoryPort.stockItemExists(stockItemId, tenantId);
+    const stockExists = await this.inventoryPort.stockItemExists(
+      stockItemId,
+      tenantId
+    );
     if (!stockExists) {
       return Err("Stock item not found in inventory module");
     }
 
     //4 - Check if mapping already exists
-    const mappingExists = await this.stockMapRepo.exists(menuItemId, stockItemId, tenantId);
+    const mappingExists = await this.stockMapRepo.exists(
+      menuItemId,
+      stockItemId,
+      tenantId
+    );
     if (mappingExists) {
       return Err("This stock item is already linked to the menu item");
     }
@@ -63,7 +68,7 @@ export class LinkMenuItemToStockUseCase {
       menuItemId,
       stockItemId,
       qtyPerSale,
-      createdBy: userId
+      createdBy: userId,
     });
     if (!mappingResult.ok) {
       return Err(`Validation failed: ${mappingResult.error}`);

@@ -6,10 +6,13 @@
 import { Ok, Err, type Result } from "../../../../../shared/result.js";
 
 // Import port interfaces
-import type { IMenuStockMapRepository, IPolicyPort } from "../../ports.js";
+import type {
+  IMenuStockMapRepository,
+  IPolicyPort,
+} from "../../../app/ports.js";
 
 export class UnlinkMenuItemFromStockUseCase {
-  constructor(  
+  constructor(
     private stockMapRepo: IMenuStockMapRepository,
     private policyPort: IPolicyPort
   ) {}
@@ -32,6 +35,5 @@ export class UnlinkMenuItemFromStockUseCase {
 
     // 3 - Return success
     return Ok(undefined);
-
   }
 }

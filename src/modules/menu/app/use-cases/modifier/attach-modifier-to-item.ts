@@ -11,7 +11,7 @@ import type {
   IPolicyPort,
   IEventBus,
   ITransactionManager,
-} from "../../ports.js";
+} from "../../../app/ports.js";
 
 import { MenuModifierAttachedV1 } from "../../../../../shared/events.js";
 
@@ -82,7 +82,7 @@ export class AttachModifierToItemUseCase {
         menuItemId,
         modifierGroupId,
         tenantId,
-        isRequired,
+        isRequired
       );
 
       const event: MenuModifierAttachedV1 = {

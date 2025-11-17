@@ -10,7 +10,7 @@ import type {
   IPolicyPort,
   IEventBus,
   ITransactionManager,
-} from "../../ports.js";
+} from "../../../app/ports.js";
 
 import { ModifierOptionAddedV1 } from "../../../../../shared/events.js";
 

@@ -14,7 +14,7 @@ import type {
   IPolicyPort,
   IEventBus,
   ITransactionManager,
-} from "../../ports.js";
+} from "../../../app/ports.js";
 
 export class CreateMenuItemUseCase {
   constructor(

@@ -9,11 +9,11 @@ import { Ok, Err, type Result } from "../../../../../shared/result.js";
 import type {
   IBranchMenuRepository,
   IMenuItemRepository,
-  IPolicyPort
-} from "../../ports.js";
+  IPolicyPort,
+} from "../../../app/ports.js";
 
 export class SetBranchPriceOverrideUseCase {
-  constructor(  
+  constructor(
     private branchMenuRepo: IBranchMenuRepository,
     private menuItemRepo: IMenuItemRepository,
     private policyPort: IPolicyPort
@@ -29,7 +29,11 @@ export class SetBranchPriceOverrideUseCase {
     const { tenantId, userId, menuItemId, branchId, priceUsd } = input;
 
     // 1 - Check permissions
-    const canManage = await this.policyPort.canManageBranchMenu(tenantId, userId, branchId);
+    const canManage = await this.policyPort.canManageBranchMenu(
+      tenantId,
+      userId,
+      branchId
+    );
     if (!canManage) {
       return Err("Permission denied for this branch");
     }
@@ -46,7 +50,12 @@ export class SetBranchPriceOverrideUseCase {
     }
 
     // 4 - Set price override
-    await this.branchMenuRepo.setPriceOverride(menuItemId, branchId, tenantId, priceUsd);
+    await this.branchMenuRepo.setPriceOverride(
+      menuItemId,
+      branchId,
+      tenantId,
+      priceUsd
+    );
 
     // 5 - Optionally publish event (BranchPriceOverrideSetV1)
 

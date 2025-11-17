@@ -13,8 +13,8 @@ import type {
   ITenantLimitsRepository,
   IPolicyPort,
   IEventBus,
-  ITransactionManager
-} from "../../ports.js";
+  ITransactionManager,
+} from "../../../app/ports.js";
 
 export class CreateCategoryUseCase {
   // TODO: Add constructor with dependencies:
@@ -31,8 +31,9 @@ export class CreateCategoryUseCase {
     userId: string;
     name: string;
     displayOrder: number;
+    description?: string;
   }): Promise<Result<Category, string>> {
-    const { tenantId, userId, name, displayOrder } = input;
+    const { tenantId, userId, name, displayOrder, description = "" } = input;
 
     // 1 - Check permissions
     const canCreate = await this.policyPort.canCreateCategory(tenantId, userId);
@@ -68,6 +69,7 @@ export class CreateCategoryUseCase {
       tenantId,
       name,
       displayOrder,
+      description,
       createdBy: userId,
     });
     if (!categoryResult.ok) {

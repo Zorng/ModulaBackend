@@ -9,7 +9,7 @@ import type {
   IPolicyPort,
   IEventBus,
   ITransactionManager,
-} from "../../ports.js";
+} from "../../../app/ports.js";
 import type { MenuItemDeletedV1 } from "../../../../../shared/events.js";
 
 export class DeleteMenuItemUseCase {

@@ -5,14 +5,14 @@
 
 import { Ok, Err, type Result } from "../../../../../shared/result.js";
 import type { Category } from "../../../domain/entities.js";
-import type { ICategoryRepository } from "../../ports.js";
+import type { ICategoryRepository } from "../../../app/ports.js";
 
 export class ListCategoriesUseCase {
   constructor(private categoryRepo: ICategoryRepository) {}
 
   async execute(input: {
     tenantId: string;
-    isActive: boolean
+    isActive: boolean;
   }): Promise<Result<Category[], string>> {
     const { tenantId } = input;
 

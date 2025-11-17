@@ -5,7 +5,7 @@
 
 import { Ok, Err, type Result } from "../../../../../shared/result.js";
 import type { MenuItem } from "../../../domain/entities.js";
-import type { IMenuItemRepository } from "../../ports.js";
+import type { IMenuItemRepository } from "../../../app/ports.js";
 
 export class GetMenuItemUseCase {
   constructor(private menuItemRepo: IMenuItemRepository) {}

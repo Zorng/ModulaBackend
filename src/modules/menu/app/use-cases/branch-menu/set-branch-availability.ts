@@ -11,8 +11,8 @@ import type {
   IBranchMenuRepository,
   IMenuItemRepository,
   IPolicyPort,
-  IEventBus
-} from "../../ports.js";
+  IEventBus,
+} from "../../../app/ports.js";
 
 export class SetBranchAvailabilityUseCase {
   constructor(

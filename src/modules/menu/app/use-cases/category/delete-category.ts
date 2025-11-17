@@ -8,7 +8,7 @@ import type {
   ICategoryRepository,
   IMenuItemRepository,
   IPolicyPort,
-} from "../../ports.js";
+} from "../../../app/ports.js";
 
 export class DeleteCategoryUseCase {
   constructor(

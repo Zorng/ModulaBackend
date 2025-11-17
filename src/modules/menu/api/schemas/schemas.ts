@@ -1,0 +1,30 @@
+
+import { z } from "zod";
+import { createCategorySchema } from "../schemas/category/category.js";
+import { updateCategorySchema } from "../schemas/category/category.js";
+import { createMenuItemSchema } from "./menu-item/menuItem.js";
+import { updateMenuItemSchema } from "./menu-item/menuItem.js";
+import { createModifierGroupSchema } from "./modifier/modifier.js";
+import { addModifierOptionSchema } from "./modifier/modifier.js";
+import { attachModifierSchema } from "./modifier/modifier.js";
+import { setBranchAvailabilitySchema } from "./branch-menu/branchMenu.js";
+import { setBranchPriceSchema } from "./branch-menu/branchMenu.js";
+import { linkStockSchema } from "./stock-integration/stockIntegration.js";
+// ============================================================================
+// TYPE EXPORTS (for use in controllers)
+// ============================================================================
+
+export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
+export type CreateMenuItemInput = z.infer<typeof createMenuItemSchema>;
+export type UpdateMenuItemInput = z.infer<typeof updateMenuItemSchema>;
+export type CreateModifierGroupInput = z.infer<
+  typeof createModifierGroupSchema
+>;
+export type AddModifierOptionInput = z.infer<typeof addModifierOptionSchema>;
+export type AttachModifierInput = z.infer<typeof attachModifierSchema>;
+export type SetBranchAvailabilityInput = z.infer<
+  typeof setBranchAvailabilitySchema
+>;
+export type SetBranchPriceInput = z.infer<typeof setBranchPriceSchema>;
+export type LinkStockInput = z.infer<typeof linkStockSchema>;
