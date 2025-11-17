@@ -12,6 +12,7 @@ export class ListCategoriesUseCase {
 
   async execute(input: {
     tenantId: string;
+    isActive: boolean
   }): Promise<Result<Category[], string>> {
     const { tenantId } = input;
 

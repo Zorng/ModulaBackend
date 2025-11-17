@@ -5,13 +5,14 @@
 
 import { Ok, Err, type Result } from "../../../../../shared/result.js";
 
-// TODO: Import port interfaces
-// import type { IMenuStockMapRepository, IPolicyPort } from "../../ports.js";
+// Import port interfaces
+import type { IMenuStockMapRepository, IPolicyPort } from "../../ports.js";
 
 export class UnlinkMenuItemFromStockUseCase {
-  constructor() // private stockMapRepo: IMenuStockMapRepository,
-  // private policyPort: IPolicyPort
-  {}
+  constructor(  
+    private stockMapRepo: IMenuStockMapRepository,
+    private policyPort: IPolicyPort
+  ) {}
 
   async execute(input: {
     tenantId: string;
@@ -20,20 +21,17 @@ export class UnlinkMenuItemFromStockUseCase {
   }): Promise<Result<void, string>> {
     const { tenantId, userId, mappingId } = input;
 
-    // TODO: Step 1 - Check permissions
-    // const canEdit = await this.policyPort.canEditMenuItem(tenantId, userId);
-    // if (!canEdit) {
-    //   return Err("Permission denied");
-    // }
+    // 1 - Check permissions
+    const canEdit = await this.policyPort.canEditMenuItem(tenantId, userId);
+    if (!canEdit) {
+      return Err("Permission denied");
+    }
 
-    // TODO: Step 2 - Delete mapping
-    // await this.stockMapRepo.delete(mappingId, tenantId);
+    // 2 - Delete mapping
+    await this.stockMapRepo.delete(mappingId, tenantId);
 
-    // TODO: Step 3 - Return success
-    // return Ok(undefined);
+    // 3 - Return success
+    return Ok(undefined);
 
-    throw new Error(
-      "Not implemented - uncomment and complete the TODOs above!"
-    );
   }
 }

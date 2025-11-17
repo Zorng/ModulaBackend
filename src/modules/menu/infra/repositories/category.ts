@@ -96,9 +96,9 @@ export class CategoryRepository implements ICategoryRepository {
         updated_at
       FROM menu_categories
       WHERE tenant_id = $1
+        AND is_active = true
       ORDER BY display_order ASC
     `;
-
     const result = await this.pool.query(sql, [tenantId]);
 
     // Map all rows to entities
