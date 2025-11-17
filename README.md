@@ -19,6 +19,19 @@ pnpm dev
 
 The setup wizard handles everything: environment config, database creation, and migrations.
 
+## 📖 API Documentation
+
+**Interactive API docs available at:** <http://localhost:3000/api-docs>
+
+🎯 **For Frontend Developers**: Use Swagger UI to explore and test all API endpoints
+
+- View request/response schemas
+- Test endpoints directly in your browser
+- See authentication requirements
+- Copy cURL commands
+
+See [Auth API Documentation](./src/modules/auth/API_DOCUMENTATION.md) for detailed usage guide.
+
 ---
 
 ## 📚 Complete Guide
@@ -82,6 +95,8 @@ src/
 
 - [GETTING_STARTED.md](./GETTING_STARTED.md) - **Complete setup & migration guide**
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - Architecture overview
+- [API Documentation](./src/modules/auth/API_DOCUMENTATION.md) - **Full API documentation with examples**
+- [Swagger Quick Start](./src/modules/auth/SWAGGER_QUICK_START.md) - **Quick API testing guide**
 - [POSTMAN_TESTING.md](./POSTMAN_TESTING.md) - API testing guide
 
 ---
