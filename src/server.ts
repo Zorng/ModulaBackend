@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { ping } from '#db';
 import { log } from '#logger';
 import { tenantRouter } from '#modules/tenant/api/router.js';
@@ -6,6 +7,15 @@ import { authRouter } from '#modules/auth/api/auth.router.js';
 import { setupSwagger } from './platform/config/swagger.config.js';
 
 const app = express();
+
+// Enable CORS for all origins (customize as needed for production)
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
 app.use(express.json());
 
 // Setup Swagger documentation
