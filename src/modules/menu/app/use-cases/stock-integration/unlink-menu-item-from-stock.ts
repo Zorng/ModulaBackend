@@ -1,20 +1,15 @@
-/**
- * Unlink Menu Item from Stock Use Case
- * Removes the link between a menu item and an inventory stock item
- */
-
 import { Ok, Err, type Result } from "../../../../../shared/result.js";
-
-// Import port interfaces
 import type {
   IMenuStockMapRepository,
   IPolicyPort,
+  ITransactionManager,
 } from "../../../app/ports.js";
 
 export class UnlinkMenuItemFromStockUseCase {
   constructor(
     private stockMapRepo: IMenuStockMapRepository,
-    private policyPort: IPolicyPort
+    private policyPort: IPolicyPort,
+    private txManager: ITransactionManager
   ) {}
 
   async execute(input: {
@@ -24,16 +19,24 @@ export class UnlinkMenuItemFromStockUseCase {
   }): Promise<Result<void, string>> {
     const { tenantId, userId, mappingId } = input;
 
-    // 1 - Check permissions
+    // 1 - Check permissions (outside transaction)
     const canEdit = await this.policyPort.canEditMenuItem(tenantId, userId);
     if (!canEdit) {
       return Err("Permission denied");
     }
 
-    // 2 - Delete mapping
-    await this.stockMapRepo.delete(mappingId, tenantId);
+    try {
+      // 2 - Delete mapping in transaction
+      await this.txManager.withTransaction(async (client) => {
+        await this.stockMapRepo.delete(mappingId, tenantId, client);
+      });
 
-    // 3 - Return success
-    return Ok(undefined);
+      // 3 - Return success
+      return Ok(undefined);
+    } catch (error) {
+      return Err(
+        error instanceof Error ? error.message : "Failed to unlink stock item"
+      );
+    }
   }
 }

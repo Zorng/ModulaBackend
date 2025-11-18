@@ -131,7 +131,7 @@ export class UpdateMenuItemUseCase {
 
     // 6 - Save and publish event
     await this.txManager.withTransaction(async (client) => {
-      await this.menuItemRepo.save(item);
+      await this.menuItemRepo.save(item, client);
 
       const event: MenuItemUpdatedV1 = {
         type: "menu.item_updated",

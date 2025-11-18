@@ -14,7 +14,6 @@ export class CategoryController {
         tenantId,
         userId: id,
         name,
-        description,
         displayOrder,
       });
 

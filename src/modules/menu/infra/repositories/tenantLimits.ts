@@ -1,20 +1,25 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { ITenantLimitsRepository } from "../../app/ports.js";
 import { TenantLimits } from "../../domain/tenant-limits.js";
 
 export class TenantLimitsRepository implements ITenantLimitsRepository {
   constructor(private pool: Pool) {}
 
-  async findByTenantId(tenantId: string): Promise<TenantLimits | null> {
+  async findByTenantId(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<TenantLimits | null> {
+    const queryClient = client || this.pool;
     const sql = `
       SELECT * FROM menu_tenant_limits WHERE tenant_id = $1
     `;
-    const result = await this.pool.query(sql, [tenantId]);
+    const result = await queryClient.query(sql, [tenantId]);
     if (result.rows.length === 0) return null;
     return this.mapRowToEntity(result.rows[0]);
   }
 
-  async save(limits: TenantLimits): Promise<void> {
+  async save(limits: TenantLimits, client?: PoolClient): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
       INSERT INTO menu_tenant_limits (
         tenant_id, max_categories_soft, max_categories_hard, max_items_soft, max_items_hard,
@@ -31,7 +36,7 @@ export class TenantLimitsRepository implements ITenantLimitsRepository {
         max_media_quota_mb = EXCLUDED.max_media_quota_mb
     `;
     const p = limits.toPersistence();
-    await this.pool.query(sql, [
+    await queryClient.query(sql, [
       p.tenantId,
       p.maxCategoriesSoft,
       p.maxCategoriesHard,
@@ -44,9 +49,12 @@ export class TenantLimitsRepository implements ITenantLimitsRepository {
     ]);
   }
 
-  async createDefault(tenantId: string): Promise<TenantLimits> {
+  async createDefault(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<TenantLimits> {
     const limits = TenantLimits.createDefault(tenantId);
-    await this.save(limits);
+    await this.save(limits, client);
     return limits;
   }
 

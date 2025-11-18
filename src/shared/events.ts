@@ -124,7 +124,6 @@ export type MenuSnapshotUpdatedV1 = {
   updatedAt: string;
 };
 
-
 export type CategoryUpdatedV1 = {
   type: "menu.category_updated";
   v: 1;
@@ -171,6 +170,16 @@ export type ModifierOptionAddedV1 = {
   createdAt: string;
 };
 
+export type MenuCategoryDeletedV1 = {
+  type: "menu.category_deleted";
+  v: 1;
+  tenantId: string;
+  categoryId: string;
+  name: string;
+  deletedBy: string;
+  deletedAt: string;
+};
+
 // Union type of all events
 export type DomainEvent =
   | SaleFinalizedV1
@@ -186,5 +195,5 @@ export type DomainEvent =
   | CategoryUpdatedV1
   | MenuItemDeletedV1
   | ModifierGroupCreatedV1
-  | ModifierOptionAddedV1;
-  
+  | ModifierOptionAddedV1
+  | MenuCategoryDeletedV1;

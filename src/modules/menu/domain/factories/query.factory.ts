@@ -4,12 +4,14 @@ import { BranchMenuRepository } from "../../infra/repositories/branchMenu.js";
 import { ModifierRepository } from "../../infra/repositories/modifier.js";
 import { MenuItemModifierRepository } from "../../infra/repositories/menuItemModifier.js";
 import { pool } from "../../../../platform/db/index.js";
+import { TransactionManager } from "../../../../platform/db/transactionManager.js";
 import type {
   ICategoryRepository,
   IMenuItemRepository,
   IBranchMenuRepository,
   IModifierRepository,
   IMenuItemModifierRepository,
+  ITransactionManager
 } from "../../app/ports.js";
 import { GetMenuForBranchUseCase } from "../../app/use-cases/query/index.js";
 
@@ -23,6 +25,8 @@ export class QueryFactory {
     const modifierRepo: IModifierRepository = new ModifierRepository(pool);
     const itemModifierRepo: IMenuItemModifierRepository =
       new MenuItemModifierRepository(pool);
+    const txManager: ITransactionManager = new TransactionManager();
+    
 
     return {
       getMenuForBranchUseCase: new GetMenuForBranchUseCase(
@@ -30,7 +34,8 @@ export class QueryFactory {
         menuItemRepo,
         branchMenuRepo,
         modifierRepo,
-        itemModifierRepo
+        itemModifierRepo,
+        txManager
       ),
     };
   }

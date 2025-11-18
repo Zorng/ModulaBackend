@@ -1,17 +1,11 @@
-/**
- * Link Menu Item to Stock Use Case
- * Links a menu item to an inventory stock item for automatic deduction
- */
-
 import { Ok, Err, type Result } from "../../../../../shared/result.js";
 import { MenuStockMap } from "../../../domain/entities.js";
-
-// Import port interfaces
 import type {
   IMenuItemRepository,
   IMenuStockMapRepository,
   IInventoryPort,
   IPolicyPort,
+  ITransactionManager,
 } from "../../../app/ports.js";
 
 export class LinkMenuItemToStockUseCase {
@@ -19,7 +13,8 @@ export class LinkMenuItemToStockUseCase {
     private menuItemRepo: IMenuItemRepository,
     private stockMapRepo: IMenuStockMapRepository,
     private inventoryPort: IInventoryPort,
-    private policyPort: IPolicyPort
+    private policyPort: IPolicyPort,
+    private txManager: ITransactionManager
   ) {}
 
   async execute(input: {
@@ -31,19 +26,13 @@ export class LinkMenuItemToStockUseCase {
   }): Promise<Result<MenuStockMap, string>> {
     const { tenantId, userId, menuItemId, stockItemId, qtyPerSale } = input;
 
-    //1 - Check permissions
+    // 1 - Check permissions (outside transaction)
     const canEdit = await this.policyPort.canEditMenuItem(tenantId, userId);
     if (!canEdit) {
       return Err("Permission denied");
     }
 
-    //2 - Verify menu item exists
-    const item = await this.menuItemRepo.findById(menuItemId, tenantId);
-    if (!item) {
-      return Err("Menu item not found");
-    }
-
-    //3 - Verify stock item exists in inventory module
+    // 3 - Verify stock item exists (external check - outside transaction)
     const stockExists = await this.inventoryPort.stockItemExists(
       stockItemId,
       tenantId
@@ -52,17 +41,7 @@ export class LinkMenuItemToStockUseCase {
       return Err("Stock item not found in inventory module");
     }
 
-    //4 - Check if mapping already exists
-    const mappingExists = await this.stockMapRepo.exists(
-      menuItemId,
-      stockItemId,
-      tenantId
-    );
-    if (mappingExists) {
-      return Err("This stock item is already linked to the menu item");
-    }
-
-    //5 - Create menu stock map entity
+    // 5 - Create menu stock map entity (outside transaction)
     const mappingResult = MenuStockMap.create({
       tenantId,
       menuItemId,
@@ -75,10 +54,40 @@ export class LinkMenuItemToStockUseCase {
     }
     const mapping = mappingResult.value;
 
-    //6 - Save mapping
-    await this.stockMapRepo.save(mapping);
+    try {
+      // 2, 4, 6 - Database operations in transaction
+      await this.txManager.withTransaction(async (client) => {
+        // 2 - Verify menu item exists
+        const item = await this.menuItemRepo.findById(
+          menuItemId,
+          tenantId,
+          client
+        );
+        if (!item) {
+          throw new Error("Menu item not found");
+        }
 
-    //7 - Return success
-    return Ok(mapping);
+        // 4 - Check if mapping already exists
+        const mappingExists = await this.stockMapRepo.exists(
+          menuItemId,
+          stockItemId,
+          tenantId,
+          client
+        );
+        if (mappingExists) {
+          throw new Error("This stock item is already linked to the menu item");
+        }
+
+        // 6 - Save mapping
+        await this.stockMapRepo.save(mapping, client);
+      });
+
+      // 7 - Return success
+      return Ok(mapping);
+    } catch (error) {
+      return Err(
+        error instanceof Error ? error.message : "Failed to link stock item"
+      );
+    }
   }
 }

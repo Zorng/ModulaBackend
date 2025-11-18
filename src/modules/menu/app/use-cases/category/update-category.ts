@@ -74,7 +74,7 @@ export class UpdateCategoryUseCase {
     // Step 4 & 5 - Save and publish event in transaction
     await this.txManager.withTransaction(async (client) => {
       // Save updated category
-      await this.categoryRepo.save(category);
+      await this.categoryRepo.save(category, client);
 
       // Publish CategoryUpdatedV1 event
       const event: CategoryUpdatedV1 = {

@@ -14,7 +14,27 @@ import {
 
 const modifierRouter = Router();
 
-// POST /v1/menu/modifiers/groups
+/**
+ * @openapi
+ * /v1/menu/modifiers/groups:
+ *   post:
+ *     summary: Create a new modifier group
+ *     tags:
+ *       - Modifiers
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateModifierGroupInput'
+ *     responses:
+ *       201:
+ *         description: Modifier group created
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ */
 modifierRouter.post(
   "/v1/menu/modifiers/groups",
   authenticate,
@@ -22,7 +42,27 @@ modifierRouter.post(
   ModifierController.createGroup
 );
 
-// POST /v1/menu/modifiers/options
+/**
+ * @openapi
+ * /v1/menu/modifiers/options:
+ *   post:
+ *     summary: Add a modifier option
+ *     tags:
+ *       - Modifiers
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AddModifierOptionInput'
+ *     responses:
+ *       201:
+ *         description: Modifier option added
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ */
 modifierRouter.post(
   "/v1/menu/modifiers/options",
   authenticate,
@@ -30,7 +70,36 @@ modifierRouter.post(
   ModifierController.addOption
 );
 
-// POST /v1/menu/items/:menuItemId/modifiers
+/**
+ * @openapi
+ * /v1/menu/items/{menuItemId}/modifiers:
+ *   post:
+ *     summary: Attach a modifier group to a menu item
+ *     tags:
+ *       - Modifiers
+ *     parameters:
+ *       - in: path
+ *         name: menuItemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Menu item ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AttachModifierInput'
+ *     responses:
+ *       200:
+ *         description: Modifier group attached
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Menu item not found
+ */
 modifierRouter.post(
   "/v1/menu/items/:menuItemId/modifiers",
   authenticate,

@@ -1,8 +1,3 @@
-/**
- * Attach Modifier to Item Use Case
- * Links a modifier group to a menu item (many-to-many relationship)
- */
-
 import { Ok, Err, type Result } from "../../../../../shared/result.js";
 import type {
   IMenuItemRepository,
@@ -12,7 +7,6 @@ import type {
   IEventBus,
   ITransactionManager,
 } from "../../../app/ports.js";
-
 import { MenuModifierAttachedV1 } from "../../../../../shared/events.js";
 
 export class AttachModifierToItemUseCase {
@@ -40,7 +34,7 @@ export class AttachModifierToItemUseCase {
       isRequired = false,
     } = input;
 
-    // 1 - Check permissions
+    // 1 - Check permissions (outside transaction)
     const canManage = await this.policyPort.canManageModifiers(
       tenantId,
       userId
@@ -51,54 +45,70 @@ export class AttachModifierToItemUseCase {
       );
     }
 
-    // 2 - Verify menu item exists
-    const item = await this.menuItemRepo.findById(menuItemId, tenantId);
-    if (!item) {
-      return Err("Menu item not found");
-    }
+    try {
+      // 2-5 - All checks and writes in transaction
+      await this.txManager.withTransaction(async (client) => {
+        // 2 - Verify menu item exists
+        const item = await this.menuItemRepo.findById(
+          menuItemId,
+          tenantId,
+          client
+        );
+        if (!item) {
+          throw new Error("Menu item not found");
+        }
 
-    // 3 - Verify modifier group exists
-    const group = await this.modifierRepo.findGroupById(
-      modifierGroupId,
-      tenantId
-    );
-    if (!group) {
-      return Err("Modifier group not found");
-    }
+        // 3 - Verify modifier group exists
+        const group = await this.modifierRepo.findGroupById(
+          modifierGroupId,
+          tenantId,
+          client
+        );
+        if (!group) {
+          throw new Error("Modifier group not found");
+        }
 
-    // 4 - Check if already attached
-    const isAttached = await this.itemModifierRepo.isAttached(
-      menuItemId,
-      modifierGroupId,
-      tenantId
-    );
-    if (isAttached) {
-      return Err("This modifier group is already attached to the menu item");
-    }
+        // 4 - Check if already attached
+        const isAttached = await this.itemModifierRepo.isAttached(
+          menuItemId,
+          modifierGroupId,
+          tenantId,
+          client
+        );
+        if (isAttached) {
+          throw new Error(
+            "This modifier group is already attached to the menu item"
+          );
+        }
 
-    //5 - Attach modifier to item and publish event
-    await this.txManager.withTransaction(async (client) => {
-      await this.itemModifierRepo.attach(
-        menuItemId,
-        modifierGroupId,
-        tenantId,
-        isRequired
+        // 5 - Attach modifier to item and publish event
+        await this.itemModifierRepo.attach(
+          menuItemId,
+          modifierGroupId,
+          tenantId,
+          isRequired,
+          client
+        );
+
+        const event: MenuModifierAttachedV1 = {
+          type: "menu.modifier_attached",
+          v: 1,
+          tenantId,
+          menuItemId,
+          modifierId: modifierGroupId,
+          attachedBy: userId,
+          attachedAt: new Date().toISOString(),
+        };
+
+        await this.eventBus.publishViaOutbox(event, client);
+      });
+
+      // 6 - Return success
+      return Ok(undefined);
+    } catch (error) {
+      return Err(
+        error instanceof Error ? error.message : "Failed to attach modifier"
       );
-
-      const event: MenuModifierAttachedV1 = {
-        type: "menu.modifier_attached",
-        v: 1,
-        tenantId,
-        menuItemId,
-        modifierId: modifierGroupId,
-        attachedBy: userId,
-        attachedAt: new Date().toISOString(),
-      };
-
-      await this.eventBus.publishViaOutbox(event, client);
-    });
-
-    // 7 - Return success
-    return Ok(undefined);
+    }
   }
 }

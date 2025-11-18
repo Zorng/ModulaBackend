@@ -5,7 +5,8 @@ import { Category, MenuItem } from "../../domain/entities.js";
 export class MenuItemRepository implements IMenuItemRepository {
   constructor(private pool: Pool) {}
 
-  async save(item: MenuItem): Promise<void> {
+  async save(item: MenuItem, client?: PoolClient): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
       INSERT INTO menu_items (
         id, 
@@ -32,7 +33,7 @@ export class MenuItemRepository implements IMenuItemRepository {
         updated_at = NOW()
     `;
 
-    await this.pool.query(sql, [
+    await queryClient.query(sql, [
       item.id,
       item.tenantId,
       item.categoryId,
@@ -47,7 +48,12 @@ export class MenuItemRepository implements IMenuItemRepository {
     ]);
   }
 
-  async findById(id: string, tenantId: string): Promise<MenuItem | null> {
+  async findById(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<MenuItem | null> {
+    const queryClient = client || this.pool;
     const sql = `
             SELECT 
                 id,
@@ -64,7 +70,7 @@ export class MenuItemRepository implements IMenuItemRepository {
             FROM menu_items
             WHERE id = $1 AND tenant_id = $2
         `;
-    const result = await this.pool.query(sql, [id, tenantId]);
+    const result = await queryClient.query(sql, [id, tenantId]);
 
     if (result.rows.length === 0) return null;
 
@@ -73,8 +79,10 @@ export class MenuItemRepository implements IMenuItemRepository {
 
   async findByCategoryId(
     categoryId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<MenuItem[]> {
+    const queryClient = client || this.pool;
     const sql = `
             SELECT 
                 id,
@@ -93,11 +101,15 @@ export class MenuItemRepository implements IMenuItemRepository {
             ORDER BY name ASC
         `;
 
-    const result = await this.pool.query(sql, [categoryId, tenantId]);
+    const result = await queryClient.query(sql, [categoryId, tenantId]);
     return result.rows.map((row) => this.mapRowToEntity(row));
   }
 
-  async findByTenantId(tenantId: string): Promise<MenuItem[]> {
+  async findByTenantId(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<MenuItem[]> {
+    const queryClient = client || this.pool;
     const sql = `
             SELECT 
                 id,
@@ -116,23 +128,32 @@ export class MenuItemRepository implements IMenuItemRepository {
             ORDER BY name ASC
         `;
 
-    const result = await this.pool.query(sql, [tenantId]);
+    const result = await queryClient.query(sql, [tenantId]);
 
     return result.rows.map((row) => this.mapRowToEntity(row));
   }
 
-  async countByTenantId(tenantId: string): Promise<number> {
+  async countByTenantId(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<number> {
+    const queryClient = client || this.pool;
     const sql = `
             SELECT COUNT(*) as count
             FROM menu_items
             WHERE tenant_id = $1 AND is_active = true
         `;
 
-    const result = await this.pool.query(sql, [tenantId]);
+    const result = await queryClient.query(sql, [tenantId]);
     return parseInt(result.rows[0].count, 10);
   }
 
-  async delete(id: string, tenantId: string): Promise<void> {
+  async delete(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
             UPDATE menu_items
             SET 
@@ -141,15 +162,17 @@ export class MenuItemRepository implements IMenuItemRepository {
             WHERE id = $1 AND tenant_id = $2
         `;
 
-    await this.pool.query(sql, [id, tenantId]);
+    await queryClient.query(sql, [id, tenantId]);
   }
 
   async existsByNameInCategory(
     name: string,
     categoryId: string,
     tenantId: string,
-    excludeId?: string
+    excludeId?: string,
+    client?: PoolClient
   ): Promise<boolean> {
+    const queryClient = client || this.pool;
     let sql = `
             SELECT COUNT(*) as count
             FROM menu_items
@@ -166,7 +189,7 @@ export class MenuItemRepository implements IMenuItemRepository {
       params.push(excludeId);
     }
 
-    const result = await this.pool.query(sql, params);
+    const result = await queryClient.query(sql, params);
     return parseInt(result.rows[0].count, 10) > 0;
   }
 

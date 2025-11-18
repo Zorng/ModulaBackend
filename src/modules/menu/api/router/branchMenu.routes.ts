@@ -13,7 +13,36 @@ import {
 
 const branchMenuRouter = Router();
 
-// PUT /v1/menu/items/:menuItemId/branches/availability
+/**
+ * @openapi
+ * /v1/menu/items/{menuItemId}/branches/availability:
+ *   put:
+ *     summary: Set branch-specific availability for a menu item
+ *     tags:
+ *       - BranchMenu
+ *     parameters:
+ *       - in: path
+ *         name: menuItemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Menu item ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SetBranchAvailabilityInput'
+ *     responses:
+ *       200:
+ *         description: Branch availability set
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Menu item not found
+ */
 branchMenuRouter.put(
   "/v1/menu/items/:menuItemId/branches/availability",
   authenticate,
@@ -22,7 +51,36 @@ branchMenuRouter.put(
   BranchMenuController.setAvailability
 );
 
-// PUT /v1/menu/items/:menuItemId/branches/price
+/**
+ * @openapi
+ * /v1/menu/items/{menuItemId}/branches/price:
+ *   put:
+ *     summary: Set branch-specific price override for a menu item
+ *     tags:
+ *       - BranchMenu
+ *     parameters:
+ *       - in: path
+ *         name: menuItemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Menu item ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SetBranchPriceInput'
+ *     responses:
+ *       200:
+ *         description: Branch price override set
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Menu item not found
+ */
 branchMenuRouter.put(
   "/v1/menu/items/:menuItemId/branches/price",
   authenticate,

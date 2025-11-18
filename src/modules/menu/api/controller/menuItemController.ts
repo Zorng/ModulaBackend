@@ -8,6 +8,16 @@ export class MenuItemController {
             const { tenantId, id} = req.user!;
             const input = req.body as CreateMenuItemInput;
 
+            let ImageUrl = undefined;
+
+            if(req.file) {
+              ImageUrl = await req.app.locals.imageStorage.uploadImage(
+                req.file.buffer,
+                req.file.originalname,
+                tenantId
+              );
+            }
+
             const { createMenuItemUseCase } = MenuItemFactory.build();
             const result = await createMenuItemUseCase.execute({
                 tenantId,
@@ -16,8 +26,10 @@ export class MenuItemController {
                 name: input.name,
                 description: input.description,
                 priceUsd: input.priceUsd,
-                imageUrl: input.imageUrl,
+                imageUrl: ImageUrl,
             });
+
+
 
             // Handle result
             if (!result.ok) {
@@ -95,6 +107,14 @@ export class MenuItemController {
 
             const { updateMenuItemUseCase } = MenuItemFactory.build();
 
+            const imageUrl = req.file
+              ? await req.app.locals.imageStorage.uploadImage(
+                  req.file.buffer,
+                  req.file.originalname,
+                  tenantId
+                )
+              : undefined;
+
             const result = await updateMenuItemUseCase.execute({
             tenantId,
             userId:id,
@@ -103,7 +123,7 @@ export class MenuItemController {
             description: input.description,
             priceUsd: input.priceUsd,
             categoryId: input.categoryId,
-            imageUrl: input.imageUrl,
+            imageUrl,
             });
             // Handle result
             if (!result.ok) {

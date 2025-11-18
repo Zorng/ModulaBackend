@@ -1,9 +1,9 @@
 import { CategoryRepository } from "../../infra/repositories/category.js";
 import { TenantLimitsRepository } from "../../infra/repositories/tenantLimits.js";
-import { PolicyRepository } from "../../infra/repositories/policyAdapter.js";
+import { PolicyAdapter } from "../../infra/repositories/policyAdapter.js";
 import { EventBusAdapter } from "../../infra/repositories/eventBus.js";
 import { MenuItemRepository } from "#modules/menu/infra/repositories/menuItem.js";
-import { TransactionManager } from "../../../../shared/transactionManager.js";
+import { TransactionManager } from "../../../../platform/db/transactionManager.js";
 import { pool } from "../../../../platform/db/index.js";
 import type {
   ICategoryRepository,
@@ -27,7 +27,7 @@ export class CategoryFactory {
       pool
     );
     const menuItemRepo: IMenuItemRepository = new MenuItemRepository(pool);
-    const policyPort: IPolicyPort = new PolicyRepository(pool);
+    const policyPort: IPolicyPort = new PolicyAdapter(pool);
     const txManager: ITransactionManager = new TransactionManager();
     const eventBus: IEventBus = new EventBusAdapter();
 
@@ -49,7 +49,9 @@ export class CategoryFactory {
       deleteCategoryUseCase: new DeleteCategoryUseCase(
         categoryRepo,
         menuItemRepo,
-        policyPort
+        policyPort,
+        eventBus,
+        txManager
       ),
     };
   }

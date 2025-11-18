@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { IBranchMenuRepository } from "../../app/ports.js";
 
 export class BranchMenuRepository implements IBranchMenuRepository {
@@ -8,8 +8,10 @@ export class BranchMenuRepository implements IBranchMenuRepository {
     menuItemId: string,
     branchId: string,
     tenantId: string,
-    isAvailable: boolean
+    isAvailable: boolean,
+    client?: PoolClient
   ): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
       INSERT INTO menu_branch_items (menu_item_id, branch_id, is_available, updated_by)
       VALUES ($1, $2, $3, $4)
@@ -18,15 +20,17 @@ export class BranchMenuRepository implements IBranchMenuRepository {
         updated_at = NOW(),
         updated_by = EXCLUDED.updated_by
     `;
-    await this.pool.query(sql, [menuItemId, branchId, tenantId, isAvailable]);
+    await queryClient.query(sql, [menuItemId, branchId, tenantId, isAvailable]);
   }
 
   async setPriceOverride(
     menuItemId: string,
     branchId: string,
     tenantId: string,
-    priceUsd: number
+    priceUsd: number,
+    client?: PoolClient
   ): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
       INSERT INTO menu_branch_items (menu_item_id, branch_id, custom_price_usd, updated_by)
       VALUES ($1, $2, $3, $4)
@@ -35,12 +39,13 @@ export class BranchMenuRepository implements IBranchMenuRepository {
         updated_at = NOW(),
         updated_by = EXCLUDED.updated_by
     `;
-    await this.pool.query(sql, [menuItemId, branchId, priceUsd, tenantId]);
+    await queryClient.query(sql, [menuItemId, branchId, priceUsd, tenantId]);
   }
 
   async findByMenuItemId(
     menuItemId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<
     Array<{
       branchId: string;
@@ -48,12 +53,13 @@ export class BranchMenuRepository implements IBranchMenuRepository {
       priceOverrideUsd: number | null;
     }>
   > {
+    const queryClient = client || this.pool;
     const sql = `
       SELECT branch_id, is_available, custom_price_usd
       FROM menu_branch_items
       WHERE menu_item_id = $1
     `;
-    const result = await this.pool.query(sql, [menuItemId]);
+    const result = await queryClient.query(sql, [menuItemId]);
     return result.rows.map((row) => ({
       branchId: row.branch_id,
       isAvailable: row.is_available,
@@ -64,26 +70,30 @@ export class BranchMenuRepository implements IBranchMenuRepository {
 
   async findAvailableByBranchId(
     branchId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<any[]> {
+    const queryClient = client || this.pool;
     const sql = `
       SELECT mi.*
       FROM menu_items mi
       JOIN menu_branch_items mbi ON mi.id = mbi.menu_item_id
       WHERE mbi.branch_id = $1 AND mbi.is_available = true
     `;
-    const result = await this.pool.query(sql, [branchId]);
+    const result = await queryClient.query(sql, [branchId]);
     return result.rows; // Should map to MenuItem entity if needed
   }
 
   async removeOverride(
     menuItemId: string,
     branchId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
       DELETE FROM menu_branch_items WHERE menu_item_id = $1 AND branch_id = $2
     `;
-    await this.pool.query(sql, [menuItemId, branchId]);
+    await queryClient.query(sql, [menuItemId, branchId]);
   }
 }

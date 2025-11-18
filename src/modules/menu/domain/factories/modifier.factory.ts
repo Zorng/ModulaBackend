@@ -1,9 +1,9 @@
 import { ModifierRepository } from "../../infra/repositories/modifier.js";
 import { MenuItemRepository } from "../../infra/repositories/menuItem.js";
 import { MenuItemModifierRepository } from "../../infra/repositories/menuItemModifier.js";
-import { PolicyRepository } from "../../infra/repositories/policyAdapter.js";
+import { PolicyAdapter } from "../../infra/repositories/policyAdapter.js";
 import { EventBusAdapter } from "../../infra/repositories/eventBus.js";
-import { TransactionManager } from "../../../../shared/transactionManager.js";
+import { TransactionManager } from "../../../../platform/db/transactionManager.js";
 import { pool } from "../../../../platform/db/index.js";
 import type {
   IModifierRepository,
@@ -25,7 +25,7 @@ export class ModifierFactory {
     const menuItemRepo: IMenuItemRepository = new MenuItemRepository(pool);
     const itemModifierRepo: IMenuItemModifierRepository =
       new MenuItemModifierRepository(pool);
-    const policyPort: IPolicyPort = new PolicyRepository(pool);
+    const policyPort: IPolicyPort = new PolicyAdapter(pool);
     const eventBus: IEventBus = new EventBusAdapter();
     const txManager: ITransactionManager = new TransactionManager();
 

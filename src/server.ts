@@ -2,12 +2,19 @@ import express from "express";
 import { ping } from "#db";
 import { log } from "#logger";
 import { tenantRouter } from "#modules/tenant/api/router.js";
-import { menuRouter } from "#modules/menu/api/router.js";
-import { errorHandler, notFoundHandler } from "./platform/http/middleware/error-handler.js";
-// import { menuRouter } from "#modules/menu/api/router.js";
+import { menuRouter } from "./modules/menu/api/router/index.js";
+import {
+  errorHandler,
+  notFoundHandler,
+} from "./platform/http/middleware/error-handler.js";
+import { setupSwagger } from "./platform/http/swagger.js";
+
 
 const app = express();
 app.use(express.json());
+
+// Swagger UI setup
+setupSwagger(app);
 
 app.get("/health", async (_req, res) => {
   const now = await ping();

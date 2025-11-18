@@ -1,4 +1,5 @@
 // Event outbox pattern for reliable event delivery
+import { PoolClient } from "pg";
 import type { DomainEvent } from "../../shared/events.js";
 import { eventBus } from "./index.js";
 
@@ -8,11 +9,11 @@ import { eventBus } from "./index.js";
  */
 export async function publishToOutbox(
   event: DomainEvent,
-  trx: any // TODO: Type this with your DB transaction type
+  client: PoolClient
 ): Promise<void> {
   const payload = JSON.stringify(event);
 
-  await trx.query(
+  await client.query(
     `INSERT INTO platform_outbox (id, tenant_id, type, payload, created_at)
      VALUES (gen_random_uuid(), $1, $2, $3, NOW())`,
     [event.tenantId, event.type, payload]

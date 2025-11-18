@@ -1,8 +1,3 @@
-/**
- * Add Modifier Option Use Case
- * Adds a new option to an existing modifier group (e.g., "Boba +$0.50")
- */
-
 import { Ok, Err, type Result } from "../../../../../shared/result.js";
 import { ModifierOption } from "../../../domain/entities.js";
 import type {
@@ -11,7 +6,6 @@ import type {
   IEventBus,
   ITransactionManager,
 } from "../../../app/ports.js";
-
 import { ModifierOptionAddedV1 } from "../../../../../shared/events.js";
 
 export class AddModifierOptionUseCase {
@@ -39,7 +33,7 @@ export class AddModifierOptionUseCase {
       isDefault,
     } = input;
 
-    //1 - Check permissions
+    // 1 - Check permissions (outside transaction)
     const canManage = await this.policyPort.canManageModifiers(
       tenantId,
       userId
@@ -50,16 +44,7 @@ export class AddModifierOptionUseCase {
       );
     }
 
-    //2 - Verify modifier group exists
-    const group = await this.modifierRepo.findGroupById(
-      modifierGroupId,
-      tenantId
-    );
-    if (!group) {
-      return Err("Modifier group not found");
-    }
-
-    //3 - Create modifier option entity
+    // 3 - Create modifier option entity (outside transaction)
     const optionResult = ModifierOption.create({
       modifierGroupId,
       label,
@@ -73,25 +58,42 @@ export class AddModifierOptionUseCase {
 
     const option = optionResult.value;
 
-    //4 - Save and publish event
-    await this.txManager.withTransaction(async (client) => {
-      await this.modifierRepo.saveOption(option);
+    try {
+      // 2, 4 - Database operations in transaction
+      await this.txManager.withTransaction(async (client) => {
+        // 2 - Verify modifier group exists
+        const group = await this.modifierRepo.findGroupById(
+          modifierGroupId,
+          tenantId,
+          client
+        );
+        if (!group) {
+          throw new Error("Modifier group not found");
+        }
 
-      const event: ModifierOptionAddedV1 = {
-        type: "menu.modifier_option_added",
-        v: 1,
-        tenantId,
-        modifierGroupId,
-        modifierOptionId: option.id,
-        label: option.label,
-        priceAdjustmentUsd: option.priceAdjustmentUsd,
-        createdAt: new Date().toISOString(),
-      };
+        // 4 - Save and publish event
+        await this.modifierRepo.saveOption(option, client);
 
-      await this.eventBus.publishViaOutbox(event, client);
-    });
+        const event: ModifierOptionAddedV1 = {
+          type: "menu.modifier_option_added",
+          v: 1,
+          tenantId,
+          modifierGroupId,
+          modifierOptionId: option.id,
+          label: option.label,
+          priceAdjustmentUsd: option.priceAdjustmentUsd,
+          createdAt: new Date().toISOString(),
+        };
 
-    //5 - Return success
-    return Ok(option);
+        await this.eventBus.publishViaOutbox(event, client);
+      });
+
+      // 5 - Return success
+      return Ok(option);
+    } catch (error) {
+      return Err(
+        error instanceof Error ? error.message : "Failed to add modifier option"
+      );
+    }
   }
 }

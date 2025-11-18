@@ -13,7 +13,27 @@ import {
 
 const menuItemRouter = Router();
 
-// POST /v1/menu/items
+/**
+ * @openapi
+ * /v1/menu/items:
+ *   post:
+ *     summary: Create a new menu item
+ *     tags:
+ *       - MenuItems
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateMenuItemInput'
+ *     responses:
+ *       201:
+ *         description: Menu item created
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ */
 menuItemRouter.post(
   "/v1/menu/items",
   authenticate,
@@ -21,7 +41,32 @@ menuItemRouter.post(
   MenuItemController.create
 );
 
-// GET /v1/menu/items/:menuItemId
+/**
+ * @openapi
+ * /v1/menu/items/{menuItemId}:
+ *   get:
+ *     summary: Get a menu item by ID
+ *     tags:
+ *       - MenuItems
+ *     parameters:
+ *       - in: path
+ *         name: menuItemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Menu item ID
+ *     responses:
+ *       200:
+ *         description: Menu item details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MenuItem'
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Menu item not found
+ */
 menuItemRouter.get(
   "/v1/menu/items/:menuItemId",
   authenticate,
@@ -29,7 +74,36 @@ menuItemRouter.get(
   MenuItemController.get
 );
 
-// PATCH /v1/menu/items/:menuItemId
+/**
+ * @openapi
+ * /v1/menu/items/{menuItemId}:
+ *   patch:
+ *     summary: Update a menu item
+ *     tags:
+ *       - MenuItems
+ *     parameters:
+ *       - in: path
+ *         name: menuItemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Menu item ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateMenuItemInput'
+ *     responses:
+ *       200:
+ *         description: Menu item updated
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Menu item not found
+ */
 menuItemRouter.patch(
   "/v1/menu/items/:menuItemId",
   authenticate,
@@ -38,7 +112,28 @@ menuItemRouter.patch(
   MenuItemController.update
 );
 
-// DELETE /v1/menu/items/:menuItemId
+/**
+ * @openapi
+ * /v1/menu/items/{menuItemId}:
+ *   delete:
+ *     summary: Delete a menu item
+ *     tags:
+ *       - MenuItems
+ *     parameters:
+ *       - in: path
+ *         name: menuItemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Menu item ID
+ *     responses:
+ *       204:
+ *         description: Menu item deleted
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Menu item not found
+ */
 menuItemRouter.delete(
   "/v1/menu/items/:menuItemId",
   authenticate,

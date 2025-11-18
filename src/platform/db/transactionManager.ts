@@ -1,4 +1,4 @@
-import { pool } from "../platform/db/index.js";
+import { pool } from "./index.js";
 import type { PoolClient } from "pg";
 
 export class TransactionManager {

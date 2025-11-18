@@ -5,7 +5,8 @@ import { ModifierGroup, ModifierOption } from "../../domain/entities.js";
 export class ModifierRepository implements IModifierRepository {
   constructor(private pool: Pool) {}
 
-  async saveGroup(group: ModifierGroup): Promise<void> {
+  async saveGroup(group: ModifierGroup, client?: PoolClient): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
             INSERT INTO menu_modifier_groups (
                 id, 
@@ -25,7 +26,7 @@ export class ModifierRepository implements IModifierRepository {
                 updated_at = NOW()
         `;
 
-    await this.pool.query(sql, [
+    await queryClient.query(sql, [
       group.id,
       group.tenantId,
       group.name,
@@ -34,7 +35,8 @@ export class ModifierRepository implements IModifierRepository {
     ]);
   }
 
-  async saveOption(option: ModifierOption): Promise<void> {
+  async saveOption(option: ModifierOption, client?: PoolClient): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
             INSERT INTO menu_modifier_options (
                 id, 
@@ -57,7 +59,7 @@ export class ModifierRepository implements IModifierRepository {
                 updated_at = NOW()
         `;
 
-    await this.pool.query(sql, [
+    await queryClient.query(sql, [
       option.id,
       option.modifierGroupId,
       option.label,
@@ -68,8 +70,10 @@ export class ModifierRepository implements IModifierRepository {
   }
   async findGroupById(
     id: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<ModifierGroup | null> {
+    const queryClient = client || this.pool;
     const sql = `
             SELECT *
             FROM menu_modifier_groups
@@ -78,7 +82,7 @@ export class ModifierRepository implements IModifierRepository {
             LIMIT 1;
         `;
 
-    const result = await this.pool.query(sql, [id, tenantId]);
+    const result = await queryClient.query(sql, [id, tenantId]);
 
     if (result.rows.length === 0) return null;
 
@@ -87,8 +91,10 @@ export class ModifierRepository implements IModifierRepository {
 
   async findOptionById(
     id: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<ModifierOption | null> {
+    const queryClient = client || this.pool;
     const sql = `
             SELECT mo.*
             FROM menu_modifier_options mo
@@ -98,15 +104,17 @@ export class ModifierRepository implements IModifierRepository {
             LIMIT 1
         `;
 
-    const result = await this.pool.query(sql, [id, tenantId]);
+    const result = await queryClient.query(sql, [id, tenantId]);
     if (result.rows.length === 0) return null;
     return this.mapRowToOption(result.rows[0]);
   }
 
   async findOptionsByGroupId(
     groupId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<ModifierOption[]> {
+    const queryClient = client || this.pool;
     const sql = `
             SELECT mo.*
             FROM menu_modifier_options mo
@@ -116,11 +124,15 @@ export class ModifierRepository implements IModifierRepository {
             ORDER BY mo.label ASC
         `;
 
-    const result = await this.pool.query(sql, [groupId, tenantId]);
+    const result = await queryClient.query(sql, [groupId, tenantId]);
     return result.rows.map((row) => this.mapRowToOption(row));
   }
 
-  async findGroupsByTenantId(tenantId: string): Promise<ModifierGroup[]> {
+  async findGroupsByTenantId(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<ModifierGroup[]> {
+    const queryClient = client || this.pool;
     const sql = `
             SELECT *
             FROM menu_modifier_groups
@@ -128,20 +140,30 @@ export class ModifierRepository implements IModifierRepository {
             ORDER BY name ASC
         `;
 
-    const result = await this.pool.query(sql, [tenantId]);
+    const result = await queryClient.query(sql, [tenantId]);
     return result.rows.map((row) => this.mapRowToEntity(row));
   }
 
-  async deleteGroup(id: string, tenantId: string): Promise<void> {
+  async deleteGroup(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
             DELETE FROM menu_modifier_groups
             WHERE id = $1 AND tenant_id = $2
         `;
 
-    await this.pool.query(sql, [id, tenantId]);
+    await queryClient.query(sql, [id, tenantId]);
   }
 
-  async deleteOption(id: string, tenantId: string): Promise<void> {
+  async deleteOption(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
             UPDATE menu_modifier_options mo
             SET 
@@ -153,7 +175,7 @@ export class ModifierRepository implements IModifierRepository {
                 AND mg.tenant_id = $2
         `;
 
-    await this.pool.query(sql, [id, tenantId]);
+    await queryClient.query(sql, [id, tenantId]);
   }
 
   private mapRowToEntity(row: any): ModifierGroup {

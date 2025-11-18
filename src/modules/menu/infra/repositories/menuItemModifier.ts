@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { IMenuItemModifierRepository } from "../../app/ports.js";
 import { ModifierGroup } from "../../domain/entities.js";
 
@@ -9,8 +9,10 @@ export class MenuItemModifierRepository implements IMenuItemModifierRepository {
     menuItemId: string,
     modifierGroupId: string,
     tenantId: string,
-    isRequired: boolean
+    isRequired: boolean,
+    client?: PoolClient
   ): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
       INSERT INTO menu_item_modifier_groups (
         menu_item_id, modifier_group_id, tenant_id, is_required
@@ -18,7 +20,7 @@ export class MenuItemModifierRepository implements IMenuItemModifierRepository {
       ON CONFLICT (menu_item_id, modifier_group_id) DO UPDATE
       SET is_required = EXCLUDED.is_required
     `;
-    await this.pool.query(sql, [
+    await queryClient.query(sql, [
       menuItemId,
       modifierGroupId,
       tenantId,
@@ -29,26 +31,30 @@ export class MenuItemModifierRepository implements IMenuItemModifierRepository {
   async detach(
     menuItemId: string,
     modifierGroupId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
       DELETE FROM menu_item_modifier_groups
       WHERE menu_item_id = $1 AND modifier_group_id = $2 AND tenant_id = $3
     `;
-    await this.pool.query(sql, [menuItemId, modifierGroupId, tenantId]);
+    await queryClient.query(sql, [menuItemId, modifierGroupId, tenantId]);
   }
 
   async findByMenuItemId(
     menuItemId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<Array<{ group: ModifierGroup; isRequired: boolean }>> {
+    const queryClient = client || this.pool;
     const sql = `
       SELECT mig.is_required, mg.*
       FROM menu_item_modifier_groups mig
       JOIN menu_modifier_groups mg ON mig.modifier_group_id = mg.id
       WHERE mig.menu_item_id = $1 AND mig.tenant_id = $2
     `;
-    const result = await this.pool.query(sql, [menuItemId, tenantId]);
+    const result = await queryClient.query(sql, [menuItemId, tenantId]);
     return result.rows.map((row) => ({
       group: ModifierGroup.fromPersistence({
         id: row.id,
@@ -66,19 +72,20 @@ export class MenuItemModifierRepository implements IMenuItemModifierRepository {
   async isAttached(
     menuItemId: string,
     modifierGroupId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<boolean> {
+    const queryClient = client || this.pool;
     const sql = `
       SELECT COUNT(*) as count
       FROM menu_item_modifier_groups
       WHERE menu_item_id = $1 AND modifier_group_id = $2 AND tenant_id = $3
     `;
-    const result = await this.pool.query(sql, [
+    const result = await queryClient.query(sql, [
       menuItemId,
       modifierGroupId,
       tenantId,
     ]);
     return parseInt(result.rows[0].count, 10) > 0;
   }
-
 }

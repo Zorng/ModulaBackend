@@ -1,9 +1,6 @@
-
 import type { Pool, PoolClient } from "pg";
 import type { ICategoryRepository } from "../../app/ports.js";
 import { Category } from "../../domain/entities.js";
-
-
 
 export class CategoryRepository implements ICategoryRepository {
   constructor(private pool: Pool) {}
@@ -12,7 +9,8 @@ export class CategoryRepository implements ICategoryRepository {
    * Save a category (insert if new, update if exists)
    * Uses UPSERT pattern with ON CONFLICT
    */
-  async save(category: Category): Promise<void> {
+  async save(category: Category, client?: PoolClient): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
       INSERT INTO menu_categories (
         id, 
@@ -35,7 +33,7 @@ export class CategoryRepository implements ICategoryRepository {
         updated_at = EXCLUDED.updated_at
     `;
 
-    await this.pool.query(sql, [
+    await queryClient.query(sql, [
       category.id,
       category.tenantId,
       category.name,
@@ -52,7 +50,12 @@ export class CategoryRepository implements ICategoryRepository {
    * Find category by ID
    * Returns null if not found (not an error)
    */
-  async findById(id: string, tenantId: string): Promise<Category | null> {
+  async findById(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<Category | null> {
+    const queryClient = client || this.pool;
     const sql = `
       SELECT 
         id,
@@ -68,7 +71,7 @@ export class CategoryRepository implements ICategoryRepository {
       WHERE id = $1 AND tenant_id = $2
     `;
 
-    const result = await this.pool.query(sql, [id, tenantId]);
+    const result = await queryClient.query(sql, [id, tenantId]);
 
     if (result.rows.length === 0) {
       return null;
@@ -82,7 +85,11 @@ export class CategoryRepository implements ICategoryRepository {
    * Find all categories for a tenant
    * Ordered by display_order ASC for proper UI sorting
    */
-  async findByTenantId(tenantId: string): Promise<Category[]> {
+  async findByTenantId(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<Category[]> {
+    const queryClient = client || this.pool;
     const sql = `
       SELECT 
         id,
@@ -99,7 +106,7 @@ export class CategoryRepository implements ICategoryRepository {
         AND is_active = true
       ORDER BY display_order ASC
     `;
-    const result = await this.pool.query(sql, [tenantId]);
+    const result = await queryClient.query(sql, [tenantId]);
 
     // Map all rows to entities
     return result.rows.map((row) => this.mapRowToEntity(row));
@@ -109,14 +116,18 @@ export class CategoryRepository implements ICategoryRepository {
    * Count active categories for quota enforcement
    * Only counts is_active = true
    */
-  async countByTenantId(tenantId: string): Promise<number> {
+  async countByTenantId(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<number> {
+    const queryClient = client || this.pool;
     const sql = `
       SELECT COUNT(*) as count
       FROM menu_categories
       WHERE tenant_id = $1 AND is_active = true
     `;
 
-    const result = await this.pool.query(sql, [tenantId]);
+    const result = await queryClient.query(sql, [tenantId]);
     return parseInt(result.rows[0].count, 10);
   }
 
@@ -124,7 +135,12 @@ export class CategoryRepository implements ICategoryRepository {
    * Soft delete a category
    * Just sets is_active = false, doesn't remove from database
    */
-  async delete(id: string, tenantId: string): Promise<void> {
+  async delete(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
       UPDATE menu_categories
       SET 
@@ -133,7 +149,7 @@ export class CategoryRepository implements ICategoryRepository {
       WHERE id = $1 AND tenant_id = $2
     `;
 
-    await this.pool.query(sql, [id, tenantId]);
+    await queryClient.query(sql, [id, tenantId]);
   }
 
   /**
@@ -143,8 +159,10 @@ export class CategoryRepository implements ICategoryRepository {
   async existsByName(
     name: string,
     tenantId: string,
-    excludeId?: string
+    excludeId?: string,
+    client?: PoolClient
   ): Promise<boolean> {
+    const queryClient = client || this.pool;
     let sql = `
       SELECT COUNT(*) as count
       FROM menu_categories
@@ -161,7 +179,7 @@ export class CategoryRepository implements ICategoryRepository {
       params.push(excludeId);
     }
 
-    const result = await this.pool.query(sql, params);
+    const result = await queryClient.query(sql, params);
     return parseInt(result.rows[0].count, 10) > 0;
   }
 

@@ -1,22 +1,17 @@
-/**
- * Set Branch Price Override Use Case
- * Sets a custom price for a menu item at a specific branch
- */
-
 import { Ok, Err, type Result } from "../../../../../shared/result.js";
-
-// Import port interfaces
 import type {
   IBranchMenuRepository,
   IMenuItemRepository,
   IPolicyPort,
+  ITransactionManager,
 } from "../../../app/ports.js";
 
 export class SetBranchPriceOverrideUseCase {
   constructor(
     private branchMenuRepo: IBranchMenuRepository,
     private menuItemRepo: IMenuItemRepository,
-    private policyPort: IPolicyPort
+    private policyPort: IPolicyPort,
+    private txManager: ITransactionManager
   ) {}
 
   async execute(input: {
@@ -28,7 +23,7 @@ export class SetBranchPriceOverrideUseCase {
   }): Promise<Result<void, string>> {
     const { tenantId, userId, menuItemId, branchId, priceUsd } = input;
 
-    // 1 - Check permissions
+    // 1 - Check permissions (outside transaction)
     const canManage = await this.policyPort.canManageBranchMenu(
       tenantId,
       userId,
@@ -38,28 +33,45 @@ export class SetBranchPriceOverrideUseCase {
       return Err("Permission denied for this branch");
     }
 
-    // 2 - Verify menu item exists
-    const item = await this.menuItemRepo.findById(menuItemId, tenantId);
-    if (!item) {
-      return Err("Menu item not found");
-    }
-
-    // 3 - Validate price >= 0
+    // 3 - Validate price (outside transaction - no DB access)
     if (priceUsd < 0) {
       return Err("Price cannot be negative");
     }
 
-    // 4 - Set price override
-    await this.branchMenuRepo.setPriceOverride(
-      menuItemId,
-      branchId,
-      tenantId,
-      priceUsd
-    );
+    try {
+      // 2, 4 - Database operations in transaction
+      await this.txManager.withTransaction(async (client) => {
+        // 2 - Verify menu item exists
+        const item = await this.menuItemRepo.findById(
+          menuItemId,
+          tenantId,
+          client
+        );
+        if (!item) {
+          throw new Error("Menu item not found");
+        }
 
-    // 5 - Optionally publish event (BranchPriceOverrideSetV1)
+        // 4 - Set price override
+        await this.branchMenuRepo.setPriceOverride(
+          menuItemId,
+          branchId,
+          tenantId,
+          priceUsd,
+          client
+        );
 
-    // 6 - Return success
-    return Ok(undefined);
+        // 5 - Optionally publish event (BranchPriceOverrideSetV1)
+        // TODO: Add event if needed in the future
+      });
+
+      // 6 - Return success
+      return Ok(undefined);
+    } catch (error) {
+      return Err(
+        error instanceof Error
+          ? error.message
+          : "Failed to set branch price override"
+      );
+    }
   }
 }

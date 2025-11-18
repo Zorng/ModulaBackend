@@ -1,8 +1,3 @@
-/**
- * Create Menu Item Use Case
- * Creates a new menu item with validation, quota checks, and event publishing
- */
-
 import { Ok, Err, type Result } from "../../../../../shared/result.js";
 import { MenuItem } from "../../../domain/entities.js";
 import type { MenuItemCreatedV1 } from "../../../../../shared/events.js";
@@ -46,7 +41,7 @@ export class CreateMenuItemUseCase {
       imageUrl,
     } = input;
 
-    // Step 1 - Check permissions
+    // 1 - Check permissions (outside transaction)
     const canCreate = await this.policyPort.canEditMenuItem(tenantId, userId);
     if (!canCreate) {
       return Err(
@@ -54,45 +49,12 @@ export class CreateMenuItemUseCase {
       );
     }
 
-    // Step 2 - Verify category exists
-    const category = await this.categoryRepo.findById(categoryId, tenantId);
-    if (!category) {
-      return Err("Category not found");
-    }
-
-    // Step 3 - Check quota limits
-    const limits = await this.limitsRepo.findByTenantId(tenantId);
-    if (!limits) {
-      return Err("Tenant limits not found");
-    }
-
-    const currentCount = await this.menuItemRepo.countByTenantId(tenantId);
-    const limitCheck = limits.checkItemLimit(currentCount);
-
-    if (limitCheck.status === "exceeded") {
-      return Err(limitCheck.message);
-    }
-
-    if (limitCheck.status === "warning") {
-      console.warn(`[CreateMenuItem] ${limitCheck.message}`);
-    }
-
-    // Step 4 - Validate image URL if provided
+    // 4 - Validate image URL if provided (outside transaction)
     if (imageUrl && !this.imageStorage.isValidImageUrl(imageUrl)) {
       return Err("Invalid image URL format. Use .jpg, .jpeg, .webp, or .png");
     }
 
-    // Step 5 - Check name uniqueness in category
-    const nameExists = await this.menuItemRepo.existsByNameInCategory(
-      name,
-      categoryId,
-      tenantId
-    );
-    if (nameExists) {
-      return Err(`Menu item "${name}" already exists in this category`);
-    }
-
-    // Step 6 - Create menu item entity
+    // 6 - Create menu item entity (outside transaction - no DB access)
     const itemResult = MenuItem.create({
       tenantId,
       categoryId,
@@ -109,27 +71,78 @@ export class CreateMenuItemUseCase {
 
     const menuItem = itemResult.value;
 
-    // Step 7 - Save within transaction + publish event
-    await this.txManager.withTransaction(async (client) => {
-      await this.menuItemRepo.save(menuItem);
+    try {
+      // 2, 3, 5, 7 - All database operations in transaction
+      await this.txManager.withTransaction(async (client) => {
+        // 2 - Verify category exists
+        const category = await this.categoryRepo.findById(
+          categoryId,
+          tenantId,
+          client
+        );
+        if (!category) {
+          throw new Error("Category not found");
+        }
 
-      const event: MenuItemCreatedV1 = {
-        type: "menu.item_created",
-        v: 1,
-        menuItemId: menuItem.id,
-        tenantId: menuItem.tenantId,
-        categoryId: menuItem.categoryId,
-        name: menuItem.name,
-        priceUsd: menuItem.priceUsd,
-        isActive: menuItem.isActive,
-        createdBy: userId,
-        createdAt: new Date().toISOString(),
-      };
+        // 3 - Check quota limits
+        const limits = await this.limitsRepo.findByTenantId(tenantId, client);
+        if (!limits) {
+          throw new Error("Tenant limits not found");
+        }
 
-      await this.eventBus.publishViaOutbox(event, client);
-    });
+        const currentCount = await this.menuItemRepo.countByTenantId(
+          tenantId,
+          client
+        );
+        const limitCheck = limits.checkItemLimit(currentCount);
 
-    // Step 8 - Return success
-    return Ok(menuItem);
+        if (limitCheck.status === "exceeded") {
+          throw new Error(limitCheck.message);
+        }
+
+        if (limitCheck.status === "warning") {
+          console.warn(`[CreateMenuItem] ${limitCheck.message}`);
+        }
+
+        // 5 - Check name uniqueness in category
+        const nameExists = await this.menuItemRepo.existsByNameInCategory(
+          name,
+          categoryId,
+          tenantId,
+          undefined,
+          client
+        );
+        if (nameExists) {
+          throw new Error(
+            `Menu item "${name}" already exists in this category`
+          );
+        }
+
+        // 7 - Save and publish event
+        await this.menuItemRepo.save(menuItem, client);
+
+        const event: MenuItemCreatedV1 = {
+          type: "menu.item_created",
+          v: 1,
+          menuItemId: menuItem.id,
+          tenantId: menuItem.tenantId,
+          categoryId: menuItem.categoryId,
+          name: menuItem.name,
+          priceUsd: menuItem.priceUsd,
+          isActive: menuItem.isActive,
+          createdBy: userId,
+          createdAt: new Date().toISOString(),
+        };
+
+        await this.eventBus.publishViaOutbox(event, client);
+      });
+
+      // 8 - Return success
+      return Ok(menuItem);
+    } catch (error) {
+      return Err(
+        error instanceof Error ? error.message : "Failed to create menu item"
+      );
+    }
   }
 }

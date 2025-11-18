@@ -46,7 +46,7 @@ export class DeleteMenuItemUseCase {
 
     // 4 - Save and publish event
     await this.txManager.withTransaction(async (client) => {
-      await this.menuItemRepo.save(item);
+      await this.menuItemRepo.save(item, client);
 
       const event: MenuItemDeletedV1 = {
         type: "menu.item_deleted",

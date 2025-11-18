@@ -1,11 +1,12 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { IMenuStockMapRepository } from "../../app/ports.js";
 import { MenuStockMap } from "../../domain/entities.js";
 
 export class MenuStockMapRepository implements IMenuStockMapRepository {
   constructor(private pool: Pool) {}
 
-  async save(mapping: MenuStockMap): Promise<void> {
+  async save(mapping: MenuStockMap, client?: PoolClient): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
       INSERT INTO menu_stock_map (
         id, menu_item_id, stock_item_id, qty_per_sale, tenant_id
@@ -16,7 +17,7 @@ export class MenuStockMapRepository implements IMenuStockMapRepository {
           qty_per_sale = EXCLUDED.qty_per_sale,
           tenant_id = EXCLUDED.tenant_id
     `;
-    await this.pool.query(sql, [
+    await queryClient.query(sql, [
       mapping.menuItemId,
       mapping.stockItemId,
       mapping.qtyPerSale,
@@ -25,13 +26,15 @@ export class MenuStockMapRepository implements IMenuStockMapRepository {
 
   async findByMenuItemId(
     menuItemId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<MenuStockMap[]> {
+    const queryClient = client || this.pool;
     const sql = `
       SELECT * FROM menu_stock_map
       WHERE menu_item_id = $1 AND tenant_id = $2
     `;
-    const result = await this.pool.query(sql, [menuItemId, tenantId]);
+    const result = await queryClient.query(sql, [menuItemId, tenantId]);
     return result.rows.map((row) =>
       MenuStockMap.fromPersistence({
         menuItemId: row.menu_item_id,
@@ -47,35 +50,44 @@ export class MenuStockMapRepository implements IMenuStockMapRepository {
 
   async findByStockItemId(
     stockItemId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<MenuStockMap[]> {
+    const queryClient = client || this.pool;
     const sql = `
       SELECT * FROM menu_stock_map
       WHERE stock_item_id = $1 AND tenant_id = $2
     `;
-    const result = await this.pool.query(sql, [stockItemId, tenantId]);
+    const result = await queryClient.query(sql, [stockItemId, tenantId]);
     return result.rows.map((row) => this.mapRowToEntity(row));
   }
 
-  async delete(id: string, tenantId: string): Promise<void> {
+  async delete(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<void> {
+    const queryClient = client || this.pool;
     const sql = `
       DELETE FROM menu_stock_map
       WHERE id = $1 AND tenant_id = $2
     `;
-    await this.pool.query(sql, [id, tenantId]);
+    await queryClient.query(sql, [id, tenantId]);
   }
 
   async exists(
     menuItemId: string,
     stockItemId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<boolean> {
+    const queryClient = client || this.pool;
     const sql = `
       SELECT COUNT(*) as count
       FROM menu_stock_map
       WHERE menu_item_id = $1 AND stock_item_id = $2 AND tenant_id = $3
     `;
-    const result = await this.pool.query(sql, [
+    const result = await queryClient.query(sql, [
       menuItemId,
       stockItemId,
       tenantId,

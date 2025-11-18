@@ -6,6 +6,7 @@ import type {
   MenuStockMap,
   TenantLimits,
 } from "../domain/entities.js";
+import type { PoolClient } from "pg";
 import type { DomainEvent } from "../../../shared/events.js";
 
 // ============================================================================
@@ -16,28 +17,32 @@ export interface ICategoryRepository {
   /**
    * Save a category (insert or update based on existence)
    */
-  save(category: Category): Promise<void>;
+  save(category: Category, client?: PoolClient): Promise<void>;
 
   /**
    * Find category by ID
    * @returns Category entity or null if not found
    */
-  findById(id: string, tenantId: string): Promise<Category | null>;
+  findById(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<Category | null>;
 
   /**
    * Find all categories for a tenant (ordered by displayOrder ASC)
    */
-  findByTenantId(tenantId: string): Promise<Category[]>;
+  findByTenantId(tenantId: string, client?: PoolClient): Promise<Category[]>;
 
   /**
    * Count active categories for a tenant (for quota enforcement)
    */
-  countByTenantId(tenantId: string): Promise<number>;
+  countByTenantId(tenantId: string, client?: PoolClient): Promise<number>;
 
   /**
    * Delete a category (soft delete by setting isActive=false)
    */
-  delete(id: string, tenantId: string): Promise<void>;
+  delete(id: string, tenantId: string, client?: PoolClient): Promise<void>;
 
   /**
    * Check if category name exists for a tenant
@@ -46,7 +51,8 @@ export interface ICategoryRepository {
   existsByName(
     name: string,
     tenantId: string,
-    excludeId?: string
+    excludeId?: string,
+    client?: PoolClient
   ): Promise<boolean>;
 }
 
@@ -54,32 +60,40 @@ export interface IMenuItemRepository {
   /**
    * Save a menu item (insert or update)
    */
-  save(item: MenuItem): Promise<void>;
+  save(item: MenuItem, client?: PoolClient): Promise<void>;
 
   /**
    * Find menu item by ID
    */
-  findById(id: string, tenantId: string): Promise<MenuItem | null>;
+  findById(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<MenuItem | null>;
 
   /**
    * Find all items in a category
    */
-  findByCategoryId(categoryId: string, tenantId: string): Promise<MenuItem[]>;
+  findByCategoryId(
+    categoryId: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<MenuItem[]>;
 
   /**
    * Find all items for a tenant
    */
-  findByTenantId(tenantId: string): Promise<MenuItem[]>;
+  findByTenantId(tenantId: string, client?: PoolClient): Promise<MenuItem[]>;
 
   /**
    * Count active items for quota enforcement
    */
-  countByTenantId(tenantId: string): Promise<number>;
+  countByTenantId(tenantId: string, client?: PoolClient): Promise<number>;
 
   /**
    * Delete a menu item (soft delete)
    */
-  delete(id: string, tenantId: string): Promise<void>;
+  delete(id: string, tenantId: string, client?: PoolClient): Promise<void>;
 
   /**
    * Check if item name exists in a category
@@ -89,7 +103,8 @@ export interface IMenuItemRepository {
     name: string,
     categoryId: string,
     tenantId: string,
-    excludeId?: string
+    excludeId?: string,
+    client?: PoolClient
   ): Promise<boolean>;
 }
 
@@ -97,45 +112,61 @@ export interface IModifierRepository {
   /**
    * Save a modifier group (insert or update)
    */
-  saveGroup(group: ModifierGroup): Promise<void>;
+  saveGroup(group: ModifierGroup, client?: PoolClient): Promise<void>;
 
   /**
    * Save a modifier option (insert or update)
    */
-  saveOption(option: ModifierOption): Promise<void>;
+  saveOption(option: ModifierOption, client?: PoolClient): Promise<void>;
 
   /**
    * Find modifier group by ID
    */
-  findGroupById(id: string, tenantId: string): Promise<ModifierGroup | null>;
+  findGroupById(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<ModifierGroup | null>;
 
   /**
    * Find modifier option by ID
    */
-  findOptionById(id: string, tenantId: string): Promise<ModifierOption | null>;
+  findOptionById(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<ModifierOption | null>;
 
   /**
    * Find all options in a modifier group
    */
   findOptionsByGroupId(
     groupId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<ModifierOption[]>;
 
   /**
    * Find all modifier groups for a tenant
    */
-  findGroupsByTenantId(tenantId: string): Promise<ModifierGroup[]>;
+  findGroupsByTenantId(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<ModifierGroup[]>;
 
   /**
    * Delete a modifier group (should cascade delete options)
    */
-  deleteGroup(id: string, tenantId: string): Promise<void>;
+  deleteGroup(id: string, tenantId: string, client?: PoolClient): Promise<void>;
 
   /**
    * Delete a modifier option
    */
-  deleteOption(id: string, tenantId: string): Promise<void>;
+  deleteOption(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<void>;
 }
 
 export interface IMenuItemModifierRepository {
@@ -147,7 +178,8 @@ export interface IMenuItemModifierRepository {
     menuItemId: string,
     modifierGroupId: string,
     tenantId: string,
-    isRequired: boolean
+    isRequired: boolean,
+    client?: PoolClient
   ): Promise<void>;
 
   /**
@@ -156,7 +188,8 @@ export interface IMenuItemModifierRepository {
   detach(
     menuItemId: string,
     modifierGroupId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<void>;
 
   /**
@@ -165,7 +198,8 @@ export interface IMenuItemModifierRepository {
    */
   findByMenuItemId(
     menuItemId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<Array<{ group: ModifierGroup; isRequired: boolean }>>;
 
   /**
@@ -174,7 +208,8 @@ export interface IMenuItemModifierRepository {
   isAttached(
     menuItemId: string,
     modifierGroupId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<boolean>;
 }
 
@@ -186,7 +221,8 @@ export interface IBranchMenuRepository {
     menuItemId: string,
     branchId: string,
     tenantId: string,
-    isAvailable: boolean
+    isAvailable: boolean,
+    client?: PoolClient
   ): Promise<void>;
 
   /**
@@ -196,7 +232,8 @@ export interface IBranchMenuRepository {
     menuItemId: string,
     branchId: string,
     tenantId: string,
-    priceUsd: number
+    priceUsd: number,
+    client?: PoolClient
   ): Promise<void>;
 
   /**
@@ -204,7 +241,8 @@ export interface IBranchMenuRepository {
    */
   findByMenuItemId(
     menuItemId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<
     Array<{
       branchId: string;
@@ -219,7 +257,8 @@ export interface IBranchMenuRepository {
    */
   findAvailableByBranchId(
     branchId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<MenuItem[]>;
 
   /**
@@ -228,7 +267,8 @@ export interface IBranchMenuRepository {
   removeOverride(
     menuItemId: string,
     branchId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<void>;
 }
 
@@ -236,14 +276,15 @@ export interface IMenuStockMapRepository {
   /**
    * Save a menu-stock mapping
    */
-  save(mapping: MenuStockMap): Promise<void>;
+  save(mapping: MenuStockMap, client?: PoolClient): Promise<void>;
 
   /**
    * Find all stock mappings for a menu item
    */
   findByMenuItemId(
     menuItemId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<MenuStockMap[]>;
 
   /**
@@ -251,13 +292,14 @@ export interface IMenuStockMapRepository {
    */
   findByStockItemId(
     stockItemId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<MenuStockMap[]>;
 
   /**
    * Delete a mapping
    */
-  delete(id: string, tenantId: string): Promise<void>;
+  delete(id: string, tenantId: string, client?: PoolClient): Promise<void>;
 
   /**
    * Check if a specific mapping exists
@@ -265,7 +307,8 @@ export interface IMenuStockMapRepository {
   exists(
     menuItemId: string,
     stockItemId: string,
-    tenantId: string
+    tenantId: string,
+    client?: PoolClient
   ): Promise<boolean>;
 }
 
@@ -273,18 +316,21 @@ export interface ITenantLimitsRepository {
   /**
    * Get tenant limits by tenant ID
    */
-  findByTenantId(tenantId: string): Promise<TenantLimits | null>;
+  findByTenantId(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<TenantLimits | null>;
 
   /**
    * Save tenant limits (insert or update)
    */
-  save(limits: TenantLimits): Promise<void>;
+  save(limits: TenantLimits, client?: PoolClient): Promise<void>;
 
   /**
    * Create default limits for a new tenant
    * (Called when tenant is first created)
    */
-  createDefault(tenantId: string): Promise<TenantLimits>;
+  createDefault(tenantId: string, client?: PoolClient): Promise<TenantLimits>;
 }
 
 // ============================================================================

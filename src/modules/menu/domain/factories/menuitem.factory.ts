@@ -1,10 +1,10 @@
 import { MenuItemRepository } from "../../infra/repositories/menuItem.js";
 import { CategoryRepository } from "../../infra/repositories/category.js";
-import { ImageAdapter } from "../../infra/repositories/imageAdapter.js";
-import { PolicyRepository } from "../../infra/repositories/policyAdapter.js";
+import { CloudflareR2ImageAdapter } from "../../infra/repositories/imageAdapter.js";
+import { PolicyAdapter } from "../../infra/repositories/policyAdapter.js";
 import { TenantLimitsRepository } from "#modules/menu/infra/repositories/tenantLimits.js";
 import { EventBusAdapter } from "../../infra/repositories/eventBus.js";
-import { TransactionManager } from "../../../../shared/transactionManager.js";
+import { TransactionManager } from "../../../../platform/db/transactionManager.js";
 import { pool } from "../../../../platform/db/index.js";
 import type {
   IMenuItemRepository,
@@ -26,11 +26,11 @@ export class MenuItemFactory {
   static build() {
     const menuItemRepo: IMenuItemRepository = new MenuItemRepository(pool);
     const categoryRepo: ICategoryRepository = new CategoryRepository(pool);
-    const imageStorage: IImageStoragePort = new ImageAdapter(pool);
+    const imageStorage: IImageStoragePort = new CloudflareR2ImageAdapter();
     const limitsRepo: ITenantLimitsRepository = new TenantLimitsRepository(
       pool
     );
-    const policyPort: IPolicyPort = new PolicyRepository(pool);
+    const policyPort: IPolicyPort = new PolicyAdapter(pool);
     const eventBus: IEventBus = new EventBusAdapter();
     const txManager: ITransactionManager = new TransactionManager();
 
