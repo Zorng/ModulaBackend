@@ -7,7 +7,7 @@ import { Ok, Err, type Result } from "../../../../../shared/result.js";
 import { Category } from "../../../domain/entities.js";
 import { MenuCategoryCreatedV1 } from "../../../../../shared/events.js";
 
-// TODO: Import port interfaces once you create ports.ts
+// : Import port interfaces once you create ports.ts
 import type {
   ICategoryRepository,
   ITenantLimitsRepository,
@@ -17,7 +17,7 @@ import type {
 } from "../../../app/ports.js";
 
 export class CreateCategoryUseCase {
-  // TODO: Add constructor with dependencies:
+  // : Add constructor with dependencies:
   constructor(
     private categoryRepo: ICategoryRepository,
     private limitsRepo: ITenantLimitsRepository,
