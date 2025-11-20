@@ -34,14 +34,24 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 
   const token = authHeader.replace("Bearer ", "");
 
+  // Debug logging for troubleshooting
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[AUTH] JWT_SECRET:", JWT_SECRET);
+    console.log("[AUTH] Token received:", token);
+  }
+
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as AuthenticatedUser;
     req.user = decoded; // attach the user
     next();
   } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[AUTH] JWT verification error:", err);
+    }
     return res.status(401).json({
       error: "Unauthorized",
       message: "Invalid or expired token",
+      details: process.env.NODE_ENV !== "production" ? String(err) : undefined,
     });
   }
 }
@@ -49,23 +59,23 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 // ------------------------------
 // 2. Optional authentication
 // ------------------------------
-// export function optionalAuth(req: Request, res: Response, next: NextFunction) {
-//   const authHeader = req.headers["authorization"];
-//   if (!authHeader) {
-//     return next(); // no user attached
-//   }
+export function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers["authorization"];
+  if (!authHeader) {
+    return next(); // no user attached
+  }
 
-//   const token = authHeader.replace("Bearer ", "");
+  const token = authHeader.replace("Bearer ", "");
 
-//   try {
-//     const decoded = jwt.verify(token, JWT_SECRET) as AuthenticatedUser;
-//     req.user = decoded;
-//   } catch {
-//     // ignore invalid token — NOT blocking
-//   }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthenticatedUser;
+    req.user = decoded;
+  } catch {
+    // ignore invalid token — NOT blocking
+  }
 
-//   next();
-// }
+  next();
+}
 
 // ------------------------------
 // 3. Require specific role

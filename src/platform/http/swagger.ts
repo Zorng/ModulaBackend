@@ -1,76 +1,110 @@
-import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
+import swaggerJsdoc from "swagger-jsdoc";
 import { Express } from "express";
-
-const options = {
-  definition: {
-    openapi: "3.0.0",
-    info: {
-      title: "Menu Module API",
-      version: "1.0.0",
-      description: "API documentation for the Menu module",
-    },
-    servers: [
-      {
-        url: "http://localhost:3000",
-      },
-    ],
-    components: {
-      securitySchemes: {
-        BearerAuth: {
-          type: "http",
-          scheme: "bearer",
-          bearerFormat: "JWT",
-          description:
-            "Enter your JWT Bearer token in the format: Bearer <token>",
-        },
-      },
-      schemas: {
-        Category: {
-          type: "object",
-          properties: {
-            id: { type: "string", format: "uuid" },
-            name: { type: "string" },
-            description: { type: "string" },
-            displayOrder: { type: "integer" },
-            createdAt: { type: "string", format: "date-time" },
-            updatedAt: { type: "string", format: "date-time" },
-          },
-          required: ["id", "name", "displayOrder", "createdAt", "updatedAt"],
-        },
-        CreateCategoryInput: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            description: { type: "string" },
-            displayOrder: { type: "integer" },
-          },
-          required: ["name"],
-        },
-        UpdateCategoryInput: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            displayOrder: { type: "integer" },
-          },
-        },
-      },
-    },
-  },
-  security: [{ BearerAuth: [] }],
-  apis: [
-    "./src/modules/menu/api/router/*.ts",
-    "./src/modules/menu/api/schemas/**/*.ts",
-  ],
-};
-
-const swaggerSpec = swaggerJsdoc(options);
+import { swaggerSchemas } from "./swagger-schemas.js";
 
 export function setupSwagger(app: Express) {
+  const options = {
+    definition: {
+      openapi: "3.0.3",
+      info: {
+        title: "API Documentation",
+        version: "1.0.0",
+        description: "Auto-generated API documentation",
+      },
+      components: {
+        securitySchemes: {
+          BearerAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "JWT",
+          },
+        },
+
+        responses: {
+          ValidationError: {
+            description: "Invalid request payload",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    message: { type: "string", example: "Validation failed" },
+                    errors: {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+
+          UnauthorizedError: {
+            description: "Missing or invalid token",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    message: { type: "string", example: "Unauthorized" },
+                  },
+                },
+              },
+            },
+          },
+
+          ForbiddenError: {
+            description: "User lacks permission",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    message: { type: "string", example: "Forbidden" },
+                  },
+                },
+              },
+            },
+          },
+
+          ConflictError: {
+            description: "Resource conflict (duplicate, invalid state)",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    message: {
+                      type: "string",
+                      example: "Category already exists",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+
+        schemas: swaggerSchemas,
+      },
+    },
+
+    // Path(s) containing @openapi annotations
+    apis: [
+      "./src/server.ts",
+      "./src/modules/menu/api/router/index.ts",
+      "./src/modules/menu/api/router/category.routes.ts",
+    ],
+  };
+
+  const swaggerSpec = swaggerJsdoc(options);
+
+  // UI documentation
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-  // Serve raw OpenAPI JSON for Postman import
+
+  // Raw JSON spec
   app.get("/openapi.json", (_req, res) => {
-    res.setHeader("Content-Type", "application/json");
-    res.send(swaggerSpec);
+    res.json(swaggerSpec);
   });
 }
