@@ -41,7 +41,9 @@ export class CategoryController {
   static async list(req: Request, res: Response, next: NextFunction) {
     try {
       const { tenantId } = req.user!;
-      const {isActive} = req.query as { isActive?: boolean};
+      const { isActive } = (req as any).validatedQuery as {
+        isActive?: boolean;
+      };
 
       const {listCategoriesUseCase} = CategoryFactory.build();
 

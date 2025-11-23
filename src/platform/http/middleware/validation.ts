@@ -14,11 +14,12 @@ export const validate = (schema: {
       }
 
       if (schema.query) {
-        req.query = await schema.query.parseAsync(req.query) as any;
+        (req as any).validatedQuery = await schema.query.parseAsync(req.query);
       }
 
       if (schema.params) {
-        req.params = await schema.params.parseAsync(req.params) as any;
+        console.log("[Validation Debug] Incoming req.params:", req.params);
+        req.params = (await schema.params.parseAsync(req.params)) as any;
       }
 
       next();
@@ -51,4 +52,3 @@ export const validateQuery = (schema: ZodObject<any>) =>
 
 export const validateParams = (schema: ZodObject<any>) =>
   validate({ params: schema });
-

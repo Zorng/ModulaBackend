@@ -15,11 +15,43 @@ const menuItemRouter = Router();
 
 /**
  * @openapi
+ * /v1/menu/items/by-branch:
+ *   get:
+ *     summary: List menu items for a specific branch
+ *     tags:
+ *       - MenuItems
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: branchId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Branch ID
+ *     responses:
+ *       200:
+ *         description: List of menu items for the branch
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ */
+menuItemRouter.get(
+  "/v1/menu/items/by-branch",
+  authenticate,
+  MenuItemController.listByBranch
+);
+
+/**
+ * @openapi
  * /v1/menu/items:
  *   post:
  *     summary: Create a new menu item
  *     tags:
  *       - MenuItems
+ *     security:
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -48,6 +80,8 @@ menuItemRouter.post(
  *     summary: Get a menu item by ID
  *     tags:
  *       - MenuItems
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: menuItemId
@@ -81,6 +115,8 @@ menuItemRouter.get(
  *     summary: Update a menu item
  *     tags:
  *       - MenuItems
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: menuItemId
@@ -119,6 +155,8 @@ menuItemRouter.patch(
  *     summary: Delete a menu item
  *     tags:
  *       - MenuItems
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: menuItemId

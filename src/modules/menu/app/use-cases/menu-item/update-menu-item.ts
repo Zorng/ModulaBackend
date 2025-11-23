@@ -33,6 +33,7 @@ export class UpdateMenuItemUseCase {
     description?: string;
     priceUsd?: number;
     categoryId?: string;
+    branchId?: string;
     imageUrl?: string;
   }): Promise<Result<MenuItem, string>> {
     const {
@@ -43,6 +44,7 @@ export class UpdateMenuItemUseCase {
       description,
       priceUsd,
       categoryId,
+      branchId,
       imageUrl,
     } = input;
 
@@ -52,6 +54,7 @@ export class UpdateMenuItemUseCase {
       description === undefined &&
       priceUsd === undefined &&
       categoryId === undefined &&
+      branchId === undefined &&
       imageUrl === undefined
     ) {
       return Err("At least one field must be provided to update");
@@ -94,6 +97,7 @@ export class UpdateMenuItemUseCase {
       description?: string;
       priceUsd?: number;
       categoryId?: string;
+      branchId?: string;
       imageUrl?: string;
     } = {};
 
@@ -138,6 +142,7 @@ export class UpdateMenuItemUseCase {
         v: 1,
         menuItemId: item.id,
         tenantId: item.tenantId,
+        branchId: item.branchId,
         changes,
         updatedBy: userId,
         updatedAt: new Date().toISOString(),

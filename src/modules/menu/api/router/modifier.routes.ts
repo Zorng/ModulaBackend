@@ -21,6 +21,8 @@ const modifierRouter = Router();
  *     summary: Create a new modifier group
  *     tags:
  *       - Modifiers
+ *     security:
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -49,6 +51,8 @@ modifierRouter.post(
  *     summary: Add a modifier option
  *     tags:
  *       - Modifiers
+ *     security:
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:

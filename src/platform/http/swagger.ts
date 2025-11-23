@@ -21,6 +21,19 @@ export function setupSwagger(app: Express) {
           },
         },
 
+        parameters: {
+          categoryIdParam: {
+            name: "categoryId",
+            in: "path",
+            required: true,
+            schema: {
+              type: "string",
+              format: "uuid",
+            },
+            description: "Category ID to update/delete",
+          },
+        },
+
         responses: {
           ValidationError: {
             description: "Invalid request payload",
@@ -95,6 +108,9 @@ export function setupSwagger(app: Express) {
       "./src/server.ts",
       "./src/modules/menu/api/router/index.ts",
       "./src/modules/menu/api/router/category.routes.ts",
+      "./src/modules/menu/api/router/modifier.routes.ts",
+      "./src/modules/menu/api/router/menuItem.routes.ts",
+      "./src/modules/menu/api/router/query.routes.ts"
     ],
   };
 

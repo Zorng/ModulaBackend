@@ -1,182 +1,254 @@
 import type { Request, Response, NextFunction } from "express";
 import { MenuItemFactory } from "../../domain/factories/menuitem.factory.js";
-import { CreateMenuItemInput, UpdateMenuItemInput } from "../schemas/schemas.js";
+import {
+  CreateMenuItemInput,
+  UpdateMenuItemInput,
+} from "../schemas/schemas.js";
 
 export class MenuItemController {
-    static async create(req: Request, res: Response, next: NextFunction) {
-        try {
-            const { tenantId, id} = req.user!;
-            const input = req.body as CreateMenuItemInput;
+  // static async listAll(req: Request, res: Response, next: NextFunction) {
+  //   try {
+  //     const { tenantId } = req.user!;
+  //     const { getMenuItemUseCase } = MenuItemFactory.build();
+  //     // Use repository method to get all menu items for tenant
+  //     const items = await getMenuItemUseCase.menuItemRepo.findByTenantId(
+  //       tenantId
+  //     );
+  //     return res.status(200).json({
+  //       items: items.map((item: any) => ({
+  //         id: item.id,
+  //         categoryId: item.categoryId,
+  //         name: item.name,
+  //         description: item.description,
+  //         priceUsd: item.priceUsd,
+  //         imageUrl: item.imageUrl,
+  //         isActive: item.isActive,
+  //         createdAt: item.createdAt,
+  //         updatedAt: item.updatedAt,
+  //       })),
+  //       total: items.length,
+  //     });
+  //   } catch (error) {
+  //     next(error);
+  //   }
+  // }
 
-            let ImageUrl = undefined;
+  static async listByBranch(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { tenantId } = req.user!;
+      const { branchId } = req.query;
 
-            if(req.file) {
-              ImageUrl = await req.app.locals.imageStorage.uploadImage(
-                req.file.buffer,
-                req.file.originalname,
-                tenantId
-              );
-            }
+      if (!branchId || typeof branchId !== "string") {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId query parameter is required and must be a string",
+        });
+      }
 
-            const { createMenuItemUseCase } = MenuItemFactory.build();
-            const result = await createMenuItemUseCase.execute({
-                tenantId,
-                userId: id,
-                categoryId: input.categoryId,
-                name: input.name,
-                description: input.description,
-                priceUsd: input.priceUsd,
-                imageUrl: ImageUrl,
-            });
+      const { getMenuItemsByBranchUseCase } = MenuItemFactory.build();
+      const result = await getMenuItemsByBranchUseCase.execute({
+        tenantId,
+        branchId,
+      });
 
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
 
-
-            // Handle result
-            if (!result.ok) {
-                return res.status(400).json({
-                error: "Bad Request",
-                message: result.error,
-                });
-            }
-
-            const item = result.value;
-
-            // Return success response
-            return res.status(201).json({
-                id: item.id,
-                categoryId: item.categoryId,
-                name: item.name,
-                description: item.description,
-                priceUsd: item.priceUsd,
-                imageUrl: item.imageUrl,
-                isActive: item.isActive,
-                createdAt: item.createdAt,
-                updatedAt: item.updatedAt,
-            });
-        } catch (error) {
-            next(error);
-        }
+      const items = result.value;
+      return res.status(200).json({
+        items: items.map((item) => ({
+          id: item.id,
+          categoryId: item.categoryId,
+          name: item.name,
+          description: item.description,
+          priceUsd: item.priceUsd,
+          imageUrl: item.imageUrl,
+          isActive: item.isActive,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        })),
+        total: items.length,
+      });
+    } catch (error) {
+      next(error);
     }
+  }
+  static async create(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { tenantId, id } = req.user!;
+      const input = req.body as CreateMenuItemInput;
 
-    static async get(req: Request, res: Response, next: NextFunction) {
-        try {
-          const { tenantId } = req.user!;
-          const { menuItemId } = req.params;
+      let ImageUrl = undefined;
 
-          // Get use case from factory
-          const { getMenuItemUseCase } = MenuItemFactory.build();
+      if (req.file) {
+        ImageUrl = await req.app.locals.imageStorage.uploadImage(
+          req.file.buffer,
+          req.file.originalname,
+          tenantId
+        );
+      }
 
-          // Execute use case
-          const result = await getMenuItemUseCase.execute({
-            tenantId,
-            menuItemId,
-          });
+      const { createMenuItemUseCase } = MenuItemFactory.build();
+      const result = await createMenuItemUseCase.execute({
+        tenantId,
+        userId: id,
+        categoryId: input.categoryId,
+        name: input.name,
+        description: input.description,
+        priceUsd: input.priceUsd,
+        imageUrl: ImageUrl,
+      });
 
-          // Handle result
-          if (!result.ok) {
-            return res.status(404).json({
-              error: "Not Found",
-              message: result.error,
-            });
-          }
+      // Handle result
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
 
-          const item = result.value;
+      const item = result.value;
 
-          // Return success response
-          return res.status(200).json({
-            id: item.id,
-            categoryId: item.categoryId,
-            name: item.name,
-            description: item.description,
-            priceUsd: item.priceUsd,
-            imageUrl: item.imageUrl,
-            isActive: item.isActive,
-            createdAt: item.createdAt,
-            updatedAt: item.updatedAt,
-          });
-        } catch (error) {
-            next(error);
-        }
+      // Return success response
+      return res.status(201).json({
+        id: item.id,
+        categoryId: item.categoryId,
+        name: item.name,
+        description: item.description,
+        priceUsd: item.priceUsd,
+        imageUrl: item.imageUrl,
+        isActive: item.isActive,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      });
+    } catch (error) {
+      next(error);
     }
+  }
 
-    static async update(req: Request, res:Response, next: NextFunction) {
-        try {
-            const {tenantId, id} = req.user!;
-            const {menuItemId} = req.params;
-            const input = req.body as UpdateMenuItemInput;
+  static async get(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { tenantId } = req.user!;
+      const { menuItemId } = req.params;
 
-            const { updateMenuItemUseCase } = MenuItemFactory.build();
+      // Get use case from factory
+      const { getMenuItemUseCase } = MenuItemFactory.build();
 
-            const imageUrl = req.file
-              ? await req.app.locals.imageStorage.uploadImage(
-                  req.file.buffer,
-                  req.file.originalname,
-                  tenantId
-                )
-              : undefined;
+      // Execute use case
+      const result = await getMenuItemUseCase.execute({
+        tenantId,
+        menuItemId,
+      });
 
-            const result = await updateMenuItemUseCase.execute({
-            tenantId,
-            userId:id,
-            menuItemId,
-            name: input.name,
-            description: input.description,
-            priceUsd: input.priceUsd,
-            categoryId: input.categoryId,
-            imageUrl,
-            });
-            // Handle result
-            if (!result.ok) {
-            return res.status(400).json({
-                error: "Bad Request",
-                message: result.error,
-            });
-            }
-            const item = result.value;
-            // Return success response
-            return res.status(200).json({
-            id: item.id,
-            categoryId: item.categoryId,
-            name: item.name,
-            description: item.description,
-            priceUsd: item.priceUsd,
-            imageUrl: item.imageUrl,
-            isActive: item.isActive,
-            updatedAt: item.updatedAt,
-            });            
-        } catch (error) {
-            next(error);
-        }
+      // Handle result
+      if (!result.ok) {
+        return res.status(404).json({
+          error: "Not Found",
+          message: result.error,
+        });
+      }
+
+      const item = result.value;
+
+      // Return success response
+      return res.status(200).json({
+        id: item.id,
+        categoryId: item.categoryId,
+        name: item.name,
+        description: item.description,
+        priceUsd: item.priceUsd,
+        imageUrl: item.imageUrl,
+        isActive: item.isActive,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      });
+    } catch (error) {
+      next(error);
     }
+  }
 
-    static async delete(req:Request, res:Response, next: NextFunction) {
-        try {
-          const { tenantId, id } = req.user!;
-          const { menuItemId } = req.params;
+  static async update(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { tenantId, id } = req.user!;
+      const { menuItemId } = req.params;
+      const input = req.body as UpdateMenuItemInput;
 
-          // Get use case from factory
-          const { deleteMenuItemUseCase } = MenuItemFactory.build();
+      const { updateMenuItemUseCase } = MenuItemFactory.build();
 
-          const result = await deleteMenuItemUseCase.execute({
-            tenantId,
-            userId: id,
-            menuItemId,
-          });
+      const imageUrl = req.file
+        ? await req.app.locals.imageStorage.uploadImage(
+            req.file.buffer,
+            req.file.originalname,
+            tenantId
+          )
+        : undefined;
 
-          // Handle result
-          if (!result.ok) {
-            return res.status(400).json({
-              error: "Bad Request",
-              message: result.error,
-            });
-          }
-
-          // Return success response
-          return res.status(200).json({
-            message: "Menu item deleted successfully",
-          });        
-        } catch (error) {
-            next(error);
-        }
+      const result = await updateMenuItemUseCase.execute({
+        tenantId,
+        userId: id,
+        menuItemId,
+        name: input.name,
+        description: input.description,
+        priceUsd: input.priceUsd,
+        categoryId: input.categoryId,
+        imageUrl,
+      });
+      // Handle result
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
+      const item = result.value;
+      // Return success response
+      return res.status(200).json({
+        id: item.id,
+        categoryId: item.categoryId,
+        name: item.name,
+        description: item.description,
+        priceUsd: item.priceUsd,
+        imageUrl: item.imageUrl,
+        isActive: item.isActive,
+        updatedAt: item.updatedAt,
+      });
+    } catch (error) {
+      next(error);
     }
+  }
+
+  static async delete(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { tenantId, id } = req.user!;
+      const { menuItemId } = req.params;
+
+      // Get use case from factory
+      const { deleteMenuItemUseCase } = MenuItemFactory.build();
+
+      const result = await deleteMenuItemUseCase.execute({
+        tenantId,
+        userId: id,
+        menuItemId,
+      });
+
+      // Handle result
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
+
+      // Return success response
+      return res.status(200).json({
+        message: "Menu item deleted successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

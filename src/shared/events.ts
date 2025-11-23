@@ -70,6 +70,7 @@ export type MenuItemCreatedV1 = {
   v: 1;
   tenantId: string;
   categoryId: string;
+  branchId?: string;
   menuItemId: string;
   name: string;
   priceUsd: number;
@@ -82,12 +83,14 @@ export type MenuItemUpdatedV1 = {
   type: "menu.item_updated";
   v: 1;
   tenantId: string;
+  branchId?: string;
   menuItemId: string;
   changes: {
     name?: string;
     priceUsd?: number;
     isActive?: boolean;
     categoryId?: string;
+    branchId?: string;
   };
   updatedBy: string;
   updatedAt: string;
@@ -141,6 +144,7 @@ export type MenuItemDeletedV1 = {
   type: "menu.item_deleted";
   v: 1;
   tenantId: string;
+  branchId?: string;
   menuItemId: string;
   categoryId: string;
   name: string;

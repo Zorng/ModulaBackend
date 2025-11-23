@@ -6,6 +6,8 @@ import { TenantLimitsRepository } from "#modules/menu/infra/repositories/tenantL
 import { EventBusAdapter } from "../../infra/repositories/eventBus.js";
 import { TransactionManager } from "../../../../platform/db/transactionManager.js";
 import { pool } from "../../../../platform/db/index.js";
+import { BranchMenuRepository } from "../../infra/repositories/branchMenu.js";
+import { GetMenuItemsByBranchUseCase } from "../../app/use-cases/menu-item/get-menu-items-by-branch.js";
 import type {
   IMenuItemRepository,
   ICategoryRepository,
@@ -13,7 +15,8 @@ import type {
   IPolicyPort,
   IEventBus,
   ITransactionManager,
-  ITenantLimitsRepository
+  ITenantLimitsRepository,
+  IBranchMenuRepository
 } from "../../app/ports.js";
 import {
   CreateMenuItemUseCase,
@@ -27,12 +30,11 @@ export class MenuItemFactory {
     const menuItemRepo: IMenuItemRepository = new MenuItemRepository(pool);
     const categoryRepo: ICategoryRepository = new CategoryRepository(pool);
     const imageStorage: IImageStoragePort = new CloudflareR2ImageAdapter();
-    const limitsRepo: ITenantLimitsRepository = new TenantLimitsRepository(
-      pool
-    );
+    const limitsRepo: ITenantLimitsRepository = new TenantLimitsRepository(pool);
     const policyPort: IPolicyPort = new PolicyAdapter(pool);
     const eventBus: IEventBus = new EventBusAdapter();
     const txManager: ITransactionManager = new TransactionManager();
+    const branchMenuRepo: IBranchMenuRepository = new BranchMenuRepository(pool);
 
     return {
       createMenuItemUseCase: new CreateMenuItemUseCase(
@@ -59,6 +61,7 @@ export class MenuItemFactory {
         eventBus,
         txManager
       ),
+      getMenuItemsByBranchUseCase: new GetMenuItemsByBranchUseCase(branchMenuRepo),
     };
   }
 }

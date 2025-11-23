@@ -52,6 +52,7 @@ export class DeleteMenuItemUseCase {
         type: "menu.item_deleted",
         v: 1,
         tenantId,
+        branchId: item.branchId,
         menuItemId: item.id,
         categoryId: item.categoryId,
         name: item.name,

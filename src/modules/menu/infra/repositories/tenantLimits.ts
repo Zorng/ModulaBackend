@@ -11,7 +11,7 @@ export class TenantLimitsRepository implements ITenantLimitsRepository {
   ): Promise<TenantLimits | null> {
     const queryClient = client || this.pool;
     const sql = `
-      SELECT * FROM menu_tenant_limits WHERE tenant_id = $1
+      SELECT * FROM tenant_limits WHERE tenant_id = $1
     `;
     const result = await queryClient.query(sql, [tenantId]);
     if (result.rows.length === 0) return null;
@@ -21,7 +21,7 @@ export class TenantLimitsRepository implements ITenantLimitsRepository {
   async save(limits: TenantLimits, client?: PoolClient): Promise<void> {
     const queryClient = client || this.pool;
     const sql = `
-      INSERT INTO menu_tenant_limits (
+      INSERT INTO tenant_limits (
         tenant_id, max_categories_soft, max_categories_hard, max_items_soft, max_items_hard,
         max_modifier_groups_per_item, max_modifier_options_per_group, max_total_modifier_options_per_item, max_media_quota_mb
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)

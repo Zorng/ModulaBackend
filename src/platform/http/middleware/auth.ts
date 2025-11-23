@@ -1,3 +1,4 @@
+// src/platform/http/middleware/auth.ts
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import "express";
@@ -18,68 +19,78 @@ export type AuthenticatedUser = {
   roles: string[];
 };
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret"; // CHANGE IN PROD
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
-// ------------------------------
-// 1. Require Authentication
-// ------------------------------
 export function authenticate(req: Request, res: Response, next: NextFunction) {
+  // Get authorization header
   const authHeader = req.headers["authorization"];
+
+  // Debug: Log what we received
+  console.log("🔍 [Auth Debug] Raw Authorization header:", authHeader);
+  console.log("🔍 [Auth Debug] Type of header:", typeof authHeader);
+
   if (!authHeader) {
+    console.log("❌ [Auth Debug] No authorization header");
     return res.status(401).json({
       error: "Unauthorized",
       message: "Missing Authorization header",
     });
   }
 
-  const token = authHeader.replace("Bearer ", "");
+  // Extract token - handle both "Bearer token" and just "token"
+  let token: string;
 
-  // Debug logging for troubleshooting
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[AUTH] JWT_SECRET:", JWT_SECRET);
-    console.log("[AUTH] Token received:", token);
+  if (authHeader.startsWith("Bearer ")) {
+    token = authHeader.substring(7); // Remove "Bearer " (7 characters)
+  } else if (authHeader.startsWith("bearer ")) {
+    token = authHeader.substring(7); // Handle lowercase
+  } else {
+    token = authHeader; // Assume it's just the token
   }
 
+  // Remove any quotes that might have been added
+  token = token.replace(/^["']|["']$/g, "");
+
+  // Debug: Log extracted token
+  console.log(
+    "🔍 [Auth Debug] Extracted token:",
+    token.substring(0, 20) + "..."
+  );
+  console.log("🔍 [Auth Debug] Token length:", token.length);
+  console.log("🔍 [Auth Debug] Token parts:", token.split(".").length);
+  console.log("🔍 [Auth Debug] Using secret:", JWT_SECRET);
+
   try {
+    // Verify token
     const decoded = jwt.verify(token, JWT_SECRET) as AuthenticatedUser;
-    req.user = decoded; // attach the user
+
+    console.log("✅ [Auth Debug] Token verified successfully");
+    console.log("✅ [Auth Debug] Decoded payload:", decoded);
+
+    req.user = decoded;
     next();
   } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[AUTH] JWT verification error:", err);
+    console.error("❌ [Auth Debug] Token verification failed:", err);
+
+    if (err instanceof jwt.JsonWebTokenError) {
+      console.error("❌ [Auth Debug] JWT Error name:", err.name);
+      console.error("❌ [Auth Debug] JWT Error message:", err.message);
     }
+
     return res.status(401).json({
       error: "Unauthorized",
       message: "Invalid or expired token",
-      details: process.env.NODE_ENV !== "production" ? String(err) : undefined,
+      debug:
+        process.env.NODE_ENV === "development"
+          ? {
+              error: err instanceof Error ? err.message : "Unknown error",
+              tokenPreview: token.substring(0, 20) + "...",
+            }
+          : undefined,
     });
   }
 }
 
-// ------------------------------
-// 2. Optional authentication
-// ------------------------------
-export function optionalAuth(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers["authorization"];
-  if (!authHeader) {
-    return next(); // no user attached
-  }
-
-  const token = authHeader.replace("Bearer ", "");
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthenticatedUser;
-    req.user = decoded;
-  } catch {
-    // ignore invalid token — NOT blocking
-  }
-
-  next();
-}
-
-// ------------------------------
-// 3. Require specific role
-// ------------------------------
 export function requireRole(role: string) {
   return (req: Request, res: Response, next: NextFunction) => {
     const user = req.user;
