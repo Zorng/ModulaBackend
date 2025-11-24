@@ -9,9 +9,12 @@ import {
   notFoundHandler,
 } from "./platform/http/middleware/error-handler.js";
 import { setupSwagger } from "./platform/http/swagger.js";
+import { createImageStorageAdapter } from "#modules/menu/infra/repositories/imageAdapter.js";
 
 const app = express();
 app.use(express.json());
+
+app.locals.imageStorage = createImageStorageAdapter();
 
 // Swagger UI setup - must be before routes
 setupSwagger(app);

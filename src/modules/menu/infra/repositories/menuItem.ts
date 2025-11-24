@@ -12,7 +12,7 @@ export class MenuItemRepository implements IMenuItemRepository {
         id, 
         tenant_id, 
         category_id,
-          branch_id,
+        branch_id,
         name,
         description,
         price_usd,
@@ -46,8 +46,6 @@ export class MenuItemRepository implements IMenuItemRepository {
       item.imageUrl,
       item.isActive,
       item.createdBy,
-      item.createdAt,
-      item.updatedAt,
     ]);
   }
 

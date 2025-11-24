@@ -57,7 +57,33 @@ menuItemRouter.get(
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/CreateMenuItemInput'
+ *             type: object
+ *             required:
+ *               - categoryId
+ *               - branchId
+ *               - name
+ *               - priceUsd
+ *             properties:
+ *               categoryId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Category ID
+ *               branchId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Branch ID
+ *               name:
+ *                 type: string
+ *                 description: Menu item name
+ *               description:
+ *                 type: string
+ *                 description: Menu item description
+ *               priceUsd:
+ *                 type: number
+ *                 description: Price in USD
+ *               imageUrl:
+ *                 type: string
+ *                 description: Image URL (.jpg, .jpeg, .png, .webp)
  *     responses:
  *       201:
  *         description: Menu item created

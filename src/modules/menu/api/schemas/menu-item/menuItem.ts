@@ -1,7 +1,8 @@
-import {z} from "zod";
+import { z } from "zod";
 
 export const createMenuItemSchema = z.object({
   categoryId: z.string().uuid("Invalid category ID"),
+  branchId: z.string().uuid("Invalid branch ID"),
   name: z
     .string()
     .min(1, "Menu item name is required")
@@ -37,6 +38,7 @@ export const updateMenuItemSchema = z
       .max(10000, "Price must be less than $10,000")
       .optional(),
     categoryId: z.string().uuid("Invalid category ID").optional(),
+    branchId: z.string().uuid("Invalid branch ID").optional(),
     imageUrl: z
       .string()
       .url("Invalid image URL")

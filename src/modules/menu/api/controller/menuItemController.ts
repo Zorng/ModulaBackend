@@ -80,6 +80,7 @@ export class MenuItemController {
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
       const { tenantId, id } = req.user!;
+      // const {branchId} = req.body;
       const input = req.body as CreateMenuItemInput;
 
       let ImageUrl = undefined;
@@ -98,6 +99,7 @@ export class MenuItemController {
         userId: id,
         categoryId: input.categoryId,
         name: input.name,
+        branchId: input.branchId,
         description: input.description,
         priceUsd: input.priceUsd,
         imageUrl: ImageUrl,

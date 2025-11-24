@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import "express";
 
-declare module "express-serve-static-core" {
+declare module "express" {
   interface Request {
     user?: {
       id: string;
