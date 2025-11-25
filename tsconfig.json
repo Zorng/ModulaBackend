@@ -8,6 +8,8 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true
     "typeRoots": ["./node_modules/@types", "./types"]
   },
   "include": ["src", "scripts"]
