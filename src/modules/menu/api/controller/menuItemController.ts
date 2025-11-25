@@ -85,14 +85,6 @@ export class MenuItemController {
 
       let ImageUrl = undefined;
 
-      if (req.file) {
-        ImageUrl = await req.app.locals.imageStorage.uploadImage(
-          req.file.buffer,
-          req.file.originalname,
-          tenantId
-        );
-      }
-
       const { createMenuItemUseCase } = MenuItemFactory.build();
       const result = await createMenuItemUseCase.execute({
         tenantId,
@@ -103,6 +95,8 @@ export class MenuItemController {
         description: input.description,
         priceUsd: input.priceUsd,
         imageUrl: ImageUrl,
+        imageFile: req.file? req.file.buffer: undefined,
+        imageFilename: req.file ? req.file.originalname : undefined
       });
 
       // Handle result

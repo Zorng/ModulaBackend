@@ -4,7 +4,7 @@ const { sign, verify } = pkg;
 const secret = "dev-secret";
 const payload = {
   id: "550e8400-e29b-41d4-a716-446655440000",
-  tenantId: "db330415-f3c1-4da8-895f-ef62e6eee0ce",
+  tenantId: "db9afee8-58e0-438a-a266-a45a45b80e9c",
   roles: ["tenant"],
 };
 

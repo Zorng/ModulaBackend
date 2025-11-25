@@ -4,6 +4,11 @@ import {
   validateBody,
   validateParams,
 } from "../../../../platform/http/middleware/index.js";
+
+import { uploadSingleImage } from "../../../../platform/http/middleware/multer.js";
+import { uploadOptionalSingleImage } from "../../../../platform/http/middleware/multer.js";
+import { handleMulterError } from "../../../../platform/http/middleware/multer.js";
+
 import { MenuItemController } from "../controller/index.js";
 import {
   createMenuItemSchema,
@@ -55,7 +60,7 @@ menuItemRouter.get(
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             required:
@@ -81,9 +86,10 @@ menuItemRouter.get(
  *               priceUsd:
  *                 type: number
  *                 description: Price in USD
- *               imageUrl:
+ *               image:
  *                 type: string
- *                 description: Image URL (.jpg, .jpeg, .png, .webp)
+ *                 format: binary
+ *                 description: Image file (.jpg, .jpeg, .png, .webp)
  *     responses:
  *       201:
  *         description: Menu item created
@@ -95,6 +101,14 @@ menuItemRouter.get(
 menuItemRouter.post(
   "/v1/menu/items",
   authenticate,
+  uploadOptionalSingleImage,
+  (req, res, next) => {
+    // Coerce priceUsd to number if present
+    if (req.body.priceUsd !== undefined) {
+      req.body.priceUsd = Number(req.body.priceUsd);
+    }
+    next();
+  },
   validateBody(createMenuItemSchema),
   MenuItemController.create
 );

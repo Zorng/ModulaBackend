@@ -28,7 +28,7 @@ export class CloudflareR2ImageAdapter implements IImageStoragePort {
     "image/png",
     "image/webp",
   ];
-  private readonly MAX_FILE_SIZE = 0.3 * 1024 * 1024; // 5MB
+  private readonly MAX_FILE_SIZE = 0.5 * 1024 * 1024; // 5MB
 
   constructor() {
     // Get config from environment variables

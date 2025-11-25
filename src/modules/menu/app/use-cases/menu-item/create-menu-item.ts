@@ -30,7 +30,9 @@ export class CreateMenuItemUseCase {
     name: string;
     description?: string;
     priceUsd: number;
-    imageUrl?: string;
+    imageUrl?: string; // If caller provides a URL directly
+    imageFile?: Buffer; // If caller provides an image file to upload
+    imageFilename?: string; // Original filename for upload
   }): Promise<Result<MenuItem, string>> {
     const {
       tenantId,
@@ -40,7 +42,9 @@ export class CreateMenuItemUseCase {
       name,
       description,
       priceUsd,
-      imageUrl,
+      imageUrl: inputImageUrl,
+      imageFile,
+      imageFilename,
     } = input;
 
     // 1 - Check permissions (outside transaction)
@@ -51,12 +55,29 @@ export class CreateMenuItemUseCase {
       );
     }
 
-    // 4 - Validate image URL if provided (outside transaction)
-    if (imageUrl && !this.imageStorage.isValidImageUrl(imageUrl)) {
+    let finalImageUrl: string | undefined = inputImageUrl;
+
+    // 2 - If image file is provided, upload it and get URL
+    if (imageFile && imageFilename) {
+      try {
+        finalImageUrl = await this.imageStorage.uploadImage(
+          imageFile,
+          imageFilename,
+          tenantId
+        );
+      } catch (err) {
+        return Err(
+          err instanceof Error ? err.message : "Failed to upload image"
+        );
+      }
+    }
+
+    // 3 - Validate image URL if provided (outside transaction)
+    if (finalImageUrl && !this.imageStorage.isValidImageUrl(finalImageUrl)) {
       return Err("Invalid image URL format. Use .jpg, .jpeg, .webp, or .png");
     }
 
-    // 6 - Create menu item entity (outside transaction - no DB access)
+    // 4 - Create menu item entity (outside transaction - no DB access)
     const itemResult = MenuItem.create({
       tenantId,
       categoryId,
@@ -64,7 +85,7 @@ export class CreateMenuItemUseCase {
       name,
       description,
       priceUsd,
-      imageUrl,
+      imageUrl: finalImageUrl,
       createdBy: userId,
     });
 
@@ -75,9 +96,9 @@ export class CreateMenuItemUseCase {
     const menuItem = itemResult.value;
 
     try {
-      // 2, 3, 5, 7 - All database operations in transaction
+      // 5, 6, 7, 8 - All database operations in transaction
       await this.txManager.withTransaction(async (client) => {
-        // 2 - Verify category exists
+        // 5 - Verify category exists
         const category = await this.categoryRepo.findById(
           categoryId,
           tenantId,
@@ -87,7 +108,7 @@ export class CreateMenuItemUseCase {
           throw new Error("Category not found");
         }
 
-        // 3 - Check quota limits
+        // 6 - Check quota limits
         const limits = await this.limitsRepo.findByTenantId(tenantId, client);
         if (!limits) {
           throw new Error("Tenant limits not found");
@@ -107,7 +128,7 @@ export class CreateMenuItemUseCase {
           console.warn(`[CreateMenuItem] ${limitCheck.message}`);
         }
 
-        // 5 - Check name uniqueness in category
+        // 7 - Check name uniqueness in category
         const nameExists = await this.menuItemRepo.existsByNameInCategory(
           name,
           categoryId,
@@ -121,7 +142,7 @@ export class CreateMenuItemUseCase {
           );
         }
 
-        // 7 - Save and publish event
+        // 8 - Save and publish event
         await this.menuItemRepo.save(menuItem, client);
 
         const event: MenuItemCreatedV1 = {
@@ -141,7 +162,7 @@ export class CreateMenuItemUseCase {
         await this.eventBus.publishViaOutbox(event, client);
       });
 
-      // 8 - Return success
+      // 9 - Return success
       return Ok(menuItem);
     } catch (error) {
       return Err(
