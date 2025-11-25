@@ -81,6 +81,8 @@ modifierRouter.post(
  *     summary: Attach a modifier group to a menu item
  *     tags:
  *       - Modifiers
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: menuItemId

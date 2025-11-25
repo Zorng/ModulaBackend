@@ -4,12 +4,14 @@ import { AuthRepository } from '../../infra/repository.js';
 
 export interface AuthRequest extends Request {
     user?: {
-        employeeId: string;
+        id: string;
         tenantId: string;
+        roles: string[];
+        employeeId: string;
         branchId?: string;
         role: string;
     };
-    }
+}
 
     export class AuthMiddleware {
     constructor(

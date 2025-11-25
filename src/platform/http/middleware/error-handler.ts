@@ -26,7 +26,6 @@ export const errorHandler = (
   if (err instanceof NotFoundError) {
     return res.status(404).json({
       error: err.name,
-      code: err.code,
       message: err.message,
     });
   }
@@ -34,7 +33,6 @@ export const errorHandler = (
   if (err instanceof ConflictError) {
     return res.status(409).json({
       error: err.name,
-      code: err.code,
       message: err.message,
     });
   }
@@ -42,7 +40,6 @@ export const errorHandler = (
   if (err instanceof ForbiddenError) {
     return res.status(403).json({
       error: err.name,
-      code: err.code,
       message: err.message,
     });
   }
@@ -50,9 +47,7 @@ export const errorHandler = (
   if (err instanceof ValidationError) {
     return res.status(400).json({
       error: err.name,
-      code: err.code,
       message: err.message,
-      details: err.details,
     });
   }
 

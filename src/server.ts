@@ -1,12 +1,7 @@
-import express from 'express';
-import cors from 'cors';
-import { ping } from '#db';
-import { log } from '#logger';
-import { tenantRouter } from '#modules/tenant/api/router.js';
-import { authRouter } from '#modules/auth/api/auth.router.js';
-import { setupSwagger } from './platform/config/swagger.config.js';
 // src/server.ts
 import express from "express";
+import cors from 'cors';
+import { authRouter } from '#modules/auth/api/auth.router.js';
 import { ping } from "#db";
 import { log } from "#logger";
 import { tenantRouter } from "#modules/tenant/api/router.js";
@@ -19,7 +14,6 @@ import { setupSwagger } from "./platform/http/swagger.js";
 import { createImageStorageAdapter } from "#modules/menu/infra/repositories/imageAdapter.js";
 
 const app = express();
-
 // Enable CORS for all origins (customize as needed for production)
 app.use(cors({
   origin: process.env.CORS_ORIGIN || '*',
@@ -38,14 +32,8 @@ app.get('/health', async (_req, res) => {
   res.json({ status: 'ok', time: now });
 });
 
-app.use('/v1/tenants', tenantRouter); // <-- mounts /v1/tenants
-app.use('/v1/auth', authRouter);
 
-const PORT = process.env.PORT ?? 3000;
-app.listen(PORT, () => {
-  log.info(`Server on http://localhost:${PORT}`);
-  log.info(`API Documentation available at http://localhost:${PORT}/api-docs`);
-});
+
 app.locals.imageStorage = createImageStorageAdapter();
 
 // Swagger UI setup - must be before routes
@@ -126,8 +114,9 @@ app.get("/health", async (_req, res) => {
   }
 });
 
-// Mount module routers
-app.use(tenantRouter);
+// Mount module routers 
+app.use('/v1/tenants', tenantRouter); // <-- mounts /v1/tenants
+app.use('/v1/auth', authRouter);
 app.use(menuRouter);
 
 // Error handlers
