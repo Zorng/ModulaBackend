@@ -3,13 +3,14 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "target": "ES2022",
-    "rootDir": "src",
+    "rootDir": ".",
     "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "isolatedModules": true,
     "forceConsistentCasingInFileNames": true
+    "typeRoots": ["./node_modules/@types", "./types"]
   },
-  "include": ["src"]
+  "include": ["src", "scripts"]
 }
