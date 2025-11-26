@@ -9,14 +9,14 @@ import type {
 export class ModifierController {
   static async createGroup(req: Request, res: Response, next: NextFunction) {
     try {
-      const { tenantId, id } = req.user!;
+      const { tenantId, employeeId } = req.user!;
       const input = req.body as CreateModifierGroupInput;
 
       const { createModifierGroupUseCase } = ModifierFactory.build();
 
       const result = await createModifierGroupUseCase.execute({
         tenantId,
-        userId: id,
+        userId: employeeId,
         name: input.name,
         selectionType: input.selectionType,
       });
@@ -46,14 +46,14 @@ export class ModifierController {
 
   static async addOption(req: Request, res: Response, next: NextFunction) {
     try {
-        const {tenantId, id} = req.user!;
+        const {tenantId, employeeId} = req.user!;
         const input = req.body as AddModifierOptionInput;
 
         const { addModifierOptionUseCase } = ModifierFactory.build();
 
       const result = await addModifierOptionUseCase.execute({
         tenantId,
-        userId: id,
+        userId: employeeId,
         modifierGroupId: input.modifierGroupId,
         label: input.label,
         priceAdjustmentUsd: input.priceAdjustmentUsd,
@@ -84,7 +84,7 @@ export class ModifierController {
 
   static async attatchToItem(req: Request, res: Response, next: NextFunction) {
     try {
-        const {tenantId, id} = req.user!;
+        const {tenantId, employeeId} = req.user!;
         const { menuItemId } = req.params;
         const input = req.body as AttachModifierInput;
 
@@ -92,7 +92,7 @@ export class ModifierController {
 
         const result = await attachModifierToItemUseCase.execute({
         tenantId,
-        userId:id,
+        userId:employeeId,
         menuItemId,
         modifierGroupId: input.modifierGroupId,
         isRequired: input.isRequired,

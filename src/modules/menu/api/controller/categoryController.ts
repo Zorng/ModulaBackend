@@ -5,14 +5,14 @@ import { UpdateCategoryInput } from "../schemas/schemas.js";
 export class CategoryController {
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const { tenantId, id } = req.user!;
+      const { tenantId, employeeId } = req.user!;
       const { name, description, displayOrder } = req.body;
 
       const { createCategoryUseCase } = CategoryFactory.build();
 
       const result = await createCategoryUseCase.execute({
         tenantId,
-        userId: id,
+        userId: employeeId,
         name,
         displayOrder,
       });
@@ -82,7 +82,7 @@ export class CategoryController {
 
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const {tenantId, id} = req.user!;
+      const {tenantId, employeeId} = req.user!;
       const {categoryId} = req.params;
       const input = req.body as UpdateCategoryInput;
 
@@ -90,7 +90,7 @@ export class CategoryController {
 
       const result = await updateCategoryUseCase.execute({
         tenantId,
-        userId: id,
+        userId: employeeId,
         categoryId,
         name: input.name,
         displayOrder: input.displayOrder,
@@ -121,14 +121,14 @@ export class CategoryController {
 
   static async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const {tenantId, id} = req.user!;
+      const {tenantId, employeeId} = req.user!;
       const {categoryId} = req.params;
 
       const {deleteCategoryUseCase} = CategoryFactory.build();
 
       const result = await deleteCategoryUseCase.execute({
         tenantId,
-        userId: id,
+        userId: employeeId,
         categoryId
       })
         if (!result.ok) {

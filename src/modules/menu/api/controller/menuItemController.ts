@@ -79,8 +79,7 @@ export class MenuItemController {
   }
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const { tenantId, id } = req.user!;
-      // const {branchId} = req.body;
+      const { tenantId, employeeId } = req.user!;
       const input = req.body as CreateMenuItemInput;
 
       let ImageUrl = undefined;
@@ -88,10 +87,9 @@ export class MenuItemController {
       const { createMenuItemUseCase } = MenuItemFactory.build();
       const result = await createMenuItemUseCase.execute({
         tenantId,
-        userId: id,
+        userId: employeeId,
         categoryId: input.categoryId,
         name: input.name,
-        branchId: input.branchId,
         description: input.description,
         priceUsd: input.priceUsd,
         imageUrl: ImageUrl,
@@ -169,7 +167,7 @@ export class MenuItemController {
 
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const { tenantId, id } = req.user!;
+      const { tenantId, employeeId } = req.user!;
       const { menuItemId } = req.params;
       const input = req.body as UpdateMenuItemInput;
 
@@ -185,7 +183,7 @@ export class MenuItemController {
 
       const result = await updateMenuItemUseCase.execute({
         tenantId,
-        userId: id,
+        userId: employeeId,
         menuItemId,
         name: input.name,
         description: input.description,
@@ -219,7 +217,7 @@ export class MenuItemController {
 
   static async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const { tenantId, id } = req.user!;
+      const { tenantId, employeeId } = req.user!;
       const { menuItemId } = req.params;
 
       // Get use case from factory
@@ -227,7 +225,7 @@ export class MenuItemController {
 
       const result = await deleteMenuItemUseCase.execute({
         tenantId,
-        userId: id,
+        userId: employeeId,
         menuItemId,
       });
 

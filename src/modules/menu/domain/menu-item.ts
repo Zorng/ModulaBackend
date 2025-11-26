@@ -9,7 +9,6 @@ export type MenuItemProps = {
   id: string;
   tenantId: string;
   categoryId: string;
-  branchId?: string;
   name: string;
   description?: string;
   priceUsd: number;
@@ -27,7 +26,6 @@ export class MenuItem {
   static create(data: {
     tenantId: string;
     categoryId: string;
-    branchId?: string;
     name: string;
     description?: string;
     priceUsd: number;
@@ -75,7 +73,6 @@ export class MenuItem {
         id, // Use generated UUID
         tenantId: data.tenantId,
         categoryId: data.categoryId,
-        branchId: data.branchId,
         name: data.name.trim(),
         description: data.description?.trim(),
         priceUsd: data.priceUsd,
@@ -86,9 +83,6 @@ export class MenuItem {
         updatedAt: new Date(),
       }),
     };
-  }
-  get branchId() {
-    return this.props.branchId;
   }
 
   // Factory: Reconstitute from database

@@ -1,8 +1,8 @@
 import { Pool } from 'pg';
-import '../config/index.js';
+import { config } from '../config/index.js';
 
 export const pool = new Pool({
-  connectionString: 'postgres://postgres:hellodb@localhost:5432/modula'
+  connectionString: config.database.url
 });
 
 export async function ping() {

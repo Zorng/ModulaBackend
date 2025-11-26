@@ -26,7 +26,6 @@ export class CreateMenuItemUseCase {
     tenantId: string;
     userId: string;
     categoryId: string;
-    branchId?: string;
     name: string;
     description?: string;
     priceUsd: number;
@@ -38,7 +37,6 @@ export class CreateMenuItemUseCase {
       tenantId,
       userId,
       categoryId,
-      branchId,
       name,
       description,
       priceUsd,
@@ -81,7 +79,6 @@ export class CreateMenuItemUseCase {
     const itemResult = MenuItem.create({
       tenantId,
       categoryId,
-      branchId,
       name,
       description,
       priceUsd,
@@ -151,7 +148,6 @@ export class CreateMenuItemUseCase {
           menuItemId: menuItem.id,
           tenantId: menuItem.tenantId,
           categoryId: menuItem.categoryId,
-          branchId: menuItem.branchId,
           name: menuItem.name,
           priceUsd: menuItem.priceUsd,
           isActive: menuItem.isActive,

@@ -3,9 +3,9 @@ const { sign, verify } = pkg;
 
 const secret = "dev-secret";
 const payload = {
-  id: "550e8400-e29b-41d4-a716-446655440000",
-  tenantId: "db9afee8-58e0-438a-a266-a45a45b80e9c",
-  roles: ["tenant"],
+  employeeId: "770e8400-e29b-41d4-a716-446655440010",
+  tenantId: "550e8400-e29b-41d4-a716-446655440000",
+  role: "ADMIN",
 };
 
 const token = sign(payload, secret, { expiresIn: "24h" });
