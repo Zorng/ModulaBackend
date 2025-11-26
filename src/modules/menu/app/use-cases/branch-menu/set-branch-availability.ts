@@ -52,7 +52,7 @@ export class SetBranchAvailabilityUseCase {
 
         // Check if branch exists
         const branchCheck = await client.query(
-          "SELECT id FROM branch WHERE id = $1 AND tenant_id = $2",
+          "SELECT id FROM branches WHERE id = $1 AND tenant_id = $2",
           [branchId, tenantId]
         );
         if (branchCheck.rows.length === 0) {

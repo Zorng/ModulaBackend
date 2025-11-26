@@ -1,9 +1,9 @@
 import { Router } from "express";
 import {
-  authenticate,
   validateBody,
   validateParams,
 } from "../../../../platform/http/middleware/index.js";
+import { authMiddleware } from "../../../auth/api/auth.router.js";
 import { BranchMenuController } from "../controller/index.js";
 import {
   setBranchAvailabilitySchema,
@@ -47,7 +47,7 @@ const branchMenuRouter = Router();
  */
 branchMenuRouter.put(
   "/v1/menu/items/:menuItemId/branches/availability",
-  authenticate,
+  authMiddleware.authenticate,
   validateParams(menuItemIdParamSchema),
   validateBody(setBranchAvailabilitySchema),
   BranchMenuController.setAvailability
@@ -87,7 +87,7 @@ branchMenuRouter.put(
  */
 branchMenuRouter.put(
   "/v1/menu/items/:menuItemId/branches/price",
-  authenticate,
+  authMiddleware.authenticate,
   validateParams(menuItemIdParamSchema),
   validateBody(setBranchPriceSchema),
   BranchMenuController.setPriceOverride

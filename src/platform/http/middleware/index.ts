@@ -1,11 +1,4 @@
 export {
-  authenticate,
-//   optionalAuth,
-  requireRole,
-  type AuthenticatedUser,
-} from "./auth.js";
-
-export {
   validate,
   validateBody,
   validateQuery,

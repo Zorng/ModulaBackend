@@ -1,8 +1,6 @@
 import { Router } from "express";
-import {
-  authenticate,
-  validateQuery,
-} from "../../../../platform/http/middleware/index.js";
+import { validateQuery } from "../../../../platform/http/middleware/index.js";
+import { authMiddleware } from "../../../auth/api/auth.router.js";
 import { QueryController } from "../controller/index.js";
 import { branchIdQuerySchema } from "../schemas/schemas.js";
 
@@ -38,7 +36,7 @@ const queryRouter = Router();
  */
 queryRouter.get(
   "/v1/menu/snapshot",
-  authenticate,
+  authMiddleware.authenticate,
   validateQuery(branchIdQuerySchema),
   QueryController.getMenuSnapshot
 );

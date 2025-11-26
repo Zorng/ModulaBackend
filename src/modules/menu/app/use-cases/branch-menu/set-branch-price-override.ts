@@ -51,6 +51,15 @@ export class SetBranchPriceOverrideUseCase {
           throw new Error("Menu item not found");
         }
 
+        // Check if branch exists
+        const branchCheck = await client.query(
+          "SELECT id FROM branches WHERE id = $1 AND tenant_id = $2",
+          [branchId, tenantId]
+        );
+        if (branchCheck.rows.length === 0) {
+          throw new Error("Branch not found");
+        }
+
         // 4 - Set price override
         await this.branchMenuRepo.setPriceOverride(
           menuItemId,
