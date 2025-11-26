@@ -1,16 +1,19 @@
-import express from 'express';
+// src/server.ts
+import express from "express";
 import cors from 'cors';
-import { pool, ping } from '#db';
-import { log } from '#logger';
-import { tenantRouter } from '#modules/tenant/api/router.js';
-import { setupAuthModule } from '#modules/auth/index.js';
-import { bootstrapSalesModule } from '#modules/sales/index.js';
-import { setupSwagger } from './platform/config/swagger.config.js';
-import { EventBus, TransactionManager, OutboxService, OutboxDispatcher } from './platform/events/index.js';
-import { setAuthMiddleware } from './platform/security/auth.middleware.js';
+import { authRouter } from '#modules/auth/api/auth.router.js';
+import { ping } from "#db";
+import { log } from "#logger";
+import { tenantRouter } from "#modules/tenant/api/router.js";
+import { menuRouter } from "./modules/menu/api/router/index.js";
+import {
+  errorHandler,
+  notFoundHandler,
+} from "./platform/http/middleware/error-handler.js";
+import { setupSwagger } from "./platform/http/swagger.js";
+import { createImageStorageAdapter } from "#modules/menu/infra/repositories/imageAdapter.js";
 
 const app = express();
-
 // Enable CORS for all origins (customize as needed for production)
 app.use(cors({
   origin: process.env.CORS_ORIGIN || '*',
@@ -20,6 +23,9 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Serve uploaded images statically
+app.use('/uploads', express.static('public/uploads'));
 
 // Setup Swagger documentation
 setupSwagger(app);
@@ -61,54 +67,100 @@ app.get('/health', async (_req, res) => {
   res.json({ status: 'ok', time: now });
 });
 
-app.use('/v1/tenants', tenantRouter);
-app.use('/v1/auth', authRoutes);
-app.use('/v1/sales', salesRouter);
 
-// ==================== Error Handling ====================
 
-// 404 handler - catches all unmatched routes
-app.use((_req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Route not found'
-  });
+app.locals.imageStorage = createImageStorageAdapter();
+
+// Swagger UI setup - must be before routes
+setupSwagger(app);
+
+/**
+ * @openapi
+ * /health:
+ *   get:
+ *     summary: Health check endpoint
+ *     description: |
+ *       Returns the health status of the API server and database connection.
+ *
+ *       **Use cases:**
+ *       - Monitor server availability
+ *       - Check database connectivity
+ *       - Verify API is responding
+ *     tags:
+ *       - Health
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   enum: [ok]
+ *                   description: Health status
+ *                 time:
+ *                   type: string
+ *                   format: date-time
+ *                   description: Current server time (from database)
+ *                 version:
+ *                   type: string
+ *                   description: API version
+ *                 uptime:
+ *                   type: number
+ *                   description: Server uptime in seconds
+ *             example:
+ *               status: "ok"
+ *               time: "2025-01-15T10:30:45.123Z"
+ *               version: "1.0.0"
+ *               uptime: 3600
+ *       500:
+ *         description: Server or database error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   enum: [error]
+ *                 error:
+ *                   type: string
+ *             example:
+ *               status: "error"
+ *               error: "Database connection failed"
+ */
+app.get("/health", async (_req, res) => {
+  try {
+    const now = await ping();
+    res.json({
+      status: "ok",
+      time: now,
+      version: "1.0.0",
+      uptime: process.uptime(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
 });
 
-// Global error handler
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  log.error({ err }, 'Unhandled error');
-  res.status(500).json({
-    success: false,
-    error: 'Internal server error'
-  });
-});
+// Mount module routers 
+app.use('/v1/tenants', tenantRouter); // <-- mounts /v1/tenants
+app.use('/v1/auth', authRouter);
+app.use(menuRouter);
 
-// ==================== Graceful Shutdown ====================
-
-process.on('SIGTERM', async () => {
-  log.info('SIGTERM received, shutting down gracefully...');
-  outboxDispatcher.stop();
-  await pool.end();
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  log.info('SIGINT received, shutting down gracefully...');
-  outboxDispatcher.stop();
-  await pool.end();
-  process.exit(0);
-});
-
-// ==================== Start Server ====================
+// Error handlers
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 const PORT = process.env.PORT ?? 3000;
 app.listen(PORT, () => {
-  log.info(`Server on http://localhost:${PORT}`);
-  log.info(`API Documentation available at http://localhost:${PORT}/api-docs`);
-  log.info('Registered routes:');
-  log.info('  - GET  /health');
-  log.info('  - *    /v1/tenants');
-  log.info('  - *    /v1/auth');
-  log.info('  - *    /v1/sales (NEW)');
+  log.info(`🚀 Server running on http://localhost:${PORT}`);
+  log.info(`📚 API docs available at http://localhost:${PORT}/api-docs`);
+  log.info(`📄 OpenAPI spec at http://localhost:${PORT}/openapi.json`);
 });
