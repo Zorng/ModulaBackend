@@ -4,7 +4,6 @@ import { AuthRepository } from '../../infra/repository.js';
 
 export interface AuthRequest extends Request {
     user?: {
-        id: string;
         tenantId: string;
         roles: string[];
         employeeId: string;

@@ -6,7 +6,6 @@ import "express";
 declare module "express" {
   interface Request {
     user?: {
-      id: string;
       tenantId: string;
       roles: string[];
     };
@@ -14,7 +13,6 @@ declare module "express" {
 }
 
 export type AuthenticatedUser = {
-  id: string;
   tenantId: string;
   roles: string[];
 };
