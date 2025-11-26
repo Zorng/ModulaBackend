@@ -4,6 +4,7 @@ import { AuthRepository } from '../../infra/repository.js';
 
 export interface AuthRequest extends Request {
     user?: {
+        id: string;
         employeeId: string;
         tenantId: string;
         branchId?: string;
@@ -36,7 +37,10 @@ export interface AuthRequest extends Request {
             return res.status(401).json({ error: 'Employee not found or inactive' });
         }
 
-        req.user = claims;
+        req.user = {
+            ...claims,
+            id: claims.employeeId  // Add id field for compatibility
+        };
         next();
         } catch (error) {
         res.status(401).json({ error: 'Authentication failed' });
