@@ -6,7 +6,7 @@ export class StockIntegrationController {
 
   static async linkStock(req: Request, res: Response, next: NextFunction) {
     try {
-      const { tenantId, id } = req.user!;
+      const { tenantId, employeeId } = req.user!;
       const { menuItemId } = req.params;
       const input = req.body as LinkStockInput;
 
@@ -16,7 +16,7 @@ export class StockIntegrationController {
       // Execute use case
       const result = await linkMenuItemToStockUseCase.execute({
         tenantId,
-        userId: id,
+        userId: employeeId,
         menuItemId,
         stockItemId: input.stockItemId,
         qtyPerSale: input.qtyPerSale,
@@ -47,7 +47,7 @@ export class StockIntegrationController {
 
   static async unlinkStock(req: Request, res: Response, next: NextFunction) {
     try {
-      const { tenantId, id } = req.user!;
+      const { tenantId, employeeId } = req.user!;
       const { mappingId } = req.params;
 
       // Get use case from factory
@@ -57,7 +57,7 @@ export class StockIntegrationController {
       // Execute use case
       const result = await unlinkMenuItemFromStockUseCase.execute({
         tenantId,
-        userId:id,
+        userId:employeeId,
         mappingId,
       });
 

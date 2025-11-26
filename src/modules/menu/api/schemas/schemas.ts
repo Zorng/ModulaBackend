@@ -1,16 +1,18 @@
-
 import { z } from "zod";
 import { createCategorySchema } from "../schemas/category/category.js";
 import { updateCategorySchema } from "../schemas/category/category.js";
 import { createMenuItemSchema } from "./menu-item/menuItem.js";
 import { updateMenuItemSchema } from "./menu-item/menuItem.js";
-import { createModifierGroupSchema } from "./modifier/modifier.js";
-import { addModifierOptionSchema } from "./modifier/modifier.js";
-import { attachModifierSchema } from "./modifier/modifier.js";
+import {
+  createModifierGroupSchema,
+  addModifierOptionSchema,
+  attachModifierSchema,
+  updateModifierGroupSchema,
+  updateModifierOptionSchema,
+} from "./modifier/modifier.js";
 import { setBranchAvailabilitySchema } from "./branch-menu/branchMenu.js";
 import { setBranchPriceSchema } from "./branch-menu/branchMenu.js";
 import { linkStockSchema } from "./stock-integration/stockIntegration.js";
-
 
 export * from "./category/category.js";
 export * from "./menu-item/menuItem.js";
@@ -31,6 +33,12 @@ export type CreateModifierGroupInput = z.infer<
 >;
 export type AddModifierOptionInput = z.infer<typeof addModifierOptionSchema>;
 export type AttachModifierInput = z.infer<typeof attachModifierSchema>;
+export type UpdateModifierGroupInput = z.infer<
+  typeof updateModifierGroupSchema
+>;
+export type UpdateModifierOptionInput = z.infer<
+  typeof updateModifierOptionSchema
+>;
 export type SetBranchAvailabilityInput = z.infer<
   typeof setBranchAvailabilitySchema
 >;

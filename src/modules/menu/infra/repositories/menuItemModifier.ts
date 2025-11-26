@@ -17,7 +17,7 @@ export class MenuItemModifierRepository implements IMenuItemModifierRepository {
       INSERT INTO menu_item_modifier_groups (
         menu_item_id, modifier_group_id, tenant_id, is_required
       ) VALUES ($1, $2, $3, $4)
-      ON CONFLICT (menu_item_id, modifier_group_id) DO UPDATE
+      ON CONFLICT (tenant_id, menu_item_id, modifier_group_id) DO UPDATE
       SET is_required = EXCLUDED.is_required
     `;
     await queryClient.query(sql, [
@@ -61,6 +61,7 @@ export class MenuItemModifierRepository implements IMenuItemModifierRepository {
         tenantId: row.tenant_id,
         name: row.name,
         selectionType: row.selection_type,
+        isActive: row.is_active,
         createdBy: row.created_by,
         createdAt: new Date(row.created_at),
         updatedAt: new Date(row.updated_at),
@@ -87,5 +88,36 @@ export class MenuItemModifierRepository implements IMenuItemModifierRepository {
       tenantId,
     ]);
     return parseInt(result.rows[0].count, 10) > 0;
+  }
+
+  async hasAnyForGroup(
+    modifierGroupId: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<boolean> {
+    const queryClient = client || this.pool;
+    const sql = `
+      SELECT COUNT(*) as count
+      FROM menu_item_modifier_groups
+      WHERE modifier_group_id = $1 AND tenant_id = $2
+    `;
+    const result = await queryClient.query(sql, [modifierGroupId, tenantId]);
+    return parseInt(result.rows[0].count, 10) > 0;
+  }
+
+  async countTotalOptionsForMenuItem(
+    menuItemId: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<number> {
+    const queryClient = client || this.pool;
+    const sql = `
+      SELECT COUNT(mo.id) as count
+      FROM menu_item_modifier_groups mig
+      JOIN menu_modifier_options mo ON mig.modifier_group_id = mo.modifier_group_id
+      WHERE mig.menu_item_id = $1 AND mig.tenant_id = $2 AND mo.is_active = true
+    `;
+    const result = await queryClient.query(sql, [menuItemId, tenantId]);
+    return parseInt(result.rows[0].count, 10);
   }
 }

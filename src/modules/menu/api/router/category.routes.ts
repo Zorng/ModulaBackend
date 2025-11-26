@@ -151,6 +151,48 @@ categoryRouter.get(
 /**
  * @openapi
  * /v1/menu/categories/{categoryId}:
+ *   get:
+ *     summary: Get a specific category
+ *     description: |
+ *       Retrieves a single category by its ID.
+ *
+ *       **Note:** Only returns categories belonging to the authenticated tenant.
+ *     tags:
+ *       - Categories
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - $ref: '#/components/parameters/categoryIdParam'
+ *     responses:
+ *       200:
+ *         description: Category details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Category'
+ *             example:
+ *               id: "550e8400-e29b-41d4-a716-446655440000"
+ *               name: "Coffee"
+ *               description: "Hot and cold coffee beverages"
+ *               displayOrder: 0
+ *               isActive: true
+ *               createdAt: "2025-01-15T10:30:00Z"
+ *               updatedAt: "2025-01-15T10:30:00Z"
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ */
+categoryRouter.get(
+  "/v1/menu/categories/:categoryId",
+  authenticate,
+  validateParams(categoryIdParamSchema),
+  CategoryController.get
+);
+
+/**
+ * @openapi
+ * /v1/menu/categories/{categoryId}:
  *   patch:
  *     summary: Update a category
  *     description: |

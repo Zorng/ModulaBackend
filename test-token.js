@@ -3,8 +3,9 @@ const { sign, verify } = pkg;
 
 const secret = "dev-secret";
 const payload = {
-  employeeId: "770e8400-e29b-41d4-a716-446655440010",
-  tenantId: "550e8400-e29b-41d4-a716-446655440000",
+  employeeId: "550e8400-e29b-41d4-a716-446655440000",
+  tenantId: "db9afee8-58e0-438a-a266-a45a45b80e9c",
+  branchId: "b1a2c3d4-e5f6-7890-abcd-1234567890ab",
   role: "ADMIN",
 };
 

@@ -6,6 +6,7 @@ import type {
   IPolicyPort,
   IEventBus,
   ITransactionManager,
+  ITenantLimitsRepository,
 } from "../../../app/ports.js";
 import { MenuModifierAttachedV1 } from "../../../../../shared/events.js";
 
@@ -16,7 +17,8 @@ export class AttachModifierToItemUseCase {
     private itemModifierRepo: IMenuItemModifierRepository,
     private policyPort: IPolicyPort,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private tenantLimitsRepo: ITenantLimitsRepository
   ) {}
 
   async execute(input: {
@@ -66,6 +68,37 @@ export class AttachModifierToItemUseCase {
         );
         if (!group) {
           throw new Error("Modifier group not found");
+        }
+
+        // 3.5 - Check total modifier options per item limit
+        const limits = await this.tenantLimitsRepo.findByTenantId(
+          tenantId,
+          client
+        );
+        if (!limits) {
+          throw new Error("Tenant limits not found");
+        }
+
+        const currentTotalOptions =
+          await this.itemModifierRepo.countTotalOptionsForMenuItem(
+            menuItemId,
+            tenantId,
+            client
+          );
+        const newGroupOptionsCount =
+          await this.modifierRepo.countOptionsByGroupId(
+            modifierGroupId,
+            tenantId,
+            client
+          );
+        const wouldExceedLimit = limits.checkModifierTotalOptionsPerItem(
+          currentTotalOptions + newGroupOptionsCount
+        );
+
+        if (wouldExceedLimit.status === "exceeded") {
+          throw new Error(
+            `Attaching this modifier group would exceed the maximum total modifier options per menu item limit of ${limits.maxTotalModifierOptionsPerItem}`
+          );
         }
 
         // 4 - Check if already attached

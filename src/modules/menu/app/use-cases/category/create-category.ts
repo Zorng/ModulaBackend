@@ -34,9 +34,10 @@ export class CreateCategoryUseCase {
     tenantId: string;
     userId: string;
     name: string;
+    description: string;
     displayOrder: number;
   }): Promise<Result<Category, string>> {
-    const { tenantId, userId, name, displayOrder } = input;
+    const { tenantId, userId, name, description, displayOrder } = input;
 
     // ========================================
     // 1: Check Permissions (non-transactional)
@@ -82,6 +83,7 @@ export class CreateCategoryUseCase {
     const categoryResult = Category.create({
       tenantId,
       name,
+      description,
       displayOrder,
       createdBy: userId,
     });

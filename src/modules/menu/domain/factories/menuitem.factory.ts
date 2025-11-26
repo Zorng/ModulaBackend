@@ -16,11 +16,12 @@ import type {
   IEventBus,
   ITransactionManager,
   ITenantLimitsRepository,
-  IBranchMenuRepository
+  IBranchMenuRepository,
 } from "../../app/ports.js";
 import {
   CreateMenuItemUseCase,
   GetMenuItemUseCase,
+  ListMenuItemsUseCase,
   UpdateMenuItemUseCase,
   DeleteMenuItemUseCase,
 } from "../../app/use-cases/menu-item/index.js";
@@ -30,11 +31,15 @@ export class MenuItemFactory {
     const menuItemRepo: IMenuItemRepository = new MenuItemRepository(pool);
     const categoryRepo: ICategoryRepository = new CategoryRepository(pool);
     const imageStorage: IImageStoragePort = new CloudflareR2ImageAdapter();
-    const limitsRepo: ITenantLimitsRepository = new TenantLimitsRepository(pool);
+    const limitsRepo: ITenantLimitsRepository = new TenantLimitsRepository(
+      pool
+    );
     const policyPort: IPolicyPort = new PolicyAdapter(pool);
     const eventBus: IEventBus = new EventBusAdapter();
     const txManager: ITransactionManager = new TransactionManager();
-    const branchMenuRepo: IBranchMenuRepository = new BranchMenuRepository(pool);
+    const branchMenuRepo: IBranchMenuRepository = new BranchMenuRepository(
+      pool
+    );
 
     return {
       createMenuItemUseCase: new CreateMenuItemUseCase(
@@ -47,6 +52,7 @@ export class MenuItemFactory {
         txManager
       ),
       getMenuItemUseCase: new GetMenuItemUseCase(menuItemRepo),
+      listMenuItemsUseCase: new ListMenuItemsUseCase(menuItemRepo),
       updateMenuItemUseCase: new UpdateMenuItemUseCase(
         menuItemRepo,
         categoryRepo,
@@ -61,7 +67,9 @@ export class MenuItemFactory {
         eventBus,
         txManager
       ),
-      getMenuItemsByBranchUseCase: new GetMenuItemsByBranchUseCase(branchMenuRepo),
+      getMenuItemsByBranchUseCase: new GetMenuItemsByBranchUseCase(
+        branchMenuRepo
+      ),
     };
   }
 }

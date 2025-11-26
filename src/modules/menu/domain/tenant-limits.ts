@@ -148,6 +148,78 @@ export class TenantLimits {
     };
   }
 
+  checkModifierOptionLimit(currentCount: number): LimitCheckResult {
+    const softLimit = this.props.maxModifierOptionsPerGroup;
+    const hardLimit = this.props.maxModifierOptionsPerGroup; // Assuming hard limit is same as soft for now
+
+    // Check hard limit first
+    if (currentCount >= hardLimit) {
+      return {
+        status: "exceeded",
+        currentCount,
+        softLimit,
+        hardLimit,
+        message: `Modifier option limit reached (${currentCount}/${hardLimit}). Cannot add more options to this group.`,
+      };
+    }
+
+    // Check soft limit (warning zone)
+    if (currentCount >= softLimit) {
+      return {
+        status: "warning",
+        currentCount,
+        softLimit,
+        hardLimit,
+        message: `Approaching modifier option limit (${currentCount}/${hardLimit}).`,
+      };
+    }
+
+    // Under soft limit - all good
+    return {
+      status: "ok",
+      currentCount,
+      softLimit,
+      hardLimit,
+      message: `Modifier option usage is normal (${currentCount}/${hardLimit}).`,
+    };
+  }
+
+  checkModifierTotalOptionsPerItem(currentCount: number): LimitCheckResult {
+    const softLimit = this.props.maxTotalModifierOptionsPerItem;
+    const hardLimit = this.props.maxTotalModifierOptionsPerItem; // Assuming hard limit is same as soft for now
+
+    // Check hard limit first
+    if (currentCount >= hardLimit) {
+      return {
+        status: "exceeded",
+        currentCount,
+        softLimit,
+        hardLimit,
+        message: `Total modifier options per item limit reached (${currentCount}/${hardLimit}). Cannot attach more modifier groups to this item.`,
+      };
+    }
+
+    // Check soft limit (warning zone)
+    if (currentCount >= softLimit) {
+      return {
+        status: "warning",
+        currentCount,
+        softLimit,
+        hardLimit,
+        message: `Approaching total modifier options per item limit (${currentCount}/${hardLimit}).`,
+      };
+    }
+
+    // Under soft limit - all good
+    return {
+      status: "ok",
+      currentCount,
+      softLimit,
+      hardLimit,
+      message: `Total modifier options per item usage is normal (${currentCount}/${hardLimit}).`,
+    };
+  }
+
   toPersistence(): TenantLimitsProps {
     return { ...this.props };
   }

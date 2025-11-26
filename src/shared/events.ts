@@ -174,12 +174,62 @@ export type ModifierOptionAddedV1 = {
   createdAt: string;
 };
 
+export type ModifierGroupUpdatedV1 = {
+  type: "menu.modifier_group_updated";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  changes: {
+    name?: string;
+    selectionType?: "SINGLE" | "MULTI";
+  };
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type ModifierOptionUpdatedV1 = {
+  type: "menu.modifier_option_updated";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  modifierOptionId: string;
+  changes: {
+    label?: string;
+    priceAdjustmentUsd?: number;
+    isDefault?: boolean;
+    isActive?: boolean;
+  };
+  updatedBy: string;
+  updatedAt: string;
+};
+
 export type MenuCategoryDeletedV1 = {
   type: "menu.category_deleted";
   v: 1;
   tenantId: string;
   categoryId: string;
   name: string;
+  deletedBy: string;
+  deletedAt: string;
+};
+
+export type ModifierGroupDeletedV1 = {
+  type: "menu.modifier_group_deleted";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  name: string;
+  deletedBy: string;
+  deletedAt: string;
+};
+
+export type ModifierOptionDeletedV1 = {
+  type: "menu.modifier_option_deleted";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  modifierOptionId: string;
+  label: string;
   deletedBy: string;
   deletedAt: string;
 };
@@ -200,4 +250,8 @@ export type DomainEvent =
   | MenuItemDeletedV1
   | ModifierGroupCreatedV1
   | ModifierOptionAddedV1
-  | MenuCategoryDeletedV1;
+  | MenuCategoryDeletedV1
+  | ModifierGroupUpdatedV1
+  | ModifierOptionUpdatedV1
+  | ModifierGroupDeletedV1
+  | ModifierOptionDeletedV1;

@@ -2,6 +2,7 @@ import { Ok, Err, type Result } from "../../../../../shared/result.js";
 import { ModifierOption } from "../../../domain/entities.js";
 import type {
   IModifierRepository,
+  ITenantLimitsRepository,
   IPolicyPort,
   IEventBus,
   ITransactionManager,
@@ -11,6 +12,7 @@ import { ModifierOptionAddedV1 } from "../../../../../shared/events.js";
 export class AddModifierOptionUseCase {
   constructor(
     private modifierRepo: IModifierRepository,
+    private limitsRepo: ITenantLimitsRepository,
     private policyPort: IPolicyPort,
     private eventBus: IEventBus,
     private txManager: ITransactionManager
@@ -42,6 +44,27 @@ export class AddModifierOptionUseCase {
       return Err(
         "Permission denied: You don't have permission to manage modifiers"
       );
+    }
+
+    // 2 - Check quota limits (outside transaction)
+    const limits = await this.limitsRepo.findByTenantId(tenantId);
+    if (!limits) {
+      return Err("Tenant limits not found. Please contact support.");
+    }
+
+    const currentCount = await this.modifierRepo.countOptionsByGroupId(
+      modifierGroupId,
+      tenantId
+    );
+    const limitCheck = limits.checkModifierOptionLimit(currentCount);
+
+    if (limitCheck.status === "exceeded") {
+      return Err(limitCheck.message);
+    }
+
+    // Log warning if approaching limit
+    if (limitCheck.status === "warning") {
+      console.warn(`[AddModifierOption] ${limitCheck.message}`);
     }
 
     // 3 - Create modifier option entity (outside transaction)

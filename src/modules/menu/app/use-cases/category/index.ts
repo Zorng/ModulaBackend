@@ -4,6 +4,7 @@
  */
 
 export { CreateCategoryUseCase } from "./create-category.js";
+export { GetCategoryUseCase } from "./get-category.js";
 export { UpdateCategoryUseCase } from "./update-category.js";
 export { DeleteCategoryUseCase } from "./delete-category.js";
 export { ListCategoriesUseCase } from "./list-categories.js";

@@ -13,7 +13,7 @@ export class BranchMenuController {
     next: NextFunction
   ) {
     try {
-      const { tenantId, id } = req.user!;
+      const { tenantId, employeeId } = req.user!;
       const { menuItemId } = req.params;
       const input = req.body as SetBranchAvailabilityInput;
 
@@ -23,7 +23,7 @@ export class BranchMenuController {
       // Execute use case
       const result = await setBranchAvailabilityUseCase.execute({
         tenantId,
-        userId:id,
+        userId:employeeId,
         menuItemId,
         branchId: input.branchId,
         isAvailable: input.isAvailable,
@@ -55,7 +55,7 @@ export class BranchMenuController {
     next: NextFunction
   ) {
     try {
-      const { tenantId, id } = req.user!;
+      const { tenantId, employeeId } = req.user!;
       const { menuItemId } = req.params;
       const input = req.body as SetBranchPriceInput;
 
@@ -65,7 +65,7 @@ export class BranchMenuController {
       // Execute use case
       const result = await setBranchPriceOverrideUseCase.execute({
         tenantId,
-        userId: id,
+        userId: employeeId,
         menuItemId,
         branchId: input.branchId,
         priceUsd: input.priceUsd,

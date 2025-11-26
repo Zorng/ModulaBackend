@@ -6,33 +6,6 @@ import {
 } from "../schemas/schemas.js";
 
 export class MenuItemController {
-  // static async listAll(req: Request, res: Response, next: NextFunction) {
-  //   try {
-  //     const { tenantId } = req.user!;
-  //     const { getMenuItemUseCase } = MenuItemFactory.build();
-  //     // Use repository method to get all menu items for tenant
-  //     const items = await getMenuItemUseCase.menuItemRepo.findByTenantId(
-  //       tenantId
-  //     );
-  //     return res.status(200).json({
-  //       items: items.map((item: any) => ({
-  //         id: item.id,
-  //         categoryId: item.categoryId,
-  //         name: item.name,
-  //         description: item.description,
-  //         priceUsd: item.priceUsd,
-  //         imageUrl: item.imageUrl,
-  //         isActive: item.isActive,
-  //         createdAt: item.createdAt,
-  //         updatedAt: item.updatedAt,
-  //       })),
-  //       total: items.length,
-  //     });
-  //   } catch (error) {
-  //     next(error);
-  //   }
-  // }
-
   static async listByBranch(req: Request, res: Response, next: NextFunction) {
     try {
       const { tenantId } = req.user!;
@@ -77,6 +50,43 @@ export class MenuItemController {
       next(error);
     }
   }
+
+  static async list(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { tenantId } = req.user!;
+
+      const { listMenuItemsUseCase } = MenuItemFactory.build();
+      const result = await listMenuItemsUseCase.execute({
+        tenantId,
+      });
+
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
+
+      const items = result.value;
+      return res.status(200).json({
+        items: items.map((item) => ({
+          id: item.id,
+          categoryId: item.categoryId,
+          name: item.name,
+          description: item.description,
+          priceUsd: item.priceUsd,
+          imageUrl: item.imageUrl,
+          isActive: item.isActive,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        })),
+        total: items.length,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
       const { tenantId, employeeId } = req.user!;
@@ -93,8 +103,8 @@ export class MenuItemController {
         description: input.description,
         priceUsd: input.priceUsd,
         imageUrl: ImageUrl,
-        imageFile: req.file? req.file.buffer: undefined,
-        imageFilename: req.file ? req.file.originalname : undefined
+        imageFile: req.file ? req.file.buffer : undefined,
+        imageFilename: req.file ? req.file.originalname : undefined,
       });
 
       // Handle result

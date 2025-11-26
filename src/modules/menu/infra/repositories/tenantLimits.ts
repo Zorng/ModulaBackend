@@ -11,7 +11,7 @@ export class TenantLimitsRepository implements ITenantLimitsRepository {
   ): Promise<TenantLimits | null> {
     const queryClient = client || this.pool;
     const sql = `
-      SELECT * FROM tenant_limits WHERE tenant_id = $1
+      SELECT * FROM menu_tenant_limits WHERE tenant_id = $1
     `;
     const result = await queryClient.query(sql, [tenantId]);
     if (result.rows.length === 0) return null;

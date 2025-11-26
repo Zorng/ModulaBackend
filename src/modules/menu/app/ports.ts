@@ -86,6 +86,14 @@ export interface IMenuItemRepository {
   findByTenantId(tenantId: string, client?: PoolClient): Promise<MenuItem[]>;
 
   /**
+   * Find all active items for a tenant
+   */
+  findActiveByTenantId(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<MenuItem[]>;
+
+  /**
    * Count active items for quota enforcement
    */
   countByTenantId(tenantId: string, client?: PoolClient): Promise<number>;
@@ -147,6 +155,15 @@ export interface IModifierRepository {
   ): Promise<ModifierOption[]>;
 
   /**
+   * Count active options in a modifier group (for quota enforcement)
+   */
+  countOptionsByGroupId(
+    groupId: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<number>;
+
+  /**
    * Find all modifier groups for a tenant
    */
   findGroupsByTenantId(
@@ -155,9 +172,18 @@ export interface IModifierRepository {
   ): Promise<ModifierGroup[]>;
 
   /**
-   * Delete a modifier group (should cascade delete options)
+   * Hard delete a modifier group (should cascade delete options)
    */
   deleteGroup(id: string, tenantId: string, client?: PoolClient): Promise<void>;
+
+  /**
+   * Soft delete a modifier group (mark as inactive)
+   */
+  softDeleteGroup(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<void>;
 
   /**
    * Delete a modifier option
@@ -211,6 +237,24 @@ export interface IMenuItemModifierRepository {
     tenantId: string,
     client?: PoolClient
   ): Promise<boolean>;
+
+  /**
+   * Check if a modifier group is attached to any menu items
+   */
+  hasAnyForGroup(
+    modifierGroupId: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<boolean>;
+
+  /**
+   * Count total modifier options for a menu item (across all attached groups)
+   */
+  countTotalOptionsForMenuItem(
+    menuItemId: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<number>;
 }
 
 export interface IBranchMenuRepository {
@@ -222,6 +266,7 @@ export interface IBranchMenuRepository {
     branchId: string,
     tenantId: string,
     isAvailable: boolean,
+    userId: string,
     client?: PoolClient
   ): Promise<void>;
 
@@ -233,6 +278,7 @@ export interface IBranchMenuRepository {
     branchId: string,
     tenantId: string,
     priceUsd: number,
+    userId: string,
     client?: PoolClient
   ): Promise<void>;
 

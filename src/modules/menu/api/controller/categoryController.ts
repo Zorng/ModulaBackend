@@ -14,6 +14,7 @@ export class CategoryController {
         tenantId,
         userId: employeeId,
         name,
+        description,
         displayOrder,
       });
 
@@ -45,14 +46,14 @@ export class CategoryController {
         isActive?: boolean;
       };
 
-      const {listCategoriesUseCase} = CategoryFactory.build();
+      const { listCategoriesUseCase } = CategoryFactory.build();
 
       const result = await listCategoriesUseCase.execute({
         tenantId,
         isActive: isActive ?? true,
       });
 
-      if(!result.ok) {
+      if (!result.ok) {
         return res.status(400).json({
           error: "Bad Request",
           message: result.error,
@@ -73,8 +74,41 @@ export class CategoryController {
         })),
         total: categories.length,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
 
+  static async get(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { tenantId } = req.user!;
+      const { categoryId } = req.params;
 
+      const { getCategoryUseCase } = CategoryFactory.build();
+
+      const result = await getCategoryUseCase.execute({
+        tenantId,
+        categoryId,
+      });
+
+      if (!result.ok) {
+        return res.status(404).json({
+          error: "Not Found",
+          message: result.error,
+        });
+      }
+
+      const category = result.value;
+
+      return res.status(200).json({
+        id: category.id,
+        name: category.name,
+        description: category.description,
+        displayOrder: category.displayOrder,
+        isActive: category.isActive,
+        createdAt: category.createdAt,
+        updatedAt: category.updatedAt,
+      });
     } catch (error) {
       next(error);
     }
@@ -82,11 +116,11 @@ export class CategoryController {
 
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const {tenantId, employeeId} = req.user!;
-      const {categoryId} = req.params;
+      const { tenantId, employeeId } = req.user!;
+      const { categoryId } = req.params;
       const input = req.body as UpdateCategoryInput;
 
-      const {updateCategoryUseCase} = CategoryFactory.build();
+      const { updateCategoryUseCase } = CategoryFactory.build();
 
       const result = await updateCategoryUseCase.execute({
         tenantId,
@@ -113,36 +147,34 @@ export class CategoryController {
         isActive: category.isActive,
         updatedAt: category.updatedAt,
       });
-
-    } catch(error) {
+    } catch (error) {
       next(error);
     }
   }
 
   static async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const {tenantId, employeeId} = req.user!;
-      const {categoryId} = req.params;
+      const { tenantId, employeeId } = req.user!;
+      const { categoryId } = req.params;
 
-      const {deleteCategoryUseCase} = CategoryFactory.build();
+      const { deleteCategoryUseCase } = CategoryFactory.build();
 
       const result = await deleteCategoryUseCase.execute({
         tenantId,
         userId: employeeId,
-        categoryId
-      })
-        if (!result.ok) {
-          return res.status(400).json({
-            error: "Bad Request",
-            message: result.error,
-          });
-        }
-        return res.status(200).json({
-          message: "Category deleted successfully",
-        });       
-    } catch(error) {
+        categoryId,
+      });
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
+      return res.status(200).json({
+        message: "Category deleted successfully",
+      });
+    } catch (error) {
       next(error);
     }
-   
   }
 }

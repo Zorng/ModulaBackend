@@ -128,6 +128,25 @@ export class ModifierRepository implements IModifierRepository {
     return result.rows.map((row) => this.mapRowToOption(row));
   }
 
+  async countOptionsByGroupId(
+    groupId: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<number> {
+    const queryClient = client || this.pool;
+    const sql = `
+            SELECT COUNT(*) as count
+            FROM menu_modifier_options mo
+            JOIN menu_modifier_groups mg ON mo.modifier_group_id = mg.id
+            WHERE mo.modifier_group_id = $1
+                AND mg.tenant_id = $2
+                AND mo.is_active = true
+        `;
+
+    const result = await queryClient.query(sql, [groupId, tenantId]);
+    return parseInt(result.rows[0].count, 10);
+  }
+
   async findGroupsByTenantId(
     tenantId: string,
     client?: PoolClient
@@ -158,6 +177,36 @@ export class ModifierRepository implements IModifierRepository {
     await queryClient.query(sql, [id, tenantId]);
   }
 
+  async softDeleteGroup(
+    id: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<void> {
+    const queryClient = client || this.pool;
+
+    // Mark group as inactive (requires is_active column on table)
+    const sqlGroup = `
+            UPDATE menu_modifier_groups
+            SET 
+                is_active = false,
+                updated_at = NOW()
+            WHERE id = $1 AND tenant_id = $2
+        `;
+
+    await queryClient.query(sqlGroup, [id, tenantId]);
+
+    // Optionally also soft-delete all options in the group
+    const sqlOptions = `
+            UPDATE menu_modifier_options
+            SET 
+                is_active = false,
+                updated_at = NOW()
+            WHERE modifier_group_id = $1
+        `;
+
+    await queryClient.query(sqlOptions, [id]);
+  }
+
   async deleteOption(
     id: string,
     tenantId: string,
@@ -184,6 +233,7 @@ export class ModifierRepository implements IModifierRepository {
       tenantId: row.tenant_id,
       name: row.name,
       selectionType: row.selection_type,
+      isActive: row.is_active,
       createdBy: row.created_by,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),

@@ -51,6 +51,51 @@ menuItemRouter.get(
 /**
  * @openapi
  * /v1/menu/items:
+ *   get:
+ *     summary: List all active menu items for the tenant
+ *     description: |
+ *       Retrieves all active menu items for the authenticated tenant.
+ *
+ *       **Note:** Only returns items where `isActive = true`.
+ *     tags:
+ *       - MenuItems
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of active menu items
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/MenuItem'
+ *                 total:
+ *                   type: integer
+ *                   description: Total number of active menu items
+ *             example:
+ *               items:
+ *                 - id: "550e8400-e29b-41d4-a716-446655440000"
+ *                   categoryId: "550e8400-e29b-41d4-a716-446655440001"
+ *                   name: "Espresso"
+ *                   description: "Strong coffee"
+ *                   priceUsd: 3.50
+ *                   imageUrl: "https://example.com/image.jpg"
+ *                   isActive: true
+ *                   createdAt: "2025-01-15T10:30:00Z"
+ *                   updatedAt: "2025-01-15T10:30:00Z"
+ *               total: 1
+ *       401:
+ *         description: Unauthorized
+ */
+menuItemRouter.get("/v1/menu/items", authenticate, MenuItemController.list);
+
+/**
+ * @openapi
+ * /v1/menu/items:
  *   post:
  *     summary: Create a new menu item
  *     tags:
@@ -65,7 +110,6 @@ menuItemRouter.get(
  *             type: object
  *             required:
  *               - categoryId
- *               - branchId
  *               - name
  *               - priceUsd
  *             properties:
@@ -73,10 +117,6 @@ menuItemRouter.get(
  *                 type: string
  *                 format: uuid
  *                 description: Category ID
- *               branchId:
- *                 type: string
- *                 format: uuid
- *                 description: Branch ID
  *               name:
  *                 type: string
  *                 description: Menu item name
@@ -167,9 +207,27 @@ menuItemRouter.get(
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
- *             $ref: '#/components/schemas/UpdateMenuItemInput'
+ *             type: object
+ *             properties:
+ *               categoryId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Category ID
+ *               name:
+ *                 type: string
+ *                 description: Menu item name
+ *               description:
+ *                 type: string
+ *                 description: Menu item description
+ *               priceUsd:
+ *                 type: number
+ *                 description: Price in USD
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Image file (.jpg, .jpeg, .png, .webp)
  *     responses:
  *       200:
  *         description: Menu item updated
@@ -183,8 +241,15 @@ menuItemRouter.get(
 menuItemRouter.patch(
   "/v1/menu/items/:menuItemId",
   authenticate,
+  uploadOptionalSingleImage,
+  (req, res, next) => {
+    // Coerce priceUsd to number if present
+    if (req.body.priceUsd !== undefined) {
+      req.body.priceUsd = Number(req.body.priceUsd);
+    }
+    next();
+  },
   validateParams(menuItemIdParamSchema),
-  validateBody(updateMenuItemSchema),
   MenuItemController.update
 );
 

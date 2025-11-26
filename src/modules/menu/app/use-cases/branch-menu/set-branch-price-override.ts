@@ -57,6 +57,7 @@ export class SetBranchPriceOverrideUseCase {
           branchId,
           tenantId,
           priceUsd,
+          userId,
           client
         );
 

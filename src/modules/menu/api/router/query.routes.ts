@@ -15,6 +15,8 @@ const queryRouter = Router();
  *     summary: Get menu snapshot for a branch
  *     tags:
  *       - Query
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: query
  *         name: branchId

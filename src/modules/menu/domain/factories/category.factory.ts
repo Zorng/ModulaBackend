@@ -11,10 +11,11 @@ import type {
   IPolicyPort,
   IEventBus,
   ITransactionManager,
-  IMenuItemRepository
+  IMenuItemRepository,
 } from "../../app/ports.js";
 import {
   CreateCategoryUseCase,
+  GetCategoryUseCase,
   ListCategoriesUseCase,
   UpdateCategoryUseCase,
   DeleteCategoryUseCase,
@@ -39,6 +40,7 @@ export class CategoryFactory {
         eventBus,
         txManager
       ),
+      getCategoryUseCase: new GetCategoryUseCase(categoryRepo),
       listCategoriesUseCase: new ListCategoriesUseCase(categoryRepo),
       updateCategoryUseCase: new UpdateCategoryUseCase(
         categoryRepo,

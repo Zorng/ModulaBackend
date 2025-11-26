@@ -20,6 +20,8 @@ const branchMenuRouter = Router();
  *     summary: Set branch-specific availability for a menu item
  *     tags:
  *       - BranchMenu
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: menuItemId
@@ -58,6 +60,8 @@ branchMenuRouter.put(
  *     summary: Set branch-specific price override for a menu item
  *     tags:
  *       - BranchMenu
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: menuItemId

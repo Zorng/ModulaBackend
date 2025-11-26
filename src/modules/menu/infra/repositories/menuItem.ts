@@ -131,6 +131,34 @@ export class MenuItemRepository implements IMenuItemRepository {
     return result.rows.map((row) => this.mapRowToEntity(row));
   }
 
+  async findActiveByTenantId(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<MenuItem[]> {
+    const queryClient = client || this.pool;
+    const sql = `
+        SELECT 
+          id,
+          tenant_id,
+          category_id,
+          name,
+          description,
+          price_usd,
+          image_url,
+          is_active,
+          created_by,
+          created_at,
+          updated_at
+        FROM menu_items
+        WHERE tenant_id = $1 AND is_active = true
+        ORDER BY name ASC
+      `;
+
+    const result = await queryClient.query(sql, [tenantId]);
+
+    return result.rows.map((row) => this.mapRowToEntity(row));
+  }
+
   async countByTenantId(
     tenantId: string,
     client?: PoolClient

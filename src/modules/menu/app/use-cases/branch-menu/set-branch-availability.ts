@@ -7,6 +7,7 @@ import type {
   IEventBus,
   ITransactionManager,
 } from "../../../app/ports.js";
+import { pool } from "../../../../../platform/db/index.js";
 
 export class SetBranchAvailabilityUseCase {
   constructor(
@@ -49,12 +50,22 @@ export class SetBranchAvailabilityUseCase {
           throw new Error("Menu item not found");
         }
 
+        // Check if branch exists
+        const branchCheck = await client.query(
+          "SELECT id FROM branch WHERE id = $1 AND tenant_id = $2",
+          [branchId, tenantId]
+        );
+        if (branchCheck.rows.length === 0) {
+          throw new Error("Branch not found");
+        }
+
         // 3 - Set availability override
         await this.branchMenuRepo.setAvailability(
           menuItemId,
           branchId,
           tenantId,
           isAvailable,
+          userId,
           client
         );
 
