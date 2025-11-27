@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from "express";
+import type { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
 import { CategoryFactory } from "../../domain/factories/category.factory.js";
 import { UpdateCategoryInput } from "../schemas/schemas.js";
 
 export class CategoryController {
-  static async create(req: Request, res: Response, next: NextFunction) {
+  static async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { name, description, displayOrder } = req.body;
@@ -39,7 +40,7 @@ export class CategoryController {
     }
   }
 
-  static async list(req: Request, res: Response, next: NextFunction) {
+  static async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId } = req.user!;
       const { isActive } = (req as any).validatedQuery as {
@@ -79,7 +80,7 @@ export class CategoryController {
     }
   }
 
-  static async get(req: Request, res: Response, next: NextFunction) {
+  static async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId } = req.user!;
       const { categoryId } = req.params;
@@ -114,7 +115,7 @@ export class CategoryController {
     }
   }
 
-  static async update(req: Request, res: Response, next: NextFunction) {
+  static async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { categoryId } = req.params;
@@ -152,7 +153,7 @@ export class CategoryController {
     }
   }
 
-  static async delete(req: Request, res: Response, next: NextFunction) {
+  static async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { categoryId } = req.params;

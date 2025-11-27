@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import type { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
 import { MenuItemFactory } from "../../domain/factories/menuitem.factory.js";
 import {
   CreateMenuItemInput,
@@ -6,7 +7,11 @@ import {
 } from "../schemas/schemas.js";
 
 export class MenuItemController {
-  static async listByBranch(req: Request, res: Response, next: NextFunction) {
+  static async listByBranch(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const { tenantId } = req.user!;
       const { branchId } = req.query;
@@ -51,7 +56,7 @@ export class MenuItemController {
     }
   }
 
-  static async list(req: Request, res: Response, next: NextFunction) {
+  static async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId } = req.user!;
 
@@ -87,7 +92,7 @@ export class MenuItemController {
     }
   }
 
-  static async create(req: Request, res: Response, next: NextFunction) {
+  static async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId, employeeId } = req.user!;
       const input = req.body as CreateMenuItemInput;
@@ -134,7 +139,7 @@ export class MenuItemController {
     }
   }
 
-  static async get(req: Request, res: Response, next: NextFunction) {
+  static async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId } = req.user!;
       const { menuItemId } = req.params;
@@ -175,7 +180,7 @@ export class MenuItemController {
     }
   }
 
-  static async update(req: Request, res: Response, next: NextFunction) {
+  static async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { menuItemId } = req.params;
@@ -225,7 +230,7 @@ export class MenuItemController {
     }
   }
 
-  static async delete(req: Request, res: Response, next: NextFunction) {
+  static async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { menuItemId } = req.params;

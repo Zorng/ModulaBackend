@@ -1,10 +1,10 @@
 import type { Request, Response, NextFunction } from "express";
+import type { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
 import { StockIntegrationFactory } from "../../domain/factories/index.js";
 import type { LinkStockInput } from "../schemas/schemas.js";
 
 export class StockIntegrationController {
-
-  static async linkStock(req: Request, res: Response, next: NextFunction) {
+  static async linkStock(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { menuItemId } = req.params;
@@ -45,7 +45,11 @@ export class StockIntegrationController {
     }
   }
 
-  static async unlinkStock(req: Request, res: Response, next: NextFunction) {
+  static async unlinkStock(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { mappingId } = req.params;
@@ -57,7 +61,7 @@ export class StockIntegrationController {
       // Execute use case
       const result = await unlinkMenuItemFromStockUseCase.execute({
         tenantId,
-        userId:employeeId,
+        userId: employeeId,
         mappingId,
       });
 

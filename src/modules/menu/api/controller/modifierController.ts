@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import type { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
 import { ModifierFactory } from "../../domain/factories/modifier.factory.js";
 import type {
   CreateModifierGroupInput,
@@ -9,7 +10,11 @@ import type {
 } from "../schemas/schemas.js";
 
 export class ModifierController {
-  static async createGroup(req: Request, res: Response, next: NextFunction) {
+  static async createGroup(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const { tenantId, employeeId } = req.user!;
       const input = req.body as CreateModifierGroupInput;
@@ -46,7 +51,7 @@ export class ModifierController {
     }
   }
 
-  static async addOption(req: Request, res: Response, next: NextFunction) {
+  static async addOption(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId, employeeId } = req.user!;
       const input = req.body as AddModifierOptionInput;
@@ -84,7 +89,11 @@ export class ModifierController {
     }
   }
 
-  static async attatchToItem(req: Request, res: Response, next: NextFunction) {
+  static async attatchToItem(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { menuItemId } = req.params;
@@ -118,7 +127,11 @@ export class ModifierController {
     }
   }
 
-  static async detachFromItem(req: Request, res: Response, next: NextFunction) {
+  static async detachFromItem(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { menuItemId, modifierGroupId } = req.params;
@@ -149,7 +162,7 @@ export class ModifierController {
     }
   }
 
-  static async listGroups(req: Request, res: Response, next: NextFunction) {
+  static async listGroups(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId } = req.user!;
       const { listModifierGroupUseCase } = ModifierFactory.build();
@@ -169,7 +182,7 @@ export class ModifierController {
     }
   }
 
-  static async getGroup(req: Request, res: Response, next: NextFunction) {
+  static async getGroup(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId } = req.user!;
       const { modifierGroupId } = req.params;
@@ -202,7 +215,11 @@ export class ModifierController {
     }
   }
 
-  static async updateGroup(req: Request, res: Response, next: NextFunction) {
+  static async updateGroup(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { modifierGroupId } = req.params;
@@ -240,7 +257,7 @@ export class ModifierController {
   }
 
   static async softDeleteGroup(
-    req: Request,
+    req: AuthRequest,
     res: Response,
     next: NextFunction
   ) {
@@ -273,7 +290,7 @@ export class ModifierController {
   }
 
   static async hardDeleteGroup(
-    req: Request,
+    req: AuthRequest,
     res: Response,
     next: NextFunction
   ) {
@@ -306,7 +323,7 @@ export class ModifierController {
   }
 
   static async listOptionsForGroup(
-    req: Request,
+    req: AuthRequest,
     res: Response,
     next: NextFunction
   ) {
@@ -334,7 +351,7 @@ export class ModifierController {
     }
   }
 
-  static async getOption(req: Request, res: Response, next: NextFunction) {
+  static async getOption(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId } = req.user!;
       const { optionId } = req.params;
@@ -367,7 +384,11 @@ export class ModifierController {
     }
   }
 
-  static async updateOption(req: Request, res: Response, next: NextFunction) {
+  static async updateOption(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { optionId } = req.params;
@@ -407,7 +428,11 @@ export class ModifierController {
     }
   }
 
-  static async deleteOption(req: Request, res: Response, next: NextFunction) {
+  static async deleteOption(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
     try {
       const { tenantId, employeeId } = req.user!;
       const { optionId } = req.params;

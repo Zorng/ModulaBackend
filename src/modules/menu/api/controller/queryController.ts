@@ -1,5 +1,6 @@
 // src/modules/menu/api/controllers/query.controller.ts
 import type { Request, Response, NextFunction } from "express";
+import type { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
 import { QueryFactory } from "../../domain/factories/query.factory.js";
 
 /**
@@ -19,7 +20,7 @@ export class QueryController {
    * - Optimized for caching in IndexedDB on POS terminals
    */
   static async getMenuSnapshot(
-    req: Request,
+    req: AuthRequest,
     res: Response,
     next: NextFunction
   ) {
@@ -59,7 +60,7 @@ export class QueryController {
         .status(200)
         .set({
           "Cache-Control": "private, max-age=300",
-          "X-Menu-Version": new Date().toISOString(), 
+          "X-Menu-Version": new Date().toISOString(),
         })
         .json(snapshot);
     } catch (error) {

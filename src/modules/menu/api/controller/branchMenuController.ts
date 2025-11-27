@@ -1,5 +1,6 @@
 // src/modules/menu/api/controllers/branch-menu.controller.ts
 import type { Request, Response, NextFunction } from "express";
+import type { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
 import { BranchMenuFactory } from "../../domain/factories/index.js";
 import type {
   SetBranchAvailabilityInput,
@@ -8,7 +9,7 @@ import type {
 
 export class BranchMenuController {
   static async setAvailability(
-    req: Request,
+    req: AuthRequest,
     res: Response,
     next: NextFunction
   ) {
@@ -23,7 +24,7 @@ export class BranchMenuController {
       // Execute use case
       const result = await setBranchAvailabilityUseCase.execute({
         tenantId,
-        userId:employeeId,
+        userId: employeeId,
         menuItemId,
         branchId: input.branchId,
         isAvailable: input.isAvailable,
@@ -50,7 +51,7 @@ export class BranchMenuController {
   }
 
   static async setPriceOverride(
-    req: Request,
+    req: AuthRequest,
     res: Response,
     next: NextFunction
   ) {
