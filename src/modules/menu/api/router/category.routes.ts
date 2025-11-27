@@ -5,7 +5,7 @@ import {
   validateParams,
   validateQuery,
 } from "../../../../platform/http/middleware/index.js";
-import { authMiddleware } from "../../../auth/api/auth.router.js";
+import { authMiddleware } from "../../../auth/index.js";
 import { CategoryController } from "../controller/index.js";
 import {
   createCategorySchema,
@@ -78,7 +78,7 @@ const categoryRouter = Router();
  */
 categoryRouter.post(
   "/v1/menu/categories",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateBody(createCategorySchema),
   CategoryController.create
 );
@@ -143,7 +143,7 @@ categoryRouter.post(
  */
 categoryRouter.get(
   "/v1/menu/categories",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateQuery(listCategoriesQuerySchema),
   CategoryController.list
 );
@@ -185,7 +185,7 @@ categoryRouter.get(
  */
 categoryRouter.get(
   "/v1/menu/categories/:categoryId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(categoryIdParamSchema),
   CategoryController.get
 );
@@ -249,7 +249,7 @@ categoryRouter.get(
  */
 categoryRouter.patch(
   "/v1/menu/categories/:categoryId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(categoryIdParamSchema),
   validateBody(updateCategorySchema),
   CategoryController.update
@@ -303,7 +303,7 @@ categoryRouter.patch(
  */
 categoryRouter.delete(
   "/v1/menu/categories/:categoryId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(categoryIdParamSchema),
   CategoryController.delete
 );

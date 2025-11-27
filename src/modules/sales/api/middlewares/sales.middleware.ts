@@ -6,7 +6,7 @@ export function salesMiddleware(req: Request, res: Response, next: NextFunction)
   // For example: check if user has permission to access sales in this branch
   const authReq = req as AuthRequest;
   
-  if (!authReq.user.branchId) {
+  if (!authReq.user || !authReq.user.branchId) {
     return res.status(403).json({
       success: false,
       error: 'User must be assigned to a branch to access sales'

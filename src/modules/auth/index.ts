@@ -7,6 +7,9 @@ import { AuthMiddleware } from './api/middleware/auth.middleware.js';
 import { createAuthRoutes } from './api/routes/auth.routes.js';
 import { config } from '../../platform/config/index.js';
 
+// Shared auth middleware instance (initialized by setupAuthModule)
+export let authMiddleware: AuthMiddleware;
+
 export function setupAuthModule(db: Pool) {
      // Initialize repositories
     const authRepo = new AuthRepository(db);
@@ -27,7 +30,7 @@ export function setupAuthModule(db: Pool) {
 
     // Initialize controllers and middleware
     const authController = new AuthController(authService);
-    const authMiddleware = new AuthMiddleware(tokenService, authRepo);
+    authMiddleware = new AuthMiddleware(tokenService, authRepo);
 
     // Create routes
     const authRoutes = createAuthRoutes(authController, authMiddleware);
@@ -38,3 +41,6 @@ export function setupAuthModule(db: Pool) {
         authService
     };
 }
+
+// Re-export types
+export { AuthMiddleware } from './api/middleware/auth.middleware.js';

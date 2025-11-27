@@ -3,7 +3,7 @@ import {
   validateBody,
   validateParams,
 } from "../../../../platform/http/middleware/index.js";
-import { authMiddleware } from "../../../auth/api/auth.router.js";
+import { authMiddleware } from "../../../auth/index.js";
 
 import { uploadSingleImage } from "../../../../platform/http/middleware/multer.js";
 import { uploadOptionalSingleImage } from "../../../../platform/http/middleware/multer.js";
@@ -44,7 +44,7 @@ const menuItemRouter = Router();
  */
 menuItemRouter.get(
   "/v1/menu/items/by-branch",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   MenuItemController.listByBranch
 );
 
@@ -91,7 +91,7 @@ menuItemRouter.get(
  *       401:
  *         description: Unauthorized
  */
-menuItemRouter.get("/v1/menu/items", authMiddleware.authenticate, MenuItemController.list);
+menuItemRouter.get("/v1/menu/items", (req, res, next) => authMiddleware.authenticate(req, res, next), MenuItemController.list);
 
 /**
  * @openapi
@@ -140,7 +140,7 @@ menuItemRouter.get("/v1/menu/items", authMiddleware.authenticate, MenuItemContro
  */
 menuItemRouter.post(
   "/v1/menu/items",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   uploadOptionalSingleImage,
   (req, res, next) => {
     // Coerce priceUsd to number if present
@@ -183,7 +183,7 @@ menuItemRouter.post(
  */
 menuItemRouter.get(
   "/v1/menu/items/:menuItemId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(menuItemIdParamSchema),
   MenuItemController.get
 );
@@ -240,7 +240,7 @@ menuItemRouter.get(
  */
 menuItemRouter.patch(
   "/v1/menu/items/:menuItemId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   uploadOptionalSingleImage,
   (req, res, next) => {
     // Coerce priceUsd to number if present
@@ -279,7 +279,7 @@ menuItemRouter.patch(
  */
 menuItemRouter.delete(
   "/v1/menu/items/:menuItemId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(menuItemIdParamSchema),
   MenuItemController.delete
 );

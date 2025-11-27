@@ -3,7 +3,7 @@ import {
   validateBody,
   validateParams,
 } from "../../../../platform/http/middleware/index.js";
-import { authMiddleware } from "../../../auth/api/auth.router.js";
+import { authMiddleware } from "../../../auth/index.js";
 import { ModifierController } from "../controller/index.js";
 import {
   createModifierGroupSchema,
@@ -46,7 +46,7 @@ const modifierRouter = Router();
  */
 modifierRouter.post(
   "/v1/menu/modifiers/groups",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateBody(createModifierGroupSchema),
   ModifierController.createGroup
 );
@@ -76,7 +76,7 @@ modifierRouter.post(
  */
 modifierRouter.post(
   "/v1/menu/modifiers/options",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateBody(addModifierOptionSchema),
   ModifierController.addOption
 );
@@ -115,7 +115,7 @@ modifierRouter.post(
  */
 modifierRouter.post(
   "/v1/menu/items/:menuItemId/modifiers",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(menuItemIdParamSchema),
   validateBody(attachModifierSchema),
   ModifierController.attatchToItem
@@ -155,7 +155,7 @@ modifierRouter.post(
  */
 modifierRouter.delete(
   "/v1/menu/items/:menuItemId/modifiers/:modifierGroupId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(menuItemIdAndModifierGroupIdParamSchema),
   ModifierController.detachFromItem
 );
@@ -177,7 +177,7 @@ modifierRouter.delete(
  */
 modifierRouter.get(
   "/v1/menu/modifiers/groups",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   ModifierController.listGroups
 );
 
@@ -209,7 +209,7 @@ modifierRouter.get(
  */
 modifierRouter.get(
   "/v1/menu/modifiers/groups/:modifierGroupId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(modifierGroupIdParamSchema),
   ModifierController.getGroup
 );
@@ -261,7 +261,7 @@ modifierRouter.get(
  */
 modifierRouter.patch(
   "/v1/menu/modifiers/groups/:modifierGroupId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(modifierGroupIdParamSchema),
   validateBody(updateModifierGroupSchema),
   ModifierController.updateGroup
@@ -295,7 +295,7 @@ modifierRouter.patch(
  */
 modifierRouter.delete(
   "/v1/menu/modifiers/groups/:modifierGroupId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(modifierGroupIdParamSchema),
   ModifierController.softDeleteGroup
 );
@@ -328,7 +328,7 @@ modifierRouter.delete(
  */
 modifierRouter.delete(
   "/v1/menu/modifiers/groups/:modifierGroupId/hard",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(modifierGroupIdParamSchema),
   ModifierController.hardDeleteGroup
 );
@@ -361,7 +361,7 @@ modifierRouter.delete(
  */
 modifierRouter.get(
   "/v1/menu/modifiers/groups/:modifierGroupId/options",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(modifierGroupIdParamSchema),
   ModifierController.listOptionsForGroup
 );
@@ -394,7 +394,7 @@ modifierRouter.get(
  */
 modifierRouter.get(
   "/v1/menu/modifiers/options/:optionId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(modifierOptionIdParamSchema),
   ModifierController.getOption
 );
@@ -449,7 +449,7 @@ modifierRouter.get(
  */
 modifierRouter.patch(
   "/v1/menu/modifiers/options/:optionId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(modifierOptionIdParamSchema),
   validateBody(updateModifierOptionSchema),
   ModifierController.updateOption
@@ -483,7 +483,7 @@ modifierRouter.patch(
  */
 modifierRouter.delete(
   "/v1/menu/modifiers/options/:optionId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(modifierOptionIdParamSchema),
   ModifierController.deleteOption
 );

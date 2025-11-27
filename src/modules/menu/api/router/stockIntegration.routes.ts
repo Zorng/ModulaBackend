@@ -3,7 +3,7 @@ import {
   validateBody,
   validateParams,
 } from "../../../../platform/http/middleware/index.js";
-import { authMiddleware } from "../../../auth/api/auth.router.js";
+import { authMiddleware } from "../../../auth/index.js";
 import { StockIntegrationController } from "../controller/index.js";
 import {
   linkStockSchema,
@@ -45,7 +45,7 @@ const stockIntegrationRouter = Router();
  */
 stockIntegrationRouter.post(
   "/v1/menu/items/:menuItemId/stock",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(menuItemIdParamSchema),
   validateBody(linkStockSchema),
   StockIntegrationController.linkStock
@@ -75,7 +75,7 @@ stockIntegrationRouter.post(
  */
 stockIntegrationRouter.delete(
   "/v1/menu/stock/:mappingId",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(stockMappingIdParamSchema),
   StockIntegrationController.unlinkStock
 );

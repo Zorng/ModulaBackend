@@ -3,7 +3,7 @@ import {
   validateBody,
   validateParams,
 } from "../../../../platform/http/middleware/index.js";
-import { authMiddleware } from "../../../auth/api/auth.router.js";
+import { authMiddleware } from "../../../auth/index.js";
 import { BranchMenuController } from "../controller/index.js";
 import {
   setBranchAvailabilitySchema,
@@ -47,7 +47,7 @@ const branchMenuRouter = Router();
  */
 branchMenuRouter.put(
   "/v1/menu/items/:menuItemId/branches/availability",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(menuItemIdParamSchema),
   validateBody(setBranchAvailabilitySchema),
   BranchMenuController.setAvailability
@@ -87,7 +87,7 @@ branchMenuRouter.put(
  */
 branchMenuRouter.put(
   "/v1/menu/items/:menuItemId/branches/price",
-  authMiddleware.authenticate,
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(menuItemIdParamSchema),
   validateBody(setBranchPriceSchema),
   BranchMenuController.setPriceOverride
