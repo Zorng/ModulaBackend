@@ -106,6 +106,187 @@ export type StockAdjustedV1 = {
   adjustedAt: string;
 };
 
+// Menu events
+export type MenuCategoryCreatedV1 = {
+  type: "menu.category_created";
+  v: 1;
+  tenantId: string;
+  categoryId: string;
+  name: string;
+  displayOrder: number;
+  createdBy: string;
+  createdAt: string;
+};
+
+export type MenuItemCreatedV1 = {
+  type: "menu.item_created";
+  v: 1;
+  tenantId: string;
+  categoryId: string;
+  branchId?: string;
+  menuItemId: string;
+  name: string;
+  priceUsd: number;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+};
+
+export type MenuItemUpdatedV1 = {
+  type: "menu.item_updated";
+  v: 1;
+  tenantId: string;
+  branchId?: string;
+  menuItemId: string;
+  changes: {
+    name?: string;
+    priceUsd?: number;
+    isActive?: boolean;
+    categoryId?: string;
+    branchId?: string;
+  };
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type MenuModifierAttachedV1 = {
+  type: "menu.modifier_attached";
+  v: 1;
+  tenantId: string;
+  menuItemId: string;
+  modifierId: string;
+  attachedBy: string;
+  attachedAt: string;
+};
+
+export type MenuBranchAvailabilityChangedV1 = {
+  type: "menu.branch_availability_changed";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  menuItemId: string;
+  isAvailable: boolean;
+  customPriceUsd?: number;
+  changedBy: string;
+  changedAt: string;
+};
+
+export type MenuSnapshotUpdatedV1 = {
+  type: "menu.snapshot_updated";
+  v: 1;
+  tenantId: string;
+  branchId?: string; // null = all branches
+  version: string; // timestamp or sequence
+  updatedAt: string;
+};
+
+export type CategoryUpdatedV1 = {
+  type: "menu.category_updated";
+  v: 1;
+  tenantId: string;
+  categoryId: string;
+  changes: {
+    name?: string;
+    displayOrder?: number;
+  };
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type MenuItemDeletedV1 = {
+  type: "menu.item_deleted";
+  v: 1;
+  tenantId: string;
+  branchId?: string;
+  menuItemId: string;
+  categoryId: string;
+  name: string;
+  deletedBy: string;
+  deletedAt: string;
+};
+
+export type ModifierGroupCreatedV1 = {
+  type: "menu.modifier_group_created";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  name: string;
+  selectionType: "SINGLE" | "MULTI";
+  createdBy: string;
+  createdAt: string;
+};
+
+export type ModifierOptionAddedV1 = {
+  type: "menu.modifier_option_added";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  modifierOptionId: string;
+  label: string;
+  priceAdjustmentUsd: number;
+  createdAt: string;
+};
+
+export type ModifierGroupUpdatedV1 = {
+  type: "menu.modifier_group_updated";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  changes: {
+    name?: string;
+    selectionType?: "SINGLE" | "MULTI";
+  };
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type ModifierOptionUpdatedV1 = {
+  type: "menu.modifier_option_updated";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  modifierOptionId: string;
+  changes: {
+    label?: string;
+    priceAdjustmentUsd?: number;
+    isDefault?: boolean;
+    isActive?: boolean;
+  };
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type MenuCategoryDeletedV1 = {
+  type: "menu.category_deleted";
+  v: 1;
+  tenantId: string;
+  categoryId: string;
+  name: string;
+  deletedBy: string;
+  deletedAt: string;
+};
+
+export type ModifierGroupDeletedV1 = {
+  type: "menu.modifier_group_deleted";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  name: string;
+  deletedBy: string;
+  deletedAt: string;
+};
+
+export type ModifierOptionDeletedV1 = {
+  type: "menu.modifier_option_deleted";
+  v: 1;
+  tenantId: string;
+  modifierGroupId: string;
+  modifierOptionId: string;
+  label: string;
+  deletedBy: string;
+  deletedAt: string;
+};
+
 // Union type of all events
 export type DomainEvent =
   | SaleDraftCreatedV1
@@ -115,4 +296,19 @@ export type DomainEvent =
   | SaleReopenedV1
   | CashSessionOpenedV1
   | CashSessionClosedV1
-  | StockAdjustedV1;
+  | StockAdjustedV1
+  | MenuCategoryCreatedV1
+  | MenuItemCreatedV1
+  | MenuItemUpdatedV1
+  | MenuModifierAttachedV1
+  | MenuBranchAvailabilityChangedV1
+  | MenuSnapshotUpdatedV1
+  | CategoryUpdatedV1
+  | MenuItemDeletedV1
+  | ModifierGroupCreatedV1
+  | ModifierOptionAddedV1
+  | MenuCategoryDeletedV1
+  | ModifierGroupUpdatedV1
+  | ModifierOptionUpdatedV1
+  | ModifierGroupDeletedV1
+  | ModifierOptionDeletedV1;

@@ -7,20 +7,22 @@ import { TokenService } from '../app/token.service.js';
 import { pool } from '#db';
 import { config } from '../../../platform/config/index.js';
 
+// Initialize dependencies once
+const authRepo = new AuthRepository(pool);
+const tokenService = new TokenService(
+    config.jwt.secret,
+    config.jwt.refreshSecret,
+    config.jwt.accessTokenExpiry,
+    config.jwt.refreshTokenExpiry
+);
+const authService = new AuthService(authRepo, tokenService, config.auth.defaultInviteExpiryHours);
+const authController = new AuthController(authService);
+
+// Export authMiddleware so other modules can use it
+export const authMiddleware = new AuthMiddleware(tokenService, authRepo);
+
 export function createAuthRouter(): express.Router {
     const router = express.Router();
-    
-    // Initialize dependencies
-    const authRepo = new AuthRepository(pool);
-    const tokenService = new TokenService(
-        config.jwt.secret,
-        config.jwt.refreshSecret,
-        config.jwt.accessTokenExpiry,
-        config.jwt.refreshTokenExpiry
-    );
-    const authService = new AuthService(authRepo, tokenService, config.auth.defaultInviteExpiryHours);
-    const authController = new AuthController(authService);
-    const authMiddleware = new AuthMiddleware(tokenService, authRepo);
 
     // Public routes
     

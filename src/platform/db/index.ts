@@ -1,8 +1,8 @@
 import { Pool } from 'pg';
-import '../config/index.js';
+import { config } from '../config/index.js';
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  connectionString: config.database.url
 });
 
 export async function ping() {
