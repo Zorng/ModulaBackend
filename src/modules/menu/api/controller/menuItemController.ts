@@ -180,6 +180,41 @@ export class MenuItemController {
     }
   }
 
+  static async getWithModifiers(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { tenantId } = req.user!;
+      const { menuItemId } = req.params;
+
+      // Get use case from factory
+      const { getMenuItemWithModifiersUseCase } = MenuItemFactory.build();
+
+      // Execute use case
+      const result = await getMenuItemWithModifiersUseCase.execute({
+        tenantId,
+        menuItemId,
+      });
+
+      // Handle result
+      if (!result.ok) {
+        return res.status(404).json({
+          error: "Not Found",
+          message: result.error,
+        });
+      }
+
+      const itemWithModifiers = result.value;
+
+      // Return success response
+      return res.status(200).json(itemWithModifiers);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { tenantId, employeeId } = req.user!;

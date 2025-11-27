@@ -91,7 +91,11 @@ menuItemRouter.get(
  *       401:
  *         description: Unauthorized
  */
-menuItemRouter.get("/v1/menu/items", (req, res, next) => authMiddleware.authenticate(req, res, next), MenuItemController.list);
+menuItemRouter.get(
+  "/v1/menu/items",
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  MenuItemController.list
+);
 
 /**
  * @openapi
@@ -186,6 +190,107 @@ menuItemRouter.get(
   (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateParams(menuItemIdParamSchema),
   MenuItemController.get
+);
+
+/**
+ * @openapi
+ * /v1/menu/items/{menuItemId}/with-modifiers:
+ *   get:
+ *     summary: Get a menu item with all its modifier groups and options
+ *     description: |
+ *       Retrieves a single menu item along with all attached modifier groups
+ *       and their options. Useful for POS systems that need complete modifier
+ *       information for an item.
+ *     tags:
+ *       - MenuItems
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: menuItemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Menu item ID
+ *     responses:
+ *       200:
+ *         description: Menu item with modifiers
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 categoryId:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                 description:
+ *                   type: string
+ *                   nullable: true
+ *                 priceUsd:
+ *                   type: number
+ *                 imageUrl:
+ *                   type: string
+ *                   nullable: true
+ *                 isActive:
+ *                   type: boolean
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *                 updatedAt:
+ *                   type: string
+ *                   format: date-time
+ *                 modifiers:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       group:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           selectionType:
+ *                             type: string
+ *                             enum: [single, multiple]
+ *                           createdAt:
+ *                             type: string
+ *                             format: date-time
+ *                           updatedAt:
+ *                             type: string
+ *                             format: date-time
+ *                       isRequired:
+ *                         type: boolean
+ *                       options:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: string
+ *                             label:
+ *                               type: string
+ *                             priceAdjustmentUsd:
+ *                               type: number
+ *                             isDefault:
+ *                               type: boolean
+ *                             createdAt:
+ *                               type: string
+ *                               format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Menu item not found
+ */
+menuItemRouter.get(
+  "/v1/menu/items/:menuItemId/with-modifiers",
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  validateParams(menuItemIdParamSchema),
+  MenuItemController.getWithModifiers
 );
 
 /**
