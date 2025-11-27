@@ -1,11 +1,15 @@
-// TODO: Implement sales routes
-// Example: POST /v1/sales, POST /v1/sales/:id/finalize, GET /v1/sales/:id
+import { SalesController } from './controllers/sales.controller.js';
+import { createSalesRoutes } from './routes/sales.routes.js';
 
-import { Router } from "express";
+/**
+ * Sales Module Router
+ * 
+ * Main router export for the sales module that wires up the controller
+ * with all the route definitions and middleware.
+ */
 
-export const salesRouter = Router();
+export function createSalesRouter(controller: SalesController) {
+  return createSalesRoutes(controller);
+}
 
-// salesRouter.post('/v1/sales', ...); // Create order/cart
-// salesRouter.post('/v1/sales/:id/lines', ...); // Add line items
-// salesRouter.post('/v1/sales/:id/finalize', ...); // Finalize sale
-// salesRouter.get('/v1/sales/:id', ...); // Get sale details
+export type SalesRouterFactory = (controller: SalesController) => ReturnType<typeof createSalesRoutes>;

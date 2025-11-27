@@ -30,6 +30,38 @@ app.use('/uploads', express.static('public/uploads'));
 // Setup Swagger documentation
 setupSwagger(app);
 
+// ==================== Initialize Core Infrastructure ====================
+
+// Initialize event bus and transaction manager
+const eventBus = new EventBus(pool);
+const transactionManager = new TransactionManager(pool);
+
+// Initialize outbox pattern for reliable event delivery
+const outboxService = new OutboxService(pool);
+const outboxDispatcher = new OutboxDispatcher(outboxService, eventBus, 1000); // Poll every 1 second
+
+// Start outbox dispatcher
+outboxDispatcher.start();
+log.info('✓ Outbox dispatcher started - reliable event delivery enabled');
+
+// ==================== Bootstrap Modules ====================
+
+// Setup Auth Module
+const authModule = setupAuthModule(pool);
+const { authRoutes, authMiddleware: authMiddlewareInstance } = authModule;
+
+// Register the actual auth middleware to replace the stub
+// Wrap to ensure proper signature compatibility
+setAuthMiddleware((req, res, next) => {
+  authMiddlewareInstance.authenticate(req as any, res, next);
+});
+
+// Setup Sales Module
+const salesModule = bootstrapSalesModule(pool, eventBus, transactionManager);
+const { router: salesRouter } = salesModule;
+
+// ==================== Register Routes ====================
+
 app.get('/health', async (_req, res) => {
   const now = await ping();
   res.json({ status: 'ok', time: now });
