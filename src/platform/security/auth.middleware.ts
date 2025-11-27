@@ -2,20 +2,21 @@ import { Request, Response, NextFunction } from 'express';
 
 export interface AuthRequest extends Request {
   user: {
-    id: string;
     employeeId: string;
     tenantId: string;
-    branchId: string;
+    branchId?: string;
     role: string;
   };
 }
 
 // Default stub middleware (should be replaced by actual auth middleware during bootstrap)
 export let authMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  // This is a stub - should be replaced with actual auth middleware
-  // For now, just continue without authentication
-  console.warn('Auth middleware not initialized - using stub');
-  next();
+  // This is a stub - will be replaced by actual auth middleware when auth module initializes
+  // For functional testing, use the auth endpoints to get a Bearer token first
+  return res.status(401).json({ 
+    error: 'Authentication required',
+    message: 'Please login via /v1/auth/login to get a token, then include it in the Authorization header'
+  });
 };
 
 export function setAuthMiddleware(middleware: (req: Request, res: Response, next: NextFunction) => void | Promise<void>) {

@@ -4,24 +4,25 @@ import { SalesController } from './api/controllers/sales.controller.js';
 import { SalesService } from './app/services/sales.service.js';
 import { PgSalesRepository } from './infra/repository/sales.repository.js';
 import { PolicyAdapter } from './infra/adapters/policy.adapter.js';
-import { EventBus, TransactionManager } from '../../platform/events/index.js';
+import { MenuAdapter } from './infra/adapters/menu.adapter.js';
+import { TransactionManager } from '../../platform/events/index.js';
 
 export function bootstrapSalesModule(
   pool: Pool,
-  eventBus: EventBus,
   transactionManager: TransactionManager
 ) {
   // Initialize repository
   const salesRepo = new PgSalesRepository(pool);
   
-  // Initialize policy adapter
+  // Initialize adapters
   const policyAdapter = new PolicyAdapter(pool);
+  const menuAdapter = new MenuAdapter(pool);
   
   // Initialize service
   const salesService = new SalesService(
     salesRepo,
     policyAdapter,
-    eventBus,
+    menuAdapter,
     transactionManager
   );
   

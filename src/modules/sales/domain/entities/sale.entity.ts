@@ -236,8 +236,30 @@ export function setPaymentMethod(sale: Sale, method: PaymentMethod, cashReceived
   sale.paymentMethod = method;
   
   if (method === 'cash' && cashReceived) {
-    sale.cashReceivedKhr = cashReceived.khr;
-    sale.cashReceivedUsd = cashReceived.usd;
+    // Auto-calculate the other currency based on what's provided and the tender currency
+    if (sale.tenderCurrency === 'KHR') {
+      // Customer paying in KHR
+      if (cashReceived.khr !== undefined) {
+        sale.cashReceivedKhr = cashReceived.khr;
+        // Calculate USD equivalent
+        sale.cashReceivedUsd = Number((cashReceived.khr / sale.fxRateUsed).toFixed(2));
+      } else if (cashReceived.usd !== undefined) {
+        // Allow USD input but convert to KHR as primary
+        sale.cashReceivedUsd = cashReceived.usd;
+        sale.cashReceivedKhr = Math.round(cashReceived.usd * sale.fxRateUsed);
+      }
+    } else {
+      // Customer paying in USD
+      if (cashReceived.usd !== undefined) {
+        sale.cashReceivedUsd = cashReceived.usd;
+        // Calculate KHR equivalent
+        sale.cashReceivedKhr = Math.round(cashReceived.usd * sale.fxRateUsed);
+      } else if (cashReceived.khr !== undefined) {
+        // Allow KHR input but convert to USD as primary
+        sale.cashReceivedKhr = cashReceived.khr;
+        sale.cashReceivedUsd = Number((cashReceived.khr / sale.fxRateUsed).toFixed(2));
+      }
+    }
     calculateChange(sale);
   }
   
@@ -299,8 +321,9 @@ export function reopenSale(originalSale: Sale, actorId: string, reason: string):
   }
 
   // Create a new draft sale with reference to original
+  // Generate a new UUID for the reopened sale (can't reuse original clientUuid)
   const reopenedSale = createDraftSale({
-    clientUuid: originalSale.clientUuid + '-reopened-' + Date.now(),
+    clientUuid: crypto.randomUUID(),
     tenantId: originalSale.tenantId,
     branchId: originalSale.branchId,
     employeeId: actorId,

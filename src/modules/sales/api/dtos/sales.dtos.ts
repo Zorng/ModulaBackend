@@ -28,8 +28,6 @@ export const createSaleSchema = z.object({
 export const addItemSchema = z.object({
   saleId: uuidSchema,
   menuItemId: uuidSchema,
-  menuItemName: z.string().min(1).max(255),
-  unitPriceUsd: positiveNumber,
   quantity: nonNegativeInt.min(1),
   modifiers: z.array(z.any()).optional().default([])
 });
@@ -45,19 +43,40 @@ export const preCheckoutSchema = z.object({
   tenderCurrency: TenderCurrency,
   paymentMethod: PaymentMethod,
   cashReceived: z.object({
-    khr: nonNegativeInt.optional(),
-    usd: positiveNumber.optional()
+    khr: z.number().nonnegative().optional(),
+    usd: z.number().nonnegative().optional()
   }).optional().refine(
-    (data) => !data || data.khr || data.usd, 
-    'Cash received must include either KHR or USD amount'
+    (data) => {
+      if (!data) return true;
+      // At least one currency must be provided and greater than 0
+      return (data.khr !== undefined && data.khr > 0) || (data.usd !== undefined && data.usd > 0);
+    },
+    {
+      message: 'Cash received must include either KHR or USD amount greater than 0 (the other currency will be auto-calculated)'
+    }
   )
 });
 
+// Finalize doesn't need body validation - saleId from params, actorId from auth
 export const finalizeSaleSchema = z.object({
   saleId: uuidSchema,
   actorId: uuidSchema
+}).strict();
+
+// Body-only validation schemas (for request body before controller enrichment)
+export const updateFulfillmentBodySchema = z.object({
+  status: FulfillmentStatus
 });
 
+export const voidSaleBodySchema = z.object({
+  reason: z.string().min(1).max(500)
+});
+
+export const reopenSaleBodySchema = z.object({
+  reason: z.string().min(1).max(500)
+});
+
+// Full command validation schemas (after controller adds params and auth data)
 export const updateFulfillmentSchema = z.object({
   saleId: uuidSchema,
   status: FulfillmentStatus,
@@ -99,8 +118,6 @@ export interface CreateSaleCommand {
 export interface AddItemCommand {
   saleId: string;
   menuItemId: string;
-  menuItemName: string;
-  unitPriceUsd: number;
   quantity: number;
   modifiers?: any[];
 }

@@ -20,8 +20,9 @@ import {
   reopenSale,
   recalculateSaleTotals
 } from '../../domain/entities/sale.entity.js';
-import { SalesRepository, PolicyPort } from '../ports/sales.ports.js';
-import { EventBus, TransactionManager } from '../../../../platform/events/index.js';
+import { SalesRepository, PolicyPort, MenuPort } from '../ports/sales.ports.js';
+import { TransactionManager } from '../../../../platform/events/index.js';
+import { publishToOutbox } from '../../../../platform/events/outbox.js';
 import { PoolClient } from 'pg';
 
 export interface CreateSaleCommand {
@@ -36,8 +37,6 @@ export interface CreateSaleCommand {
 export interface AddItemCommand {
   saleId: string;
   menuItemId: string;
-  menuItemName: string;
-  unitPriceUsd: number;
   quantity: number;
   modifiers?: any[];
 }
@@ -82,7 +81,7 @@ export class SalesService {
   constructor(
     private salesRepo: SalesRepository,
     private policyPort: PolicyPort,
-    private eventBus: EventBus,
+    private menuPort: MenuPort,
     private transactionManager: TransactionManager
   ) {}
 
@@ -97,7 +96,7 @@ export class SalesService {
 
       await this.salesRepo.save(sale, trx);
       
-      await this.eventBus.publish({
+      await publishToOutbox({
         type: 'sales.draft_created',
         v: 1,
         tenantId: cmd.tenantId,
@@ -123,10 +122,22 @@ export class SalesService {
         throw new Error('Cannot add items to non-draft sale');
       }
 
+      // Fetch menu item with branch-specific pricing
+      const menuItem = await this.menuPort.getMenuItem({
+        menuItemId: cmd.menuItemId,
+        branchId: sale.branchId,
+        tenantId: sale.tenantId
+      });
+
+      if (!menuItem) {
+        throw new Error('Menu item not found or not available for this branch');
+      }
+
+      // Use the correct price from menu (with branch override if exists)
       const item = addItemToSale(sale, {
         menuItemId: cmd.menuItemId,
-        menuItemName: cmd.menuItemName,
-        unitPriceUsd: cmd.unitPriceUsd,
+        menuItemName: menuItem.name,
+        unitPriceUsd: menuItem.priceUsd,
         quantity: cmd.quantity,
         modifiers: cmd.modifiers
       });
@@ -139,7 +150,7 @@ export class SalesService {
       );
 
       if (itemPolicies.length > 0) {
-        const bestPolicy = this.findBestPolicy(itemPolicies, cmd.unitPriceUsd * cmd.quantity);
+        const bestPolicy = this.findBestPolicy(itemPolicies, menuItem.priceUsd * cmd.quantity);
         applyLineDiscount(item, bestPolicy.type, bestPolicy.value, bestPolicy.id);
         // Recalculate sale totals after applying discount
         recalculateSaleTotals(sale);
@@ -245,7 +256,7 @@ export class SalesService {
       await this.salesRepo.save(sale, trx);
 
       // Publish sale finalized event
-      await this.eventBus.publish({
+      await publishToOutbox({
         type: 'sales.sale_finalized',
         v: 1,
         tenantId: sale.tenantId,
@@ -304,7 +315,7 @@ export class SalesService {
       
       await this.salesRepo.save(sale, trx);
 
-      await this.eventBus.publish({
+      await publishToOutbox({
         type: 'sales.fulfillment_updated',
         v: 1,
         tenantId: sale.tenantId,
@@ -358,7 +369,7 @@ export class SalesService {
       await this.salesRepo.save(sale, trx);
 
       // Publish sale voided event for inventory reversal
-      await this.eventBus.publish({
+      await publishToOutbox({
         type: 'sales.sale_voided',
         v: 1,
         tenantId: sale.tenantId,
@@ -401,6 +412,10 @@ export class SalesService {
 
       const reopenedSale = reopenSale(originalSale, cmd.actorId, cmd.reason);
       
+      // Save both sales FIRST (so they exist in DB for audit log foreign keys)
+      await this.salesRepo.save(originalSale, trx);
+      await this.salesRepo.save(reopenedSale, trx);
+      
       // Write audit log for original sale
       await this.salesRepo.writeAuditLog({
         tenantId: originalSale.tenantId,
@@ -423,11 +438,8 @@ export class SalesService {
         reason: `Reopened from sale ${originalSale.id}: ${cmd.reason}`,
         newValues: { state: 'draft', refPreviousSaleId: originalSale.id }
       }, trx);
-      
-      await this.salesRepo.save(originalSale, trx);
-      await this.salesRepo.save(reopenedSale, trx);
 
-      await this.eventBus.publish({
+      await publishToOutbox({
         type: 'sales.sale_reopened',
         v: 1,
         tenantId: originalSale.tenantId,

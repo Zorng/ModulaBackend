@@ -43,3 +43,33 @@ export interface PolicyPort {
     value: number;
   }>>;
 }
+
+export interface MenuPort {
+  /**
+   * Get menu item details with branch-specific pricing
+   * Returns null if item doesn't exist or is not available for the branch
+   */
+  getMenuItem(params: {
+    menuItemId: string;
+    branchId: string;
+    tenantId: string;
+  }): Promise<{
+    id: string;
+    name: string;
+    priceUsd: number; // Branch override if exists, else base price
+    isAvailable: boolean;
+  } | null>;
+
+  /**
+   * Get all available menu items for a branch
+   */
+  getAvailableMenuItems(params: {
+    branchId: string;
+    tenantId: string;
+  }): Promise<Array<{
+    id: string;
+    name: string;
+    priceUsd: number;
+    categoryId: string;
+  }>>;
+}

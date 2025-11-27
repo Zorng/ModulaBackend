@@ -8,9 +8,9 @@ import {
   addItemSchema, 
   preCheckoutSchema, 
   finalizeSaleSchema,
-  updateFulfillmentSchema,
-  voidSaleSchema,
-  reopenSaleSchema,
+  updateFulfillmentBodySchema,
+  voidSaleBodySchema,
+  reopenSaleBodySchema,
   updateItemQuantitySchema,
   getSalesQuerySchema
 } from '../dtos/sales.dtos.js';
@@ -120,6 +120,7 @@ export function createSalesRoutes(controller: SalesController): Router {
    *     tags:
    *       - Sales
    *     summary: Add item to sale cart
+   *     description: Fetches menu item price from menu module (with branch-specific override if exists)
    *     security:
    *       - BearerAuth: []
    *     parameters:
@@ -137,25 +138,26 @@ export function createSalesRoutes(controller: SalesController): Router {
    *             type: object
    *             required:
    *               - menuItemId
-   *               - menuItemName
-   *               - unitPriceUsd
    *               - quantity
    *             properties:
    *               menuItemId:
    *                 type: string
-   *               menuItemName:
-   *                 type: string
-   *               unitPriceUsd:
-   *                 type: number
+   *                 format: uuid
+   *                 description: Menu item ID (price fetched from menu_branch_items or menu_items)
    *               quantity:
    *                 type: integer
+   *                 minimum: 1
+   *                 description: Quantity to add
    *               modifiers:
    *                 type: array
+   *                 description: Optional modifiers with pricing
    *                 items:
    *                   type: object
    *     responses:
    *       200:
-   *         description: Item added successfully
+   *         description: Item added successfully with branch-specific pricing
+   *       400:
+   *         description: Menu item not found or not available for this branch
    *       401:
    *         description: Unauthorized
    */
@@ -329,7 +331,6 @@ export function createSalesRoutes(controller: SalesController): Router {
    */
   router.post(
     '/:saleId/finalize',
-    validateRequest(finalizeSaleSchema),
     async (req, res) => await controller.finalizeSale(req as AuthRequest, res)
   );
 
@@ -372,7 +373,7 @@ export function createSalesRoutes(controller: SalesController): Router {
    */
   router.patch(
     '/:saleId/fulfillment',
-    validateRequest(updateFulfillmentSchema),
+    validateRequest(updateFulfillmentBodySchema),
     async (req, res) => await controller.updateFulfillment(req as AuthRequest, res)
   );
 
@@ -415,7 +416,7 @@ export function createSalesRoutes(controller: SalesController): Router {
    */
   router.post(
     '/:saleId/void',
-    validateRequest(voidSaleSchema),
+    validateRequest(voidSaleBodySchema),
     async (req, res) => await controller.voidSale(req as AuthRequest, res)
   );
 
@@ -456,7 +457,7 @@ export function createSalesRoutes(controller: SalesController): Router {
    */
   router.post(
     '/:saleId/reopen',
-    validateRequest(reopenSaleSchema),
+    validateRequest(reopenSaleBodySchema),
     async (req, res) => await controller.reopenSale(req as AuthRequest, res)
   );
 

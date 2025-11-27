@@ -12,6 +12,13 @@ import {
 } from "./platform/http/middleware/error-handler.js";
 import { setupSwagger } from "./platform/http/swagger.js";
 import { createImageStorageAdapter } from "#modules/menu/infra/repositories/imageAdapter.js";
+import { eventBus } from "./platform/events/index.js";
+import { startOutboxDispatcher } from "./platform/events/outbox.js";
+import { bootstrapSalesModule } from "./modules/sales/index.js";
+import { pool } from "./platform/db/index.js";
+import { TransactionManager } from "./platform/db/transactionManager.js";
+import { setupAuthModule } from "./modules/auth/index.js";
+import { setAuthMiddleware } from "./platform/security/auth.middleware.js";
 
 const app = express();
 // Enable CORS for all origins (customize as needed for production)
@@ -32,16 +39,11 @@ setupSwagger(app);
 
 // ==================== Initialize Core Infrastructure ====================
 
-// Initialize event bus and transaction manager
-const eventBus = new EventBus(pool);
-const transactionManager = new TransactionManager(pool);
+// Initialize transaction manager
+const transactionManager = new TransactionManager();
 
-// Initialize outbox pattern for reliable event delivery
-const outboxService = new OutboxService(pool);
-const outboxDispatcher = new OutboxDispatcher(outboxService, eventBus, 1000); // Poll every 1 second
-
-// Start outbox dispatcher
-outboxDispatcher.start();
+// Start outbox dispatcher for reliable event delivery
+startOutboxDispatcher(pool, 1000); // Poll every 1 second
 log.info('✓ Outbox dispatcher started - reliable event delivery enabled');
 
 // ==================== Bootstrap Modules ====================
@@ -57,7 +59,7 @@ setAuthMiddleware((req, res, next) => {
 });
 
 // Setup Sales Module
-const salesModule = bootstrapSalesModule(pool, eventBus, transactionManager);
+const salesModule = bootstrapSalesModule(pool, transactionManager);
 const { router: salesRouter } = salesModule;
 
 // ==================== Register Routes ====================
@@ -153,6 +155,7 @@ app.get("/health", async (_req, res) => {
 app.use('/v1/tenants', tenantRouter); // <-- mounts /v1/tenants
 app.use('/v1/auth', authRouter);
 app.use(menuRouter);
+app.use('/v1/sales', salesRouter);
 
 // Error handlers
 app.use(notFoundHandler);

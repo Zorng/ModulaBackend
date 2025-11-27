@@ -37,7 +37,10 @@ export async function startOutboxDispatcher(db: any, intervalMs = 1000) {
       );
 
       for (const row of result.rows) {
-        const event = JSON.parse(row.payload) as DomainEvent;
+        // PostgreSQL JSONB is already parsed by pg library, no need to JSON.parse
+        const event = (typeof row.payload === 'string' 
+          ? JSON.parse(row.payload) 
+          : row.payload) as DomainEvent;
 
         // Publish to in-process bus
         await eventBus.publish(event);
