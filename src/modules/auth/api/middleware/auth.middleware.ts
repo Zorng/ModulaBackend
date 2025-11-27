@@ -3,10 +3,10 @@ import { TokenService } from "../../app/token.service.js";
 import { AuthRepository } from "../../infra/repository.js";
 
 export interface AuthRequest extends Request {
-  user?: {
+  user: {
     tenantId: string;
     employeeId: string;
-    branchId?: string;
+    branchId: string;
     role: string;
   };
 }

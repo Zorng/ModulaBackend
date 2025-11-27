@@ -1,5 +1,6 @@
 import { SalesController } from './controllers/sales.controller.js';
 import { createSalesRoutes } from './routes/sales.routes.js';
+import { AuthMiddleware } from '../../../modules/auth/api/middleware/auth.middleware.js';
 
 /**
  * Sales Module Router
@@ -8,8 +9,8 @@ import { createSalesRoutes } from './routes/sales.routes.js';
  * with all the route definitions and middleware.
  */
 
-export function createSalesRouter(controller: SalesController) {
-  return createSalesRoutes(controller);
+export function createSalesRouter(controller: SalesController, authMiddleware: AuthMiddleware) {
+  return createSalesRoutes(controller, authMiddleware);
 }
 
-export type SalesRouterFactory = (controller: SalesController) => ReturnType<typeof createSalesRoutes>;
+export type SalesRouterFactory = (controller: SalesController, authMiddleware: AuthMiddleware) => ReturnType<typeof createSalesRoutes>;

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { SalesController } from '../controllers/sales.controller.js';
 import { salesMiddleware } from '../middlewares/sales.middleware.js';
-import { authMiddleware, AuthRequest } from '../../../../platform/security/auth.middleware.js';
+import { AuthRequest, AuthMiddleware } from '../../../../modules/auth/api/middleware/auth.middleware.js';
 import { validateRequest } from '../../../../platform/http/middlewares/validation.middleware.js';
 import { 
   createSaleSchema, 
@@ -28,13 +28,13 @@ import {
  * All routes are protected by authentication and sales-specific middleware.
  */
 
-export function createSalesRoutes(controller: SalesController): Router {
+export function createSalesRoutes(controller: SalesController, authMiddleware: AuthMiddleware): Router {
   const router = Router();
 
   // ==================== MIDDLEWARE ====================
   
   // Apply authentication to all sales routes
-  router.use(authMiddleware);
+  router.use(authMiddleware.authenticate);
   
   // Apply sales-specific middleware (branch permissions, etc.)
   router.use(salesMiddleware);

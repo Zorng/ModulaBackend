@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthRequest } from '../../../../platform/security/auth.middleware.js';
+import { AuthRequest } from '../../../../modules/auth/api/middleware/auth.middleware.js';
 
 export function salesMiddleware(req: Request, res: Response, next: NextFunction) {
   // Add sales-specific middleware logic here

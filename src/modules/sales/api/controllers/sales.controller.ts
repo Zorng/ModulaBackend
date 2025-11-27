@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { AuthRequest } from '../../../../platform/security/auth.middleware.js';
+import { AuthRequest } from '../../../../modules/auth/api/middleware/auth.middleware.js';
 import { SalesService } from '../../app/services/sales.service.js';
 import { 
   createSaleSchema, 

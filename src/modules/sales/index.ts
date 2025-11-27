@@ -6,10 +6,12 @@ import { PgSalesRepository } from './infra/repository/sales.repository.js';
 import { PolicyAdapter } from './infra/adapters/policy.adapter.js';
 import { MenuAdapter } from './infra/adapters/menu.adapter.js';
 import { TransactionManager } from '../../platform/events/index.js';
+import { AuthMiddleware } from '../auth/api/middleware/auth.middleware.js';
 
 export function bootstrapSalesModule(
   pool: Pool,
-  transactionManager: TransactionManager
+  transactionManager: TransactionManager,
+  authMiddleware: AuthMiddleware
 ) {
   // Initialize repository
   const salesRepo = new PgSalesRepository(pool);
@@ -30,7 +32,7 @@ export function bootstrapSalesModule(
   const salesController = new SalesController(salesService);
   
   // Create and return router
-  const router = createSalesRouter(salesController);
+  const router = createSalesRouter(salesController, authMiddleware);
   
   return {
     router,

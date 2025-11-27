@@ -18,7 +18,6 @@ import { bootstrapSalesModule } from "./modules/sales/index.js";
 import { pool } from "./platform/db/index.js";
 import { TransactionManager } from "./platform/db/transactionManager.js";
 import { setupAuthModule } from "./modules/auth/index.js";
-import { setAuthMiddleware } from "./platform/security/auth.middleware.js";
 
 const app = express();
 // Enable CORS for all origins (customize as needed for production)
@@ -50,16 +49,10 @@ log.info('✓ Outbox dispatcher started - reliable event delivery enabled');
 
 // Setup Auth Module
 const authModule = setupAuthModule(pool);
-const { authRoutes, authMiddleware: authMiddlewareInstance } = authModule;
-
-// Register the actual auth middleware to replace the stub
-// Wrap to ensure proper signature compatibility
-setAuthMiddleware((req, res, next) => {
-  authMiddlewareInstance.authenticate(req as any, res, next);
-});
+const { authRoutes, authMiddleware } = authModule;
 
 // Setup Sales Module
-const salesModule = bootstrapSalesModule(pool, transactionManager);
+const salesModule = bootstrapSalesModule(pool, transactionManager, authMiddleware);
 const { router: salesRouter } = salesModule;
 
 // ==================== Register Routes ====================
