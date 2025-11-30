@@ -143,7 +143,6 @@ export type MenuItemUpdatedV1 = {
     priceUsd?: number;
     isActive?: boolean;
     categoryId?: string;
-    branchId?: string;
   };
   updatedBy: string;
   updatedAt: string;
