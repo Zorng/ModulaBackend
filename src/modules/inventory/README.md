@@ -16,7 +16,7 @@
 - Stock item management
 - Branch-level stock tracking
 - Inventory journal (audit trail)
-- Restock batches with expiry/lot tracking
+- Restock batches with expiry/lot tracking 
 - Event subscriber: deduct stock on sale finalized
 
 ## Tables

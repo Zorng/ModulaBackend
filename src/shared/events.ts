@@ -95,6 +95,142 @@ export type CashSessionClosedV1 = {
 };
 
 // Inventory events
+export type StockItemCreatedV1 = {
+  type: "inventory.stock_item_created";
+  v: 1;
+  tenantId: string;
+  stockItemId: string;
+  name: string;
+  unitText: string;
+  barcode?: string;
+  defaultCostUsd?: number;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+};
+
+export type StockItemUpdatedV1 = {
+  type: "inventory.stock_item_updated";
+  v: 1;
+  tenantId: string;
+  stockItemId: string;
+  changes: {
+    name?: string;
+    unitText?: string;
+    barcode?: string;
+    defaultCostUsd?: number;
+    isActive?: boolean;
+  };
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type StockReceivedV1 = {
+  type: "inventory.stock_received";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  stockItemId: string;
+  journalId: string;
+  delta: number;
+  note?: string;
+  actorId?: string;
+  createdAt: string;
+};
+
+export type StockWastedV1 = {
+  type: "inventory.stock_wasted";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  stockItemId: string;
+  journalId: string;
+  delta: number;
+  note?: string;
+  actorId?: string;
+  createdAt: string;
+};
+
+export type StockCorrectedV1 = {
+  type: "inventory.stock_corrected";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  stockItemId: string;
+  journalId: string;
+  delta: number;
+  note?: string;
+  actorId?: string;
+  createdAt: string;
+};
+
+export type StockSaleDeductedV1 = {
+  type: "inventory.stock_sale_deducted";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  refSaleId: string;
+  deductions: Array<{
+    stockItemId: string;
+    journalId: string;
+    delta: number;
+  }>;
+  createdAt: string;
+};
+
+export type StockVoidedV1 = {
+  type: "inventory.stock_voided";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  refSaleId: string;
+  reversals: Array<{
+    stockItemId: string;
+    journalId: string;
+    delta: number;
+  }>;
+  createdAt: string;
+};
+
+export type StockReopenedV1 = {
+  type: "inventory.stock_reopened";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  originalSaleId: string;
+  newSaleId: string;
+  redeductions: Array<{
+    stockItemId: string;
+    journalId: string;
+    delta: number;
+  }>;
+  createdAt: string;
+};
+
+export type MenuStockMapSetV1 = {
+  type: "inventory.menu_stock_map_set";
+  v: 1;
+  tenantId: string;
+  menuItemId: string;
+  stockItemId: string;
+  qtyPerSale: number;
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type StorePolicyInventoryUpdatedV1 = {
+  type: "inventory.store_policy_updated";
+  v: 1;
+  tenantId: string;
+  changes: {
+    inventorySubtractOnFinalize?: boolean;
+    branchOverrides?: Record<string, any>;
+    excludeMenuItemIds?: string[];
+  };
+  updatedBy: string;
+  updatedAt: string;
+};
+
 export type StockAdjustedV1 = {
   type: "inventory.stock_adjusted";
   v: 1;
@@ -143,7 +279,6 @@ export type MenuItemUpdatedV1 = {
     priceUsd?: number;
     isActive?: boolean;
     categoryId?: string;
-    branchId?: string;
   };
   updatedBy: string;
   updatedAt: string;
@@ -296,6 +431,16 @@ export type DomainEvent =
   | SaleReopenedV1
   | CashSessionOpenedV1
   | CashSessionClosedV1
+  | StockItemCreatedV1
+  | StockItemUpdatedV1
+  | StockReceivedV1
+  | StockWastedV1
+  | StockCorrectedV1
+  | StockSaleDeductedV1
+  | StockVoidedV1
+  | StockReopenedV1
+  | MenuStockMapSetV1
+  | StorePolicyInventoryUpdatedV1
   | StockAdjustedV1
   | MenuCategoryCreatedV1
   | MenuItemCreatedV1

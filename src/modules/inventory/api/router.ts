@@ -1,10 +1,43 @@
-// TODO: Implement inventory routes
-// Example: GET /v1/inventory/stock, POST /v1/inventory/adjust, POST /v1/inventory/restock
+import {
+  StockItemController,
+  BranchStockController,
+  InventoryJournalController,
+  MenuStockMapController,
+  StorePolicyController,
+} from "./controller/index.js";
+import { createInventoryRoutes } from "./inventory.routes.js";
+import { AuthMiddleware } from "../../auth/api/middleware/auth.middleware.js";
 
-import { Router } from "express";
+/**
+ * Inventory Module Router
+ *
+ * Main router export for the inventory module that wires up the separate controllers
+ * with all the route definitions and middleware.
+ */
 
-export const inventoryRouter = Router();
+export function createInventoryRouter(
+  stockItemController: StockItemController,
+  branchStockController: BranchStockController,
+  inventoryJournalController: InventoryJournalController,
+  menuStockMapController: MenuStockMapController,
+  storePolicyController: StorePolicyController,
+  authMiddleware: AuthMiddleware
+) {
+  return createInventoryRoutes(
+    stockItemController,
+    branchStockController,
+    inventoryJournalController,
+    menuStockMapController,
+    storePolicyController,
+    authMiddleware
+  );
+}
 
-// inventoryRouter.get('/v1/inventory/stock', ...);
-// inventoryRouter.post('/v1/inventory/adjust', ...);
-// inventoryRouter.post('/v1/inventory/restock', ...);
+export type InventoryRouterFactory = (
+  stockItemController: StockItemController,
+  branchStockController: BranchStockController,
+  inventoryJournalController: InventoryJournalController,
+  menuStockMapController: MenuStockMapController,
+  storePolicyController: StorePolicyController,
+  authMiddleware: AuthMiddleware
+) => ReturnType<typeof createInventoryRoutes>;

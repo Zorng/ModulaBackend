@@ -142,7 +142,6 @@ export class UpdateMenuItemUseCase {
         v: 1,
         menuItemId: item.id,
         tenantId: item.tenantId,
-        branchId: item.branchId,
         changes,
         updatedBy: userId,
         updatedAt: new Date().toISOString(),
