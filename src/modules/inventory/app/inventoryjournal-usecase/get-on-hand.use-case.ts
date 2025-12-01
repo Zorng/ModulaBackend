@@ -1,9 +1,7 @@
 import {
   InventoryJournalRepository,
-  StockItemRepository,
   BranchStockRepository,
-} from "../domain/repositories.js";
-import { StockItem } from "../domain/entities.js";
+} from "../../domain/repositories.js";
 
 export interface GetOnHandInput {
   tenantId: string;
@@ -14,49 +12,53 @@ export interface GetOnHandInput {
 export interface OnHandItem {
   stockItemId: string;
   name: string;
-  unit_text: string;
-  on_hand: number;
-  min_threshold: number;
-  low_stock: boolean;
+  unitText: string;
+  onHand: number;
+  minThreshold: number;
+  lowStock: boolean;
 }
 
 export class GetOnHandUseCase {
   constructor(
     private journalRepo: InventoryJournalRepository,
-    private stockItemRepo: StockItemRepository,
     private branchStockRepo: BranchStockRepository
   ) {}
 
   async execute(
     input: GetOnHandInput
   ): Promise<{ branchId: string; items: OnHandItem[] }> {
-    const stockItems = input.stockItemId
-      ? ([await this.stockItemRepo.findById(input.stockItemId)].filter(
-          Boolean
-        ) as StockItem[])
-      : await this.stockItemRepo.findByTenant(input.tenantId);
+    const { tenantId, branchId, stockItemId } = input;
 
+    // Get branch stock items (optionally filtered by stockItemId)
+    const branchStocks = await this.branchStockRepo.findByBranch(branchId);
+
+    // Filter if specific stock item requested
+    const filteredBranchStocks = stockItemId
+      ? branchStocks.filter((bs) => bs.stockItemId === stockItemId)
+      : branchStocks;
+
+    // Build on-hand items with computed quantities
     const items: OnHandItem[] = [];
-    for (const item of stockItems) {
+
+    for (const bs of filteredBranchStocks) {
       const onHand = await this.journalRepo.getOnHand(
-        input.tenantId,
-        input.branchId,
-        item.id
+        tenantId,
+        branchId,
+        bs.stockItemId
       );
-      const branchStock = await this.branchStockRepo.findByBranchAndItem(
-        input.branchId,
-        item.id
-      );
-      const minThreshold = branchStock?.minThreshold || 0;
+
+      // Note: We don't fetch stock item details here to avoid N+1 queries
+      // The API layer should join this data if needed
       items.push({
-        stockItemId: item.id,
-        name: item.name,
-        unit_text: item.unit_text,
-        on_hand: onHand,
-        min_threshold: minThreshold,
-        low_stock: onHand <= minThreshold,
+        stockItemId: bs.stockItemId,
+        name: "", // To be populated by API layer or another use case
+        unitText: "", // To be populated by API layer
+        onHand,
+        minThreshold: bs.minThreshold,
+        lowStock: onHand <= bs.minThreshold,
       });
     }
-    return { branchId: input.branchId, items };
+
+    return { branchId, items };
   }
 }

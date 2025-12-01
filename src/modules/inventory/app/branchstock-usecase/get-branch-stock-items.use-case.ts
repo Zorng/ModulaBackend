@@ -1,11 +1,21 @@
 import {
   BranchStockRepository,
   StockItemRepository,
-} from "../domain/repositories.js";
+} from "../../domain/repositories.js";
 
 export interface GetBranchStockItemsInput {
   branchId: string;
-  tenantId: string; // Added for fetching stock items
+  tenantId: string;
+}
+
+export interface BranchStockItemDTO {
+  stockItemId: string;
+  name: string;
+  unitText: string;
+  minThreshold: number;
+  barcode?: string;
+  defaultCostUsd?: number;
+  isActive: boolean;
 }
 
 export class GetBranchStockItemsUseCase {
@@ -16,27 +26,34 @@ export class GetBranchStockItemsUseCase {
 
   async execute(
     input: GetBranchStockItemsInput
-  ): Promise<
-    {
-      stockItemId: string;
-      name: string;
-      unit_text: string;
-      minThreshold: number;
-    }[]
-  > {
-    const branchStocks = await this.branchStockRepo.findByBranch(
-      input.branchId
-    );
-    const stockItems = await this.stockItemRepo.findByTenant(input.tenantId);
-    // Map to combine
-    return branchStocks.map((bs) => {
-      const item = stockItems.find((si) => si.id === bs.stockItemId);
-      return {
-        stockItemId: bs.stockItemId,
-        name: item?.name || "",
-        unit_text: item?.unit_text || "",
-        minThreshold: bs.minThreshold,
-      };
+  ): Promise<BranchStockItemDTO[]> {
+    const { branchId, tenantId } = input;
+
+    // Get all branch stock links for this branch
+    const branchStocks = await this.branchStockRepo.findByBranch(branchId);
+
+    // Get all stock items for this tenant
+    const stockItems = await this.stockItemRepo.findByTenant(tenantId);
+
+    // Create a map for faster lookup
+    const stockItemMap = new Map(stockItems.map((item) => [item.id, item]));
+
+    // Combine branch stock with stock item details
+    return branchStocks.flatMap((bs) => {
+      const item = stockItemMap.get(bs.stockItemId);
+      if (!item) return []; // Skip if stock item not found
+
+      return [
+        {
+          stockItemId: bs.stockItemId,
+          name: item.name,
+          unitText: item.unitText,
+          minThreshold: bs.minThreshold,
+          barcode: item.barcode,
+          defaultCostUsd: item.defaultCostUsd,
+          isActive: item.isActive,
+        },
+      ];
     });
   }
 }

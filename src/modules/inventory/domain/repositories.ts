@@ -61,10 +61,20 @@ export interface InventoryJournalRepository {
 }
 
 export interface MenuStockMapRepository {
-  findByMenuItem(menuItemId: string): Promise<MenuStockMap | null>;
+  findById(id: string): Promise<MenuStockMap | null>;
+  findByMenuItem(menuItemId: string): Promise<MenuStockMap[]>; // Returns array of mappings
+  findByMenuItemAndStockItem(
+    menuItemId: string,
+    stockItemId: string
+  ): Promise<MenuStockMap | null>;
   findAll(): Promise<MenuStockMap[]>;
-  save(mapping: Omit<MenuStockMap, "createdAt">): Promise<MenuStockMap>;
-  delete(menuItemId: string): Promise<void>;
+  save(mapping: Omit<MenuStockMap, "id" | "createdAt">): Promise<MenuStockMap>;
+  update(
+    id: string,
+    updates: Partial<Pick<MenuStockMap, "qtyPerSale">>
+  ): Promise<MenuStockMap | null>;
+  delete(id: string): Promise<void>;
+  deleteByMenuItem(menuItemId: string): Promise<void>;
 }
 
 export interface StorePolicyInventoryRepository {

@@ -16,7 +16,9 @@ export interface StockItem {
   barcode?: string;
   defaultCostUsd?: number;
   isActive: boolean;
+  createdBy: string;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface BranchStock {
@@ -25,7 +27,9 @@ export interface BranchStock {
   branchId: string;
   stockItemId: string;
   minThreshold: number;
+  createdBy: string;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface InventoryJournal {
@@ -40,13 +44,18 @@ export interface InventoryJournal {
   actorId?: string; // Employee who performed action
   batchId?: string; // Future hook for batches/FEFO
   unitCostUsd?: number; // Future hook for COGS
+  createdBy?: string; // User who created this entry (nullable for system-generated)
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface MenuStockMap {
-  menuItemId: string; // Primary key
+  id: string; // Primary key
+  menuItemId: string; // Foreign key to menu_items (one menu item can have many stock items)
+  tenantId: string;
   stockItemId: string;
-  qtyPerSale: number; // Quantity deducted per sale (negative for deduction)
+  qtyPerSale: number; // Quantity deducted per sale (positive value, will be negated on deduction)
+  createdBy: string;
   createdAt: Date;
 }
 

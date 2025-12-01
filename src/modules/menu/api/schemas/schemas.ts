@@ -12,13 +12,11 @@ import {
 } from "./modifier/modifier.js";
 import { setBranchAvailabilitySchema } from "./branch-menu/branchMenu.js";
 import { setBranchPriceSchema } from "./branch-menu/branchMenu.js";
-import { linkStockSchema } from "./stock-integration/stockIntegration.js";
 
 export * from "./category/category.js";
 export * from "./menu-item/menuItem.js";
 export * from "./modifier/modifier.js";
 export * from "./branch-menu/branchMenu.js";
-export * from "./stock-integration/stockIntegration.js";
 export * from "./query/query.js";
 // ============================================================================
 // TYPE EXPORTS (for use in controllers)
@@ -43,4 +41,3 @@ export type SetBranchAvailabilityInput = z.infer<
   typeof setBranchAvailabilitySchema
 >;
 export type SetBranchPriceInput = z.infer<typeof setBranchPriceSchema>;
-export type LinkStockInput = z.infer<typeof linkStockSchema>;

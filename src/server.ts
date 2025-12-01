@@ -1,7 +1,7 @@
 // src/server.ts
 import express from "express";
-import cors from 'cors';
-import { authRouter } from '#modules/auth/api/auth.router.js';
+import cors from "cors";
+import { authRouter } from "#modules/auth/api/auth.router.js";
 import { ping } from "#db";
 import { log } from "#logger";
 import { tenantRouter } from "#modules/tenant/api/router.js";
@@ -15,23 +15,26 @@ import { createImageStorageAdapter } from "#modules/menu/infra/repositories/imag
 import { eventBus } from "./platform/events/index.js";
 import { startOutboxDispatcher } from "./platform/events/outbox.js";
 import { bootstrapSalesModule } from "./modules/sales/index.js";
+import { bootstrapInventoryModule } from "./modules/inventory/index.js";
 import { pool } from "./platform/db/index.js";
 import { TransactionManager } from "./platform/db/transactionManager.js";
 import { setupAuthModule } from "./modules/auth/index.js";
 
 const app = express();
 // Enable CORS for all origins (customize as needed for production)
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+app.use(
+  cors({
+    origin: process.env.CORS_ORIGIN || "*",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
 app.use(express.json());
 
 // Serve uploaded images statically
-app.use('/uploads', express.static('public/uploads'));
+app.use("/uploads", express.static("public/uploads"));
 
 // Setup Swagger documentation
 setupSwagger(app);
@@ -43,7 +46,7 @@ const transactionManager = new TransactionManager();
 
 // Start outbox dispatcher for reliable event delivery
 startOutboxDispatcher(pool, 1000); // Poll every 1 second
-log.info('✓ Outbox dispatcher started - reliable event delivery enabled');
+log.info("✓ Outbox dispatcher started - reliable event delivery enabled");
 
 // ==================== Bootstrap Modules ====================
 
@@ -52,17 +55,56 @@ const authModule = setupAuthModule(pool);
 const { authRoutes, authMiddleware } = authModule;
 
 // Setup Sales Module
-const salesModule = bootstrapSalesModule(pool, transactionManager, authMiddleware);
+const salesModule = bootstrapSalesModule(
+  pool,
+  transactionManager,
+  authMiddleware
+);
 const { router: salesRouter } = salesModule;
+
+// Setup Inventory Module
+const inventoryModule = bootstrapInventoryModule(pool, authMiddleware);
+const { router: inventoryRouter, eventHandlers: inventoryEventHandlers } =
+  inventoryModule;
+
+// ==================== Register Event Handlers ====================
+
+// Subscribe inventory module to sales events
+eventBus.subscribe("sales.sale_finalized", async (event) => {
+  try {
+    await inventoryEventHandlers.saleFinalizedHandler.handle(event as any);
+  } catch (error) {
+    log.error("Failed to handle sales.sale_finalized event:", error);
+    throw error; // Re-throw to trigger retry via outbox
+  }
+});
+
+eventBus.subscribe("sales.sale_voided", async (event) => {
+  try {
+    await inventoryEventHandlers.saleVoidedHandler.handle(event as any);
+  } catch (error) {
+    log.error("Failed to handle sales.sale_voided event:", error);
+    throw error; // Re-throw to trigger retry via outbox
+  }
+});
+
+eventBus.subscribe("sales.sale_reopened", async (event) => {
+  try {
+    await inventoryEventHandlers.saleReopenedHandler.handle(event as any);
+  } catch (error) {
+    log.error("Failed to handle sales.sale_reopened event:", error);
+    throw error; // Re-throw to trigger retry via outbox
+  }
+});
+
+log.info("✓ Inventory event handlers registered");
 
 // ==================== Register Routes ====================
 
-app.get('/health', async (_req, res) => {
+app.get("/health", async (_req, res) => {
   const now = await ping();
-  res.json({ status: 'ok', time: now });
+  res.json({ status: "ok", time: now });
 });
-
-
 
 app.locals.imageStorage = createImageStorageAdapter();
 
@@ -144,11 +186,12 @@ app.get("/health", async (_req, res) => {
   }
 });
 
-// Mount module routers 
-app.use('/v1/tenants', tenantRouter); // <-- mounts /v1/tenants
-app.use('/v1/auth', authRouter);
+// Mount module routers
+app.use("/v1/tenants", tenantRouter); // <-- mounts /v1/tenants
+app.use("/v1/auth", authRouter);
 app.use(menuRouter);
-app.use('/v1/sales', salesRouter);
+app.use("/v1/sales", salesRouter);
+app.use("/v1/inventory", inventoryRouter);
 
 // Error handlers
 app.use(notFoundHandler);

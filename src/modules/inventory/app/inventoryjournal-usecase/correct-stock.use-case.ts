@@ -1,28 +1,98 @@
-import { InventoryJournalRepository } from "../domain/repositories.js";
-import { InventoryJournal } from "../domain/entities.js";
+import { Ok, Err, type Result } from "../../../../shared/result.js";
+import {
+  InventoryJournalRepository,
+  BranchStockRepository,
+} from "../../domain/repositories.js";
+import { InventoryJournal } from "../../domain/entities.js";
+import type { StockCorrectedV1 } from "../../../../shared/events.js";
 
-export interface CorrectionInput {
+export interface CorrectStockInput {
   tenantId: string;
   branchId: string;
   stockItemId: string;
-  delta: number;
-  note?: string;
+  delta: number; // can be positive or negative
+  note: string; // mandatory per spec
   actorId?: string;
 }
 
-export class CorrectStockUseCase {
-  constructor(private journalRepo: InventoryJournalRepository) {}
+interface IEventBus {
+  publishViaOutbox(event: StockCorrectedV1, client?: any): Promise<void>;
+}
 
-  async execute(input: CorrectionInput): Promise<InventoryJournal> {
-    if (input.delta === 0) throw new Error("Correction delta cannot be zero");
-    return this.journalRepo.save({
-      tenantId: input.tenantId,
-      branchId: input.branchId,
-      stockItemId: input.stockItemId,
-      delta: input.delta,
-      reason: "correction",
-      note: input.note,
-      actorId: input.actorId,
-    });
+interface ITransactionManager {
+  withTransaction<T>(fn: (client: any) => Promise<T>): Promise<T>;
+}
+
+export class CorrectStockUseCase {
+  constructor(
+    private journalRepo: InventoryJournalRepository,
+    private branchStockRepo: BranchStockRepository,
+    private eventBus: IEventBus,
+    private txManager: ITransactionManager
+  ) {}
+
+  async execute(
+    input: CorrectStockInput
+  ): Promise<Result<InventoryJournal, string>> {
+    const { tenantId, branchId, stockItemId, delta, note, actorId } = input;
+
+    // Validation: delta cannot be zero
+    if (delta === 0) {
+      return Err("Correction delta cannot be zero");
+    }
+
+    // Validation: note is required for corrections
+    if (!note || note.trim().length === 0) {
+      return Err("Note is required for correction entries");
+    }
+
+    // Verify stock item is assigned to branch
+    const branchStock = await this.branchStockRepo.findByBranchAndItem(
+      branchId,
+      stockItemId
+    );
+    if (!branchStock) {
+      return Err("Stock item is not assigned to this branch");
+    }
+
+    try {
+      let journal: InventoryJournal;
+
+      await this.txManager.withTransaction(async (client) => {
+        // Save journal entry
+        journal = await this.journalRepo.save({
+          tenantId,
+          branchId,
+          stockItemId,
+          delta,
+          reason: "correction",
+          note: note.trim(),
+          actorId,
+          createdBy: actorId,
+        });
+
+        // Publish event
+        const event: StockCorrectedV1 = {
+          type: "inventory.stock_corrected",
+          v: 1,
+          tenantId,
+          branchId,
+          stockItemId,
+          journalId: journal.id,
+          delta,
+          note: note.trim(),
+          actorId,
+          createdAt: new Date().toISOString(),
+        };
+
+        await this.eventBus.publishViaOutbox(event, client);
+      });
+
+      return Ok(journal!);
+    } catch (error) {
+      return Err(
+        error instanceof Error ? error.message : "Failed to record correction"
+      );
+    }
   }
 }

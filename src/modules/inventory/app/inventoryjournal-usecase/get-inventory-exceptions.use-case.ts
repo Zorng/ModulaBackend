@@ -1,39 +1,90 @@
-import { InventoryJournalRepository } from "../domain/repositories.js";
+import { Ok, type Result } from "../../../../shared/result.js";
+import {
+  InventoryJournalRepository,
+  StockItemRepository,
+  BranchStockRepository,
+} from "../../domain/repositories.js";
 
-export interface InventoryException {
-  type: "negative_stock" | "unmapped_sale";
-  stockItemId?: string;
-  name?: string;
-  on_hand?: number;
-  saleId?: string;
-  menuItemId?: string;
-  occurredAt?: Date;
+export interface NegativeStockException {
+  type: "negative_stock";
+  stockItemId: string;
+  name: string;
+  unitText: string;
+  onHand: number;
+  minThreshold: number;
+}
+
+export interface UnmappedSaleException {
+  type: "unmapped_sale";
+  saleId: string;
+  menuItemId: string;
+  occurredAt: Date;
+}
+
+export interface GetInventoryExceptionsOutput {
+  branchId: string;
+  negativeStock: NegativeStockException[];
+  unmappedSales: UnmappedSaleException[];
 }
 
 export class GetInventoryExceptionsUseCase {
-  // Simplified, as exceptions might need more logic
-  constructor(private journalRepo: InventoryJournalRepository) {}
+  constructor(
+    private journalRepo: InventoryJournalRepository,
+    private stockItemRepo: StockItemRepository,
+    private branchStockRepo: BranchStockRepository
+  ) {}
 
   async execute(
     branchId: string
-  ): Promise<{
-    branchId: string;
-    negative_stock: InventoryException[];
-    unmapped_sales: InventoryException[];
-  }> {
-    // This would need additional logic to detect unmapped sales, perhaps from sales module
-    const alerts = await this.journalRepo.getLowStockAlerts(branchId);
-    const negativeStock = alerts
-      .filter((a) => a.onHand < 0)
-      .map((a) => ({
-        type: "negative_stock" as const,
-        stockItemId: a.stockItemId,
-        on_hand: a.onHand,
-      }));
-    return {
-      branchId,
-      negative_stock: negativeStock,
-      unmapped_sales: [], // TODO: implement
-    };
+  ): Promise<Result<GetInventoryExceptionsOutput, string>> {
+    try {
+      // Get all stock items assigned to this branch
+      const branchStocks = await this.branchStockRepo.findByBranch(branchId);
+
+      // Calculate on-hand for each and find negative stock
+      const negativeStockPromises = branchStocks.map(async (bs) => {
+        const onHand = await this.journalRepo.getOnHand(
+          bs.tenantId,
+          branchId,
+          bs.stockItemId
+        );
+        if (onHand < 0) {
+          const stockItem = await this.stockItemRepo.findById(bs.stockItemId);
+          if (stockItem) {
+            return {
+              type: "negative_stock" as const,
+              stockItemId: bs.stockItemId,
+              name: stockItem.name,
+              unitText: stockItem.unitText,
+              onHand,
+              minThreshold: bs.minThreshold,
+            };
+          }
+        }
+        return null;
+      });
+
+      const negativeStockResults = await Promise.all(negativeStockPromises);
+      const negativeStock = negativeStockResults.filter(
+        (item): item is NegativeStockException => item !== null
+      );
+
+      // TODO: Implement unmapped sales detection
+      // This would require querying sales journal for sales that don't have corresponding menu_stock_map entries
+      // For now, return empty array as this requires cross-module integration
+      const unmappedSales: UnmappedSaleException[] = [];
+
+      return Ok({
+        branchId,
+        negativeStock,
+        unmappedSales,
+      });
+    } catch (error) {
+      return Ok({
+        branchId,
+        negativeStock: [],
+        unmappedSales: [],
+      });
+    }
   }
 }

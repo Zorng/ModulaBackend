@@ -1,0 +1,677 @@
+import { Router } from "express";
+import {
+  StockItemController,
+  BranchStockController,
+  InventoryJournalController,
+  MenuStockMapController,
+  StorePolicyController,
+} from "./controller/index.js";
+import { AuthMiddleware } from "../../auth/api/middleware/auth.middleware.js";
+
+export function createInventoryRoutes(
+  stockItemController: StockItemController,
+  branchStockController: BranchStockController,
+  inventoryJournalController: InventoryJournalController,
+  menuStockMapController: MenuStockMapController,
+  storePolicyController: StorePolicyController,
+  authMiddleware: AuthMiddleware
+): Router {
+  const router = Router();
+
+  // Apply authentication to all inventory routes
+  router.use(authMiddleware.authenticate);
+
+  // ==================== STOCK ITEMS ====================
+
+  /**
+   * @openapi
+   * /v1/inventory/stock-items:
+   *   post:
+   *     tags:
+   *       - Inventory
+   *     summary: Create a new stock item
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - name
+   *               - unitText
+   *             properties:
+   *               name:
+   *                 type: string
+   *               unitText:
+   *                 type: string
+   *                 description: Unit of measure (e.g., pcs, kg, liter)
+   *               barcode:
+   *                 type: string
+   *               defaultCostUsd:
+   *                 type: number
+   *     responses:
+   *       201:
+   *         description: Stock item created
+   */
+  router.post("/stock-items", async (req, res) =>
+    stockItemController.createStockItem(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/stock-items/{id}:
+   *   patch:
+   *     tags:
+   *       - Inventory
+   *     summary: Update a stock item
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               name:
+   *                 type: string
+   *               unitText:
+   *                 type: string
+   *               barcode:
+   *                 type: string
+   *               defaultCostUsd:
+   *                 type: number
+   *               isActive:
+   *                 type: boolean
+   *     responses:
+   *       200:
+   *         description: Stock item updated
+   */
+  router.put("/stock-items/:id", async (req, res) =>
+    stockItemController.updateStockItem(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/stock-items:
+   *   get:
+   *     tags:
+   *       - Inventory
+   *     summary: Get all stock items
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: search
+   *         schema:
+   *           type: string
+   *         description: Fuzzy search on name
+   *       - in: query
+   *         name: isActive
+   *         schema:
+   *           type: boolean
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *       - in: query
+   *         name: pageSize
+   *         schema:
+   *           type: integer
+   *     responses:
+   *       200:
+   *         description: List of stock items
+   */
+  router.get("/stock-items", async (req, res) =>
+    stockItemController.getStockItems(req as any, res)
+  );
+
+  // ==================== BRANCH STOCK ====================
+
+  /**
+   * @openapi
+   * /v1/inventory/branch/stock-items:
+   *   post:
+   *     tags:
+   *       - Inventory
+   *     summary: Assign stock item to current branch
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - stockItemId
+   *               - minThreshold
+   *             properties:
+   *               stockItemId:
+   *                 type: string
+   *                 format: uuid
+   *               minThreshold:
+   *                 type: number
+   *                 minimum: 0
+   *     responses:
+   *       201:
+   *         description: Stock item assigned to branch
+   */
+  router.post("/branch/stock-items", async (req, res) =>
+    branchStockController.assignStockItemToBranch(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/branch/stock-items:
+   *   get:
+   *     tags:
+   *       - Inventory
+   *     summary: Get all stock items for current branch
+   *     security:
+   *       - BearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of branch stock items with details
+   */
+  router.get("/branch/stock-items", async (req, res) =>
+    branchStockController.getBranchStockItems(req as any, res)
+  );
+
+  // ==================== INVENTORY JOURNAL OPERATIONS ====================
+
+  /**
+   * @openapi
+   * /v1/inventory/journal/receive:
+   *   post:
+   *     tags:
+   *       - Inventory
+   *     summary: Record stock receipt
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - stockItemId
+   *               - qty
+   *             properties:
+   *               stockItemId:
+   *                 type: string
+   *                 format: uuid
+   *               qty:
+   *                 type: number
+   *                 minimum: 0.001
+   *               note:
+   *                 type: string
+   *     responses:
+   *       201:
+   *         description: Stock received
+   */
+  router.post("/journal/receive", async (req, res) =>
+    inventoryJournalController.receiveStock(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/journal/waste:
+   *   post:
+   *     tags:
+   *       - Inventory
+   *     summary: Record stock waste/spoilage
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - stockItemId
+   *               - qty
+   *               - note
+   *             properties:
+   *               stockItemId:
+   *                 type: string
+   *                 format: uuid
+   *               qty:
+   *                 type: number
+   *                 minimum: 0.001
+   *               note:
+   *                 type: string
+   *                 description: Mandatory for waste entries
+   *     responses:
+   *       201:
+   *         description: Stock waste recorded
+   */
+  router.post("/journal/waste", async (req, res) =>
+    inventoryJournalController.wasteStock(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/journal/correct:
+   *   post:
+   *     tags:
+   *       - Inventory
+   *     summary: Record manual stock correction
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - stockItemId
+   *               - delta
+   *               - note
+   *             properties:
+   *               stockItemId:
+   *                 type: string
+   *                 format: uuid
+   *               delta:
+   *                 type: number
+   *                 description: Positive or negative adjustment (cannot be zero)
+   *               note:
+   *                 type: string
+   *                 description: Mandatory for correction entries
+   *     responses:
+   *       201:
+   *         description: Stock correction recorded
+   */
+  router.post("/journal/correct", async (req, res) =>
+    inventoryJournalController.correctStock(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /_internal/inventory/journal/sale:
+   *   post:
+   *     tags:
+   *       - Inventory (Internal)
+   *     summary: Record sale deductions (internal only)
+   *     description: Called by sales module when sale is finalized
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - refSaleId
+   *               - lines
+   *             properties:
+   *               refSaleId:
+   *                 type: string
+   *                 format: uuid
+   *               lines:
+   *                 type: array
+   *                 items:
+   *                   type: object
+   *                   required:
+   *                     - stockItemId
+   *                     - qtyDeducted
+   *                   properties:
+   *                     stockItemId:
+   *                       type: string
+   *                       format: uuid
+   *                     qtyDeducted:
+   *                       type: number
+   *     responses:
+   *       201:
+   *         description: Sale deductions recorded
+   */
+  router.post("/_internal/journal/sale", async (req, res) =>
+    inventoryJournalController.recordSaleDeductions(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /_internal/inventory/journal/void:
+   *   post:
+   *     tags:
+   *       - Inventory (Internal)
+   *     summary: Record void reversals (internal only)
+   *     description: Called by sales module when sale is voided
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - refSaleId
+   *               - originalLines
+   *             properties:
+   *               refSaleId:
+   *                 type: string
+   *                 format: uuid
+   *               originalLines:
+   *                 type: array
+   *                 items:
+   *                   type: object
+   *     responses:
+   *       201:
+   *         description: Void reversals recorded
+   */
+  router.post("/_internal/journal/void", async (req, res) =>
+    inventoryJournalController.recordVoid(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /_internal/inventory/journal/reopen:
+   *   post:
+   *     tags:
+   *       - Inventory (Internal)
+   *     summary: Record reopen redeductions (internal only)
+   *     description: Called by sales module when sale is reopened
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - originalSaleId
+   *               - newSaleId
+   *               - lines
+   *             properties:
+   *               originalSaleId:
+   *                 type: string
+   *                 format: uuid
+   *               newSaleId:
+   *                 type: string
+   *                 format: uuid
+   *               lines:
+   *                 type: array
+   *                 items:
+   *                   type: object
+   *     responses:
+   *       201:
+   *         description: Reopen redeductions recorded
+   */
+  router.post("/_internal/journal/reopen", async (req, res) =>
+    inventoryJournalController.recordReopen(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/branch/on-hand:
+   *   get:
+   *     tags:
+   *       - Inventory
+   *     summary: Get on-hand quantities for current branch
+   *     security:
+   *       - BearerAuth: []
+   *     responses:
+   *       200:
+   *         description: On-hand quantities with low stock flags
+   */
+  router.get("/journal/on-hand", async (req, res) =>
+    inventoryJournalController.getOnHand(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/branch/journal:
+   *   get:
+   *     tags:
+   *       - Inventory
+   *     summary: Get inventory journal entries
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: stockItemId
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *       - in: query
+   *         name: reason
+   *         schema:
+   *           type: string
+   *           enum: [receive, sale, waste, correction, void, reopen]
+   *       - in: query
+   *         name: fromDate
+   *         schema:
+   *           type: string
+   *           format: date-time
+   *       - in: query
+   *         name: toDate
+   *         schema:
+   *           type: string
+   *           format: date-time
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *       - in: query
+   *         name: pageSize
+   *         schema:
+   *           type: integer
+   *     responses:
+   *       200:
+   *         description: Journal entries with pagination
+   */
+  router.get("/journal", async (req, res) =>
+    inventoryJournalController.getInventoryJournal(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/branch/alerts/low-stock:
+   *   get:
+   *     tags:
+   *       - Inventory
+   *     summary: Get low stock alerts
+   *     security:
+   *       - BearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Items below minimum threshold
+   */
+  router.get("/journal/alerts/low-stock", async (req, res) =>
+    inventoryJournalController.getLowStockAlerts(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/branch/alerts/exceptions:
+   *   get:
+   *     tags:
+   *       - Inventory
+   *     summary: Get inventory exceptions
+   *     security:
+   *       - BearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Negative stock items and unmapped sales
+   */
+  router.get("/branch/alerts/exceptions", async (req, res) =>
+    inventoryJournalController.getInventoryExceptions(req as any, res)
+  );
+
+  // ==================== MENU STOCK MAP ====================
+
+  /**
+   * @openapi
+   * /v1/inventory/menu-stock-map:
+   *   post:
+   *     tags:
+   *       - Inventory
+   *     summary: Set menu item to stock item mapping
+   *     description: Create or update mapping (supports multiple stock items per menu item)
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - menuItemId
+   *               - stockItemId
+   *               - qtyPerSale
+   *             properties:
+   *               menuItemId:
+   *                 type: string
+   *                 format: uuid
+   *               stockItemId:
+   *                 type: string
+   *                 format: uuid
+   *               qtyPerSale:
+   *                 type: number
+   *                 minimum: 0.001
+   *                 description: Quantity deducted per sale (positive value)
+   *     responses:
+   *       201:
+   *         description: Mapping created/updated
+   */
+  router.post("/menu-stock-map", async (req, res) =>
+    menuStockMapController.setMenuStockMap(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/menu-stock-map/{menuItemId}:
+   *   get:
+   *     tags:
+   *       - Inventory
+   *     summary: Get all stock mappings for a menu item
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: menuItemId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Array of stock item mappings
+   */
+  router.get("/menu-stock-map/:menuItemId", async (req, res) =>
+    menuStockMapController.getMenuStockMap(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/menu-stock-map:
+   *   get:
+   *     tags:
+   *       - Inventory
+   *     summary: Get all menu stock mappings
+   *     security:
+   *       - BearerAuth: []
+   *     responses:
+   *       200:
+   *         description: All mappings
+   */
+  router.get("/menu-stock-map", async (req, res) =>
+    menuStockMapController.getAllMenuStockMaps(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/menu-stock-map/{id}:
+   *   delete:
+   *     tags:
+   *       - Inventory
+   *     summary: Delete a specific mapping
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       204:
+   *         description: Mapping deleted
+   */
+  router.delete("/menu-stock-map/:id", async (req, res) =>
+    menuStockMapController.deleteMenuStockMap(req as any, res)
+  );
+
+  // ==================== STORE POLICY ====================
+
+  /**
+   * @openapi
+   * /v1/inventory/policy:
+   *   get:
+   *     tags:
+   *       - Inventory
+   *     summary: Get store policy for inventory
+   *     security:
+   *       - BearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Store policy (creates default if not exists)
+   */
+  router.get("/policy", async (req, res) =>
+    storePolicyController.getStorePolicy(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/policy:
+   *   patch:
+   *     tags:
+   *       - Inventory
+   *     summary: Update store policy
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               inventorySubtractOnFinalize:
+   *                 type: boolean
+   *               branchOverrides:
+   *                 type: object
+   *               excludeMenuItemIds:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *                   format: uuid
+   *     responses:
+   *       200:
+   *         description: Policy updated
+   */
+  router.put("/policy", async (req, res) =>
+    storePolicyController.updateStorePolicy(req as any, res)
+  );
+
+  return router;
+}
+
+export type InventoryRouter = Router;
