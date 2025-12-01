@@ -30,8 +30,10 @@ export async function migrate() {
             const sql = fs.readFileSync(path.join(dir, file), "utf8");
             console.log("→", file);
             await pool.query(sql);
+            console.log(`✅ ${file} completed successfully`);
         } catch (error) {
             console.error(`❌ Failed to apply migration: ${file}`);
+            console.error(`Error details:`, error);
             throw error;
         }
     }
