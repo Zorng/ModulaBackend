@@ -28,16 +28,16 @@ export class SalesController {
     try {
       const validatedData = createSaleSchema.parse({
         ...req.body,
-        employeeId: req.user.employeeId,
-        tenantId: req.user.tenantId,
-        branchId: req.user.branchId
+        employeeId: req.user!.employeeId,
+        tenantId: req.user!.tenantId,
+        branchId: req.user!.branchId
       });
 
       const command: CreateSaleCommand = {
         ...validatedData,
-        tenantId: req.user.tenantId,
-        branchId: req.user.branchId,
-        employeeId: req.user.employeeId
+        tenantId: req.user!.tenantId,
+        branchId: req.user!.branchId,
+        employeeId: req.user!.employeeId
       };
 
       const sale = await this.salesService.createDraftSale(command);
@@ -60,9 +60,9 @@ export class SalesController {
       if (!sale) {
         const command: CreateSaleCommand = {
           clientUuid,
-          tenantId: req.user.tenantId,
-          branchId: req.user.branchId,
-          employeeId: req.user.employeeId,
+          tenantId: req.user!.tenantId,
+          branchId: req.user!.branchId,
+          employeeId: req.user!.employeeId,
           saleType: 'dine_in',
           fxRateUsed: req.body.fxRateUsed || 4100
         };
@@ -165,7 +165,7 @@ export class SalesController {
     try {
       const validatedData = finalizeSaleSchema.parse({
         saleId: req.params.saleId,
-        actorId: req.user.employeeId
+        actorId: req.user!.employeeId
       });
 
       const command: FinalizeSaleCommand = validatedData;
@@ -186,7 +186,7 @@ export class SalesController {
       const validatedData = updateFulfillmentSchema.parse({
         ...req.body,
         saleId: req.params.saleId,
-        actorId: req.user.employeeId
+        actorId: req.user!.employeeId
       });
 
       const command: UpdateFulfillmentCommand = validatedData;
@@ -211,7 +211,7 @@ export class SalesController {
       const validatedData = voidSaleSchema.parse({
         ...req.body,
         saleId: req.params.saleId,
-        actorId: req.user.employeeId
+        actorId: req.user!.employeeId
       });
 
       const command: VoidSaleCommand = validatedData;
@@ -236,7 +236,7 @@ export class SalesController {
       const validatedData = reopenSaleSchema.parse({
         ...req.body,
         saleId: req.params.saleId,
-        actorId: req.user.employeeId
+        actorId: req.user!.employeeId
       });
 
       const command: ReopenSaleCommand = validatedData;
@@ -278,8 +278,8 @@ export class SalesController {
       const query = getSalesQuerySchema.parse(req.query);
       
       const result = await this.salesService.findSalesByBranch({
-        tenantId: req.user.tenantId,
-        branchId: req.user.branchId,
+        tenantId: req.user!.tenantId,
+        branchId: req.user!.branchId,
         ...query
       });
 
@@ -296,8 +296,8 @@ export class SalesController {
   async getTodaySales(req: AuthRequest, res: Response) {
     try {
       const sales = await this.salesService.getTodaySales(
-        req.user.tenantId,
-        req.user.branchId
+        req.user!.tenantId,
+        req.user!.branchId
       );
 
       res.json({
