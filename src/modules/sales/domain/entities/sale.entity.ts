@@ -132,8 +132,17 @@ export function createSaleItem(params: {
   quantity: number;
   modifiers?: any[];
 }): SaleItem {
-  const baseTotalUsd = params.unitPriceUsd * params.quantity;
-  const baseTotalKhr = params.unitPriceKhrExact * params.quantity;
+  const modifiers = params.modifiers || [];
+  const modifierTotalUsd = modifiers.reduce((sum, mod) => {
+    return sum + (mod.priceAdjustmentUsd || 0);
+  }, 0);
+
+  const unitPriceWithModsUsd = params.unitPriceUsd + modifierTotalUsd;
+  const baseTotalUsd = unitPriceWithModsUsd * params.quantity;
+  
+  const modifierTotalKhr = Math.round(modifierTotalUsd * 4100);
+  const unitPriceWithModsKhr = params.unitPriceKhrExact + modifierTotalKhr;
+  const baseTotalKhr = unitPriceWithModsKhr * params.quantity;
 
   return {
     id: randomUUID(),
@@ -142,7 +151,7 @@ export function createSaleItem(params: {
     menuItemName: params.menuItemName,
     unitPriceUsd: params.unitPriceUsd,
     unitPriceKhrExact: params.unitPriceKhrExact,
-    modifiers: params.modifiers || [],
+    modifiers: modifiers,
     quantity: params.quantity,
     lineTotalUsdExact: baseTotalUsd,
     lineTotalKhrExact: baseTotalKhr,
@@ -379,8 +388,18 @@ export function reopenSale(originalSale: Sale, actorId: string, reason: string):
 
 // Helper functions
 function recalculateItemTotals(item: SaleItem, fxRateUsed: number): void {
-  const baseTotalUsd = item.unitPriceUsd * item.quantity;
-  const baseTotalKhr = item.unitPriceKhrExact * item.quantity;
+  // Calculate modifier total
+  const modifierTotalUsd = item.modifiers.reduce((sum, mod) => {
+    return sum + (mod.priceAdjustmentUsd || 0);
+  }, 0);
+  const modifierTotalKhr = Math.round(modifierTotalUsd * fxRateUsed);
+
+  // Calculate base totals including modifiers
+  const unitPriceWithModsUsd = item.unitPriceUsd + modifierTotalUsd;
+  const unitPriceWithModsKhr = item.unitPriceKhrExact + modifierTotalKhr;
+  
+  const baseTotalUsd = unitPriceWithModsUsd * item.quantity;
+  const baseTotalKhr = unitPriceWithModsKhr * item.quantity;
   
   let discountedTotalUsd = baseTotalUsd;
   let discountedTotalKhr = baseTotalKhr;
