@@ -174,17 +174,18 @@ export class CloudflareR2ImageAdapter implements IImageStoragePort {
     try {
       const parsed = new URL(url);
 
-      // Must be HTTPS
-      if (parsed.protocol !== "https:") {
+      // Must be HTTP or HTTPS (allow localhost)
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
         return false;
       }
 
-      // Check if it matches our R2 public domain OR any valid image URL
+      // Check if it matches our R2 public domain OR backend proxy OR any valid image URL
       // (Allow external URLs for flexibility)
       const isR2Url = this.publicBaseUrl && url.startsWith(this.publicBaseUrl);
+      const isBackendProxy = url.includes("/v1/images/"); // Backend proxy URLs
       const hasImageExtension = /\.(jpg|jpeg|png|webp)$/i.test(parsed.pathname);
 
-      return isR2Url || hasImageExtension;
+      return isR2Url || isBackendProxy || hasImageExtension;
     } catch {
       return false;
     }
