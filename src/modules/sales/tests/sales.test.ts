@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { createDraftSale, addItemToSale } from '../domain/entities/sale.entity.js';
+import { createDraftSale, addItemToSale, deleteDraftSale } from '../domain/entities/sale.entity.js';
 
 describe('Sales Module', () => {
   it('should create a draft sale', () => {
@@ -74,5 +74,55 @@ describe('Sales Module', () => {
     expect(sale.totalUsdExact).toBe(25);
     expect(sale.totalKhrExact).toBe(102500); // 25 * 4100
   });
-});
 
+  it('should allow deletion of draft sales only', () => {
+    const sale = createDraftSale({
+      clientUuid: 'test-client-uuid',
+      tenantId: 'test-tenant-id',
+      branchId: 'test-branch-id',
+      employeeId: 'test-employee-id',
+      saleType: 'dine_in',
+      fxRateUsed: 4100
+    });
+
+    // Add items to the draft sale
+    addItemToSale(sale, {
+      menuItemId: 'item-1',
+      menuItemName: 'Item 1',
+      unitPriceUsd: 5.00,
+      quantity: 2,
+      modifiers: []
+    });
+
+    addItemToSale(sale, {
+      menuItemId: 'item-2',
+      menuItemName: 'Item 2',
+      unitPriceUsd: 10.00,
+      quantity: 1,
+      modifiers: []
+    });
+
+    expect(sale.items.length).toBe(2);
+    expect(sale.state).toBe('draft');
+
+    // Should not throw for draft sales
+    expect(() => {
+      deleteDraftSale(sale, 'test-actor-id');
+    }).not.toThrow();
+
+    // Test that finalized sales cannot be deleted
+    const finalizedSale = createDraftSale({
+      clientUuid: 'test-client-uuid-2',
+      tenantId: 'test-tenant-id',
+      branchId: 'test-branch-id',
+      employeeId: 'test-employee-id',
+      saleType: 'dine_in',
+      fxRateUsed: 4100
+    });
+    finalizedSale.state = 'finalized';
+
+    expect(() => {
+      deleteDraftSale(finalizedSale, 'test-actor-id');
+    }).toThrow('Only draft sales can be deleted');
+  });
+});
