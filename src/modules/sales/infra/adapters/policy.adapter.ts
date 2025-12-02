@@ -18,8 +18,8 @@ export class PolicyAdapter implements PolicyPort {
 
   async getVatPolicy(tenantId: string): Promise<{ enabled: boolean; rate: number }> {
     // TODO: Query policy.vat_settings table when implemented
-    // For now, VAT is disabled
-    return { enabled: false, rate: 0.1 };
+    // For now, VAT is disabled by default (no policy module yet)
+    return { enabled: false, rate: 0 };
   }
 
   async getRoundingPolicy(tenantId: string): Promise<{ enabled: boolean; method: string }> {
