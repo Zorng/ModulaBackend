@@ -1,5 +1,13 @@
 import { randomUUID } from 'crypto';
 
+export interface SaleItemModifier {
+  modifierGroupId: string;      // References menu_modifier_groups.id
+  modifierGroupName: string;     // e.g., "Sugar Level", "Size", "Toppings"
+  modifierOptionId: string;      // References menu_modifier_options.id
+  modifierOptionLabel: string;   // e.g., "No Sugar", "Large", "Extra Cheese"
+  priceAdjustmentUsd: number;    // Price impact (can be 0, positive, or negative)
+}
+
 export type SaleType = 'dine_in' | 'take_away' | 'delivery';
 export type SaleState = 'draft' | 'finalized' | 'voided' | 'reopened';
 export type PaymentMethod = 'cash' | 'qr' | 'transfer' | 'other';
@@ -71,7 +79,7 @@ export interface SaleItem {
   menuItemName: string;
   unitPriceUsd: number;
   unitPriceKhrExact: number;
-  modifiers: any[];
+  modifiers: SaleItemModifier[];
   quantity: number;
   lineTotalUsdExact: number;
   lineTotalKhrExact: number;
@@ -130,17 +138,18 @@ export function createSaleItem(params: {
   unitPriceUsd: number;
   unitPriceKhrExact: number;
   quantity: number;
-  modifiers?: any[];
+  fxRateUsed: number;
+  modifiers?: SaleItemModifier[];
 }): SaleItem {
   const modifiers = params.modifiers || [];
   const modifierTotalUsd = modifiers.reduce((sum, mod) => {
-    return sum + (mod.priceAdjustmentUsd || 0);
+    return sum + mod.priceAdjustmentUsd;
   }, 0);
 
   const unitPriceWithModsUsd = params.unitPriceUsd + modifierTotalUsd;
   const baseTotalUsd = unitPriceWithModsUsd * params.quantity;
   
-  const modifierTotalKhr = Math.round(modifierTotalUsd * 4100);
+  const modifierTotalKhr = Math.round(modifierTotalUsd * params.fxRateUsed);
   const unitPriceWithModsKhr = params.unitPriceKhrExact + modifierTotalKhr;
   const baseTotalKhr = unitPriceWithModsKhr * params.quantity;
 
@@ -167,7 +176,7 @@ export function addItemToSale(sale: Sale, itemParams: {
   menuItemName: string;
   unitPriceUsd: number;
   quantity: number;
-  modifiers?: any[];
+  modifiers?: SaleItemModifier[];
 }): SaleItem {
   const unitPriceKhrExact = Math.round(itemParams.unitPriceUsd * sale.fxRateUsed);
   
@@ -178,6 +187,7 @@ export function addItemToSale(sale: Sale, itemParams: {
     unitPriceUsd: itemParams.unitPriceUsd,
     unitPriceKhrExact: unitPriceKhrExact,
     quantity: itemParams.quantity,
+    fxRateUsed: sale.fxRateUsed,
     modifiers: itemParams.modifiers
   });
 
@@ -358,6 +368,7 @@ export function reopenSale(originalSale: Sale, actorId: string, reason: string):
       unitPriceUsd: originalItem.unitPriceUsd,
       unitPriceKhrExact: originalItem.unitPriceKhrExact,
       quantity: originalItem.quantity,
+      fxRateUsed: reopenedSale.fxRateUsed,
       modifiers: originalItem.modifiers
     });
 
@@ -390,7 +401,7 @@ export function reopenSale(originalSale: Sale, actorId: string, reason: string):
 function recalculateItemTotals(item: SaleItem, fxRateUsed: number): void {
   // Calculate modifier total
   const modifierTotalUsd = item.modifiers.reduce((sum, mod) => {
-    return sum + (mod.priceAdjustmentUsd || 0);
+    return sum + mod.priceAdjustmentUsd;
   }, 0);
   const modifierTotalKhr = Math.round(modifierTotalUsd * fxRateUsed);
 
