@@ -67,6 +67,50 @@ export function createInventoryRoutes(
    *     responses:
    *       201:
    *         description: Stock item created
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     id:
+   *                       type: string
+   *                       format: uuid
+   *                     tenantId:
+   *                       type: string
+   *                       format: uuid
+   *                     name:
+   *                       type: string
+   *                     unitText:
+   *                       type: string
+   *                     barcode:
+   *                       type: string
+   *                       nullable: true
+   *                     defaultCostUsd:
+   *                       type: number
+   *                       nullable: true
+   *                     categoryId:
+   *                       type: string
+   *                       nullable: true
+   *                     imageUrl:
+   *                       type: string
+   *                       nullable: true
+   *                       description: URL of the uploaded image
+   *                     isActive:
+   *                       type: boolean
+   *                     createdBy:
+   *                       type: string
+   *                       format: uuid
+   *                     createdAt:
+   *                       type: string
+   *                       format: date-time
+   *                     updatedAt:
+   *                       type: string
+   *                       format: date-time
    */
   router.post(
     "/stock-items",
@@ -128,6 +172,50 @@ export function createInventoryRoutes(
    *     responses:
    *       200:
    *         description: Stock item updated
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     id:
+   *                       type: string
+   *                       format: uuid
+   *                     tenantId:
+   *                       type: string
+   *                       format: uuid
+   *                     name:
+   *                       type: string
+   *                     unitText:
+   *                       type: string
+   *                     barcode:
+   *                       type: string
+   *                       nullable: true
+   *                     defaultCostUsd:
+   *                       type: number
+   *                       nullable: true
+   *                     categoryId:
+   *                       type: string
+   *                       nullable: true
+   *                     imageUrl:
+   *                       type: string
+   *                       nullable: true
+   *                       description: URL of the uploaded image
+   *                     isActive:
+   *                       type: boolean
+   *                     createdBy:
+   *                       type: string
+   *                       format: uuid
+   *                     createdAt:
+   *                       type: string
+   *                       format: date-time
+   *                     updatedAt:
+   *                       type: string
+   *                       format: date-time
    */
   router.put(
     "/stock-items/:id",
@@ -181,6 +269,64 @@ export function createInventoryRoutes(
    *     responses:
    *       200:
    *         description: List of stock items
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     items:
+   *                       type: array
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           id:
+   *                             type: string
+   *                             format: uuid
+   *                           tenantId:
+   *                             type: string
+   *                             format: uuid
+   *                           name:
+   *                             type: string
+   *                           unitText:
+   *                             type: string
+   *                           barcode:
+   *                             type: string
+   *                             nullable: true
+   *                           defaultCostUsd:
+   *                             type: number
+   *                             nullable: true
+   *                           categoryId:
+   *                             type: string
+   *                             nullable: true
+   *                           imageUrl:
+   *                             type: string
+   *                             nullable: true
+   *                             description: URL of the uploaded image
+   *                           isActive:
+   *                             type: boolean
+   *                           createdBy:
+   *                             type: string
+   *                             format: uuid
+   *                           createdAt:
+   *                             type: string
+   *                             format: date-time
+   *                           updatedAt:
+   *                             type: string
+   *                             format: date-time
+   *                     total:
+   *                       type: integer
+   *                       description: Total number of items
+   *                     page:
+   *                       type: integer
+   *                       description: Current page number
+   *                     pageSize:
+   *                       type: integer
+   *                       description: Items per page
    */
   router.get("/stock-items", async (req, res) =>
     stockItemController.getStockItems(req as any, res)
