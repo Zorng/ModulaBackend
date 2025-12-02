@@ -8,6 +8,7 @@ import {
   CategoryController,
 } from "./controller/index.js";
 import { AuthMiddleware } from "../../auth/api/middleware/auth.middleware.js";
+import { uploadOptionalSingleImage } from "../../../platform/http/middleware/multer.js";
 
 export function createInventoryRoutes(
   stockItemController: StockItemController,
@@ -37,7 +38,7 @@ export function createInventoryRoutes(
    *     requestBody:
    *       required: true
    *       content:
-   *         application/json:
+   *         multipart/form-data:
    *           schema:
    *             type: object
    *             required:
@@ -53,12 +54,35 @@ export function createInventoryRoutes(
    *                 type: string
    *               defaultCostUsd:
    *                 type: number
+   *               categoryId:
+   *                 type: string
+   *                 description: Optional category ID
+   *               isActive:
+   *                 type: boolean
+   *                 default: true
+   *               image:
+   *                 type: string
+   *                 format: binary
+   *                 description: Image file (.jpg, .jpeg, .png, .webp)
    *     responses:
    *       201:
    *         description: Stock item created
    */
-  router.post("/stock-items", async (req, res) =>
-    stockItemController.createStockItem(req as any, res)
+  router.post(
+    "/stock-items",
+    uploadOptionalSingleImage,
+    (req, res, next) => {
+      // Coerce numeric fields if present
+      if (req.body.defaultCostUsd !== undefined) {
+        req.body.defaultCostUsd = Number(req.body.defaultCostUsd);
+      }
+      if (req.body.isActive !== undefined) {
+        req.body.isActive =
+          req.body.isActive === "true" || req.body.isActive === true;
+      }
+      next();
+    },
+    async (req, res) => stockItemController.createStockItem(req as any, res)
   );
 
   /**
@@ -80,7 +104,7 @@ export function createInventoryRoutes(
    *     requestBody:
    *       required: true
    *       content:
-   *         application/json:
+   *         multipart/form-data:
    *           schema:
    *             type: object
    *             properties:
@@ -92,14 +116,34 @@ export function createInventoryRoutes(
    *                 type: string
    *               defaultCostUsd:
    *                 type: number
+   *               categoryId:
+   *                 type: string
+   *                 description: Optional category ID
    *               isActive:
    *                 type: boolean
+   *               image:
+   *                 type: string
+   *                 format: binary
+   *                 description: Image file (.jpg, .jpeg, .png, .webp)
    *     responses:
    *       200:
    *         description: Stock item updated
    */
-  router.put("/stock-items/:id", async (req, res) =>
-    stockItemController.updateStockItem(req as any, res)
+  router.put(
+    "/stock-items/:id",
+    uploadOptionalSingleImage,
+    (req, res, next) => {
+      // Coerce numeric fields if present
+      if (req.body.defaultCostUsd !== undefined) {
+        req.body.defaultCostUsd = Number(req.body.defaultCostUsd);
+      }
+      if (req.body.isActive !== undefined) {
+        req.body.isActive =
+          req.body.isActive === "true" || req.body.isActive === true;
+      }
+      next();
+    },
+    async (req, res) => stockItemController.updateStockItem(req as any, res)
   );
 
   /**
@@ -121,6 +165,11 @@ export function createInventoryRoutes(
    *         name: isActive
    *         schema:
    *           type: boolean
+   *       - in: query
+   *         name: categoryId
+   *         schema:
+   *           type: string
+   *         description: Filter by category ID
    *       - in: query
    *         name: page
    *         schema:

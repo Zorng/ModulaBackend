@@ -18,6 +18,8 @@ export class StockItemController {
       const { name, unitText, barcode, defaultCostUsd, categoryId, isActive } =
         req.body;
 
+      let imageUrl = undefined;
+
       const result = await this.createStockItemUseCase.execute({
         tenantId: req.user!.tenantId,
         userId: req.user!.employeeId,
@@ -26,6 +28,9 @@ export class StockItemController {
         barcode,
         defaultCostUsd,
         categoryId,
+        imageUrl,
+        imageFile: req.file ? req.file.buffer : undefined,
+        imageFilename: req.file ? req.file.originalname : undefined,
         isActive: isActive ?? true,
       });
 
@@ -45,6 +50,14 @@ export class StockItemController {
       const { name, unitText, barcode, defaultCostUsd, categoryId, isActive } =
         req.body;
 
+      const imageUrl = req.file
+        ? await req.app.locals.imageStorage.uploadImage(
+            req.file.buffer,
+            req.file.originalname,
+            req.user!.tenantId
+          )
+        : undefined;
+
       const result = await this.updateStockItemUseCase.execute(
         id,
         req.user!.employeeId,
@@ -54,6 +67,7 @@ export class StockItemController {
           barcode,
           defaultCostUsd,
           categoryId,
+          imageUrl,
           isActive,
         }
       );
@@ -70,13 +84,14 @@ export class StockItemController {
 
   async getStockItems(req: AuthRequest, res: Response) {
     try {
-      const { q, isActive, page, pageSize } = req.query;
+      const { q, isActive, categoryId, page, pageSize } = req.query;
 
       const result = await this.getStockItemsUseCase.execute({
         tenantId: req.user!.tenantId,
         q: q as string,
         isActive:
           isActive === "true" ? true : isActive === "false" ? false : undefined,
+        categoryId: categoryId as string,
         page: page ? parseInt(page as string) : undefined,
         pageSize: pageSize ? parseInt(pageSize as string) : undefined,
       });

@@ -16,6 +16,7 @@ export interface StockItem {
   barcode?: string;
   defaultCostUsd?: number;
   categoryId?: string; // Optional category for organization
+  imageUrl?: string; // Optional image URL
   isActive: boolean;
   createdBy: string;
   createdAt: Date;

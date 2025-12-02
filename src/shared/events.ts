@@ -104,6 +104,7 @@ export type StockItemCreatedV1 = {
   unitText: string;
   barcode?: string;
   defaultCostUsd?: number;
+  imageUrl?: string;
   isActive: boolean;
   createdBy: string;
   createdAt: string;
@@ -119,6 +120,7 @@ export type StockItemUpdatedV1 = {
     unitText?: string;
     barcode?: string;
     defaultCostUsd?: number;
+    imageUrl?: string;
     isActive?: boolean;
   };
   updatedBy: string;

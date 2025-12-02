@@ -9,6 +9,7 @@ export interface UpdateStockItemInput {
   barcode?: string;
   defaultCostUsd?: number;
   categoryId?: string;
+  imageUrl?: string;
   isActive?: boolean;
 }
 
@@ -57,6 +58,7 @@ export class UpdateStockItemUseCase {
     if (input.defaultCostUsd !== undefined)
       updates.defaultCostUsd = input.defaultCostUsd;
     if (input.categoryId !== undefined) updates.categoryId = input.categoryId;
+    if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl;
     if (input.isActive !== undefined) updates.isActive = input.isActive;
 
     try {

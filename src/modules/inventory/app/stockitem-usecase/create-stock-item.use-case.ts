@@ -11,6 +11,9 @@ export interface CreateStockItemInput {
   barcode?: string;
   defaultCostUsd?: number;
   categoryId?: string;
+  imageUrl?: string;
+  imageFile?: Buffer;
+  imageFilename?: string;
   isActive: boolean;
 }
 
@@ -40,6 +43,9 @@ export class CreateStockItemUseCase {
       barcode,
       defaultCostUsd,
       categoryId,
+      imageUrl,
+      imageFile,
+      imageFilename,
       isActive,
     } = input;
 
@@ -65,6 +71,7 @@ export class CreateStockItemUseCase {
           barcode: barcode?.trim() || undefined,
           defaultCostUsd,
           categoryId,
+          imageUrl,
           isActive,
           createdBy: userId,
         });
@@ -79,6 +86,7 @@ export class CreateStockItemUseCase {
           unitText: stockItem.unitText,
           barcode: stockItem.barcode,
           defaultCostUsd: stockItem.defaultCostUsd,
+          imageUrl: stockItem.imageUrl,
           isActive: stockItem.isActive,
           createdBy: userId,
           createdAt: new Date().toISOString(),

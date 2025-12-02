@@ -54,11 +54,12 @@ export class StockItemRepository implements IStockItemRepository {
                 unit_text, 
                 barcode, 
                 default_cost_usd,
-                category_id, 
+                category_id,
+                image_url,
                 is_active,
                 created_by
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *`,
       [
         item.tenantId,
@@ -67,6 +68,7 @@ export class StockItemRepository implements IStockItemRepository {
         item.barcode || null,
         item.defaultCostUsd || null,
         item.categoryId || null,
+        item.imageUrl || null,
         item.isActive,
         item.createdBy,
       ]
@@ -93,6 +95,7 @@ export class StockItemRepository implements IStockItemRepository {
       barcode: "barcode",
       defaultCostUsd: "default_cost_usd",
       categoryId: "category_id",
+      imageUrl: "image_url",
       isActive: "is_active",
     };
 
@@ -138,6 +141,7 @@ export class StockItemRepository implements IStockItemRepository {
         ? parseFloat(row.default_cost_usd)
         : undefined,
       categoryId: row.category_id?.toString(),
+      imageUrl: row.image_url,
       isActive: row.is_active,
       createdBy: row.created_by,
       createdAt: new Date(row.created_at),
