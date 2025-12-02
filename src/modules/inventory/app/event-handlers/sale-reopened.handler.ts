@@ -1,19 +1,18 @@
 import { SaleReopenedV1 } from "../../../../shared/events.js";
-import { GetStorePolicyInventoryUseCase } from "../storepolicyinventory-usecase/get-store-policy-inventory.use-case.js";
 import { GetMenuStockMapUseCase } from "../menustockmap-usecase/get-menu-stock-map.use-case.js";
 import { RecordReopenUseCase } from "../inventoryjournal-usecase/record-reopen.use-case.js";
-import { StorePolicyInventory } from "../../domain/entities.js";
+import { InventoryPolicyAdapter } from "../../infra/adapters/policy.adapter.js";
 import { Pool } from "pg";
 
 /**
  * Event handler for sales.sale_reopened events
  *
  * Automatically re-deducts inventory when a voided sale is reopened,
- * respecting store policy configuration
+ * respecting policy module's inventory_policies settings
  */
 export class SaleReopenedHandler {
   constructor(
-    private getStorePolicyUseCase: GetStorePolicyInventoryUseCase,
+    private policyAdapter: InventoryPolicyAdapter,
     private getMenuStockMapUseCase: GetMenuStockMapUseCase,
     private recordReopenUseCase: RecordReopenUseCase,
     private pool: Pool
@@ -40,37 +39,17 @@ export class SaleReopenedHandler {
       `[SaleReopenedHandler] Fetched ${originalSale.lines.length} line items from original sale`
     );
 
-    // Step 1: Get store policy (creates default if missing)
-    const policyResult = await this.getStorePolicyUseCase.executeWithDefault(
-      tenantId,
-      "system"
-    );
-
-    if (!policyResult.ok) {
-      console.error(
-        `[SaleReopenedHandler] Failed to get store policy for tenant ${tenantId}:`,
-        policyResult.error
-      );
-      return;
-    }
-
-    const policy = policyResult.value;
-
-    // Step 2: Check if this branch/tenant should deduct inventory
-    const shouldDeduct = this.shouldDeductInventory(
-      policy,
-      branchId,
-      originalSale.lines.map((l) => l.menuItemId)
-    );
+    // Step 1: Check if automatic stock subtraction is enabled
+    const shouldDeduct = await this.policyAdapter.shouldSubtractOnSale(tenantId, branchId);
 
     if (!shouldDeduct) {
       console.log(
-        `[SaleReopenedHandler] Policy blocks inventory re-deduction for reopened sale ${newSaleId}`
+        `[SaleReopenedHandler] Auto-subtract disabled for tenant ${tenantId}, skipping re-deduction for reopened sale ${newSaleId}`
       );
       return;
     }
 
-    // Step 3: Get stock mappings for each menu item
+    // Step 2: Get stock mappings for each menu item
     const deductionLines: Array<{
       stockItemId: string;
       qtyToRededuct: number;
@@ -104,7 +83,7 @@ export class SaleReopenedHandler {
       return;
     }
 
-    // Step 4: Record inventory re-deductions with new sale ID
+    // Step 3: Record inventory re-deductions with new sale ID
     const result = await this.recordReopenUseCase.execute({
       tenantId,
       branchId,
@@ -114,11 +93,9 @@ export class SaleReopenedHandler {
     });
 
     if (!result.ok) {
-      console.error(
-        `[SaleReopenedHandler] Failed to re-deduct inventory for reopened sale ${newSaleId}:`,
-        result.error
-      );
-      throw new Error(result.error); // Throw to retry event processing
+      const errorMsg = `Failed to re-deduct inventory for reopened sale ${newSaleId}`;
+      console.error(`[SaleReopenedHandler] ${errorMsg}`);
+      throw new Error(errorMsg); // Throw to retry event processing
     }
 
     console.log(
@@ -162,30 +139,4 @@ export class SaleReopenedHandler {
     }
   }
 
-  private shouldDeductInventory(
-    policy: StorePolicyInventory,
-    branchId: string,
-    menuItemIds: string[]
-  ): boolean {
-    // Check if any menu items are excluded
-    for (const menuItemId of menuItemIds) {
-      if (policy.excludeMenuItemIds.includes(menuItemId)) {
-        return false;
-      }
-    }
-
-    // Check branch override
-    if (policy.branchOverrides && policy.branchOverrides[branchId]) {
-      const branchOverride = policy.branchOverrides[branchId];
-      if (
-        branchOverride.inventorySubtractOnFinalize !== undefined &&
-        branchOverride.inventorySubtractOnFinalize !== null
-      ) {
-        return branchOverride.inventorySubtractOnFinalize;
-      }
-    }
-
-    // Use default tenant policy
-    return policy.inventorySubtractOnFinalize;
-  }
 }

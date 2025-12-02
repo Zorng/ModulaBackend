@@ -21,8 +21,7 @@ export type FulfillmentStatus = z.infer<typeof FulfillmentStatus>;
 // Command schemas
 export const createSaleSchema = z.object({
   clientUuid: uuidSchema,
-  saleType: SaleType,
-  fxRateUsed: positiveNumber.optional().default(4100)
+  saleType: SaleType
 });
 
 export const addItemSchema = z.object({
@@ -112,7 +111,6 @@ export interface CreateSaleCommand {
   branchId: string;
   employeeId: string;
   saleType: SaleType;
-  fxRateUsed: number;
 }
 
 export interface AddItemCommand {

@@ -239,6 +239,7 @@ export function applyVAT(sale: Sale, vatRate: number, vatEnabled: boolean): void
 export function setTenderCurrency(sale: Sale, currency: TenderCurrency, roundingPolicy: any): void {
   sale.tenderCurrency = currency;
   
+  // Apply rounding for KHR tender currency
   if (currency === 'KHR' && roundingPolicy.enabled) {
     sale.khrRoundingApplied = true;
     applyKHRRounding(sale, roundingPolicy);
@@ -489,6 +490,9 @@ function applyKHRRounding(sale: Sale, roundingPolicy: any): void {
       break;
     case 'always_up':
       sale.totalKhrRounded = Math.ceil(exact / 100) * 100;
+      break;
+    case 'always_down':
+      sale.totalKhrRounded = Math.floor(exact / 100) * 100;
       break;
     default:
       sale.totalKhrRounded = exact;

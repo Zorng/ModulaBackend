@@ -12,6 +12,9 @@ import { MenuStockMapRepository } from "./infra/MenuStockMap.repository.js";
 import { StorePolicyInventoryRepository } from "./infra/storePolicyInventory.repository.js";
 import { InventoryCategoryRepository } from "./infra/inventoryCategory.repository.js";
 
+// Adapters
+import { InventoryPolicyAdapter } from "./infra/adapters/policy.adapter.js";
+
 // Controllers
 import {
   StockItemController,
@@ -246,9 +249,12 @@ export function bootstrapInventoryModule(
     deleteCategoryUseCase
   );
 
+  // Initialize policy adapter (connects to policy module)
+  const policyAdapter = new InventoryPolicyAdapter(pool);
+
   // Initialize event handlers
   const saleFinalizedHandler = new SaleFinalizedHandler(
-    getStorePolicyInventoryUseCase,
+    policyAdapter,
     getMenuStockMapUseCase,
     recordSaleDeductionsUseCase
   );
@@ -259,7 +265,7 @@ export function bootstrapInventoryModule(
   );
 
   const saleReopenedHandler = new SaleReopenedHandler(
-    getStorePolicyInventoryUseCase,
+    policyAdapter,
     getMenuStockMapUseCase,
     recordReopenUseCase,
     pool

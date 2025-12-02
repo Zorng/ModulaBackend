@@ -2,30 +2,112 @@ import { Pool } from 'pg';
 import { PolicyPort } from '../../app/ports/sales.ports.js';
 
 /**
- * PolicyAdapter - Stub implementation
+ * PolicyAdapter - Connects sales module to policy module
  * 
- * TODO: Implement proper policy tables and queries when policy module is ready
- * For now, returns sensible defaults to allow sales operations to work
+ * Reads from sales_policies table to apply:
+ * - VAT settings (enabled, rate)
+ * - KHR rounding mode
+ * - Discount scope rules
+ * 
+ * FX Rate is hardcoded for now (can be moved to policy later)
  */
 export class PolicyAdapter implements PolicyPort {
   constructor(private pool: Pool) {}
 
   async getCurrentFxRate(tenantId: string): Promise<number> {
-    // TODO: Query policy.fx_rates table when implemented
-    // For now, return default USD/KHR rate
-    return 4100;
+    try {
+      const result = await this.pool.query(
+        `SELECT fx_rate_khr_per_usd 
+         FROM sales_policies 
+         WHERE tenant_id = $1`,
+        [tenantId]
+      );
+
+      if (result.rows.length === 0) {
+        // No policy found - return default
+        return 4100;
+      }
+
+      return parseFloat(result.rows[0].fx_rate_khr_per_usd);
+    } catch (error) {
+      console.error('[PolicyAdapter] Error fetching FX rate:', error);
+      // Fail safe - return default rate
+      return 4100;
+    }
   }
 
   async getVatPolicy(tenantId: string): Promise<{ enabled: boolean; rate: number }> {
-    // TODO: Query policy.vat_settings table when implemented
-    // For now, VAT is disabled by default (no policy module yet)
-    return { enabled: false, rate: 0 };
+    try {
+      const result = await this.pool.query(
+        `SELECT vat_enabled, vat_rate_percent 
+         FROM sales_policies 
+         WHERE tenant_id = $1`,
+        [tenantId]
+      );
+
+      if (result.rows.length === 0) {
+        // No policy found - return defaults
+        return { enabled: false, rate: 0 };
+      }
+
+      const row = result.rows[0];
+      return {
+        enabled: row.vat_enabled,
+        rate: parseFloat(row.vat_rate_percent) / 100, // Convert percentage to decimal (10% -> 0.10)
+      };
+    } catch (error) {
+      console.error('[PolicyAdapter] Error fetching VAT policy:', error);
+      // Fail safe - return disabled VAT
+      return { enabled: false, rate: 0 };
+    }
   }
 
   async getRoundingPolicy(tenantId: string): Promise<{ enabled: boolean; method: string }> {
-    // TODO: Query policy.rounding_settings table when implemented
-    // For now, enable rounding to nearest 100 KHR
-    return { enabled: true, method: 'nearest_100' };
+    try {
+      const result = await this.pool.query(
+        `SELECT khr_rounding_enabled, khr_rounding_mode, khr_rounding_granularity 
+         FROM sales_policies 
+         WHERE tenant_id = $1`,
+        [tenantId]
+      );
+
+      if (result.rows.length === 0) {
+        // No policy found - return defaults
+        return { enabled: true, method: 'nearest_100' };
+      }
+
+      const row = result.rows[0];
+      
+      // Check if rounding is disabled
+      if (!row.khr_rounding_enabled) {
+        return { enabled: false, method: 'none' };
+      }
+      
+      // Map policy values to internal format
+      const granularity = row.khr_rounding_granularity || '100';
+      let method = `nearest_${granularity}`;
+      
+      switch (row.khr_rounding_mode) {
+        case 'NEAREST':
+          method = `nearest_${granularity}`;
+          break;
+        case 'UP':
+          method = `up_${granularity}`;
+          break;
+        case 'DOWN':
+          method = `down_${granularity}`;
+          break;
+      }
+
+      return {
+        enabled: true,
+        method,
+      };
+    } catch (error) {
+      console.error('[PolicyAdapter] Error fetching rounding policy:', error);
+      // Fail safe - return default rounding
+      return { enabled: true, method: 'nearest_100' };
+    }
   }
 
   async getItemDiscountPolicies(tenantId: string, branchId: string, menuItemId: string): Promise<Array<{
@@ -33,8 +115,8 @@ export class PolicyAdapter implements PolicyPort {
     type: 'percentage' | 'fixed';
     value: number;
   }>> {
-    // TODO: Query policy.discount_policies table when implemented
-    // For now, no item-level discounts
+    // TODO: Implement discount policies when needed
+    // For now, no predefined item-level discounts (manual discounts still allowed)
     return [];
   }
 
@@ -43,8 +125,8 @@ export class PolicyAdapter implements PolicyPort {
     type: 'percentage' | 'fixed';
     value: number;
   }>> {
-    // TODO: Query policy.discount_policies table when implemented
-    // For now, no order-level discounts
+    // TODO: Implement discount policies when needed
+    // For now, no predefined order-level discounts (manual discounts still allowed)
     return [];
   }
 }
