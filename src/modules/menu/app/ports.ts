@@ -459,12 +459,15 @@ export interface IImageStoragePort {
    * Upload image and return public URL
    * @param file - Image file buffer
    * @param filename - Original filename
+   * @param tenantId - Tenant ID for organizing files
+   * @param module - Module name for organizing files (e.g., 'menu', 'inventory')
    * @returns Public URL to access the image
    */
   uploadImage(
     file: Buffer,
     filename: string,
-    tenantId: string
+    tenantId: string,
+    module?: string
   ): Promise<string>;
 
   /**

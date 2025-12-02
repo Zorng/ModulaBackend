@@ -19,6 +19,7 @@ import { bootstrapInventoryModule } from "./modules/inventory/index.js";
 import { pool } from "./platform/db/index.js";
 import { TransactionManager } from "./platform/db/transactionManager.js";
 import { setupAuthModule } from "./modules/auth/index.js";
+import { imageProxyRouter } from "./platform/http/routes/image-proxy.js";
 
 const app = express();
 // Enable CORS for all origins (customize as needed for production)
@@ -199,6 +200,7 @@ app.use("/v1/auth", authRouter);
 app.use(menuRouter);
 app.use("/v1/sales", salesRouter);
 app.use("/v1/inventory", inventoryRouter);
+app.use("/v1", imageProxyRouter); // Image proxy for CORS-free access
 
 // Error handlers
 app.use(notFoundHandler);

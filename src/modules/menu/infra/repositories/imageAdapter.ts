@@ -62,12 +62,14 @@ export class CloudflareR2ImageAdapter implements IImageStoragePort {
    * @param file - Image buffer
    * @param filename - Original filename
    * @param tenantId - Tenant ID for organizing files
+   * @param module - Module name for organizing files (e.g., 'menu', 'inventory')
    * @returns Public URL to access the image
    */
   async uploadImage(
     file: Buffer,
     filename: string,
-    tenantId: string
+    tenantId: string,
+    module: string = "menu"
   ): Promise<string> {
     // Validate file size
     if (file.length > this.MAX_FILE_SIZE) {
@@ -89,9 +91,10 @@ export class CloudflareR2ImageAdapter implements IImageStoragePort {
     const uniqueId = crypto.randomUUID();
     const timestamp = Date.now();
     const sanitizedFilename = this.sanitizeFilename(filename);
+    const sanitizedModule = module.toLowerCase().replace(/[^a-z0-9]/g, "-");
 
-    // Key format: tenant/{tenantId}/menu/{timestamp}-{uuid}-{filename}
-    const key = `tenants/${tenantId}/menu/${timestamp}-${uniqueId}-${sanitizedFilename}.${ext}`;
+    // Key format: tenants/{tenantId}/{module}/{timestamp}-{uuid}-{filename}
+    const key = `tenants/${tenantId}/${sanitizedModule}/${timestamp}-${uniqueId}-${sanitizedFilename}.${ext}`;
 
     try {
       // Upload to R2
@@ -110,8 +113,10 @@ export class CloudflareR2ImageAdapter implements IImageStoragePort {
 
       await this.client.send(command);
 
-      // Return public URL
-      const publicUrl = `${this.publicBaseUrl}/${key}`;
+      // Return proxied URL through backend (avoids CORS issues)
+      // Format: http://localhost:3000/v1/images/{tenantId}/{module}/{filename}
+      const baseUrl = process.env.API_BASE_URL || "http://localhost:3000";
+      const publicUrl = `${baseUrl}/v1/images/${tenantId}/${sanitizedModule}/${timestamp}-${uniqueId}-${sanitizedFilename}.${ext}`;
 
       console.log(`[R2] Image uploaded: ${publicUrl}`);
       return publicUrl;

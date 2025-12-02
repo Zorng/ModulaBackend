@@ -27,7 +27,8 @@ export interface IImageStoragePort {
   uploadImage(
     file: Buffer,
     filename: string,
-    tenantId: string
+    tenantId: string,
+    module?: string
   ): Promise<string>;
   isValidImageUrl(url: string): boolean;
 }
@@ -69,7 +70,8 @@ export class UpdateStockItemUseCase {
         finalImageUrl = await this.imageStorage.uploadImage(
           input.imageFile,
           input.imageFilename,
-          existing.tenantId
+          existing.tenantId,
+          "inventory"
         );
       } catch (err) {
         return Err(
