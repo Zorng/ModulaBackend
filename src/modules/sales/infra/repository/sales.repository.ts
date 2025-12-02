@@ -138,6 +138,22 @@ export class PgSalesRepository implements SalesRepository {
     );
   }
 
+  async delete(id: string, trx?: PoolClient): Promise<void> {
+    const client = trx || this.pool;
+
+    // Delete sale items first (foreign key constraint)
+    await client.query(
+      `DELETE FROM sale_items WHERE sale_id = $1`,
+      [id]
+    );
+
+    // Delete the sale
+    await client.query(
+      `DELETE FROM sales WHERE id = $1`,
+      [id]
+    );
+  }
+
   async findSalesByBranch(params: {
     tenantId: string;
     branchId: string;

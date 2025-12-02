@@ -422,6 +422,38 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
 
   /**
    * @openapi
+   * /v1/sales/{saleId}:
+   *   delete:
+   *     tags:
+   *       - Sales
+   *     summary: Delete a draft sale
+   *     description: Permanently delete a sale in draft state (not finalized)
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: saleId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       204:
+   *         description: Draft sale deleted successfully
+   *       400:
+   *         description: Cannot delete non-draft sales
+   *       401:
+   *         description: Unauthorized
+   *       404:
+   *         description: Sale not found
+   */
+  router.delete(
+    '/:saleId',
+    async (req, res) => await controller.deleteSale(req as unknown as AuthRequest, res)
+  );
+
+  /**
+   * @openapi
    * /v1/sales/{saleId}/reopen:
    *   post:
    *     tags:

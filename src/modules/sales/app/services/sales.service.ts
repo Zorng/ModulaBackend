@@ -18,6 +18,7 @@ import {
   voidSale,
   updateFulfillment,
   reopenSale,
+  deleteDraftSale,
   recalculateSaleTotals
 } from '../../domain/entities/sale.entity.js';
 import { SalesRepository, PolicyPort, MenuPort } from '../ports/sales.ports.js';
@@ -385,6 +386,34 @@ export class SalesService {
       }, trx);
 
       return sale;
+    });
+  }
+
+  async deleteDraftSale(saleId: string, actorId: string): Promise<void> {
+    return await this.transactionManager.withTransaction(async (trx) => {
+      const sale = await this.salesRepo.findById(saleId, trx);
+      if (!sale) {
+        throw new Error('Sale not found');
+      }
+
+      // Validate using domain logic
+      deleteDraftSale(sale, actorId);
+      
+      // No audit log for draft deletions - drafts are temporary cart data
+      // Only finalized sales are tracked in audit log
+      
+      // Physically delete from database
+      await this.salesRepo.delete(saleId, trx);
+
+      await publishToOutbox({
+        type: 'sales.draft_deleted',
+        v: 1,
+        tenantId: sale.tenantId,
+        branchId: sale.branchId,
+        saleId: sale.id,
+        actorId: actorId,
+        timestamp: new Date().toISOString()
+      }, trx);
     });
   }
 

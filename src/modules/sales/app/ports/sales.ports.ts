@@ -5,6 +5,7 @@ export interface SalesRepository {
   findById(id: string, trx?: PoolClient): Promise<Sale | null>;
   findByClientUuid(clientUuid: string, trx?: PoolClient): Promise<Sale | null>;
   save(sale: Sale, trx?: PoolClient): Promise<void>;
+  delete(id: string, trx?: PoolClient): Promise<void>;
   findSalesByBranch(params: {
     tenantId: string;
     branchId: string;
