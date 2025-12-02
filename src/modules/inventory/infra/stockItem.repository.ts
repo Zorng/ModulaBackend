@@ -53,11 +53,12 @@ export class StockItemRepository implements IStockItemRepository {
                 name, 
                 unit_text, 
                 barcode, 
-                default_cost_usd, 
+                default_cost_usd,
+                category_id, 
                 is_active,
                 created_by
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *`,
       [
         item.tenantId,
@@ -65,6 +66,7 @@ export class StockItemRepository implements IStockItemRepository {
         item.unitText,
         item.barcode || null,
         item.defaultCostUsd || null,
+        item.categoryId || null,
         item.isActive,
         item.createdBy,
       ]
@@ -90,6 +92,7 @@ export class StockItemRepository implements IStockItemRepository {
       unitText: "unit_text",
       barcode: "barcode",
       defaultCostUsd: "default_cost_usd",
+      categoryId: "category_id",
       isActive: "is_active",
     };
 
@@ -117,6 +120,13 @@ export class StockItemRepository implements IStockItemRepository {
     return this.toEntity(res.rows[0]);
   }
 
+  async nullifyCategoryForItems(categoryId: string): Promise<void> {
+    await this.pool.query(
+      "UPDATE stock_items SET category_id = NULL WHERE category_id = $1",
+      [categoryId]
+    );
+  }
+
   private toEntity(row: any): StockItem {
     return {
       id: row.id,
@@ -127,6 +137,7 @@ export class StockItemRepository implements IStockItemRepository {
       defaultCostUsd: row.default_cost_usd
         ? parseFloat(row.default_cost_usd)
         : undefined,
+      categoryId: row.category_id?.toString(),
       isActive: row.is_active,
       createdBy: row.created_by,
       createdAt: new Date(row.created_at),

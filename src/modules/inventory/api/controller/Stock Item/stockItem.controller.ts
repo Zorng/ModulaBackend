@@ -15,7 +15,8 @@ export class StockItemController {
 
   async createStockItem(req: AuthRequest, res: Response) {
     try {
-      const { name, unitText, barcode, defaultCostUsd, isActive } = req.body;
+      const { name, unitText, barcode, defaultCostUsd, categoryId, isActive } =
+        req.body;
 
       const result = await this.createStockItemUseCase.execute({
         tenantId: req.user!.tenantId,
@@ -24,6 +25,7 @@ export class StockItemController {
         unitText,
         barcode,
         defaultCostUsd,
+        categoryId,
         isActive: isActive ?? true,
       });
 
@@ -40,7 +42,8 @@ export class StockItemController {
   async updateStockItem(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
-      const { name, unitText, barcode, defaultCostUsd, isActive } = req.body;
+      const { name, unitText, barcode, defaultCostUsd, categoryId, isActive } =
+        req.body;
 
       const result = await this.updateStockItemUseCase.execute(
         id,
@@ -50,6 +53,7 @@ export class StockItemController {
           unitText,
           barcode,
           defaultCostUsd,
+          categoryId,
           isActive,
         }
       );

@@ -1,5 +1,5 @@
 import * as waste from "./inventoryjournal-usecase/waste-stock.use-case.js";
-import * as updateStockItemUseCase from './stockitem-usecase/update-stock-item.use-case.js'
+import * as updateStockItemUseCase from "./stockitem-usecase/update-stock-item.use-case.js";
 export * from "./stockitem-usecase/create-stock-item.use-case.js";
 export * from "./stockitem-usecase/get-stock-items.use-case.js";
 export { updateStockItemUseCase };
@@ -19,3 +19,4 @@ export * from "./inventoryjournal-usecase/record-void.use-case.js";
 export * from "./inventoryjournal-usecase/record-reopen.use-case.js";
 export * from "./storepolicyinventory-usecase/get-store-policy-inventory.use-case.js";
 export * from "./storepolicyinventory-usecase/update-store-policy-inventory.use-case.js";
+export * from "./category-usecase/index.js";

@@ -231,6 +231,54 @@ export type StorePolicyInventoryUpdatedV1 = {
   updatedAt: string;
 };
 
+export type InventoryCategoryCreatedV1 = {
+  type: "inventory.category_created";
+  v: 1;
+  tenantId: string;
+  categoryId: string;
+  name: string;
+  displayOrder: number;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+};
+
+export type InventoryCategoryUpdatedV1 = {
+  type: "inventory.category_updated";
+  v: 1;
+  tenantId: string;
+  categoryId: string;
+  changes: {
+    name?: string;
+    displayOrder?: number;
+    isActive?: boolean;
+  };
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type InventoryCategoryDeactivatedV1 = {
+  type: "inventory.category_deactivated";
+  v: 1;
+  tenantId: string;
+  categoryId: string;
+  categoryName: string;
+  deactivatedBy: string;
+  deactivatedAt: string;
+};
+
+export type InventoryCategoryDeletedV1 = {
+  type: "inventory.category_deleted";
+  v: 1;
+  tenantId: string;
+  categoryId: string;
+  categoryName: string;
+  itemsAffected: number;
+  safeMode: boolean;
+  deletedBy: string;
+  deletedAt: string;
+};
+
 export type StockAdjustedV1 = {
   type: "inventory.stock_adjusted";
   v: 1;
@@ -441,6 +489,10 @@ export type DomainEvent =
   | StockReopenedV1
   | MenuStockMapSetV1
   | StorePolicyInventoryUpdatedV1
+  | InventoryCategoryCreatedV1
+  | InventoryCategoryUpdatedV1
+  | InventoryCategoryDeactivatedV1
+  | InventoryCategoryDeletedV1
   | StockAdjustedV1
   | MenuCategoryCreatedV1
   | MenuItemCreatedV1

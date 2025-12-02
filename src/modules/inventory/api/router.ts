@@ -4,6 +4,7 @@ import {
   InventoryJournalController,
   MenuStockMapController,
   StorePolicyController,
+  CategoryController,
 } from "./controller/index.js";
 import { createInventoryRoutes } from "./inventory.routes.js";
 import { AuthMiddleware } from "../../auth/api/middleware/auth.middleware.js";
@@ -21,6 +22,7 @@ export function createInventoryRouter(
   inventoryJournalController: InventoryJournalController,
   menuStockMapController: MenuStockMapController,
   storePolicyController: StorePolicyController,
+  categoryController: CategoryController,
   authMiddleware: AuthMiddleware
 ) {
   return createInventoryRoutes(
@@ -29,6 +31,7 @@ export function createInventoryRouter(
     inventoryJournalController,
     menuStockMapController,
     storePolicyController,
+    categoryController,
     authMiddleware
   );
 }
@@ -39,5 +42,6 @@ export type InventoryRouterFactory = (
   inventoryJournalController: InventoryJournalController,
   menuStockMapController: MenuStockMapController,
   storePolicyController: StorePolicyController,
+  categoryController: CategoryController,
   authMiddleware: AuthMiddleware
 ) => ReturnType<typeof createInventoryRoutes>;

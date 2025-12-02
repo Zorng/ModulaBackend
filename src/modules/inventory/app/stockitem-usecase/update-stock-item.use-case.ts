@@ -8,14 +8,15 @@ export interface UpdateStockItemInput {
   unitText?: string;
   barcode?: string;
   defaultCostUsd?: number;
+  categoryId?: string;
   isActive?: boolean;
 }
 
- interface IEventBus {
+interface IEventBus {
   publishViaOutbox(event: StockItemUpdatedV1, client?: any): Promise<void>;
 }
 
- interface ITransactionManager {
+interface ITransactionManager {
   withTransaction<T>(fn: (client: any) => Promise<T>): Promise<T>;
 }
 
@@ -55,6 +56,7 @@ export class UpdateStockItemUseCase {
       updates.barcode = input.barcode.trim() || undefined;
     if (input.defaultCostUsd !== undefined)
       updates.defaultCostUsd = input.defaultCostUsd;
+    if (input.categoryId !== undefined) updates.categoryId = input.categoryId;
     if (input.isActive !== undefined) updates.isActive = input.isActive;
 
     try {

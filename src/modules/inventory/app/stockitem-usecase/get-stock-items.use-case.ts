@@ -5,6 +5,7 @@ export interface GetStockItemsInput {
   tenantId: string;
   q?: string;
   isActive?: boolean;
+  categoryId?: string;
   page?: number;
   pageSize?: number;
 }
@@ -21,12 +22,17 @@ export class GetStockItemsUseCase {
       input.isActive
     );
 
+    // Filter by category if provided
+    let filtered = input.categoryId
+      ? items.filter((item) => item.categoryId === input.categoryId)
+      : items;
+
     // Filter by search query if provided (fuzzy match on name)
-    const filtered = input.q
-      ? items.filter((item) =>
+    filtered = input.q
+      ? filtered.filter((item) =>
           item.name.toLowerCase().includes(input.q!.toLowerCase())
         )
-      : items;
+      : filtered;
 
     // Paginate results
     const pageSize = input.pageSize || 20;

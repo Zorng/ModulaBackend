@@ -97,6 +97,10 @@ export async function cleanupTestContext(ctx: TestContext): Promise<void> {
       ctx.tenantId,
     ]);
     await ctx.pool.query(
+      `DELETE FROM inventory_categories WHERE tenant_id = $1`,
+      [ctx.tenantId]
+    );
+    await ctx.pool.query(
       `DELETE FROM employee_branch_assignments WHERE employee_id = $1`,
       [ctx.userId]
     );

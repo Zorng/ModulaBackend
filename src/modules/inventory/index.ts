@@ -10,6 +10,7 @@ import { BranchStockRepository } from "./infra/branchStock.repository.js";
 import { InventoryJournalRepository } from "./infra/InventoryJournal.repository.js";
 import { MenuStockMapRepository } from "./infra/MenuStockMap.repository.js";
 import { StorePolicyInventoryRepository } from "./infra/storePolicyInventory.repository.js";
+import { InventoryCategoryRepository } from "./infra/inventoryCategory.repository.js";
 
 // Controllers
 import {
@@ -18,6 +19,7 @@ import {
   InventoryJournalController,
   MenuStockMapController,
   StorePolicyController,
+  CategoryController,
 } from "./api/controller/index.js";
 
 // Use Cases - Stock Item
@@ -50,6 +52,14 @@ import { DeleteMenuStockMapUseCase } from "./app/menustockmap-usecase/delete-men
 import { GetStorePolicyInventoryUseCase } from "./app/storepolicyinventory-usecase/get-store-policy-inventory.use-case.js";
 import { UpdateStorePolicyInventoryUseCase } from "./app/storepolicyinventory-usecase/update-store-policy-inventory.use-case.js";
 
+// Use Cases - Category
+import {
+  CreateCategoryUseCase,
+  GetCategoriesUseCase,
+  UpdateCategoryUseCase,
+  DeleteCategoryUseCase,
+} from "./app/category-usecase/index.js";
+
 // Event Handlers
 import {
   SaleFinalizedHandler,
@@ -74,6 +84,7 @@ export function bootstrapInventoryModule(
   const journalRepo = new InventoryJournalRepository(pool);
   const menuStockMapRepo = new MenuStockMapRepository(pool);
   const storePolicyRepo = new StorePolicyInventoryRepository(pool);
+  const categoryRepo = new InventoryCategoryRepository(pool);
 
   // Initialize use cases - Stock Item
   const createStockItemUseCase = new CreateStockItemUseCase(
@@ -170,6 +181,25 @@ export function bootstrapInventoryModule(
       txManager
     );
 
+  // Initialize use cases - Category
+  const createCategoryUseCase = new CreateCategoryUseCase(
+    categoryRepo,
+    eventPublisher,
+    txManager
+  );
+  const getCategoriesUseCase = new GetCategoriesUseCase(categoryRepo);
+  const updateCategoryUseCase = new UpdateCategoryUseCase(
+    categoryRepo,
+    eventPublisher,
+    txManager
+  );
+  const deleteCategoryUseCase = new DeleteCategoryUseCase(
+    categoryRepo,
+    stockItemRepo,
+    eventPublisher,
+    txManager
+  );
+
   // Create controllers
   const stockItemController = new StockItemController(
     createStockItemUseCase,
@@ -206,6 +236,13 @@ export function bootstrapInventoryModule(
     updateStorePolicyInventoryUseCase
   );
 
+  const categoryController = new CategoryController(
+    createCategoryUseCase,
+    getCategoriesUseCase,
+    updateCategoryUseCase,
+    deleteCategoryUseCase
+  );
+
   // Initialize event handlers
   const saleFinalizedHandler = new SaleFinalizedHandler(
     getStorePolicyInventoryUseCase,
@@ -232,6 +269,7 @@ export function bootstrapInventoryModule(
     inventoryJournalController,
     menuStockMapController,
     storePolicyController,
+    categoryController,
     authMiddleware
   );
 

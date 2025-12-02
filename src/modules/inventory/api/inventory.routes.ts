@@ -5,6 +5,7 @@ import {
   InventoryJournalController,
   MenuStockMapController,
   StorePolicyController,
+  CategoryController,
 } from "./controller/index.js";
 import { AuthMiddleware } from "../../auth/api/middleware/auth.middleware.js";
 
@@ -14,6 +15,7 @@ export function createInventoryRoutes(
   inventoryJournalController: InventoryJournalController,
   menuStockMapController: MenuStockMapController,
   storePolicyController: StorePolicyController,
+  categoryController: CategoryController,
   authMiddleware: AuthMiddleware
 ): Router {
   const router = Router();
@@ -669,6 +671,130 @@ export function createInventoryRoutes(
    */
   router.put("/policy", async (req, res) =>
     storePolicyController.updateStorePolicy(req as any, res)
+  );
+
+  // ==================== CATEGORIES ====================
+
+  /**
+   * @openapi
+   * /v1/inventory/categories:
+   *   get:
+   *     tags:
+   *       - Inventory
+   *     summary: Get all categories
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: isActive
+   *         schema:
+   *           type: boolean
+   *     responses:
+   *       200:
+   *         description: List of categories
+   */
+  router.get("/categories", async (req, res) =>
+    categoryController.getCategories(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/categories:
+   *   post:
+   *     tags:
+   *       - Inventory
+   *     summary: Create a new category
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - name
+   *             properties:
+   *               name:
+   *                 type: string
+   *                 minLength: 2
+   *                 maxLength: 40
+   *               displayOrder:
+   *                 type: integer
+   *                 default: 0
+   *               isActive:
+   *                 type: boolean
+   *                 default: true
+   *     responses:
+   *       201:
+   *         description: Category created
+   */
+  router.post("/categories", async (req, res) =>
+    categoryController.createCategory(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/categories/{id}:
+   *   patch:
+   *     tags:
+   *       - Inventory
+   *     summary: Update a category
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               name:
+   *                 type: string
+   *               displayOrder:
+   *                 type: integer
+   *               isActive:
+   *                 type: boolean
+   *     responses:
+   *       200:
+   *         description: Category updated
+   */
+  router.patch("/categories/:id", async (req, res) =>
+    categoryController.updateCategory(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/inventory/categories/{id}:
+   *   delete:
+   *     tags:
+   *       - Inventory
+   *     summary: Delete a category
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: safeMode
+   *         schema:
+   *           type: boolean
+   *         description: If true, nullify category_id on items instead of blocking
+   *     responses:
+   *       204:
+   *         description: Category deleted
+   */
+  router.delete("/categories/:id", async (req, res) =>
+    categoryController.deleteCategory(req as any, res)
   );
 
   return router;

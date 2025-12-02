@@ -7,6 +7,7 @@ import {
   InventoryJournal,
   MenuStockMap,
   StorePolicyInventory,
+  InventoryCategory,
 } from "./entities.js";
 
 export interface StockItemRepository {
@@ -16,11 +17,14 @@ export interface StockItemRepository {
     tenantId: string,
     isActive?: boolean
   ): Promise<StockItem[]>;
-  save(item: Omit<StockItem, "id" | "createdAt">): Promise<StockItem>;
+  save(
+    item: Omit<StockItem, "id" | "createdAt" | "updatedAt">
+  ): Promise<StockItem>;
   update(
     id: string,
     updates: Partial<Omit<StockItem, "id" | "tenantId" | "createdAt">>
   ): Promise<StockItem | null>;
+  nullifyCategoryForItems(categoryId: string): Promise<void>;
 }
 
 export interface BranchStockRepository {
@@ -30,7 +34,9 @@ export interface BranchStockRepository {
     branchId: string,
     stockItemId: string
   ): Promise<BranchStock | null>;
-  save(link: Omit<BranchStock, "id" | "createdAt">): Promise<BranchStock>;
+  save(
+    link: Omit<BranchStock, "id" | "createdAt" | "updatedAt">
+  ): Promise<BranchStock>;
   update(
     id: string,
     updates: Partial<Pick<BranchStock, "minThreshold">>
@@ -44,7 +50,7 @@ export interface InventoryJournalRepository {
     filters?: { stockItemId?: string; fromDate?: Date; toDate?: Date }
   ): Promise<InventoryJournal[]>;
   save(
-    entry: Omit<InventoryJournal, "id" | "createdAt">
+    entry: Omit<InventoryJournal, "id" | "createdAt" | "updatedAt">
   ): Promise<InventoryJournal>;
   // Computed on-hand: sum of deltas for a stock item at a branch
   getOnHand(
@@ -86,4 +92,24 @@ export interface StorePolicyInventoryRepository {
     tenantId: string,
     updates: Partial<Omit<StorePolicyInventory, "tenantId" | "updatedAt">>
   ): Promise<StorePolicyInventory | null>;
+}
+
+export interface InventoryCategoryRepository {
+  findById(id: string): Promise<InventoryCategory | null>;
+  findByTenant(tenantId: string): Promise<InventoryCategory[]>;
+  findByTenantAndActive(
+    tenantId: string,
+    isActive?: boolean
+  ): Promise<InventoryCategory[]>;
+  countItemsInCategory(categoryId: string): Promise<number>;
+  save(
+    category: Omit<InventoryCategory, "id" | "createdAt" | "updatedAt">
+  ): Promise<InventoryCategory>;
+  update(
+    id: string,
+    updates: Partial<
+      Omit<InventoryCategory, "id" | "tenantId" | "createdAt" | "updatedAt">
+    >
+  ): Promise<InventoryCategory | null>;
+  delete(id: string): Promise<void>;
 }

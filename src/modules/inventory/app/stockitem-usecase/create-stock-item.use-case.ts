@@ -10,6 +10,7 @@ export interface CreateStockItemInput {
   unitText: string;
   barcode?: string;
   defaultCostUsd?: number;
+  categoryId?: string;
   isActive: boolean;
 }
 
@@ -38,6 +39,7 @@ export class CreateStockItemUseCase {
       unitText,
       barcode,
       defaultCostUsd,
+      categoryId,
       isActive,
     } = input;
 
@@ -62,6 +64,7 @@ export class CreateStockItemUseCase {
           unitText: unitText.trim(),
           barcode: barcode?.trim() || undefined,
           defaultCostUsd,
+          categoryId,
           isActive,
           createdBy: userId,
         });

@@ -15,6 +15,7 @@ export interface StockItem {
   unitText: string; // Unit of measure (e.g., "pcs", "kg", "liter")
   barcode?: string;
   defaultCostUsd?: number;
+  categoryId?: string; // Optional category for organization
   isActive: boolean;
   createdBy: string;
   createdAt: Date;
@@ -65,6 +66,17 @@ export interface StorePolicyInventory {
   branchOverrides: Record<string, any>; // JSONB for branch-specific overrides
   excludeMenuItemIds: string[]; // JSONB array of excluded menu item IDs
   updatedBy: string;
+  updatedAt: Date;
+}
+
+export interface InventoryCategory {
+  id: string;
+  tenantId: string;
+  name: string;
+  displayOrder: number;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: Date;
   updatedAt: Date;
 }
 
