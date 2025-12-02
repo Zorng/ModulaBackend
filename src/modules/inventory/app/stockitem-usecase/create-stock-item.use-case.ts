@@ -25,11 +25,21 @@ export interface ITransactionManager {
   withTransaction<T>(fn: (client: any) => Promise<T>): Promise<T>;
 }
 
+export interface IImageStoragePort {
+  uploadImage(
+    file: Buffer,
+    filename: string,
+    tenantId: string
+  ): Promise<string>;
+  isValidImageUrl(url: string): boolean;
+}
+
 export class CreateStockItemUseCase {
   constructor(
     private stockItemRepo: StockItemRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private imageStorage: IImageStoragePort
   ) {}
 
   async execute(
@@ -59,6 +69,28 @@ export class CreateStockItemUseCase {
       return Err("Unit text is required");
     }
 
+    let finalImageUrl: string | undefined = imageUrl;
+
+    // Upload image if file is provided
+    if (imageFile && imageFilename) {
+      try {
+        finalImageUrl = await this.imageStorage.uploadImage(
+          imageFile,
+          imageFilename,
+          tenantId
+        );
+      } catch (err) {
+        return Err(
+          err instanceof Error ? err.message : "Failed to upload image"
+        );
+      }
+    }
+
+    // Validate image URL if provided
+    if (finalImageUrl && !this.imageStorage.isValidImageUrl(finalImageUrl)) {
+      return Err("Invalid image URL format. Use .jpg, .jpeg, .webp, or .png");
+    }
+
     try {
       let stockItem: StockItem;
 
@@ -71,7 +103,7 @@ export class CreateStockItemUseCase {
           barcode: barcode?.trim() || undefined,
           defaultCostUsd,
           categoryId,
-          imageUrl,
+          imageUrl: finalImageUrl,
           isActive,
           createdBy: userId,
         });

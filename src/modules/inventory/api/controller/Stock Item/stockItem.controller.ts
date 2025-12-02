@@ -50,14 +50,6 @@ export class StockItemController {
       const { name, unitText, barcode, defaultCostUsd, categoryId, isActive } =
         req.body;
 
-      const imageUrl = req.file
-        ? await req.app.locals.imageStorage.uploadImage(
-            req.file.buffer,
-            req.file.originalname,
-            req.user!.tenantId
-          )
-        : undefined;
-
       const result = await this.updateStockItemUseCase.execute(
         id,
         req.user!.employeeId,
@@ -67,7 +59,8 @@ export class StockItemController {
           barcode,
           defaultCostUsd,
           categoryId,
-          imageUrl,
+          imageFile: req.file ? req.file.buffer : undefined,
+          imageFilename: req.file ? req.file.originalname : undefined,
           isActive,
         }
       );

@@ -62,8 +62,15 @@ const salesModule = bootstrapSalesModule(
 );
 const { router: salesRouter } = salesModule;
 
+// Setup image storage (shared across modules)
+const imageStorage = createImageStorageAdapter();
+
 // Setup Inventory Module
-const inventoryModule = bootstrapInventoryModule(pool, authMiddleware);
+const inventoryModule = bootstrapInventoryModule(
+  pool,
+  authMiddleware,
+  imageStorage
+);
 const { router: inventoryRouter, eventHandlers: inventoryEventHandlers } =
   inventoryModule;
 
@@ -106,7 +113,7 @@ app.get("/health", async (_req, res) => {
   res.json({ status: "ok", time: now });
 });
 
-app.locals.imageStorage = createImageStorageAdapter();
+app.locals.imageStorage = imageStorage;
 
 // Swagger UI setup - must be before routes
 setupSwagger(app);

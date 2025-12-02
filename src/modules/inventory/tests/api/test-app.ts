@@ -8,6 +8,23 @@ import {
 } from "../../../../platform/http/middleware/error-handler.js";
 
 /**
+ * Mock image storage adapter for testing
+ */
+const mockImageStorage = {
+  uploadImage: async (file: Buffer, filename: string, tenantId: string) => {
+    // Mock implementation - return a fake URL
+    return `https://mock-storage.com/${tenantId}/${filename}`;
+  },
+  deleteImage: async (imageUrl: string, tenantId: string) => {
+    // Mock implementation - do nothing
+  },
+  isValidImageUrl: (url: string) => {
+    // Mock validation - check basic URL format
+    return /^https?:\/\/.+\.(jpg|jpeg|png|webp)$/i.test(url);
+  },
+};
+
+/**
  * Creates a minimal Express app for API testing
  */
 export function createTestApp(pool: Pool): Express {
@@ -18,8 +35,15 @@ export function createTestApp(pool: Pool): Express {
   const authModule = setupAuthModule(pool);
   const { authMiddleware } = authModule;
 
+  // Setup mock image storage for tests
+  app.locals.imageStorage = mockImageStorage;
+
   // Setup inventory module
-  const inventoryModule = bootstrapInventoryModule(pool, authMiddleware);
+  const inventoryModule = bootstrapInventoryModule(
+    pool,
+    authMiddleware,
+    mockImageStorage
+  );
   const { router: inventoryRouter } = inventoryModule;
 
   // Mount inventory routes

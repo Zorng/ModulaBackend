@@ -10,6 +10,8 @@ export interface UpdateStockItemInput {
   defaultCostUsd?: number;
   categoryId?: string;
   imageUrl?: string;
+  imageFile?: Buffer;
+  imageFilename?: string;
   isActive?: boolean;
 }
 
@@ -21,11 +23,21 @@ interface ITransactionManager {
   withTransaction<T>(fn: (client: any) => Promise<T>): Promise<T>;
 }
 
+export interface IImageStoragePort {
+  uploadImage(
+    file: Buffer,
+    filename: string,
+    tenantId: string
+  ): Promise<string>;
+  isValidImageUrl(url: string): boolean;
+}
+
 export class UpdateStockItemUseCase {
   constructor(
     private stockItemRepo: StockItemRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private imageStorage: IImageStoragePort
   ) {}
 
   async execute(
@@ -49,6 +61,28 @@ export class UpdateStockItemUseCase {
       return Err("Unit text cannot be empty");
     }
 
+    let finalImageUrl: string | undefined = input.imageUrl;
+
+    // Upload image if file is provided
+    if (input.imageFile && input.imageFilename) {
+      try {
+        finalImageUrl = await this.imageStorage.uploadImage(
+          input.imageFile,
+          input.imageFilename,
+          existing.tenantId
+        );
+      } catch (err) {
+        return Err(
+          err instanceof Error ? err.message : "Failed to upload image"
+        );
+      }
+    }
+
+    // Validate image URL if provided
+    if (finalImageUrl && !this.imageStorage.isValidImageUrl(finalImageUrl)) {
+      return Err("Invalid image URL format. Use .jpg, .jpeg, .webp, or .png");
+    }
+
     // Sanitize inputs
     const updates: UpdateStockItemInput = {};
     if (input.name !== undefined) updates.name = input.name.trim();
@@ -58,7 +92,7 @@ export class UpdateStockItemUseCase {
     if (input.defaultCostUsd !== undefined)
       updates.defaultCostUsd = input.defaultCostUsd;
     if (input.categoryId !== undefined) updates.categoryId = input.categoryId;
-    if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl;
+    if (finalImageUrl !== undefined) updates.imageUrl = finalImageUrl;
     if (input.isActive !== undefined) updates.isActive = input.isActive;
 
     try {

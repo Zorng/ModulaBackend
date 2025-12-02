@@ -69,7 +69,8 @@ import {
 
 export function bootstrapInventoryModule(
   pool: Pool,
-  authMiddleware: AuthMiddleware
+  authMiddleware: AuthMiddleware,
+  imageStorage: any // IImageStoragePort from menu module
 ) {
   const txManager = new TransactionManager();
 
@@ -90,12 +91,14 @@ export function bootstrapInventoryModule(
   const createStockItemUseCase = new CreateStockItemUseCase(
     stockItemRepo,
     eventPublisher,
-    txManager
+    txManager,
+    imageStorage
   );
   const updateStockItemUseCase = new UpdateStockItemUseCase(
     stockItemRepo,
     eventPublisher,
-    txManager
+    txManager,
+    imageStorage
   );
   const getStockItemsUseCase = new GetStockItemsUseCase(stockItemRepo);
 
