@@ -103,7 +103,10 @@ export type StockItemCreatedV1 = {
   name: string;
   unitText: string;
   barcode?: string;
-  defaultCostUsd?: number;
+  pieceSize?: number;
+  isIngredient: boolean;
+  isSellable: boolean;
+  categoryId?: string;
   imageUrl?: string;
   isActive: boolean;
   createdBy: string;
@@ -119,7 +122,10 @@ export type StockItemUpdatedV1 = {
     name?: string;
     unitText?: string;
     barcode?: string;
-    defaultCostUsd?: number;
+    pieceSize?: number;
+    isIngredient?: boolean;
+    isSellable?: boolean;
+    categoryId?: string;
     imageUrl?: string;
     isActive?: boolean;
   };

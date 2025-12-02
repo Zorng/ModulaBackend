@@ -6,6 +6,8 @@ export interface GetStockItemsInput {
   q?: string;
   isActive?: boolean;
   categoryId?: string;
+  isIngredient?: boolean;
+  isSellable?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -26,6 +28,20 @@ export class GetStockItemsUseCase {
     let filtered = input.categoryId
       ? items.filter((item) => item.categoryId === input.categoryId)
       : items;
+
+    // Filter by isIngredient if provided
+    if (input.isIngredient !== undefined) {
+      filtered = filtered.filter(
+        (item) => item.isIngredient === input.isIngredient
+      );
+    }
+
+    // Filter by isSellable if provided
+    if (input.isSellable !== undefined) {
+      filtered = filtered.filter(
+        (item) => item.isSellable === input.isSellable
+      );
+    }
 
     // Filter by search query if provided (fuzzy match on name)
     filtered = input.q

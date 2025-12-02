@@ -9,7 +9,9 @@ export interface CreateStockItemInput {
   name: string;
   unitText: string;
   barcode?: string;
-  defaultCostUsd?: number;
+  pieceSize?: number;
+  isIngredient: boolean;
+  isSellable: boolean;
   categoryId?: string;
   imageUrl?: string;
   imageFile?: Buffer;
@@ -52,7 +54,9 @@ export class CreateStockItemUseCase {
       name,
       unitText,
       barcode,
-      defaultCostUsd,
+      pieceSize,
+      isIngredient,
+      isSellable,
       categoryId,
       imageUrl,
       imageFile,
@@ -103,7 +107,9 @@ export class CreateStockItemUseCase {
           name: name.trim(),
           unitText: unitText.trim(),
           barcode: barcode?.trim() || undefined,
-          defaultCostUsd,
+          pieceSize,
+          isIngredient,
+          isSellable,
           categoryId,
           imageUrl: finalImageUrl,
           isActive,
@@ -119,7 +125,10 @@ export class CreateStockItemUseCase {
           name: stockItem.name,
           unitText: stockItem.unitText,
           barcode: stockItem.barcode,
-          defaultCostUsd: stockItem.defaultCostUsd,
+          pieceSize: stockItem.pieceSize,
+          isIngredient: stockItem.isIngredient,
+          isSellable: stockItem.isSellable,
+          categoryId: stockItem.categoryId,
           imageUrl: stockItem.imageUrl,
           isActive: stockItem.isActive,
           createdBy: userId,

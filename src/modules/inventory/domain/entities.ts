@@ -14,7 +14,9 @@ export interface StockItem {
   name: string;
   unitText: string; // Unit of measure (e.g., "pcs", "kg", "liter")
   barcode?: string;
-  defaultCostUsd?: number;
+  pieceSize?: number; // Size per piece/unit
+  isIngredient: boolean; // Can be used as ingredient in recipes
+  isSellable: boolean; // Can be sold directly
   categoryId?: string; // Optional category for organization
   imageUrl?: string; // Optional image URL
   isActive: boolean;

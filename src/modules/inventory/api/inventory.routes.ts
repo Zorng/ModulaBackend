@@ -52,8 +52,17 @@ export function createInventoryRoutes(
    *                 description: Unit of measure (e.g., pcs, kg, liter)
    *               barcode:
    *                 type: string
-   *               defaultCostUsd:
+   *               pieceSize:
    *                 type: number
+   *                 description: Size per piece/unit (e.g., weight, volume)
+   *               isIngredient:
+   *                 type: boolean
+   *                 default: true
+   *                 description: Can be used as ingredient in recipes
+   *               isSellable:
+   *                 type: boolean
+   *                 default: false
+   *                 description: Can be sold directly
    *               categoryId:
    *                 type: string
    *                 description: Optional category ID
@@ -90,9 +99,16 @@ export function createInventoryRoutes(
    *                     barcode:
    *                       type: string
    *                       nullable: true
-   *                     defaultCostUsd:
+   *                     pieceSize:
    *                       type: number
    *                       nullable: true
+   *                       description: Size per piece/unit
+   *                     isIngredient:
+   *                       type: boolean
+   *                       description: Can be used as ingredient
+   *                     isSellable:
+   *                       type: boolean
+   *                       description: Can be sold directly
    *                     categoryId:
    *                       type: string
    *                       nullable: true
@@ -117,12 +133,20 @@ export function createInventoryRoutes(
     uploadOptionalSingleImage,
     (req, res, next) => {
       // Coerce numeric fields if present
-      if (req.body.defaultCostUsd !== undefined) {
-        req.body.defaultCostUsd = Number(req.body.defaultCostUsd);
+      if (req.body.pieceSize !== undefined) {
+        req.body.pieceSize = Number(req.body.pieceSize);
       }
       if (req.body.isActive !== undefined) {
         req.body.isActive =
           req.body.isActive === "true" || req.body.isActive === true;
+      }
+      if (req.body.isIngredient !== undefined) {
+        req.body.isIngredient =
+          req.body.isIngredient === "true" || req.body.isIngredient === true;
+      }
+      if (req.body.isSellable !== undefined) {
+        req.body.isSellable =
+          req.body.isSellable === "true" || req.body.isSellable === true;
       }
       next();
     },
@@ -158,8 +182,15 @@ export function createInventoryRoutes(
    *                 type: string
    *               barcode:
    *                 type: string
-   *               defaultCostUsd:
+   *               pieceSize:
    *                 type: number
+   *                 description: Size per piece/unit
+   *               isIngredient:
+   *                 type: boolean
+   *                 description: Can be used as ingredient in recipes
+   *               isSellable:
+   *                 type: boolean
+   *                 description: Can be sold directly
    *               categoryId:
    *                 type: string
    *                 description: Optional category ID
@@ -195,9 +226,16 @@ export function createInventoryRoutes(
    *                     barcode:
    *                       type: string
    *                       nullable: true
-   *                     defaultCostUsd:
+   *                     pieceSize:
    *                       type: number
    *                       nullable: true
+   *                       description: Size per piece/unit
+   *                     isIngredient:
+   *                       type: boolean
+   *                       description: Can be used as ingredient
+   *                     isSellable:
+   *                       type: boolean
+   *                       description: Can be sold directly
    *                     categoryId:
    *                       type: string
    *                       nullable: true
@@ -222,12 +260,20 @@ export function createInventoryRoutes(
     uploadOptionalSingleImage,
     (req, res, next) => {
       // Coerce numeric fields if present
-      if (req.body.defaultCostUsd !== undefined) {
-        req.body.defaultCostUsd = Number(req.body.defaultCostUsd);
+      if (req.body.pieceSize !== undefined) {
+        req.body.pieceSize = Number(req.body.pieceSize);
       }
       if (req.body.isActive !== undefined) {
         req.body.isActive =
           req.body.isActive === "true" || req.body.isActive === true;
+      }
+      if (req.body.isIngredient !== undefined) {
+        req.body.isIngredient =
+          req.body.isIngredient === "true" || req.body.isIngredient === true;
+      }
+      if (req.body.isSellable !== undefined) {
+        req.body.isSellable =
+          req.body.isSellable === "true" || req.body.isSellable === true;
       }
       next();
     },
@@ -258,6 +304,16 @@ export function createInventoryRoutes(
    *         schema:
    *           type: string
    *         description: Filter by category ID
+   *       - in: query
+   *         name: isIngredient
+   *         schema:
+   *           type: boolean
+   *         description: Filter by ingredient flag
+   *       - in: query
+   *         name: isSellable
+   *         schema:
+   *           type: boolean
+   *         description: Filter by sellable flag
    *       - in: query
    *         name: page
    *         schema:
@@ -297,9 +353,16 @@ export function createInventoryRoutes(
    *                           barcode:
    *                             type: string
    *                             nullable: true
-   *                           defaultCostUsd:
+   *                           pieceSize:
    *                             type: number
    *                             nullable: true
+   *                             description: Size per piece/unit
+   *                           isIngredient:
+   *                             type: boolean
+   *                             description: Can be used as ingredient
+   *                           isSellable:
+   *                             type: boolean
+   *                             description: Can be sold directly
    *                           categoryId:
    *                             type: string
    *                             nullable: true

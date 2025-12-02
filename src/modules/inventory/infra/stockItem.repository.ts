@@ -53,20 +53,24 @@ export class StockItemRepository implements IStockItemRepository {
                 name, 
                 unit_text, 
                 barcode, 
-                default_cost_usd,
+                piece_size,
+                is_ingredient,
+                is_sellable,
                 category_id,
                 image_url,
                 is_active,
                 created_by
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *`,
       [
         item.tenantId,
         item.name,
         item.unitText,
         item.barcode || null,
-        item.defaultCostUsd || null,
+        item.pieceSize || null,
+        item.isIngredient,
+        item.isSellable,
         item.categoryId || null,
         item.imageUrl || null,
         item.isActive,
@@ -93,7 +97,9 @@ export class StockItemRepository implements IStockItemRepository {
       name: "name",
       unitText: "unit_text",
       barcode: "barcode",
-      defaultCostUsd: "default_cost_usd",
+      pieceSize: "piece_size",
+      isIngredient: "is_ingredient",
+      isSellable: "is_sellable",
       categoryId: "category_id",
       imageUrl: "image_url",
       isActive: "is_active",
@@ -137,9 +143,9 @@ export class StockItemRepository implements IStockItemRepository {
       name: row.name,
       unitText: row.unit_text,
       barcode: row.barcode,
-      defaultCostUsd: row.default_cost_usd
-        ? parseFloat(row.default_cost_usd)
-        : undefined,
+      pieceSize: row.piece_size ? parseFloat(row.piece_size) : undefined,
+      isIngredient: row.is_ingredient,
+      isSellable: row.is_sellable,
       categoryId: row.category_id?.toString(),
       imageUrl: row.image_url,
       isActive: row.is_active,

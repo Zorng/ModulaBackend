@@ -7,7 +7,9 @@ export interface UpdateStockItemInput {
   name?: string;
   unitText?: string;
   barcode?: string;
-  defaultCostUsd?: number;
+  pieceSize?: number;
+  isIngredient?: boolean;
+  isSellable?: boolean;
   categoryId?: string;
   imageUrl?: string;
   imageFile?: Buffer;
@@ -91,8 +93,10 @@ export class UpdateStockItemUseCase {
     if (input.unitText !== undefined) updates.unitText = input.unitText.trim();
     if (input.barcode !== undefined)
       updates.barcode = input.barcode.trim() || undefined;
-    if (input.defaultCostUsd !== undefined)
-      updates.defaultCostUsd = input.defaultCostUsd;
+    if (input.pieceSize !== undefined) updates.pieceSize = input.pieceSize;
+    if (input.isIngredient !== undefined)
+      updates.isIngredient = input.isIngredient;
+    if (input.isSellable !== undefined) updates.isSellable = input.isSellable;
     if (input.categoryId !== undefined) updates.categoryId = input.categoryId;
     if (finalImageUrl !== undefined) updates.imageUrl = finalImageUrl;
     if (input.isActive !== undefined) updates.isActive = input.isActive;
@@ -114,7 +118,17 @@ export class UpdateStockItemUseCase {
           v: 1,
           tenantId: existing.tenantId,
           stockItemId: stockItemId,
-          changes: updates,
+          changes: {
+            name: updates.name,
+            unitText: updates.unitText,
+            barcode: updates.barcode,
+            pieceSize: updates.pieceSize,
+            isIngredient: updates.isIngredient,
+            isSellable: updates.isSellable,
+            categoryId: updates.categoryId,
+            imageUrl: updates.imageUrl,
+            isActive: updates.isActive,
+          },
           updatedBy: userId,
           updatedAt: new Date().toISOString(),
         };

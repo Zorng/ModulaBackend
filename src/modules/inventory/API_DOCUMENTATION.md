@@ -36,7 +36,9 @@ Create a new inventory item for the tenant.
   "name": "Premium Flour", // Required: Item name
   "unitText": "kg", // Required: Unit of measure (kg, liter, pcs, etc.)
   "barcode": "FLOUR001", // Optional: Barcode/SKU
-  "defaultCostUsd": 5.5, // Optional: Default cost per unit
+  "pieceSize": 5.5, // Optional: Size per piece/unit (e.g., weight, volume)
+  "isIngredient": true, // Required: Can be used as ingredient in recipes (default: true)
+  "isSellable": false, // Required: Can be sold directly (default: false)
   "isActive": true // Required: Whether item is active
 }
 ```
@@ -52,7 +54,9 @@ Create a new inventory item for the tenant.
     "name": "Premium Flour",
     "unitText": "kg",
     "barcode": "FLOUR001",
-    "defaultCostUsd": 5.5,
+    "pieceSize": 5.5,
+    "isIngredient": true,
+    "isSellable": false,
     "isActive": true,
     "createdAt": "2025-01-15T10:00:00Z",
     "updatedAt": "2025-01-15T10:00:00Z"
@@ -60,11 +64,19 @@ Create a new inventory item for the tenant.
 }
 ```
 
+**Item Usage Types**:
+
+- **Ingredient only**: `isIngredient=true, isSellable=false` - Used in recipes (flour, sugar, cheese)
+- **Sellable only**: `isIngredient=false, isSellable=true` - Sold directly without recipe (bottled drinks, packaged snacks)
+- **Both**: `isIngredient=true, isSellable=true` - Can be used in recipes AND sold directly (tomatoes, bread)
+- **Neither**: `isIngredient=false, isSellable=false` - Non-trackable items (service fees, digital goods)
+
 **Use Cases**:
 
 - Adding new products to track
 - Setting up ingredients for recipes
 - Registering supplies (plates, napkins, etc.)
+- Configuring sellable retail items
 
 ---
 
@@ -85,7 +97,9 @@ Update an existing stock item's details.
   "name": "Super Premium Flour", // Optional: Updated name
   "unitText": "kg", // Optional: Updated unit
   "barcode": "FLOUR002", // Optional: Updated barcode
-  "defaultCostUsd": 6.0, // Optional: Updated cost
+  "pieceSize": 6.0, // Optional: Updated piece size
+  "isIngredient": true, // Optional: Update ingredient flag
+  "isSellable": false, // Optional: Update sellable flag
   "isActive": false // Optional: Deactivate item
 }
 ```
@@ -101,7 +115,9 @@ Update an existing stock item's details.
     "name": "Super Premium Flour",
     "unitText": "kg",
     "barcode": "FLOUR002",
-    "defaultCostUsd": 6.0,
+    "pieceSize": 6.0,
+    "isIngredient": true,
+    "isSellable": false,
     "isActive": false,
     "createdAt": "2025-01-15T10:00:00Z",
     "updatedAt": "2025-01-15T11:00:00Z"
@@ -119,25 +135,29 @@ Update an existing stock item's details.
 
 ### Get Stock Items
 
-Retrieve all stock items for the tenant with optional filtering.
-
-**Endpoint**: `GET /v1/inventory/stock-items`
-
 **Query Parameters**:
 
 - `q` (string): Search by name (fuzzy match)
 - `isActive` (boolean): Filter by active status
+- `categoryId` (string): Filter by category
+- `isIngredient` (boolean): Filter by ingredient flag
+- `isSellable` (boolean): Filter by sellable flag
 - `page` (number): Page number (default: 1)
 - `pageSize` (number): Items per page (default: 20)
 
 **Examples**:
 
-```
+````
 GET /v1/inventory/stock-items
 GET /v1/inventory/stock-items?q=flour
 GET /v1/inventory/stock-items?isActive=true
+GET /v1/inventory/stock-items?isIngredient=true&isSellable=false
 GET /v1/inventory/stock-items?q=sugar&page=2&pageSize=10
-```
+``` /v1/inventory/stock-items
+GET /v1/inventory/stock-items?q=flour
+GET /v1/inventory/stock-items?isActive=true
+GET /v1/inventory/stock-items?q=sugar&page=2&pageSize=10
+````
 
 **Response** (200 OK):
 
@@ -145,13 +165,15 @@ GET /v1/inventory/stock-items?q=sugar&page=2&pageSize=10
 {
   "success": true,
   "data": {
-    "items": [
-      {
-        "id": "uuid",
-        "tenantId": "uuid",
         "name": "Premium Flour",
         "unitText": "kg",
         "barcode": "FLOUR001",
+        "pieceSize": 5.5,
+        "isIngredient": true,
+        "isSellable": false,
+        "isActive": true,
+        "createdAt": "2025-01-15T10:00:00Z",
+        "updatedAt": "2025-01-15T10:00:00Z"
         "defaultCostUsd": 5.5,
         "isActive": true,
         "createdAt": "2025-01-15T10:00:00Z",

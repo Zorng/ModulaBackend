@@ -15,8 +15,16 @@ export class StockItemController {
 
   async createStockItem(req: AuthRequest, res: Response) {
     try {
-      const { name, unitText, barcode, defaultCostUsd, categoryId, isActive } =
-        req.body;
+      const {
+        name,
+        unitText,
+        barcode,
+        pieceSize,
+        isIngredient,
+        isSellable,
+        categoryId,
+        isActive,
+      } = req.body;
 
       let imageUrl = undefined;
 
@@ -26,7 +34,9 @@ export class StockItemController {
         name,
         unitText,
         barcode,
-        defaultCostUsd,
+        pieceSize: pieceSize ? parseFloat(pieceSize) : undefined,
+        isIngredient: isIngredient ?? true,
+        isSellable: isSellable ?? false,
         categoryId,
         imageUrl,
         imageFile: req.file ? req.file.buffer : undefined,
@@ -47,8 +57,16 @@ export class StockItemController {
   async updateStockItem(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
-      const { name, unitText, barcode, defaultCostUsd, categoryId, isActive } =
-        req.body;
+      const {
+        name,
+        unitText,
+        barcode,
+        pieceSize,
+        isIngredient,
+        isSellable,
+        categoryId,
+        isActive,
+      } = req.body;
 
       const result = await this.updateStockItemUseCase.execute(
         id,
@@ -57,7 +75,10 @@ export class StockItemController {
           name,
           unitText,
           barcode,
-          defaultCostUsd,
+          pieceSize:
+            pieceSize !== undefined ? parseFloat(pieceSize) : undefined,
+          isIngredient,
+          isSellable,
           categoryId,
           imageFile: req.file ? req.file.buffer : undefined,
           imageFilename: req.file ? req.file.originalname : undefined,
@@ -77,7 +98,15 @@ export class StockItemController {
 
   async getStockItems(req: AuthRequest, res: Response) {
     try {
-      const { q, isActive, categoryId, page, pageSize } = req.query;
+      const {
+        q,
+        isActive,
+        categoryId,
+        isIngredient,
+        isSellable,
+        page,
+        pageSize,
+      } = req.query;
 
       const result = await this.getStockItemsUseCase.execute({
         tenantId: req.user!.tenantId,
@@ -85,6 +114,18 @@ export class StockItemController {
         isActive:
           isActive === "true" ? true : isActive === "false" ? false : undefined,
         categoryId: categoryId as string,
+        isIngredient:
+          isIngredient === "true"
+            ? true
+            : isIngredient === "false"
+            ? false
+            : undefined,
+        isSellable:
+          isSellable === "true"
+            ? true
+            : isSellable === "false"
+            ? false
+            : undefined,
         page: page ? parseInt(page as string) : undefined,
         pageSize: pageSize ? parseInt(pageSize as string) : undefined,
       });
