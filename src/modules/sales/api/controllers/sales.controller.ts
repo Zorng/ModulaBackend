@@ -231,6 +231,22 @@ export class SalesController {
     }
   }
 
+  async deleteSale(req: AuthRequest, res: Response) {
+    try {
+      const { saleId } = req.params;
+      const actorId = req.user!.employeeId;
+      
+      await this.salesService.deleteDraftSale(saleId, actorId);
+      
+      res.json({
+        success: true,
+        message: 'Draft deleted successfully'
+      });
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  }
+
   async reopenSale(req: AuthRequest, res: Response) {
     try {
       const validatedData = reopenSaleSchema.parse({

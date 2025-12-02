@@ -334,6 +334,15 @@ export function updateFulfillment(sale: Sale, status: FulfillmentStatus, actorId
   sale.updatedAt = now;
 }
 
+export function deleteDraftSale(sale: Sale, actorId: string): void {
+  if (sale.state !== 'draft') {
+    throw new Error('Only draft sales can be deleted');
+  }
+
+  // No state change needed - will be physically deleted from database
+  // This function mainly serves as validation and domain logic enforcement
+}
+
 export function reopenSale(originalSale: Sale, actorId: string, reason: string): Sale {
   if (originalSale.state !== 'finalized') {
     throw new Error('Only finalized sales can be reopened');

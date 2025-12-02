@@ -69,6 +69,16 @@ export type SaleReopenedV1 = {
   timestamp: string;
 };
 
+export type SaleDraftDeletedV1 = {
+  type: "sales.draft_deleted";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  saleId: string;
+  actorId: string;
+  timestamp: string;
+};
+
 // Cash events
 export type CashSessionOpenedV1 = {
   type: "cash.session_opened";
@@ -485,6 +495,7 @@ export type DomainEvent =
   | SaleFulfillmentUpdatedV1
   | SaleVoidedV1
   | SaleReopenedV1
+  | SaleDraftDeletedV1
   | CashSessionOpenedV1
   | CashSessionClosedV1
   | StockItemCreatedV1
