@@ -23,12 +23,20 @@ export class SaleFinalizedHandler {
       `[SaleFinalizedHandler] Processing sale ${saleId} for tenant ${tenantId}, branch ${branchId}`
     );
 
+    // Extract menu item IDs for policy check
+    const menuItemIds = lines.map(line => line.menuItemId);
+
     // Step 1: Check if automatic stock subtraction is enabled
-    const shouldDeduct = await this.policyAdapter.shouldSubtractOnSale(tenantId, branchId);
+    // This respects branch overrides and menu item exclusions
+    const shouldDeduct = await this.policyAdapter.shouldSubtractOnSale(
+      tenantId, 
+      branchId,
+      menuItemIds
+    );
 
     if (!shouldDeduct) {
       console.log(
-        `[SaleFinalizedHandler] Auto-subtract disabled for tenant ${tenantId}, skipping deduction for sale ${saleId}`
+        `[SaleFinalizedHandler] Auto-subtract disabled for tenant ${tenantId}, branch ${branchId}, skipping deduction for sale ${saleId}`
       );
       return; // Policy says don't deduct
     }
@@ -71,6 +79,7 @@ export class SaleFinalizedHandler {
       branchId,
       refSaleId: saleId,
       lines: deductionLines,
+      actorId: event.actorId,
     });
 
     if (!result.ok) {

@@ -4,7 +4,6 @@ import {
   BranchStockController,
   InventoryJournalController,
   MenuStockMapController,
-  StorePolicyController,
   CategoryController,
 } from "./controller/index.js";
 import { AuthMiddleware } from "../../auth/api/middleware/auth.middleware.js";
@@ -15,7 +14,6 @@ export function createInventoryRoutes(
   branchStockController: BranchStockController,
   inventoryJournalController: InventoryJournalController,
   menuStockMapController: MenuStockMapController,
-  storePolicyController: StorePolicyController,
   categoryController: CategoryController,
   authMiddleware: AuthMiddleware
 ): Router {
@@ -255,7 +253,7 @@ export function createInventoryRoutes(
    *                       type: string
    *                       format: date-time
    */
-  router.put(
+  router.patch(
     "/stock-items/:id",
     uploadOptionalSingleImage,
     (req, res, next) => {
@@ -689,7 +687,7 @@ export function createInventoryRoutes(
    *       200:
    *         description: On-hand quantities with low stock flags
    */
-  router.get("/journal/on-hand", async (req, res) =>
+  router.get("/branch/on-hand", async (req, res) =>
     inventoryJournalController.getOnHand(req as any, res)
   );
 
@@ -735,7 +733,7 @@ export function createInventoryRoutes(
    *       200:
    *         description: Journal entries with pagination
    */
-  router.get("/journal", async (req, res) =>
+  router.get("/branch/journal", async (req, res) =>
     inventoryJournalController.getInventoryJournal(req as any, res)
   );
 
@@ -752,7 +750,7 @@ export function createInventoryRoutes(
    *       200:
    *         description: Items below minimum threshold
    */
-  router.get("/journal/alerts/low-stock", async (req, res) =>
+  router.get("/branch/alerts/low-stock", async (req, res) =>
     inventoryJournalController.getLowStockAlerts(req as any, res)
   );
 
@@ -877,58 +875,6 @@ export function createInventoryRoutes(
    */
   router.delete("/menu-stock-map/:id", async (req, res) =>
     menuStockMapController.deleteMenuStockMap(req as any, res)
-  );
-
-  // ==================== STORE POLICY ====================
-
-  /**
-   * @openapi
-   * /v1/inventory/policy:
-   *   get:
-   *     tags:
-   *       - Inventory
-   *     summary: Get store policy for inventory
-   *     security:
-   *       - BearerAuth: []
-   *     responses:
-   *       200:
-   *         description: Store policy (creates default if not exists)
-   */
-  router.get("/policy", async (req, res) =>
-    storePolicyController.getStorePolicy(req as any, res)
-  );
-
-  /**
-   * @openapi
-   * /v1/inventory/policy:
-   *   patch:
-   *     tags:
-   *       - Inventory
-   *     summary: Update store policy
-   *     security:
-   *       - BearerAuth: []
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *             properties:
-   *               inventorySubtractOnFinalize:
-   *                 type: boolean
-   *               branchOverrides:
-   *                 type: object
-   *               excludeMenuItemIds:
-   *                 type: array
-   *                 items:
-   *                   type: string
-   *                   format: uuid
-   *     responses:
-   *       200:
-   *         description: Policy updated
-   */
-  router.put("/policy", async (req, res) =>
-    storePolicyController.updateStorePolicy(req as any, res)
   );
 
   // ==================== CATEGORIES ====================

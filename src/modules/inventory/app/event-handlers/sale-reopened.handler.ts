@@ -39,12 +39,20 @@ export class SaleReopenedHandler {
       `[SaleReopenedHandler] Fetched ${originalSale.lines.length} line items from original sale`
     );
 
+    // Extract menu item IDs for policy check
+    const menuItemIds = originalSale.lines.map(line => line.menuItemId);
+
     // Step 1: Check if automatic stock subtraction is enabled
-    const shouldDeduct = await this.policyAdapter.shouldSubtractOnSale(tenantId, branchId);
+    // This respects branch overrides and menu item exclusions
+    const shouldDeduct = await this.policyAdapter.shouldSubtractOnSale(
+      tenantId, 
+      branchId,
+      menuItemIds
+    );
 
     if (!shouldDeduct) {
       console.log(
-        `[SaleReopenedHandler] Auto-subtract disabled for tenant ${tenantId}, skipping re-deduction for reopened sale ${newSaleId}`
+        `[SaleReopenedHandler] Auto-subtract disabled for tenant ${tenantId}, branch ${branchId}, skipping re-deduction for reopened sale ${newSaleId}`
       );
       return;
     }

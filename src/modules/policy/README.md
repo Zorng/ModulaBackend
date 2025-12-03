@@ -205,15 +205,25 @@ All policies have sensible defaults defined in the migration:
 - Early check-in buffer: OFF (15 min)
 - Allow manager edits: OFF
 
-## Integration with Sales Module
+## Module Integrations
 
-The policy module is connected to the sales module for:
+The policy module is connected to other modules:
+
+### Sales Module
 
 - **VAT:** Sales module reads from `sales_policies.vat_enabled` and `vat_rate_percent`
 - **FX Rate:** Sales module reads from `sales_policies.fx_rate_khr_per_usd`
 - **Rounding:** Sales module reads from `sales_policies.khr_rounding_mode`
 
 See `src/modules/sales/infra/adapters/policy.adapter.ts` for implementation details.
+
+### Inventory Module
+
+- **Auto-Subtract:** Policy module's `inventory_policies.auto_subtract_on_sale` syncs to inventory module's `store_policy_inventory.inventory_subtract_on_finalize`
+- **Sync Adapter:** `InventorySyncAdapter` ensures both tables stay in sync
+- **Rich Policies:** Inventory module extends with branch overrides and menu item exclusions
+
+See `src/modules/inventory/POLICY_INTEGRATION.md` for complete documentation.
 
 ## Testing
 
