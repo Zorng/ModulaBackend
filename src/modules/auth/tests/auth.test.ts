@@ -2,11 +2,13 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { AuthService } from '../app/auth.service.js';
 import { AuthRepository } from '../infra/repository.js';
 import { TokenService } from '../app/token.service.js';
+import { PgPolicyRepository } from '../../policy/infra/repository.js';
 import { Pool } from 'pg';
 
 describe('Auth Integration Tests', () => {
   let pool: Pool;
   let authRepo: AuthRepository;
+  let policyRepo: PgPolicyRepository;
   let tokenService: TokenService;
   let authService: AuthService;
 
@@ -17,13 +19,14 @@ describe('Auth Integration Tests', () => {
     });
 
     authRepo = new AuthRepository(pool);
+    policyRepo = new PgPolicyRepository(pool);
     tokenService = new TokenService(
       'test-jwt-secret',
       'test-refresh-secret',
       '1h',
       '7d'
     );
-    authService = new AuthService(authRepo, tokenService, 72);
+    authService = new AuthService(authRepo, tokenService, policyRepo, 72);
   });
 
   afterAll(async () => {
@@ -45,7 +48,7 @@ describe('Auth Integration Tests', () => {
       });
 
       expect(registrationResult.tenant).toBeDefined();
-      expect(registrationResult.user).toBeDefined();
+      expect(registrationResult.employee).toBeDefined();
       expect(registrationResult.tokens).toBeDefined();
 
       // Login with the created user
@@ -54,7 +57,7 @@ describe('Auth Integration Tests', () => {
         password: 'SecurePass123!'
       });
 
-      expect(loginResult.user.id).toBe(registrationResult.user.id);
+      expect(loginResult.employee.id).toBe(registrationResult.employee.id);
       expect(loginResult.tokens).toBeDefined();
       expect(loginResult.branchAssignments.length).toBeGreaterThan(0);
     });

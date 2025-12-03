@@ -15,8 +15,8 @@ import {
   CashSessionPolicies,
   AttendancePolicies,
   TenantPolicies,
+  UpdateTenantPoliciesInput,
 } from "../domain/entities.js";
-import { UpdateTenantPoliciesInput } from "../api/schemas.js";
 
 describe("Policy Use Cases", () => {
   let mockPolicyRepository: jest.Mocked<IPolicyRepository>;
@@ -44,7 +44,9 @@ describe("Policy Use Cases", () => {
         saleVatEnabled: false,
         saleVatRatePercent: 10.0,
         saleFxRateKhrPerUsd: 4100,
+        saleKhrRoundingEnabled: true,
         saleKhrRoundingMode: "NEAREST",
+        saleKhrRoundingGranularity: "100",
         // Inventory
         inventoryAutoSubtractOnSale: true,
         inventoryExpiryTrackingEnabled: false,
@@ -84,7 +86,9 @@ describe("Policy Use Cases", () => {
         saleVatEnabled: false,
         saleVatRatePercent: 10.0,
         saleFxRateKhrPerUsd: 4100,
+        saleKhrRoundingEnabled: true,
         saleKhrRoundingMode: "NEAREST",
+        saleKhrRoundingGranularity: "100",
         inventoryAutoSubtractOnSale: true,
         inventoryExpiryTrackingEnabled: false,
         cashRequireSessionForSales: true,
@@ -123,7 +127,9 @@ describe("Policy Use Cases", () => {
         vatEnabled: true,
         vatRatePercent: 10,
         fxRateKhrPerUsd: 4100,
+        khrRoundingEnabled: true,
         khrRoundingMode: "NEAREST",
+        khrRoundingGranularity: "100",
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -179,7 +185,9 @@ describe("Policy Use Cases", () => {
         saleVatEnabled: false,
         saleVatRatePercent: 10.0,
         saleFxRateKhrPerUsd: 4100,
+        saleKhrRoundingEnabled: true,
         saleKhrRoundingMode: "NEAREST",
+        saleKhrRoundingGranularity: "100",
         inventoryAutoSubtractOnSale: true,
         inventoryExpiryTrackingEnabled: false,
         cashRequireSessionForSales: true,
@@ -228,7 +236,9 @@ describe("Policy Use Cases", () => {
         saleVatEnabled: false,
         saleVatRatePercent: 10.0,
         saleFxRateKhrPerUsd: 4100,
+        saleKhrRoundingEnabled: true,
         saleKhrRoundingMode: "NEAREST",
+        saleKhrRoundingGranularity: "100",
         inventoryAutoSubtractOnSale: true,
         inventoryExpiryTrackingEnabled: false,
         cashRequireSessionForSales: true,

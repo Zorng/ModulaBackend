@@ -5,6 +5,7 @@ import { TokenService } from './app/token.service.js';
 import { AuthController } from './api/controllers/auth.controller.js';
 import { AuthMiddleware } from './api/middleware/auth.middleware.js';
 import { createAuthRoutes } from './api/routes/auth.routes.js';
+import { PgPolicyRepository } from '../policy/infra/repository.js';
 import { config } from '../../platform/config/index.js';
 
 // Shared auth middleware instance (initialized by setupAuthModule)
@@ -13,6 +14,7 @@ export let authMiddleware: AuthMiddleware;
 export function setupAuthModule(db: Pool) {
      // Initialize repositories
     const authRepo = new AuthRepository(db);
+    const policyRepo = new PgPolicyRepository(db);
 
     // Initialize services
     const tokenService = new TokenService(
@@ -25,6 +27,7 @@ export function setupAuthModule(db: Pool) {
     const authService = new AuthService(
         authRepo,
         tokenService,
+        policyRepo,
         config.auth.defaultInviteExpiryHours
     );
 

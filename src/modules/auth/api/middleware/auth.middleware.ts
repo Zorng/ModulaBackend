@@ -44,7 +44,12 @@ export class AuthMiddleware {
           .json({ error: "Employee not found or inactive" });
       }
 
-      req.user = claims;
+      req.user = {
+        employeeId: claims.employeeId,
+        tenantId: claims.tenantId,
+        branchId: claims.branchId || '',
+        role: claims.role
+      };
       next();
     } catch (error) {
       res.status(401).json({ error: "Authentication failed" });
