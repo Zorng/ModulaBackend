@@ -25,7 +25,7 @@ interface ITransactionManager {
   withTransaction<T>(fn: (client: any) => Promise<T>): Promise<T>;
 }
 
-export interface IImageStoragePort {
+interface IImageStoragePort {
   uploadImage(
     file: Buffer,
     filename: string,
