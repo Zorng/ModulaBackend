@@ -16,12 +16,14 @@ import {
 import { AuthRepository } from '../infra/repository.js';
 import { PasswordService } from './password.service.js';
 import { TokenService } from './token.service.js';
+import type { IPolicyRepository } from '../../policy/infra/repository.js';
 import * as crypto from 'crypto';
 
 export class AuthService {
   constructor(
     private authRepo: AuthRepository,
     private tokenService: TokenService,
+    private policyRepo: IPolicyRepository,
     private defaultInviteExpiryHours: number = 72
   ) {}
 
@@ -32,6 +34,9 @@ export class AuthService {
       business_type: request.business_type,
       status: 'ACTIVE'
     });
+
+    // Create default policies for the tenant
+    await this.policyRepo.ensureDefaultPolicies(tenant.id);
 
     // Create first branch
     const branch = await this.authRepo.createBranch({

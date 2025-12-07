@@ -9,8 +9,10 @@ import { StockItemRepository } from "./infra/stockItem.repository.js";
 import { BranchStockRepository } from "./infra/branchStock.repository.js";
 import { InventoryJournalRepository } from "./infra/InventoryJournal.repository.js";
 import { MenuStockMapRepository } from "./infra/MenuStockMap.repository.js";
-import { StorePolicyInventoryRepository } from "./infra/storePolicyInventory.repository.js";
 import { InventoryCategoryRepository } from "./infra/inventoryCategory.repository.js";
+
+// Adapters
+import { InventoryPolicyAdapter } from "./infra/adapters/policy.adapter.js";
 
 // Controllers
 import {
@@ -18,7 +20,6 @@ import {
   BranchStockController,
   InventoryJournalController,
   MenuStockMapController,
-  StorePolicyController,
   CategoryController,
 } from "./api/controller/index.js";
 
@@ -47,10 +48,6 @@ import { GetInventoryExceptionsUseCase } from "./app/inventoryjournal-usecase/ge
 import { SetMenuStockMapUseCase } from "./app/menustockmap-usecase/set-menu-stock-map.use-case.js";
 import { GetMenuStockMapUseCase } from "./app/menustockmap-usecase/get-menu-stock-map.use-case.js";
 import { DeleteMenuStockMapUseCase } from "./app/menustockmap-usecase/delete-menu-stock-map.use-case.js";
-
-// Use Cases - Store Policy
-import { GetStorePolicyInventoryUseCase } from "./app/storepolicyinventory-usecase/get-store-policy-inventory.use-case.js";
-import { UpdateStorePolicyInventoryUseCase } from "./app/storepolicyinventory-usecase/update-store-policy-inventory.use-case.js";
 
 // Use Cases - Category
 import {
@@ -84,7 +81,6 @@ export function bootstrapInventoryModule(
   const branchStockRepo = new BranchStockRepository(pool);
   const journalRepo = new InventoryJournalRepository(pool);
   const menuStockMapRepo = new MenuStockMapRepository(pool);
-  const storePolicyRepo = new StorePolicyInventoryRepository(pool);
   const categoryRepo = new InventoryCategoryRepository(pool);
 
   // Initialize use cases - Stock Item
@@ -147,7 +143,11 @@ export function bootstrapInventoryModule(
     eventPublisher,
     txManager
   );
-  const getOnHandUseCase = new GetOnHandUseCase(journalRepo, branchStockRepo);
+  const getOnHandUseCase = new GetOnHandUseCase(
+    journalRepo,
+    branchStockRepo,
+    stockItemRepo
+  );
   const getInventoryJournalUseCase = new GetInventoryJournalUseCase(
     journalRepo
   );
@@ -172,17 +172,6 @@ export function bootstrapInventoryModule(
   const deleteMenuStockMapUseCase = new DeleteMenuStockMapUseCase(
     menuStockMapRepo
   );
-
-  // Initialize use cases - Store Policy
-  const getStorePolicyInventoryUseCase = new GetStorePolicyInventoryUseCase(
-    storePolicyRepo
-  );
-  const updateStorePolicyInventoryUseCase =
-    new UpdateStorePolicyInventoryUseCase(
-      storePolicyRepo,
-      eventPublisher,
-      txManager
-    );
 
   // Initialize use cases - Category
   const createCategoryUseCase = new CreateCategoryUseCase(
@@ -234,11 +223,6 @@ export function bootstrapInventoryModule(
     deleteMenuStockMapUseCase
   );
 
-  const storePolicyController = new StorePolicyController(
-    getStorePolicyInventoryUseCase,
-    updateStorePolicyInventoryUseCase
-  );
-
   const categoryController = new CategoryController(
     createCategoryUseCase,
     getCategoriesUseCase,
@@ -246,9 +230,12 @@ export function bootstrapInventoryModule(
     deleteCategoryUseCase
   );
 
+  // Initialize policy adapter (connects to policy module)
+  const policyAdapter = new InventoryPolicyAdapter(pool);
+
   // Initialize event handlers
   const saleFinalizedHandler = new SaleFinalizedHandler(
-    getStorePolicyInventoryUseCase,
+    policyAdapter,
     getMenuStockMapUseCase,
     recordSaleDeductionsUseCase
   );
@@ -259,7 +246,7 @@ export function bootstrapInventoryModule(
   );
 
   const saleReopenedHandler = new SaleReopenedHandler(
-    getStorePolicyInventoryUseCase,
+    policyAdapter,
     getMenuStockMapUseCase,
     recordReopenUseCase,
     pool
@@ -271,7 +258,6 @@ export function bootstrapInventoryModule(
     branchStockController,
     inventoryJournalController,
     menuStockMapController,
-    storePolicyController,
     categoryController,
     authMiddleware
   );

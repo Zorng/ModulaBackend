@@ -48,7 +48,10 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    *     tags:
    *       - Sales
    *     summary: Create a new draft sale
-   *     description: Initialize a new sale in draft state for cart operations
+   *     description: |
+   *       Initialize a new sale in draft state for cart operations.
+   *       
+   *       **Note:** The FX rate is automatically fetched from tenant policy settings.
    *     security:
    *       - BearerAuth: []
    *     requestBody:
@@ -68,9 +71,6 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    *               saleType:
    *                 type: string
    *                 enum: [dine_in, take_away, delivery]
-   *               fxRateUsed:
-   *                 type: number
-   *                 description: Exchange rate (defaults to current rate)
    *     responses:
    *       201:
    *         description: Draft sale created successfully

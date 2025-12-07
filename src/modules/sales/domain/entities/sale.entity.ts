@@ -237,8 +237,12 @@ export function applyVAT(sale: Sale, vatRate: number, vatEnabled: boolean): void
 }
 
 export function setTenderCurrency(sale: Sale, currency: TenderCurrency, roundingPolicy: any): void {
+  // Recalculate totals first before applying currency/rounding
+  recalculateSaleTotals(sale);
+  
   sale.tenderCurrency = currency;
   
+  // Apply rounding for KHR tender currency
   if (currency === 'KHR' && roundingPolicy.enabled) {
     sale.khrRoundingApplied = true;
     applyKHRRounding(sale, roundingPolicy);
@@ -293,6 +297,9 @@ export function finalizeSale(sale: Sale, actorId: string): void {
   if (sale.items.length === 0) {
     throw new Error('Cannot finalize empty sale');
   }
+
+  // Recalculate all totals before finalizing
+  recalculateSaleTotals(sale);
 
   sale.state = 'finalized';
   sale.finalizedAt = new Date();
@@ -410,7 +417,7 @@ export function reopenSale(originalSale: Sale, actorId: string, reason: string):
 function recalculateItemTotals(item: SaleItem, fxRateUsed: number): void {
   // Calculate modifier total
   const modifierTotalUsd = item.modifiers.reduce((sum, mod) => {
-    return sum + mod.priceAdjustmentUsd;
+    return sum + (mod.priceAdjustmentUsd || 0);
   }, 0);
   const modifierTotalKhr = Math.round(modifierTotalUsd * fxRateUsed);
 
@@ -489,6 +496,9 @@ function applyKHRRounding(sale: Sale, roundingPolicy: any): void {
       break;
     case 'always_up':
       sale.totalKhrRounded = Math.ceil(exact / 100) * 100;
+      break;
+    case 'always_down':
+      sale.totalKhrRounded = Math.floor(exact / 100) * 100;
       break;
     default:
       sale.totalKhrRounded = exact;

@@ -63,8 +63,7 @@ export class SalesController {
           tenantId: req.user!.tenantId,
           branchId: req.user!.branchId,
           employeeId: req.user!.employeeId,
-          saleType: 'dine_in',
-          fxRateUsed: req.body.fxRateUsed || 4100
+          saleType: 'dine_in'
         };
         
         sale = await this.salesService.createDraftSale(command);

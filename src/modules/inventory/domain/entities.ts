@@ -63,15 +63,6 @@ export interface MenuStockMap {
   createdAt: Date;
 }
 
-export interface StorePolicyInventory {
-  tenantId: string; // Primary key
-  inventorySubtractOnFinalize: boolean;
-  branchOverrides: Record<string, any>; // JSONB for branch-specific overrides
-  excludeMenuItemIds: string[]; // JSONB array of excluded menu item IDs
-  updatedBy: string;
-  updatedAt: Date;
-}
-
 export interface InventoryCategory {
   id: string;
   tenantId: string;

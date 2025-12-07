@@ -13,7 +13,7 @@ describe('TokenService', () => {
   describe('generateAccessToken', () => {
     it('should generate a valid JWT access token', () => {
       const claims = {
-        userId: 'user-123',
+        employeeId: 'user-123',
         tenantId: 'tenant-456',
         branchId: 'branch-789',
         role: 'ADMIN' as const
@@ -28,7 +28,7 @@ describe('TokenService', () => {
 
     it('should include claims in the token', () => {
       const claims = {
-        userId: 'user-123',
+        employeeId: 'user-123',
         tenantId: 'tenant-456',
         branchId: 'branch-789',
         role: 'CASHIER' as const
@@ -38,7 +38,7 @@ describe('TokenService', () => {
       const verified = tokenService.verifyAccessToken(token);
 
       expect(verified).not.toBeNull();
-      expect(verified?.userId).toBe(claims.userId);
+      expect(verified?.employeeId).toBe(claims.employeeId);
       expect(verified?.tenantId).toBe(claims.tenantId);
       expect(verified?.branchId).toBe(claims.branchId);
       expect(verified?.role).toBe(claims.role);
@@ -65,7 +65,7 @@ describe('TokenService', () => {
   describe('verifyAccessToken', () => {
     it('should verify a valid token', () => {
       const claims = {
-        userId: 'user-123',
+        employeeId: 'user-123',
         tenantId: 'tenant-456',
         branchId: 'branch-789',
         role: 'MANAGER' as const
@@ -75,7 +75,7 @@ describe('TokenService', () => {
       const verified = tokenService.verifyAccessToken(token);
 
       expect(verified).not.toBeNull();
-      expect(verified?.userId).toBe(claims.userId);
+      expect(verified?.employeeId).toBe(claims.employeeId);
     });
 
     it('should return null for invalid token', () => {
@@ -88,7 +88,7 @@ describe('TokenService', () => {
     it('should return null for token with wrong secret', () => {
       const wrongTokenService = new TokenService('wrong-secret', refreshSecret);
       const claims = {
-        userId: 'user-123',
+        employeeId: 'user-123',
         tenantId: 'tenant-456',
         branchId: 'branch-789',
         role: 'ADMIN' as const

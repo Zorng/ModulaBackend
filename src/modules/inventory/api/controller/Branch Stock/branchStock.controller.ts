@@ -13,11 +13,11 @@ export class BranchStockController {
 
   async assignStockItemToBranch(req: AuthRequest, res: Response) {
     try {
-      const { stockItemId, minThreshold } = req.body;
+      const { stockItemId, minThreshold, branchId } = req.body;
 
       const result = await this.assignStockItemToBranchUseCase.execute({
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: branchId || req.user!.branchId,
         stockItemId,
         minThreshold,
         userId: req.user!.employeeId,
@@ -35,9 +35,11 @@ export class BranchStockController {
 
   async getBranchStockItems(req: AuthRequest, res: Response) {
     try {
+      const branchId = (req.query.branchId as string) || req.user!.branchId;
+
       const result = await this.getBranchStockItemsUseCase.execute({
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId,
       });
 
       res.json({ success: true, data: result });

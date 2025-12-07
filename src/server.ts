@@ -6,6 +6,7 @@ import { ping } from "#db";
 import { log } from "#logger";
 import { tenantRouter } from "#modules/tenant/api/router.js";
 import { menuRouter } from "./modules/menu/api/router/index.js";
+import { policyRouter } from "./modules/policy/index.js";
 import {
   errorHandler,
   notFoundHandler,
@@ -227,12 +228,13 @@ app.get("/health", async (_req, res) => {
 });
 
 // Mount module routers
-app.use("/v1/tenants", tenantRouter); // <-- mounts /v1/tenants
+app.use("/v1/tenants", tenantRouter);
 app.use("/v1/auth", authRouter);
-app.use(menuRouter);
+app.use(menuRouter); // Menu routes already include /v1/menu prefix
 app.use("/v1/sales", salesRouter);
 app.use("/v1/inventory", inventoryRouter);
 app.use("/v1/cash", cashRouter);
+app.use("/v1/policies", policyRouter);
 app.use("/v1", imageProxyRouter); // Image proxy for CORS-free access
 
 // Error handlers

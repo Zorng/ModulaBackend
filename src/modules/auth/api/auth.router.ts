@@ -4,18 +4,20 @@ import { AuthMiddleware } from './middleware/auth.middleware.js';
 import { AuthService } from '../app/auth.service.js';
 import { AuthRepository } from '../infra/repository.js';
 import { TokenService } from '../app/token.service.js';
+import { PgPolicyRepository } from '../../policy/infra/repository.js';
 import { pool } from '#db';
 import { config } from '../../../platform/config/index.js';
 
 // Initialize dependencies once
 const authRepo = new AuthRepository(pool);
+const policyRepo = new PgPolicyRepository(pool);
 const tokenService = new TokenService(
     config.jwt.secret,
     config.jwt.refreshSecret,
     config.jwt.accessTokenExpiry,
     config.jwt.refreshTokenExpiry
 );
-const authService = new AuthService(authRepo, tokenService, config.auth.defaultInviteExpiryHours);
+const authService = new AuthService(authRepo, tokenService, policyRepo, config.auth.defaultInviteExpiryHours);
 const authController = new AuthController(authService);
 
 // Export authMiddleware so other modules can use it

@@ -25,6 +25,8 @@ interface ITransactionManager {
   withTransaction<T>(fn: (client: any) => Promise<T>): Promise<T>;
 }
 
+// IImageStoragePort is exported from create-stock-item.use-case.ts
+// to avoid duplicate export errors
 interface IImageStoragePort {
   uploadImage(
     file: Buffer,

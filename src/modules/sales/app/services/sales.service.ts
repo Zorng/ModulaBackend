@@ -32,7 +32,6 @@ export interface CreateSaleCommand {
   branchId: string;
   employeeId: string;
   saleType: SaleType;
-  fxRateUsed: number;
 }
 
 export interface AddItemCommand {
@@ -88,12 +87,17 @@ export class SalesService {
 
   async createDraftSale(cmd: CreateSaleCommand): Promise<Sale> {
     return await this.transactionManager.withTransaction(async (trx) => {
-      const fxRate = cmd.fxRateUsed || await this.policyPort.getCurrentFxRate(cmd.tenantId);
+      // Always fetch FX rate from tenant policy
+      const fxRate = await this.policyPort.getCurrentFxRate(cmd.tenantId);
       
       const sale = createDraftSale({
         ...cmd,
         fxRateUsed: fxRate
       });
+
+      // Apply VAT policy from the start
+      const vatPolicy = await this.policyPort.getVatPolicy(cmd.tenantId);
+      applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
 
       await this.salesRepo.save(sale, trx);
       
@@ -157,6 +161,10 @@ export class SalesService {
         recalculateSaleTotals(sale);
       }
 
+      // Reapply VAT after items change
+      const vatPolicy = await this.policyPort.getVatPolicy(sale.tenantId);
+      applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
+
       await this.salesRepo.save(sale, trx);
       return sale;
     });
@@ -174,6 +182,11 @@ export class SalesService {
       }
 
       removeItemFromSale(sale, itemId);
+      
+      // Reapply VAT after items change
+      const vatPolicy = await this.policyPort.getVatPolicy(sale.tenantId);
+      applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
+      
       await this.salesRepo.save(sale, trx);
       return sale;
     });
@@ -191,6 +204,11 @@ export class SalesService {
       }
 
       updateItemQuantity(sale, cmd.itemId, cmd.quantity);
+      
+      // Reapply VAT after items change
+      const vatPolicy = await this.policyPort.getVatPolicy(sale.tenantId);
+      applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
+      
       await this.salesRepo.save(sale, trx);
       return sale;
     });

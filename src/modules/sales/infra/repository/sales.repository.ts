@@ -90,13 +90,13 @@ export class PgSalesRepository implements SalesRepository {
         cancelled_at = EXCLUDED.cancelled_at`,
       [
         sale.id, sale.clientUuid, sale.tenantId, sale.branchId, sale.employeeId,
-        sale.saleType, sale.state, sale.refPreviousSaleId || null, sale.vatEnabled, sale.vatRate, sale.vatAmountUsd,
-        sale.vatAmountKhrExact, JSON.stringify(sale.appliedPolicyIds), sale.orderDiscountType,
-        sale.orderDiscountAmount, sale.policyStale, sale.fxRateUsed, sale.subtotalUsdExact, sale.subtotalKhrExact,
-        sale.totalUsdExact, sale.totalKhrExact,
-        sale.tenderCurrency, sale.khrRoundingApplied, sale.totalKhrRounded, sale.roundingDeltaKhr,
-        sale.paymentMethod, sale.cashReceivedKhr, sale.cashReceivedUsd, sale.changeGivenKhr,
-        sale.changeGivenUsd, sale.fulfillmentStatus, sale.createdAt, sale.updatedAt,
+        sale.saleType, sale.state, sale.refPreviousSaleId || null,
+        sale.vatEnabled, sale.vatRate, sale.vatAmountUsd, Math.floor(sale.vatAmountKhrExact || 0),
+        JSON.stringify(sale.appliedPolicyIds), sale.orderDiscountType, sale.orderDiscountAmount, sale.policyStale,
+        sale.fxRateUsed, sale.subtotalUsdExact, Math.floor(sale.subtotalKhrExact || 0), sale.totalUsdExact, Math.floor(sale.totalKhrExact || 0),
+        sale.tenderCurrency, sale.khrRoundingApplied, Math.floor(sale.totalKhrRounded || 0), Math.floor(sale.roundingDeltaKhr || 0),
+        sale.paymentMethod, Math.floor(sale.cashReceivedKhr || 0), sale.cashReceivedUsd, Math.floor(sale.changeGivenKhr || 0), sale.changeGivenUsd,
+        sale.fulfillmentStatus, sale.createdAt, sale.updatedAt,
         sale.finalizedAt, sale.inPrepAt, sale.readyAt, sale.deliveredAt, sale.cancelledAt
       ]
     );
@@ -123,8 +123,8 @@ export class PgSalesRepository implements SalesRepository {
           line_applied_policy_id = EXCLUDED.line_applied_policy_id,
           updated_at = EXCLUDED.updated_at`,
         [
-          item.id, sale.id, item.menuItemId, item.menuItemName, item.unitPriceUsd, item.unitPriceKhrExact,
-          JSON.stringify(item.modifiers), item.quantity, item.lineTotalUsdExact, item.lineTotalKhrExact,
+          item.id, sale.id, item.menuItemId, item.menuItemName, item.unitPriceUsd, Math.floor(item.unitPriceKhrExact || 0),
+          JSON.stringify(item.modifiers), item.quantity, item.lineTotalUsdExact, Math.floor(item.lineTotalKhrExact || 0),
           item.lineDiscountType, item.lineDiscountAmount, item.lineAppliedPolicyId, item.createdAt, item.updatedAt
         ]
       );

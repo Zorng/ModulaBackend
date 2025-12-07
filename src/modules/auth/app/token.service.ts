@@ -1,6 +1,6 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
 import * as crypto from 'crypto';
-import { JWTClaims, EmployeeRole } from './entities.js';
+import { JWTClaims, EmployeeRole } from '../domain/entities.js';
 
 export class TokenService {
     constructor(

@@ -8,6 +8,7 @@ export interface SaleDeductionInput {
   branchId: string;
   refSaleId: string;
   lines: Array<{ stockItemId: string; qtyDeducted: number }>; // qtyDeducted as positive, will be negated
+  actorId?: string; // Employee who finalized the sale
 }
 
 interface IEventBus {
@@ -28,7 +29,7 @@ export class RecordSaleDeductionsUseCase {
   async execute(
     input: SaleDeductionInput
   ): Promise<Result<InventoryJournal[], string>> {
-    const { tenantId, branchId, refSaleId, lines } = input;
+    const { tenantId, branchId, refSaleId, lines, actorId } = input;
 
     // Validation: must have at least one line
     if (!lines || lines.length === 0) {
@@ -55,7 +56,8 @@ export class RecordSaleDeductionsUseCase {
             delta: -Math.abs(line.qtyDeducted), // Ensure negative
             reason: "sale",
             refSaleId,
-            createdBy: undefined, // System-generated
+            actorId,
+            createdBy: actorId,
           });
           journals.push(journal);
         }

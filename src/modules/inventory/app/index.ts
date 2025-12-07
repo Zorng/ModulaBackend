@@ -17,6 +17,4 @@ export * from "./inventoryjournal-usecase/get-inventory-exceptions.use-case.js";
 export * from "./inventoryjournal-usecase/record-sale-deductions.use-case.js";
 export * from "./inventoryjournal-usecase/record-void.use-case.js";
 export * from "./inventoryjournal-usecase/record-reopen.use-case.js";
-export * from "./storepolicyinventory-usecase/get-store-policy-inventory.use-case.js";
-export * from "./storepolicyinventory-usecase/update-store-policy-inventory.use-case.js";
 export * from "./category-usecase/index.js";
