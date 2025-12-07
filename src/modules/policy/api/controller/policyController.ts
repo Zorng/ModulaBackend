@@ -6,7 +6,7 @@ import type {
   UpdateCurrencyPoliciesInput,
   UpdateRoundingPoliciesInput,
   UpdateInventoryPoliciesInput,
-  // TODO: Import UpdateCashSessionPoliciesInput when cash module is ready
+  UpdateCashSessionPoliciesInput,
   // TODO: Import UpdateAttendancePoliciesInput when attendance module is ready
 } from "../schemas.js";
 
@@ -95,7 +95,33 @@ export class PolicyController {
     }
   }
 
-  // TODO: Add getCashSessionPolicies when cash module is ready
+  /**
+   * Get cash session policies
+   */
+  static async getCashSessionPolicies(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { tenantId } = req.user!;
+
+      const { getCashSessionPoliciesUseCase } = PolicyFactory.build();
+      const result = await getCashSessionPoliciesUseCase.execute({ tenantId });
+
+      if (!result.ok) {
+        return res.status(404).json({
+          error: "Not Found",
+          message: result.error,
+        });
+      }
+
+      return res.status(200).json(result.value);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // TODO: Add getAttendancePolicies when attendance module is ready
 
   /**
@@ -250,6 +276,51 @@ export class PolicyController {
     }
   }
 
-  // TODO: Add updateCashSessionPolicies when cash module is ready
+  /**
+   * Update cash session policies
+   */
+  static async updateCashSessionPolicies(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { tenantId } = req.user!;
+      const updates = req.body as UpdateCashSessionPoliciesInput;
+
+      const { updateTenantPoliciesUseCase } = PolicyFactory.build();
+      const result = await updateTenantPoliciesUseCase.execute(
+        tenantId,
+        updates
+      );
+
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
+
+      // Return only cash session fields
+      const { 
+        cashRequireSessionForSales, 
+        cashAllowPaidOut, 
+        cashRequireRefundApproval, 
+        cashAllowManualAdjustment, 
+        updatedAt 
+      } = result.value;
+      return res.status(200).json({
+        tenantId,
+        requireSessionForSales: cashRequireSessionForSales,
+        allowPaidOut: cashAllowPaidOut,
+        requireRefundApproval: cashRequireRefundApproval,
+        allowManualAdjustment: cashAllowManualAdjustment,
+        updatedAt,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // TODO: Add updateAttendancePolicies when attendance module is ready
 }
