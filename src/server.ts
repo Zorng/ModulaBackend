@@ -17,6 +17,7 @@ import { eventBus } from "./platform/events/index.js";
 import { startOutboxDispatcher } from "./platform/events/outbox.js";
 import { bootstrapSalesModule } from "./modules/sales/index.js";
 import { bootstrapInventoryModule } from "./modules/inventory/index.js";
+import { bootstrapCashModule } from "./modules/cash/index.js";
 import { pool } from "./platform/db/index.js";
 import { TransactionManager } from "./platform/db/transactionManager.js";
 import { setupAuthModule } from "./modules/auth/index.js";
@@ -76,6 +77,10 @@ const inventoryModule = bootstrapInventoryModule(
 const { router: inventoryRouter, eventHandlers: inventoryEventHandlers } =
   inventoryModule;
 
+// Setup Cash Module
+const cashModule = bootstrapCashModule(pool, authMiddleware);
+const { router: cashRouter, eventHandlers: cashEventHandlers } = cashModule;
+
 // ==================== Register Event Handlers ====================
 
 // Subscribe inventory module to sales events
@@ -107,6 +112,33 @@ eventBus.subscribe("sales.sale_reopened", async (event) => {
 });
 
 log.info("✓ Inventory event handlers registered");
+
+// Subscribe cash module to sales events
+eventBus.subscribe("sales.sale_finalized", async (event) => {
+  try {
+    await cashEventHandlers.saleFinalizedHandler.handle(event as any);
+  } catch (error) {
+    log.error(
+      "Failed to handle sales.sale_finalized event in cash module:",
+      error
+    );
+    throw error; // Re-throw to trigger retry via outbox
+  }
+});
+
+eventBus.subscribe("sales.sale_voided", async (event) => {
+  try {
+    await cashEventHandlers.saleVoidedHandler.handle(event as any);
+  } catch (error) {
+    log.error(
+      "Failed to handle sales.sale_voided event in cash module:",
+      error
+    );
+    throw error; // Re-throw to trigger retry via outbox
+  }
+});
+
+log.info("✓ Cash event handlers registered");
 
 // ==================== Register Routes ====================
 
@@ -201,6 +233,7 @@ app.use("/v1/auth", authRouter);
 app.use(menuRouter); // Menu routes already include /v1/menu prefix
 app.use("/v1/sales", salesRouter);
 app.use("/v1/inventory", inventoryRouter);
+app.use("/v1/cash", cashRouter);
 app.use("/v1/policies", policyRouter);
 app.use("/v1", imageProxyRouter); // Image proxy for CORS-free access
 

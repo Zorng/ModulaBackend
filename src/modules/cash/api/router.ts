@@ -1,11 +1,39 @@
-// TODO: Implement cash routes
-// Example: POST /v1/cash/sessions/open, POST /v1/cash/sessions/:id/close
+import {
+  SessionController,
+  MovementController,
+  ReportController,
+  RegisterController,
+} from "./controller/index.js";
+import { createCashRoutes } from "./routes/index.js";
+import { AuthMiddleware } from "../../auth/api/middleware/auth.middleware.js";
 
-import { Router } from "express";
+/**
+ * Cash Module Router
+ *
+ * Main router export for the cash module that wires up the controllers
+ * with all the route definitions and middleware.
+ */
 
-export const cashRouter = Router();
+export function createCashRouter(
+  sessionController: SessionController,
+  movementController: MovementController,
+  reportController: ReportController,
+  registerController: RegisterController,
+  authMiddleware: AuthMiddleware
+) {
+  return createCashRoutes(
+    sessionController,
+    movementController,
+    reportController,
+    registerController,
+    authMiddleware
+  );
+}
 
-// cashRouter.post('/v1/cash/sessions/open', ...);
-// cashRouter.post('/v1/cash/sessions/:id/close', ...);
-// cashRouter.post('/v1/cash/sessions/:id/paid-out', ...);
-// cashRouter.get('/v1/cash/sessions/:id/z', ...); // Z report
+export type CashRouterFactory = (
+  sessionController: SessionController,
+  movementController: MovementController,
+  reportController: ReportController,
+  registerController: RegisterController,
+  authMiddleware: AuthMiddleware
+) => ReturnType<typeof createCashRoutes>;

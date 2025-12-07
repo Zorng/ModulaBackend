@@ -104,6 +104,61 @@ export type CashSessionClosedV1 = {
   variance: number;
 };
 
+export type CashSessionTakenOverV1 = {
+  type: "cash.session_taken_over";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  oldSessionId: string;
+  newSessionId: string;
+  takenOverBy: string;
+  reason: string;
+  timestamp: string;
+};
+
+export type CashMovementRecordedV1 = {
+  type: "cash.paid_in" | "cash.paid_out" | "cash.adjustment";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  sessionId: string;
+  movementId: string;
+  movementType: string;
+  amountUsd: number;
+  amountKhr: number;
+  reason: string;
+  actorId: string;
+  status: string;
+  timestamp: string;
+};
+
+export type CashSaleRecordedV1 = {
+  type: "cash.sale_cash_recorded";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  sessionId: string;
+  registerId: string;
+  saleId: string;
+  amountUsd: number;
+  amountKhr: number;
+  timestamp: string;
+};
+
+export type CashRefundRecordedV1 = {
+  type: "cash.refund_cash_recorded";
+  v: 1;
+  tenantId: string;
+  branchId: string;
+  sessionId: string;
+  registerId: string;
+  saleId: string;
+  amountUsd: number;
+  amountKhr: number;
+  reason: string;
+  timestamp: string;
+};
+
 // Inventory events
 export type StockItemCreatedV1 = {
   type: "inventory.stock_item_created";
@@ -498,6 +553,10 @@ export type DomainEvent =
   | SaleDraftDeletedV1
   | CashSessionOpenedV1
   | CashSessionClosedV1
+  | CashSessionTakenOverV1
+  | CashMovementRecordedV1
+  | CashSaleRecordedV1
+  | CashRefundRecordedV1
   | StockItemCreatedV1
   | StockItemUpdatedV1
   | StockReceivedV1
