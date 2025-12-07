@@ -3,6 +3,8 @@ import { createCashRouter } from "./api/router.js";
 import { AuthMiddleware } from "../auth/api/middleware/auth.middleware.js";
 import { TransactionManager } from "../../platform/db/transactionManager.js";
 import { publishToOutbox } from "../../platform/events/outbox.js";
+import { PgPolicyRepository } from "../policy/infra/repository.js";
+import { PolicyBasedCashPolicyService } from "./app/policy-service.js";
 
 // Repositories
 import {
@@ -59,6 +61,10 @@ export function bootstrapCashModule(
   const registerRepo = new CashRegisterRepository(pool);
   const sessionRepo = new CashSessionRepository(pool);
   const movementRepo = new CashMovementRepository(pool);
+  const policyRepo = new PgPolicyRepository(pool);
+
+  // Initialize policy service
+  const policyService = new PolicyBasedCashPolicyService(policyRepo);
 
   // Initialize use cases
   const openSessionUseCase = new OpenCashSessionUseCase(
@@ -86,7 +92,8 @@ export function bootstrapCashModule(
     sessionRepo,
     movementRepo,
     eventPublisher,
-    txManager
+    txManager,
+    policyService
   );
 
   const getActiveSessionUseCase = new GetActiveSessionUseCase(

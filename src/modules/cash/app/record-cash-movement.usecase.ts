@@ -10,6 +10,7 @@ import type {
 } from "../domain/entities.js";
 import type { CashMovementRecordedV1 } from "../../../shared/events.js";
 import type { IEventBus, ITransactionManager } from "./ports.js";
+import type { CashPolicyService } from "./policy-service.js";
 
 //Record Manual Cash Movement (Paid In/Out, Adjustment)
 
@@ -31,7 +32,8 @@ export class RecordCashMovementUseCase {
     private sessionRepo: CashSessionRepository,
     private movementRepo: CashMovementRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private policyService: CashPolicyService
   ) {}
 
   async execute(
@@ -60,6 +62,31 @@ export class RecordCashMovementUseCase {
       return Err("Amount cannot be negative");
     }
 
+    // Check policy for movement type
+    if (type === "PAID_OUT") {
+      const allowPaidOut = await this.policyService.allowPaidOut(tenantId);
+      if (!allowPaidOut) {
+        return Err("Paid-out operations are not allowed by tenant policy");
+      }
+    }
+
+    if (type === "ADJUSTMENT") {
+      const allowAdjustment = await this.policyService.allowManualAdjustment(tenantId);
+      if (!allowAdjustment) {
+        return Err("Manual adjustments are not allowed by tenant policy");
+      }
+    }
+
+    // Check paid-out limits
+    if (type === "PAID_OUT" && !requiresApproval) {
+      const limits = await this.policyService.getPaidOutLimit(tenantId);
+      if (amountUsd > limits.usd || amountKhr > limits.khr) {
+        return Err(
+          `Paid-out amount exceeds limit ($${limits.usd} USD / ${limits.khr} KHR). Manager approval required.`
+        );
+      }
+    }
+
     // Find session and validate it's open
     const session = await this.sessionRepo.findById(sessionId);
     if (!session) {
@@ -70,10 +97,21 @@ export class RecordCashMovementUseCase {
     }
 
     try {
-      // Determine status
-      const status: CashMovementStatus = requiresApproval
-        ? "PENDING"
-        : "APPROVED";
+      // Determine status based on approval requirements
+      let status: CashMovementStatus = "APPROVED";
+
+      // Check if refund requires approval
+      if (type === "REFUND_CASH") {
+        const requiresRefundApproval = await this.policyService.requireRefundApproval(tenantId);
+        if (requiresRefundApproval) {
+          status = "PENDING";
+        }
+      }
+
+      // Override with explicit approval requirement
+      if (requiresApproval) {
+        status = "PENDING";
+      }
 
       let movement: CashMovement;
 
