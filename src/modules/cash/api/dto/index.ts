@@ -114,3 +114,18 @@ export const getDailySummaryQuerySchema = z.object({
     .optional(), // YYYY-MM-DD format
   branchId: uuidSchema.optional(),
 });
+
+// ==================== Register Schemas ====================
+
+export const createRegisterBodySchema = z.object({
+  name: z.string().min(2).max(100).trim(),
+});
+
+export const updateRegisterBodySchema = z.object({
+  name: z.string().min(2).max(100).trim().optional(),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+});
+
+export const listRegistersQuerySchema = z.object({
+  includeInactive: z.string().optional(),
+});

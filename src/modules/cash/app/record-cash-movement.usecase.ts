@@ -8,6 +8,7 @@ import type {
   CashMovementType,
   CashMovementStatus,
 } from "../domain/entities.js";
+import type { CashMovementRecordedV1 } from "../../../shared/events.js";
 import type { IEventBus, ITransactionManager } from "./ports.js";
 
 //Record Manual Cash Movement (Paid In/Out, Adjustment)
@@ -120,23 +121,22 @@ export class RecordCashMovementUseCase {
         }
 
         // Publish activity event via outbox
-        await this.eventBus.publishViaOutbox(
-          {
-            type: `cash.${type.toLowerCase()}`,
-            v: 1,
-            tenantId,
-            branchId,
-            sessionId,
-            movementId: movement.id,
-            actorId,
-            amountUsd,
-            amountKhr,
-            reason,
-            status,
-            timestamp: new Date().toISOString(),
-          },
-          client
-        );
+        const event: CashMovementRecordedV1 = {
+          type: `cash.${type.toLowerCase()}` as CashMovementRecordedV1["type"],
+          v: 1,
+          tenantId,
+          branchId,
+          sessionId,
+          movementId: movement.id,
+          movementType: type,
+          actorId,
+          amountUsd,
+          amountKhr,
+          reason,
+          status,
+          timestamp: new Date().toISOString(),
+        };
+        await this.eventBus.publishViaOutbox(event, client);
       });
 
       return Ok(movement!);

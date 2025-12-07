@@ -1,5 +1,10 @@
 import { Router } from "express";
-import { CashController } from "../controller/index.js";
+import {
+  SessionController,
+  MovementController,
+  ReportController,
+  RegisterController,
+} from "../controller/index.js";
 import { AuthMiddleware } from "../../../auth/api/middleware/auth.middleware.js";
 
 /**
@@ -9,13 +14,142 @@ import { AuthMiddleware } from "../../../auth/api/middleware/auth.middleware.js"
  */
 
 export function createCashRoutes(
-  controller: CashController,
+  sessionController: SessionController,
+  movementController: MovementController,
+  reportController: ReportController,
+  registerController: RegisterController,
   authMiddleware: AuthMiddleware
 ): Router {
   const router = Router();
 
   // Apply authentication to all routes
   router.use(authMiddleware.authenticate);
+
+  // ==================== REGISTER MANAGEMENT ====================
+
+  /**
+   * @openapi
+   * /v1/cash/registers:
+   *   post:
+   *     tags:
+   *       - Cash
+   *     summary: Create a new register (Manager/Admin only)
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - name
+   *             properties:
+   *               name:
+   *                 type: string
+   *                 minLength: 2
+   *                 maxLength: 100
+   *                 description: Register name (e.g., "Front Counter")
+   *     responses:
+   *       201:
+   *         description: Register created successfully
+   *       403:
+   *         description: Forbidden - Manager/Admin only
+   */
+  router.post(
+    "/registers",
+    async (req, res) => await registerController.createRegister(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/cash/registers:
+   *   get:
+   *     tags:
+   *       - Cash
+   *     summary: List all registers for current branch
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: includeInactive
+   *         schema:
+   *           type: boolean
+   *         description: Include inactive registers
+   *     responses:
+   *       200:
+   *         description: List of registers
+   */
+  router.get(
+    "/registers",
+    async (req, res) => await registerController.listRegisters(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/cash/registers/{registerId}:
+   *   patch:
+   *     tags:
+   *       - Cash
+   *     summary: Update a register (Manager/Admin only)
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: registerId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               name:
+   *                 type: string
+   *               status:
+   *                 type: string
+   *                 enum: [ACTIVE, INACTIVE]
+   *     responses:
+   *       200:
+   *         description: Register updated successfully
+   *       403:
+   *         description: Forbidden - Manager/Admin only
+   */
+  router.patch(
+    "/registers/:registerId",
+    async (req, res) => await registerController.updateRegister(req as any, res)
+  );
+
+  /**
+   * @openapi
+   * /v1/cash/registers/{registerId}:
+   *   delete:
+   *     tags:
+   *       - Cash
+   *     summary: Delete/deactivate a register (Manager/Admin only)
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: registerId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       204:
+   *         description: Register deleted successfully
+   *       403:
+   *         description: Forbidden - Manager/Admin only
+   */
+  router.delete(
+    "/registers/:registerId",
+    async (req, res) => await registerController.deleteRegister(req as any, res)
+  );
 
   // ==================== SESSION MANAGEMENT ====================
 
@@ -66,7 +200,7 @@ export function createCashRoutes(
    */
   router.post(
     "/sessions",
-    async (req, res) => await controller.openSession(req as any, res)
+    async (req, res) => await sessionController.openSession(req as any, res)
   );
 
   /**
@@ -117,7 +251,7 @@ export function createCashRoutes(
    */
   router.post(
     "/sessions/take-over",
-    async (req, res) => await controller.takeOverSession(req as any, res)
+    async (req, res) => await sessionController.takeOverSession(req as any, res)
   );
 
   /**
@@ -168,7 +302,7 @@ export function createCashRoutes(
    */
   router.post(
     "/sessions/:sessionId/close",
-    async (req, res) => await controller.closeSession(req as any, res)
+    async (req, res) => await sessionController.closeSession(req as any, res)
   );
 
   /**
@@ -198,7 +332,8 @@ export function createCashRoutes(
    */
   router.get(
     "/sessions/active",
-    async (req, res) => await controller.getActiveSession(req as any, res)
+    async (req, res) =>
+      await sessionController.getActiveSession(req as any, res)
   );
 
   // ==================== CASH MOVEMENTS ====================
@@ -255,14 +390,14 @@ export function createCashRoutes(
    */
   router.post(
     "/sessions/:sessionId/movements",
-    async (req, res) => await controller.recordMovement(req as any, res)
+    async (req, res) => await movementController.recordMovement(req as any, res)
   );
 
   // ==================== REPORTS ====================
 
   /**
    * @openapi
-   * /v1/cash/reports/z/{sessionId}:
+   * /v1/cash/sessions/reports/z/{sessionId}:
    *   get:
    *     tags:
    *       - Cash
@@ -286,13 +421,13 @@ export function createCashRoutes(
    *         description: Unauthorized
    */
   router.get(
-    "/reports/z/:sessionId",
-    async (req, res) => await controller.getZReport(req as any, res)
+    "/sessions/reports/z/:sessionId",
+    async (req, res) => await reportController.getZReport(req as any, res)
   );
 
   /**
    * @openapi
-   * /v1/cash/reports/x:
+   * /v1/cash/sessions/reports/x:
    *   get:
    *     tags:
    *       - Cash
@@ -316,8 +451,8 @@ export function createCashRoutes(
    *         description: Unauthorized
    */
   router.get(
-    "/reports/x",
-    async (req, res) => await controller.getXReport(req as any, res)
+    "/sessions/reports/x",
+    async (req, res) => await reportController.getXReport(req as any, res)
   );
 
   return router;

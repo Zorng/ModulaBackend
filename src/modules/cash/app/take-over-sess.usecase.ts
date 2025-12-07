@@ -4,6 +4,7 @@ import type {
   CashRegisterRepository,
 } from "../domain/repositories.js";
 import type { CashSession } from "../domain/entities.js";
+import type { CashSessionTakenOverV1 } from "../../../shared/events.js";
 import type { IEventBus, ITransactionManager } from "./ports.js";
 
 // 2. Take Over Session (Manager/Admin)
@@ -82,20 +83,18 @@ export class TakeOverSessionUseCase {
         });
 
         // Publish take-over event via outbox
-        await this.eventBus.publishViaOutbox(
-          {
-            type: "cash.session_taken_over",
-            v: 1,
-            tenantId,
-            branchId,
-            oldSessionId: existingSession.id,
-            newSessionId: newSession.id,
-            takenOverBy: newOpenedBy,
-            reason,
-            timestamp: new Date().toISOString(),
-          },
-          client
-        );
+        const event: CashSessionTakenOverV1 = {
+          type: "cash.session_taken_over",
+          v: 1,
+          tenantId,
+          branchId,
+          oldSessionId: existingSession.id,
+          newSessionId: newSession.id,
+          takenOverBy: newOpenedBy,
+          reason,
+          timestamp: new Date().toISOString(),
+        };
+        await this.eventBus.publishViaOutbox(event, client);
       });
 
       return Ok(newSession!);

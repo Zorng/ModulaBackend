@@ -48,6 +48,18 @@ export class CashRegisterRepository implements ICashRegisterRepository {
     return res.rows.map(this.toEntity);
   }
 
+  async findByBranchAndName(
+    branchId: string,
+    name: string
+  ): Promise<CashRegister | null> {
+    const res = await this.pool.query(
+      "SELECT * FROM cash_registers WHERE branch_id = $1 AND LOWER(name) = LOWER($2)",
+      [branchId, name]
+    );
+    if (res.rows.length === 0) return null;
+    return this.toEntity(res.rows[0]);
+  }
+
   async findByTenantAndBranch(
     tenantId: string,
     branchId: string

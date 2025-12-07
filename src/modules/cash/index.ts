@@ -11,8 +11,13 @@ import {
   CashMovementRepository,
 } from "./infra/repository.js";
 
-// Controller
-import { CashController } from "./api/controller/index.js";
+// Controllers
+import {
+  SessionController,
+  MovementController,
+  ReportController,
+  RegisterController,
+} from "./api/controller/index.js";
 
 // Use Cases
 import {
@@ -26,6 +31,12 @@ import {
   OnSaleFinalizedHandler,
   OnSaleVoidedHandler,
 } from "./app/index.js";
+import {
+  CreateRegisterUseCase,
+  UpdateRegisterUseCase,
+  ListRegistersUseCase,
+  DeleteRegisterUseCase,
+} from "./app/register-usecase/index.js";
 
 /**
  * Bootstrap Cash Module
@@ -93,15 +104,40 @@ export function bootstrapCashModule(
     movementRepo
   );
 
-  // Create controller
-  const cashController = new CashController(
+  const createRegisterUseCase = new CreateRegisterUseCase(registerRepo);
+
+  const updateRegisterUseCase = new UpdateRegisterUseCase(registerRepo);
+
+  const listRegistersUseCase = new ListRegistersUseCase(registerRepo);
+
+  const deleteRegisterUseCase = new DeleteRegisterUseCase(
+    registerRepo,
+    sessionRepo
+  );
+
+  // Create controllers
+  const sessionController = new SessionController(
     openSessionUseCase,
     takeOverSessionUseCase,
     closeSessionUseCase,
+    getActiveSessionUseCase
+  );
+
+  const movementController = new MovementController(
     recordMovementUseCase,
-    getActiveSessionUseCase,
+    getActiveSessionUseCase
+  );
+
+  const reportController = new ReportController(
     generateZReportUseCase,
     generateXReportUseCase
+  );
+
+  const registerController = new RegisterController(
+    createRegisterUseCase,
+    updateRegisterUseCase,
+    listRegistersUseCase,
+    deleteRegisterUseCase
   );
 
   // Initialize event handlers
@@ -120,7 +156,13 @@ export function bootstrapCashModule(
   );
 
   // Create and return router
-  const router = createCashRouter(cashController, authMiddleware);
+  const router = createCashRouter(
+    sessionController,
+    movementController,
+    reportController,
+    registerController,
+    authMiddleware
+  );
 
   return {
     router,

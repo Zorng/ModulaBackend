@@ -4,7 +4,12 @@ import type {
   CashMovementRepository,
 } from "../domain/repositories.js";
 
-import type { SaleFinalizedV1, SaleVoidedV1 } from "../../../shared/events.js";
+import type {
+  SaleFinalizedV1,
+  SaleVoidedV1,
+  CashSaleRecordedV1,
+  CashRefundRecordedV1,
+} from "../../../shared/events.js";
 import type { IEventBus, ITransactionManager } from "./ports.js";
 
 // Event handler: Subscribe to sales.sale_finalized
@@ -62,21 +67,19 @@ export class OnSaleFinalizedHandler {
         });
 
         // Publish cash movement event via outbox for audit/reporting
-        await this.eventBus.publishViaOutbox(
-          {
-            type: "cash.sale_cash_recorded",
-            v: 1,
-            tenantId: event.tenantId,
-            branchId: event.branchId,
-            sessionId: openSession.id,
-            registerId: openSession.registerId,
-            saleId: event.saleId,
-            amountUsd: totalCashUsd,
-            amountKhr: totalCashKhr,
-            timestamp: new Date().toISOString(),
-          },
-          client
-        );
+        const cashEvent: CashSaleRecordedV1 = {
+          type: "cash.sale_cash_recorded",
+          v: 1,
+          tenantId: event.tenantId,
+          branchId: event.branchId,
+          sessionId: openSession.id,
+          registerId: openSession.registerId,
+          saleId: event.saleId,
+          amountUsd: totalCashUsd,
+          amountKhr: totalCashKhr,
+          timestamp: new Date().toISOString(),
+        };
+        await this.eventBus.publishViaOutbox(cashEvent, client);
       });
     } catch (error) {
       console.error("Error handling sale finalized event:", error);
@@ -137,22 +140,20 @@ export class OnSaleVoidedHandler {
         }
 
         // Publish refund event via outbox for audit/reporting
-        await this.eventBus.publishViaOutbox(
-          {
-            type: "cash.refund_cash_recorded",
-            v: 1,
-            tenantId: event.tenantId,
-            branchId: event.branchId,
-            sessionId: cashMovement.sessionId,
-            registerId: cashMovement.registerId,
-            saleId: event.saleId,
-            amountUsd: cashMovement.amountUsd,
-            amountKhr: cashMovement.amountKhr,
-            reason: event.reason,
-            timestamp: new Date().toISOString(),
-          },
-          client
-        );
+        const refundEvent: CashRefundRecordedV1 = {
+          type: "cash.refund_cash_recorded",
+          v: 1,
+          tenantId: event.tenantId,
+          branchId: event.branchId,
+          sessionId: cashMovement.sessionId,
+          registerId: cashMovement.registerId,
+          saleId: event.saleId,
+          amountUsd: cashMovement.amountUsd,
+          amountKhr: cashMovement.amountKhr,
+          reason: event.reason,
+          timestamp: new Date().toISOString(),
+        };
+        await this.eventBus.publishViaOutbox(refundEvent, client);
       });
     } catch (error) {
       console.error("Error handling sale voided event:", error);

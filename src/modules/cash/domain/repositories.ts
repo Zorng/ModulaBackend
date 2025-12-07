@@ -15,6 +15,10 @@ export interface CashRegisterRepository {
   findById(id: string): Promise<CashRegister | null>;
   findByTenant(tenantId: string): Promise<CashRegister[]>;
   findByBranch(branchId: string): Promise<CashRegister[]>;
+  findByBranchAndName(
+    branchId: string,
+    name: string
+  ): Promise<CashRegister | null>;
   findByTenantAndBranch(
     tenantId: string,
     branchId: string
