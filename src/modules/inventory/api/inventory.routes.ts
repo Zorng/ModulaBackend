@@ -401,7 +401,7 @@ export function createInventoryRoutes(
    *   post:
    *     tags:
    *       - Inventory
-   *     summary: Assign stock item to current branch
+   *     summary: Assign stock item to a branch
    *     security:
    *       - BearerAuth: []
    *     requestBody:
@@ -420,6 +420,10 @@ export function createInventoryRoutes(
    *               minThreshold:
    *                 type: number
    *                 minimum: 0
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Target branch ID (defaults to current user's branch if not provided)
    *     responses:
    *       201:
    *         description: Stock item assigned to branch
@@ -434,9 +438,16 @@ export function createInventoryRoutes(
    *   get:
    *     tags:
    *       - Inventory
-   *     summary: Get all stock items for current branch
+   *     summary: Get all stock items for a branch
    *     security:
    *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: branchId
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Branch ID (defaults to current user's branch if not provided)
    *     responses:
    *       200:
    *         description: List of branch stock items with details
