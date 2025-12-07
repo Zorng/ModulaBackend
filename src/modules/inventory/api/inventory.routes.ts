@@ -474,9 +474,14 @@ export function createInventoryRoutes(
    *           schema:
    *             type: object
    *             required:
+   *               - branchId
    *               - stockItemId
    *               - qty
    *             properties:
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Branch where operation is performed
    *               stockItemId:
    *                 type: string
    *                 format: uuid
@@ -509,10 +514,15 @@ export function createInventoryRoutes(
    *           schema:
    *             type: object
    *             required:
+   *               - branchId
    *               - stockItemId
    *               - qty
    *               - note
    *             properties:
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Branch where operation is performed
    *               stockItemId:
    *                 type: string
    *                 format: uuid
@@ -546,10 +556,15 @@ export function createInventoryRoutes(
    *           schema:
    *             type: object
    *             required:
+   *               - branchId
    *               - stockItemId
    *               - delta
    *               - note
    *             properties:
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Branch where operation is performed
    *               stockItemId:
    *                 type: string
    *                 format: uuid

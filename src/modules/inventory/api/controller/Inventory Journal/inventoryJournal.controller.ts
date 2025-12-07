@@ -29,11 +29,11 @@ export class InventoryJournalController {
 
   async receiveStock(req: AuthRequest, res: Response) {
     try {
-      const { stockItemId, qty, note } = req.body;
+      const { branchId, stockItemId, qty, note } = req.body;
 
       const result = await this.receiveStockUseCase.execute({
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: branchId || req.user!.branchId,
         stockItemId,
         qty,
         note,
@@ -52,11 +52,11 @@ export class InventoryJournalController {
 
   async wasteStock(req: AuthRequest, res: Response) {
     try {
-      const { stockItemId, qty, note } = req.body;
+      const { branchId, stockItemId, qty, note } = req.body;
 
       const result = await this.wasteStockUseCase.execute({
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: branchId || req.user!.branchId,
         stockItemId,
         qty,
         note,
@@ -75,11 +75,11 @@ export class InventoryJournalController {
 
   async correctStock(req: AuthRequest, res: Response) {
     try {
-      const { stockItemId, delta, note } = req.body;
+      const { branchId, stockItemId, delta, note } = req.body;
 
       const result = await this.correctStockUseCase.execute({
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: branchId || req.user!.branchId,
         stockItemId,
         delta,
         note,
