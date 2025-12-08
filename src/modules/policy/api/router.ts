@@ -8,6 +8,10 @@ import {
   updateRoundingPoliciesSchema,
   updateInventoryPoliciesSchema,
   updateCashSessionPoliciesSchema,
+  updateRequireSessionForSalesSchema,
+  updateAllowPaidOutSchema,
+  updateRequireRefundApprovalSchema,
+  updateAllowManualAdjustmentSchema,
   // TODO: Import updateAttendancePoliciesSchema when attendance module is ready
 } from "./schemas.js";
 
@@ -310,7 +314,7 @@ policyRouter.patch(
  * @swagger
  * /v1/policies/cash-sessions:
  *   patch:
- *     summary: Update cash session policies
+ *     summary: Update cash session policies (all at once)
  *     description: |
  *       Updates cash session control settings.
  *       
@@ -359,6 +363,170 @@ policyRouter.patch(
   (req, res, next) => authMiddleware.authenticate(req, res, next),
   validateBody(updateCashSessionPoliciesSchema),
   PolicyController.updateCashSessionPolicies
+);
+
+/**
+ * @swagger
+ * /v1/policies/cash-sessions/require-session-for-sales:
+ *   patch:
+ *     summary: Update require session for sales policy
+ *     description: |
+ *       Updates whether an active cash session is required to make sales.
+ *       
+ *       **Default:** true (for security)
+ *     tags:
+ *       - Policies
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - cashRequireSessionForSales
+ *             properties:
+ *               cashRequireSessionForSales:
+ *                 type: boolean
+ *                 example: true
+ *                 description: Require active cash session to make sales
+ *     responses:
+ *       200:
+ *         description: Policy updated successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ */
+policyRouter.patch(
+  "/cash-sessions/require-session-for-sales",
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  validateBody(updateRequireSessionForSalesSchema),
+  PolicyController.updateRequireSessionForSales
+);
+
+/**
+ * @swagger
+ * /v1/policies/cash-sessions/allow-paid-out:
+ *   patch:
+ *     summary: Update allow paid-out policy
+ *     description: |
+ *       Updates whether cashiers can record paid-out transactions (petty cash).
+ *       
+ *       **Default:** true
+ *     tags:
+ *       - Policies
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - cashAllowPaidOut
+ *             properties:
+ *               cashAllowPaidOut:
+ *                 type: boolean
+ *                 example: true
+ *                 description: Allow paid-out transactions during shift
+ *     responses:
+ *       200:
+ *         description: Policy updated successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ */
+policyRouter.patch(
+  "/cash-sessions/allow-paid-out",
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  validateBody(updateAllowPaidOutSchema),
+  PolicyController.updateAllowPaidOut
+);
+
+/**
+ * @swagger
+ * /v1/policies/cash-sessions/require-refund-approval:
+ *   patch:
+ *     summary: Update require refund approval policy
+ *     description: |
+ *       Updates whether cash refunds require manager approval.
+ *       
+ *       **Default:** true (for security)
+ *     tags:
+ *       - Policies
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - cashRequireRefundApproval
+ *             properties:
+ *               cashRequireRefundApproval:
+ *                 type: boolean
+ *                 example: true
+ *                 description: Require manager approval for cash refunds
+ *     responses:
+ *       200:
+ *         description: Policy updated successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ */
+policyRouter.patch(
+  "/cash-sessions/require-refund-approval",
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  validateBody(updateRequireRefundApprovalSchema),
+  PolicyController.updateRequireRefundApproval
+);
+
+/**
+ * @swagger
+ * /v1/policies/cash-sessions/allow-manual-adjustment:
+ *   patch:
+ *     summary: Update allow manual adjustment policy
+ *     description: |
+ *       Updates whether managers can manually adjust cash amounts.
+ *       
+ *       **Default:** false (for audit integrity)
+ *     tags:
+ *       - Policies
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - cashAllowManualAdjustment
+ *             properties:
+ *               cashAllowManualAdjustment:
+ *                 type: boolean
+ *                 example: false
+ *                 description: Allow manual cash adjustments
+ *     responses:
+ *       200:
+ *         description: Policy updated successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ */
+policyRouter.patch(
+  "/cash-sessions/allow-manual-adjustment",
+  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  validateBody(updateAllowManualAdjustmentSchema),
+  PolicyController.updateAllowManualAdjustment
 );
 
 // TODO: Add /attendance PATCH endpoint when attendance module is ready

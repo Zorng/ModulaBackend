@@ -7,6 +7,10 @@ import type {
   UpdateRoundingPoliciesInput,
   UpdateInventoryPoliciesInput,
   UpdateCashSessionPoliciesInput,
+  UpdateRequireSessionForSalesInput,
+  UpdateAllowPaidOutInput,
+  UpdateRequireRefundApprovalInput,
+  UpdateAllowManualAdjustmentInput,
   // TODO: Import UpdateAttendancePoliciesInput when attendance module is ready
 } from "../schemas.js";
 
@@ -277,7 +281,7 @@ export class PolicyController {
   }
 
   /**
-   * Update cash session policies
+   * Update cash session policies (all at once)
    */
   static async updateCashSessionPolicies(
     req: AuthRequest,
@@ -314,6 +318,150 @@ export class PolicyController {
         requireSessionForSales: cashRequireSessionForSales,
         allowPaidOut: cashAllowPaidOut,
         requireRefundApproval: cashRequireRefundApproval,
+        allowManualAdjustment: cashAllowManualAdjustment,
+        updatedAt,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Update require session for sales policy
+   */
+  static async updateRequireSessionForSales(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { tenantId } = req.user!;
+      const updates = req.body as UpdateRequireSessionForSalesInput;
+
+      const { updateTenantPoliciesUseCase } = PolicyFactory.build();
+      const result = await updateTenantPoliciesUseCase.execute(
+        tenantId,
+        updates
+      );
+
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
+
+      const { cashRequireSessionForSales, updatedAt } = result.value;
+      return res.status(200).json({
+        tenantId,
+        requireSessionForSales: cashRequireSessionForSales,
+        updatedAt,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Update allow paid-out policy
+   */
+  static async updateAllowPaidOut(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { tenantId } = req.user!;
+      const updates = req.body as UpdateAllowPaidOutInput;
+
+      const { updateTenantPoliciesUseCase } = PolicyFactory.build();
+      const result = await updateTenantPoliciesUseCase.execute(
+        tenantId,
+        updates
+      );
+
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
+
+      const { cashAllowPaidOut, updatedAt } = result.value;
+      return res.status(200).json({
+        tenantId,
+        allowPaidOut: cashAllowPaidOut,
+        updatedAt,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Update require refund approval policy
+   */
+  static async updateRequireRefundApproval(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { tenantId } = req.user!;
+      const updates = req.body as UpdateRequireRefundApprovalInput;
+
+      const { updateTenantPoliciesUseCase } = PolicyFactory.build();
+      const result = await updateTenantPoliciesUseCase.execute(
+        tenantId,
+        updates
+      );
+
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
+
+      const { cashRequireRefundApproval, updatedAt } = result.value;
+      return res.status(200).json({
+        tenantId,
+        requireRefundApproval: cashRequireRefundApproval,
+        updatedAt,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Update allow manual adjustment policy
+   */
+  static async updateAllowManualAdjustment(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { tenantId } = req.user!;
+      const updates = req.body as UpdateAllowManualAdjustmentInput;
+
+      const { updateTenantPoliciesUseCase } = PolicyFactory.build();
+      const result = await updateTenantPoliciesUseCase.execute(
+        tenantId,
+        updates
+      );
+
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
+
+      const { cashAllowManualAdjustment, updatedAt } = result.value;
+      return res.status(200).json({
+        tenantId,
         allowManualAdjustment: cashAllowManualAdjustment,
         updatedAt,
       });

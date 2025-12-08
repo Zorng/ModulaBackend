@@ -69,7 +69,7 @@ export type UpdateInventoryPoliciesInput = z.infer<
 >;
 
 /**
- * Schema for updating cash session policies
+ * Schema for updating cash session policies (all at once)
  */
 export const updateCashSessionPoliciesSchema = z
   .object({
@@ -85,6 +85,58 @@ export const updateCashSessionPoliciesSchema = z
 
 export type UpdateCashSessionPoliciesInput = z.infer<
   typeof updateCashSessionPoliciesSchema
+>;
+
+/**
+ * Schema for updating require session for sales policy
+ */
+export const updateRequireSessionForSalesSchema = z
+  .object({
+    cashRequireSessionForSales: z.boolean(),
+  })
+  .strict();
+
+export type UpdateRequireSessionForSalesInput = z.infer<
+  typeof updateRequireSessionForSalesSchema
+>;
+
+/**
+ * Schema for updating allow paid-out policy
+ */
+export const updateAllowPaidOutSchema = z
+  .object({
+    cashAllowPaidOut: z.boolean(),
+  })
+  .strict();
+
+export type UpdateAllowPaidOutInput = z.infer<
+  typeof updateAllowPaidOutSchema
+>;
+
+/**
+ * Schema for updating require refund approval policy
+ */
+export const updateRequireRefundApprovalSchema = z
+  .object({
+    cashRequireRefundApproval: z.boolean(),
+  })
+  .strict();
+
+export type UpdateRequireRefundApprovalInput = z.infer<
+  typeof updateRequireRefundApprovalSchema
+>;
+
+/**
+ * Schema for updating allow manual adjustment policy
+ */
+export const updateAllowManualAdjustmentSchema = z
+  .object({
+    cashAllowManualAdjustment: z.boolean(),
+  })
+  .strict();
+
+export type UpdateAllowManualAdjustmentInput = z.infer<
+  typeof updateAllowManualAdjustmentSchema
 >;
 
 /**
