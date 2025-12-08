@@ -13,7 +13,8 @@ export type CashMovementType = z.infer<typeof CashMovementType>;
 
 // Open Session
 export const openSessionBodySchema = z.object({
-  registerId: uuidSchema,
+  branchId: uuidSchema.optional(), // Optional - defaults to user's branch
+  registerId: uuidSchema.optional(), // Optional for device-agnostic sessions
   openingFloatUsd: nonNegativeNumber,
   openingFloatKhr: nonNegativeNumber,
   note: z.string().max(500).optional(),
@@ -22,7 +23,7 @@ export const openSessionBodySchema = z.object({
 export const openSessionSchema = z.object({
   tenantId: uuidSchema,
   branchId: uuidSchema,
-  registerId: uuidSchema,
+  registerId: uuidSchema.optional(), // Optional for device-agnostic sessions
   openedBy: uuidSchema,
   openingFloatUsd: nonNegativeNumber,
   openingFloatKhr: nonNegativeNumber,
@@ -33,7 +34,8 @@ export type OpenSessionInput = z.infer<typeof openSessionSchema>;
 
 // Take Over Session
 export const takeOverSessionBodySchema = z.object({
-  registerId: uuidSchema,
+  branchId: uuidSchema.optional(), // Optional - defaults to user's branch
+  registerId: uuidSchema.optional(), // Optional for device-agnostic sessions
   reason: z.string().min(3).max(500),
   openingFloatUsd: nonNegativeNumber,
   openingFloatKhr: nonNegativeNumber,
@@ -42,7 +44,7 @@ export const takeOverSessionBodySchema = z.object({
 export const takeOverSessionSchema = z.object({
   tenantId: uuidSchema,
   branchId: uuidSchema,
-  registerId: uuidSchema,
+  registerId: uuidSchema.optional(), // Optional for device-agnostic sessions
   newOpenedBy: uuidSchema,
   reason: z.string().min(3).max(500),
   openingFloatUsd: nonNegativeNumber,
@@ -72,6 +74,8 @@ export type CloseSessionInput = z.infer<typeof closeSessionSchema>;
 
 // Record Movement
 export const recordMovementBodySchema = z.object({
+  branchId: uuidSchema.optional(), // Optional - defaults to user's branch
+  registerId: uuidSchema.optional(), // Optional for device-agnostic sessions
   type: CashMovementType,
   amountUsd: nonNegativeNumber,
   amountKhr: nonNegativeNumber,
@@ -81,7 +85,7 @@ export const recordMovementBodySchema = z.object({
 export const recordMovementSchema = z.object({
   tenantId: uuidSchema,
   branchId: uuidSchema,
-  registerId: uuidSchema,
+  registerId: uuidSchema.optional(), // Optional for device-agnostic sessions
   sessionId: uuidSchema,
   actorId: uuidSchema,
   type: CashMovementType,
@@ -96,7 +100,8 @@ export type RecordMovementInput = z.infer<typeof recordMovementSchema>;
 // ==================== Query Schemas ====================
 
 export const getActiveSessionQuerySchema = z.object({
-  registerId: uuidSchema,
+  branchId: uuidSchema.optional(), // Optional - defaults to user's branch
+  registerId: uuidSchema.optional(), // Optional for branch-level session lookup
 });
 
 export const getZReportParamsSchema = z.object({
@@ -118,6 +123,7 @@ export const getDailySummaryQuerySchema = z.object({
 // ==================== Register Schemas ====================
 
 export const createRegisterBodySchema = z.object({
+  branchId: uuidSchema.optional(), // Optional - defaults to user's branch
   name: z.string().min(2).max(100).trim(),
 });
 

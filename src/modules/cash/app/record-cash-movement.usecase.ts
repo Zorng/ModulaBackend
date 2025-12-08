@@ -16,7 +16,7 @@ import type { IEventBus, ITransactionManager } from "./ports.js";
 export interface RecordCashMovementInput {
   tenantId: string;
   branchId: string;
-  registerId: string;
+  registerId?: string; // Optional for device-agnostic sessions
   sessionId: string;
   actorId: string;
   type: CashMovementType;

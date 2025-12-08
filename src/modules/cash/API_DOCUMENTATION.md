@@ -2,7 +2,12 @@
 
 ## Overview
 
-The Cash module provides endpoints for managing cash sessions, movements, and reporting for point-of-sale operations. It implements the Cash Session & Reconciliation specification with per-register session management, cash movement tracking, and variance reporting.
+The Cash module provides endpoints for managing cash sessions, movements, and reporting for point-of-sale operations. It implements the Cash Session & Reconciliation specification with flexible session management supporting both:
+
+- **Register-based sessions**: Tied to physical terminals/registers (traditional POS)
+- **Device-agnostic sessions**: Branch-level sessions for web browsers and mobile apps
+
+The module handles cash movement tracking, variance reporting, and session reconciliation.
 
 ## Base Path
 
@@ -24,18 +29,25 @@ Authorization: Bearer <access_token>
 
 **POST** `/v1/cash/sessions`
 
-Start a new cash session for a register with an opening float.
+Start a new cash session with an opening float.
 
 **Request Body:**
 
 ```json
 {
-  "registerId": "uuid",
+  "registerId": "uuid", // Optional - omit for device-agnostic sessions
   "openingFloatUsd": 20.0,
   "openingFloatKhr": 80000,
   "note": "Morning shift opening"
 }
 ```
+
+**Field Details:**
+
+- `registerId` (optional): UUID of the register. Omit for web/mobile browser sessions.
+- `openingFloatUsd` (required): Starting USD amount
+- `openingFloatKhr` (required): Starting KHR amount
+- `note` (optional): Additional context
 
 **Response:** `201 Created`
 
@@ -46,7 +58,7 @@ Start a new cash session for a register with an opening float.
     "id": "uuid",
     "tenantId": "uuid",
     "branchId": "uuid",
-    "registerId": "uuid",
+    "registerId": "uuid", // null for device-agnostic sessions
     "openedBy": "uuid",
     "openedAt": "2025-12-03T08:00:00Z",
     "openingFloatUsd": 20.0,
@@ -65,7 +77,7 @@ Start a new cash session for a register with an opening float.
 
 **Error Responses:**
 
-- `400 Bad Request` - Session already open on this register
+- `400 Bad Request` - Session already open (on this register or for this branch)
 - `401 Unauthorized` - Invalid or missing token
 - `422 Validation Error` - Invalid input data
 
@@ -81,12 +93,17 @@ Manager/Admin can take over an existing open session (closes old, opens new).
 
 ```json
 {
-  "registerId": "uuid",
+  "registerId": "uuid", // Optional - omit to take over branch-level session
   "reason": "Previous cashier forgot to close session",
   "openingFloatUsd": 20.0,
   "openingFloatKhr": 80000
 }
 ```
+
+**Field Details:**
+
+- `registerId` (optional): UUID of the register. Omit to take over the active branch-level session.
+- `reason` (required): Explanation for takeover (3-500 characters)
 
 **Response:** `201 Created`
 
@@ -136,11 +153,16 @@ Close a session with counted cash. Calculates variance and determines if review 
 
 **GET** `/v1/cash/sessions/active?registerId=<uuid>`
 
-Get the currently open session for a register with all movements.
+Get the currently open session with all movements.
 
 **Query Parameters:**
 
-- `registerId` (required) - UUID of the register
+- `registerId` (optional) - UUID of the register. If omitted, returns the active branch-level session.
+
+**Behavior:**
+
+- With `registerId`: Returns the open session for that specific register
+- Without `registerId`: Returns the open device-agnostic session for the authenticated user's branch
 
 **Response:** `200 OK`
 
@@ -169,7 +191,7 @@ Get the currently open session for a register with all movements.
 
 **Error Responses:**
 
-- `404 Not Found` - No active session for this register
+- `404 Not Found` - No active session found (for the register if specified, or for the branch)
 
 ---
 
@@ -370,6 +392,71 @@ The cash module automatically listens to sales events:
 - **sales.sale_voided** → Creates REFUND_CASH movement
 
 These movements are automatically applied to the active session's expected cash.
+
+---
+
+## Session Types: Register-Based vs Device-Agnostic
+
+### Register-Based Sessions (Traditional POS)
+
+For physical terminals and registers, include `registerId` in all session operations:
+
+```json
+// Opening a register-based session
+POST /v1/cash/sessions
+{
+  "registerId": "abc-123-uuid",
+  "openingFloatUsd": 100.0,
+  "openingFloatKhr": 400000
+}
+
+// Getting active session for a register
+GET /v1/cash/sessions/active?registerId=abc-123-uuid
+```
+
+**Constraints:**
+
+- Only one OPEN session allowed per register at a time
+- Register must exist and be ACTIVE
+- Register must belong to the same tenant/branch
+
+### Device-Agnostic Sessions (Web & Mobile)
+
+For web browsers, mobile apps, or any non-terminal device, omit `registerId`:
+
+```json
+// Opening a device-agnostic session
+POST /v1/cash/sessions
+{
+  "openingFloatUsd": 100.0,
+  "openingFloatKhr": 400000
+}
+
+// Getting active branch-level session
+GET /v1/cash/sessions/active
+```
+
+**Constraints:**
+
+- Only one device-agnostic OPEN session allowed per branch at a time
+- Authenticated user's tenant/branch is used automatically
+- No register management required
+
+### Use Cases
+
+**Register-Based:**
+
+- Traditional POS terminals
+- Fixed cash drawers
+- Multiple concurrent stations in a branch
+- Hardware-specific setups
+
+**Device-Agnostic:**
+
+- Web-based POS in browsers
+- Mobile POS apps
+- Single-station operations
+- Cloud-first implementations
 
 ---
 

@@ -19,9 +19,11 @@ export class MovementController {
       const { sessionId } = req.params;
       const validatedData = recordMovementBodySchema.parse(req.body);
 
-      // Get session to extract registerId (alternatively, pass it in body/query)
+      // Get active session to verify it exists and extract registerId (if any)
       const activeSessionResult = await this.getActiveSessionUseCase.execute({
-        registerId: req.body.registerId, // Assuming registerId is passed
+        tenantId: req.body.tenantId || req.user!.tenantId,
+        branchId: req.body.branchId || req.user!.branchId,
+        registerId: req.body.registerId, // Optional - may be undefined
       });
 
       if (!activeSessionResult.ok || !activeSessionResult.value) {
@@ -32,9 +34,9 @@ export class MovementController {
       }
 
       const input: RecordCashMovementInput = {
-        tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
-        registerId: activeSessionResult.value.registerId,
+        tenantId: req.body.tenantId || req.user!.tenantId,
+        branchId: req.body.branchId || req.user!.branchId,
+        registerId: activeSessionResult.value.registerId, // May be undefined for device-agnostic sessions
         sessionId,
         actorId: req.user!.employeeId,
         type: validatedData.type,

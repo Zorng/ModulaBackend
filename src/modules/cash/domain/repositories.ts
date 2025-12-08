@@ -43,6 +43,10 @@ export interface CashSessionRepository {
   findByBranch(branchId: string): Promise<CashSession[]>;
   findByRegister(registerId: string): Promise<CashSession[]>;
   findOpenByRegister(registerId: string): Promise<CashSession | null>;
+  findOpenByBranch(
+    tenantId: string,
+    branchId: string
+  ): Promise<CashSession | null>; // For device-agnostic sessions
   findByTenantAndBranch(
     tenantId: string,
     branchId: string

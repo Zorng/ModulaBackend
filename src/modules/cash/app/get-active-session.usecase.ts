@@ -3,13 +3,13 @@ import type {
   CashSessionRepository,
   CashMovementRepository,
 } from "../domain/repositories.js";
-import type {
-  CashSession,
-} from "../domain/entities.js";
+import type { CashSession } from "../domain/entities.js";
 
 //  Get Active Session
 export interface GetActiveSessionInput {
-  registerId: string;
+  tenantId: string;
+  branchId: string;
+  registerId?: string; // Optional for branch-level session lookup
 }
 
 export class GetActiveSessionUseCase {
@@ -22,9 +22,14 @@ export class GetActiveSessionUseCase {
     input: GetActiveSessionInput
   ): Promise<Result<CashSession | null, string>> {
     try {
-      const session = await this.sessionRepo.findOpenByRegister(
-        input.registerId
-      );
+      // Find session by register if provided, otherwise by branch
+      const session = input.registerId
+        ? await this.sessionRepo.findOpenByRegister(input.registerId)
+        : await this.sessionRepo.findOpenByBranch(
+            input.tenantId,
+            input.branchId
+          );
+
       if (!session) {
         return Ok(null);
       }

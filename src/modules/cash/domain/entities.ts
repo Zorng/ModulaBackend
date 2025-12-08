@@ -26,7 +26,7 @@ export interface CashSession {
   id: string;
   tenantId: string;
   branchId: string;
-  registerId: string;
+  registerId?: string; // Optional for device-agnostic sessions
   openedBy: string;
   openedAt: Date;
   openingFloatUsd: number;
@@ -53,7 +53,7 @@ export interface CashMovement {
   id: string;
   tenantId: string;
   branchId: string;
-  registerId: string;
+  registerId?: string; // Optional for device-agnostic sessions
   sessionId: string;
   actorId: string;
   type: CashMovementType;

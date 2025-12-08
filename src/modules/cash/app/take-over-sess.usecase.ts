@@ -11,7 +11,7 @@ import type { IEventBus, ITransactionManager } from "./ports.js";
 export interface TakeOverSessionInput {
   tenantId: string;
   branchId: string;
-  registerId: string;
+  registerId?: string; // Optional for device-agnostic sessions
   newOpenedBy: string;
   reason: string;
   openingFloatUsd: number;
@@ -43,10 +43,11 @@ export class TakeOverSessionUseCase {
       return Err("Reason must be at least 3 characters");
     }
 
-    // Find existing open session
-    const existingSession = await this.sessionRepo.findOpenByRegister(
-      registerId
-    );
+    // Find existing open session (register-specific or branch-level)
+    const existingSession = registerId
+      ? await this.sessionRepo.findOpenByRegister(registerId)
+      : await this.sessionRepo.findOpenByBranch(tenantId, branchId);
+
     if (!existingSession) {
       return Err("No open session found to take over");
     }

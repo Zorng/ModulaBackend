@@ -13,7 +13,7 @@ import type { IEventBus, ITransactionManager } from "./ports.js";
 export interface OpenCashSessionInput {
   tenantId: string;
   branchId: string;
-  registerId: string;
+  registerId?: string; // Optional for device-agnostic sessions
   openedBy: string;
   openingFloatUsd: number;
   openingFloatKhr: number;
@@ -41,26 +41,39 @@ export class OpenCashSessionUseCase {
       note,
     } = input;
 
-    // Validate register exists and is active
-    const register = await this.registerRepo.findById(registerId);
-    if (!register) {
-      return Err("Register not found");
-    }
-    if (register.status !== "ACTIVE") {
-      return Err("Register is not active");
-    }
-    if (register.tenantId !== tenantId || register.branchId !== branchId) {
-      return Err("Register does not belong to this tenant/branch");
-    }
+    // Validate register if provided
+    if (registerId) {
+      const register = await this.registerRepo.findById(registerId);
+      if (!register) {
+        return Err("Register not found");
+      }
+      if (register.status !== "ACTIVE") {
+        return Err("Register is not active");
+      }
+      if (register.tenantId !== tenantId || register.branchId !== branchId) {
+        return Err("Register does not belong to this tenant/branch");
+      }
 
-    // Check for existing open session on this register
-    const existingSession = await this.sessionRepo.findOpenByRegister(
-      registerId
-    );
-    if (existingSession) {
-      return Err(
-        "A session is already open on this register. Close it or take over first."
+      // Check for existing open session on this register
+      const existingSession = await this.sessionRepo.findOpenByRegister(
+        registerId
       );
+      if (existingSession) {
+        return Err(
+          "A session is already open on this register. Close it or take over first."
+        );
+      }
+    } else {
+      // For device-agnostic sessions, check for existing open session at branch level
+      const existingSession = await this.sessionRepo.findOpenByBranch(
+        tenantId,
+        branchId
+      );
+      if (existingSession) {
+        return Err(
+          "A session is already open for this branch. Close it or take over first."
+        );
+      }
     }
 
     // Validate opening float

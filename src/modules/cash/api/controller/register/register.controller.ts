@@ -29,7 +29,7 @@ export class RegisterController {
         });
       }
 
-      const { name } = req.body;
+      const { branchId, name } = req.body;
 
       if (!name) {
         return res.status(400).json({
@@ -40,7 +40,7 @@ export class RegisterController {
 
       const input: CreateRegisterInput = {
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: branchId || req.user!.branchId,
         name,
         createdBy: req.user!.employeeId,
       };

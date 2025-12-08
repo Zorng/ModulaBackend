@@ -31,7 +31,7 @@ export class SessionController {
 
       const input: OpenCashSessionInput = {
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: validatedData.branchId || req.user!.branchId,
         registerId: validatedData.registerId,
         openedBy: req.user!.employeeId,
         openingFloatUsd: validatedData.openingFloatUsd,
@@ -71,7 +71,7 @@ export class SessionController {
 
       const input: TakeOverSessionInput = {
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: validatedData.branchId || req.user!.branchId,
         registerId: validatedData.registerId,
         newOpenedBy: req.user!.employeeId,
         reason: validatedData.reason,
@@ -130,16 +130,17 @@ export class SessionController {
 
   async getActiveSession(req: AuthRequest, res: Response) {
     try {
-      const { registerId } = req.query;
+      const { branchId, registerId } = req.query;
 
-      if (!registerId || typeof registerId !== "string") {
-        return res.status(400).json({
-          success: false,
-          error: "registerId query parameter is required",
-        });
-      }
-
-      const input: GetActiveSessionInput = { registerId };
+      // registerId is now optional - if not provided, search by branch
+      const input: GetActiveSessionInput = {
+        tenantId: req.user!.tenantId,
+        branchId:
+          (branchId && typeof branchId === "string" ? branchId : undefined) ||
+          req.user!.branchId,
+        registerId:
+          registerId && typeof registerId === "string" ? registerId : undefined,
+      };
 
       const result = await this.getActiveSessionUseCase.execute(input);
 
@@ -153,7 +154,9 @@ export class SessionController {
       if (!result.value) {
         return res.status(404).json({
           success: false,
-          error: "No active session found for this register",
+          error: registerId
+            ? "No active session found for this register"
+            : "No active session found for this branch",
         });
       }
 

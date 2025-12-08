@@ -45,6 +45,10 @@ export function createCashRoutes(
    *             required:
    *               - name
    *             properties:
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Branch ID (optional - defaults to user's branch)
    *               name:
    *                 type: string
    *                 minLength: 2
@@ -170,14 +174,17 @@ export function createCashRoutes(
    *           schema:
    *             type: object
    *             required:
-   *               - registerId
    *               - openingFloatUsd
    *               - openingFloatKhr
    *             properties:
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Branch ID (optional - defaults to user's branch)
    *               registerId:
    *                 type: string
    *                 format: uuid
-   *                 description: The register to open session for
+   *                 description: Register ID (optional - omit for device-agnostic sessions)
    *               openingFloatUsd:
    *                 type: number
    *                 minimum: 0
@@ -220,14 +227,18 @@ export function createCashRoutes(
    *           schema:
    *             type: object
    *             required:
-   *               - registerId
    *               - reason
    *               - openingFloatUsd
    *               - openingFloatKhr
    *             properties:
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Branch ID (optional - defaults to user's branch)
    *               registerId:
    *                 type: string
    *                 format: uuid
+   *                 description: Register ID (optional - omit for device-agnostic sessions)
    *               reason:
    *                 type: string
    *                 minLength: 3
@@ -317,11 +328,19 @@ export function createCashRoutes(
    *       - BearerAuth: []
    *     parameters:
    *       - in: query
-   *         name: registerId
-   *         required: true
+   *         name: branchId
+   *         required: false
    *         schema:
    *           type: string
    *           format: uuid
+   *         description: Branch ID (optional - defaults to user's branch)
+   *       - in: query
+   *         name: registerId
+   *         required: false
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Register ID (optional - omit for device-agnostic sessions)
    *     responses:
    *       200:
    *         description: Active session found
@@ -367,6 +386,14 @@ export function createCashRoutes(
    *               - amountKhr
    *               - reason
    *             properties:
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Branch ID (optional - defaults to user's branch)
+   *               registerId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Register ID (optional - omit for device-agnostic sessions)
    *               type:
    *                 type: string
    *                 enum: [PAID_IN, PAID_OUT, ADJUSTMENT]
