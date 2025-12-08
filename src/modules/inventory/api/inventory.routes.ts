@@ -706,9 +706,16 @@ export function createInventoryRoutes(
    *   get:
    *     tags:
    *       - Inventory
-   *     summary: Get on-hand quantities for current branch
+   *     summary: Get on-hand quantities for a specific branch
    *     security:
    *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: branchId
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Branch ID (defaults to authenticated user's branch)
    *     responses:
    *       200:
    *         description: On-hand quantities with low stock flags
@@ -727,6 +734,12 @@ export function createInventoryRoutes(
    *     security:
    *       - BearerAuth: []
    *     parameters:
+   *       - in: query
+   *         name: branchId
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Branch ID (defaults to authenticated user's branch)
    *       - in: query
    *         name: stockItemId
    *         schema:
@@ -772,6 +785,13 @@ export function createInventoryRoutes(
    *     summary: Get low stock alerts
    *     security:
    *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: branchId
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Branch ID (defaults to authenticated user's branch)
    *     responses:
    *       200:
    *         description: Items below minimum threshold
@@ -789,6 +809,13 @@ export function createInventoryRoutes(
    *     summary: Get inventory exceptions
    *     security:
    *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: branchId
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Branch ID (defaults to authenticated user's branch)
    *     responses:
    *       200:
    *         description: Negative stock items and unmapped sales

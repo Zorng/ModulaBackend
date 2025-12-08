@@ -162,9 +162,11 @@ export class InventoryJournalController {
 
   async getOnHand(req: AuthRequest, res: Response) {
     try {
+      const { branchId } = req.query;
+
       const result = await this.getOnHandUseCase.execute({
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: (branchId as string) || req.user!.branchId,
       });
 
       res.json({ success: true, data: result });
@@ -175,11 +177,18 @@ export class InventoryJournalController {
 
   async getInventoryJournal(req: AuthRequest, res: Response) {
     try {
-      const { stockItemId, reason, fromDate, toDate, page, pageSize } =
-        req.query;
+      const {
+        branchId,
+        stockItemId,
+        reason,
+        fromDate,
+        toDate,
+        page,
+        pageSize,
+      } = req.query;
 
       const result = await this.getInventoryJournalUseCase.execute({
-        branchId: req.user!.branchId,
+        branchId: (branchId as string) || req.user!.branchId,
         stockItemId: stockItemId as string,
         reason: reason as any,
         fromDate: fromDate ? new Date(fromDate as string) : undefined,
@@ -200,8 +209,10 @@ export class InventoryJournalController {
 
   async getLowStockAlerts(req: AuthRequest, res: Response) {
     try {
+      const { branchId } = req.query;
+
       const result = await this.getLowStockAlertsUseCase.execute(
-        req.user!.branchId
+        (branchId as string) || req.user!.branchId
       );
 
       if (!result.ok) {
@@ -216,8 +227,10 @@ export class InventoryJournalController {
 
   async getInventoryExceptions(req: AuthRequest, res: Response) {
     try {
+      const { branchId } = req.query;
+
       const result = await this.getInventoryExceptionsUseCase.execute(
-        req.user!.branchId
+        (branchId as string) || req.user!.branchId
       );
 
       if (!result.ok) {
