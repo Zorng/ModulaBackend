@@ -490,6 +490,10 @@ export function createInventoryRoutes(
    *                 minimum: 0.001
    *               note:
    *                 type: string
+   *               occurredAt:
+   *                 type: string
+   *                 format: date-time
+   *                 description: When the transaction actually occurred (defaults to now, supports backdating)
    *     responses:
    *       201:
    *         description: Stock received
@@ -532,6 +536,10 @@ export function createInventoryRoutes(
    *               note:
    *                 type: string
    *                 description: Mandatory for waste entries
+   *               occurredAt:
+   *                 type: string
+   *                 format: date-time
+   *                 description: When the transaction actually occurred (defaults to now, supports backdating)
    *     responses:
    *       201:
    *         description: Stock waste recorded
@@ -574,6 +582,10 @@ export function createInventoryRoutes(
    *               note:
    *                 type: string
    *                 description: Mandatory for correction entries
+   *               occurredAt:
+   *                 type: string
+   *                 format: date-time
+   *                 description: When the transaction actually occurred (defaults to now, supports backdating)
    *     responses:
    *       201:
    *         description: Stock correction recorded

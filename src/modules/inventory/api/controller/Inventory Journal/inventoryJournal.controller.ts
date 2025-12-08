@@ -29,7 +29,7 @@ export class InventoryJournalController {
 
   async receiveStock(req: AuthRequest, res: Response) {
     try {
-      const { branchId, stockItemId, qty, note } = req.body;
+      const { branchId, stockItemId, qty, note, occurredAt } = req.body;
 
       const result = await this.receiveStockUseCase.execute({
         tenantId: req.user!.tenantId,
@@ -38,6 +38,7 @@ export class InventoryJournalController {
         qty,
         note,
         actorId: req.user!.employeeId,
+        occurredAt: occurredAt ? new Date(occurredAt) : undefined,
       });
 
       if (!result.ok) {
@@ -52,7 +53,7 @@ export class InventoryJournalController {
 
   async wasteStock(req: AuthRequest, res: Response) {
     try {
-      const { branchId, stockItemId, qty, note } = req.body;
+      const { branchId, stockItemId, qty, note, occurredAt } = req.body;
 
       const result = await this.wasteStockUseCase.execute({
         tenantId: req.user!.tenantId,
@@ -61,6 +62,7 @@ export class InventoryJournalController {
         qty,
         note,
         actorId: req.user!.employeeId,
+        occurredAt: occurredAt ? new Date(occurredAt) : undefined,
       });
 
       if (!result.ok) {
@@ -75,7 +77,7 @@ export class InventoryJournalController {
 
   async correctStock(req: AuthRequest, res: Response) {
     try {
-      const { branchId, stockItemId, delta, note } = req.body;
+      const { branchId, stockItemId, delta, note, occurredAt } = req.body;
 
       const result = await this.correctStockUseCase.execute({
         tenantId: req.user!.tenantId,
@@ -84,6 +86,7 @@ export class InventoryJournalController {
         delta,
         note,
         actorId: req.user!.employeeId,
+        occurredAt: occurredAt ? new Date(occurredAt) : undefined,
       });
 
       if (!result.ok) {

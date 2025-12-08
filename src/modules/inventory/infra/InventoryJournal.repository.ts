@@ -33,18 +33,18 @@ export class InventoryJournalRepository implements IInventoryJournalRepository {
     }
 
     if (filters?.fromDate) {
-      query += ` AND created_at >= $${paramIndex}`;
+      query += ` AND occurred_at >= $${paramIndex}`;
       params.push(filters.fromDate);
       paramIndex++;
     }
 
     if (filters?.toDate) {
-      query += ` AND created_at <= $${paramIndex}`;
+      query += ` AND occurred_at <= $${paramIndex}`;
       params.push(filters.toDate);
       paramIndex++;
     }
 
-    query += " ORDER BY created_at DESC";
+    query += " ORDER BY occurred_at DESC, created_at DESC";
 
     const res = await this.pool.query(query, params);
     return res.rows.map(this.toEntity);
@@ -65,9 +65,10 @@ export class InventoryJournalRepository implements IInventoryJournalRepository {
         actor_id,
         batch_id,
         unit_cost_usd,
+        occurred_at,
         created_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *`,
       [
         entry.tenantId,
@@ -80,6 +81,7 @@ export class InventoryJournalRepository implements IInventoryJournalRepository {
         entry.actorId || null,
         entry.batchId || null,
         entry.unitCostUsd || null,
+        entry.occurredAt,
         entry.createdBy || null,
       ]
     );
@@ -145,6 +147,7 @@ export class InventoryJournalRepository implements IInventoryJournalRepository {
       unitCostUsd: row.unit_cost_usd
         ? parseFloat(row.unit_cost_usd)
         : undefined,
+      occurredAt: new Date(row.occurred_at),
       createdBy: row.created_by,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),

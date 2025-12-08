@@ -48,6 +48,7 @@ export interface InventoryJournal {
   actorId?: string; // Employee who performed action
   batchId?: string; // Future hook for batches/FEFO
   unitCostUsd?: number; // Future hook for COGS
+  occurredAt: Date; // When the transaction actually happened (supports backdating)
   createdBy?: string; // User who created this entry (nullable for system-generated)
   createdAt: Date;
   updatedAt: Date;

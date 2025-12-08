@@ -14,6 +14,7 @@ export interface ReceiveStockInput {
   qty: number; // positive for receive
   note?: string;
   actorId?: string;
+  occurredAt?: Date; // When the transaction actually occurred (defaults to now)
 }
 
 interface IEventBus {
@@ -71,6 +72,7 @@ export class ReceiveStockUseCase {
           reason: "receive",
           note,
           actorId,
+          occurredAt: input.occurredAt || new Date(),
           createdBy: actorId,
         });
 

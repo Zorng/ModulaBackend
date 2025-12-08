@@ -13,6 +13,7 @@ export interface CorrectStockInput {
   delta: number; // can be positive or negative
   note: string; // mandatory per spec
   actorId?: string;
+  occurredAt?: Date; // When the transaction actually occurred (defaults to now)
 }
 
 interface IEventBus {
@@ -68,6 +69,7 @@ export class CorrectStockUseCase {
           reason: "correction",
           note: note.trim(),
           actorId,
+          occurredAt: input.occurredAt || new Date(),
           createdBy: actorId,
         });
 

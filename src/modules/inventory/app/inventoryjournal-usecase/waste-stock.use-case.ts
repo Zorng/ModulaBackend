@@ -13,6 +13,7 @@ export interface WasteStockInput {
   qty: number; // positive for waste (will be converted to negative delta)
   note: string; // mandatory per spec
   actorId?: string;
+  occurredAt?: Date; // When the transaction actually occurred (defaults to now)
 }
 
 interface IEventBus {
@@ -68,6 +69,7 @@ export class WasteStockUseCase {
           reason: "waste",
           note: note.trim(),
           actorId,
+          occurredAt: input.occurredAt || new Date(),
           createdBy: actorId,
         });
 
