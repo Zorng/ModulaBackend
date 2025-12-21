@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { AuthRequest } from "#modules/auth/api/middleware/auth.middleware.js";
+import type { AuthRequest } from "../../../../../platform/security/auth.js";
 import {
   SetMenuStockMapUseCase,
   GetMenuStockMapUseCase,

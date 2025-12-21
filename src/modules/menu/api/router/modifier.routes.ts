@@ -3,7 +3,7 @@ import {
   validateBody,
   validateParams,
 } from "../../../../platform/http/middleware/index.js";
-import { authMiddleware } from "../../../auth/index.js";
+import type { AuthMiddlewarePort } from "../../../../platform/security/auth.js";
 import { ModifierController } from "../controller/index.js";
 import {
   createModifierGroupSchema,
@@ -19,7 +19,8 @@ import {
   updateModifierOptionSchema,
 } from "../schemas/modifier/modifier.js";
 
-const modifierRouter = Router();
+export function createModifierRouter(authMiddleware: AuthMiddlewarePort) {
+  const modifierRouter = Router();
 
 /**
  * @openapi
@@ -488,4 +489,5 @@ modifierRouter.delete(
   ModifierController.deleteOption
 );
 
-export { modifierRouter };
+  return modifierRouter;
+}

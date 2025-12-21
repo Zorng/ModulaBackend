@@ -1,18 +1,22 @@
 # Tenant Module
 
-**Responsibility:** Tenants, branches, staff seats
+**Responsibility (Capstone 1):** Tenant business profile + tenant provisioning (creates default branch + initial admin membership via ports).
 
 ## Structure
 
-- `api/` - HTTP routes and controllers
-- `app/` - Use cases (create tenant, manage branches)
-- `domain/` - Tenant entity, branch policies
-- `infra/` - Tenant repository
-- `migrations/` - Tenant-related database tables
-- `tests/` - Module tests
+- `api/` - Tenant HTTP routes (`/v1/tenants/*`)
+- `app/` - Tenant services (profile + provisioning)
+- `domain/` - Tenant entities/types
+- `infra/` - Tenant repository (Postgres)
+- `tests/` - Tenant unit tests
 
 ## Key Features
 
-- Multi-tenant management
-- Branch management
-- Staff seat allocation
+- Admin-only business profile:
+  - `GET /v1/tenants/me`
+  - `PATCH /v1/tenants/me`
+  - `PUT /v1/tenants/me/logo`
+- Staff-visible tenant metadata:
+  - `GET /v1/tenants/me/metadata`
+- Tenant provisioning port used by Auth onboarding (`POST /v1/auth/register-tenant`)
+- Tenant metadata port for other modules (DI from `src/server.ts`)

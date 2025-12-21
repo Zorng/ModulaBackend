@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import type { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
+import type { AuthRequest } from "../../../../platform/security/auth.js";
 import { CategoryFactory } from "../../domain/factories/category.factory.js";
 import { UpdateCategoryInput } from "../schemas/schemas.js";
 

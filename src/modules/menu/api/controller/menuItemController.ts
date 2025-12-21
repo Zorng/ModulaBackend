@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import type { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
+import type { AuthRequest } from "../../../../platform/security/auth.js";
 import { MenuItemFactory } from "../../domain/factories/menuitem.factory.js";
 import {
   CreateMenuItemInput,

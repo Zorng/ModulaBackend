@@ -5,7 +5,7 @@ import {
   RegisterController,
 } from "./controller/index.js";
 import { createCashRoutes } from "./routes/index.js";
-import { AuthMiddleware } from "../../auth/api/middleware/auth.middleware.js";
+import type { AuthMiddlewarePort } from "../../../platform/security/auth.js";
 
 /**
  * Cash Module Router
@@ -19,7 +19,7 @@ export function createCashRouter(
   movementController: MovementController,
   reportController: ReportController,
   registerController: RegisterController,
-  authMiddleware: AuthMiddleware
+  authMiddleware: AuthMiddlewarePort
 ) {
   return createCashRoutes(
     sessionController,
@@ -35,5 +35,5 @@ export type CashRouterFactory = (
   movementController: MovementController,
   reportController: ReportController,
   registerController: RegisterController,
-  authMiddleware: AuthMiddleware
+  authMiddleware: AuthMiddlewarePort
 ) => ReturnType<typeof createCashRoutes>;

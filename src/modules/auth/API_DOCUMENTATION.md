@@ -34,6 +34,8 @@ The Swagger UI provides a complete interactive documentation for all API endpoin
 POST /v1/auth/register-tenant
 ```
 
+Note: this endpoint is kept for compatibility, but tenant creation is owned by the **Tenant module**. For business profile updates see the Tenant endpoints (`/v1/tenants/me*`).
+
 **Request Body:**
 
 ```json

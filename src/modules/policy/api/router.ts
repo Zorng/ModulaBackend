@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { authMiddleware } from "../../auth/index.js";
 import { validateBody } from "../../../platform/http/middleware/validation.js";
+import type { AuthMiddlewarePort } from "../../../platform/security/auth.js";
 import { PolicyController } from "./controller/policyController.js";
 import {
   updateTaxPoliciesSchema,
@@ -11,7 +11,8 @@ import {
   // TODO: Import updateAttendancePoliciesSchema when attendance module is ready
 } from "./schemas.js";
 
-export const policyRouter = Router();
+export function createPolicyRouter(authMiddleware: AuthMiddlewarePort) {
+  const policyRouter = Router();
 
 /**
  * @swagger
@@ -38,7 +39,7 @@ export const policyRouter = Router();
  */
 policyRouter.get(
   "/",
-  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  authMiddleware.authenticate,
   PolicyController.getTenantPolicies
 );
 
@@ -66,7 +67,7 @@ policyRouter.get(
  */
 policyRouter.get(
   "/sales",
-  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  authMiddleware.authenticate,
   PolicyController.getSalesPolicies
 );
 
@@ -93,7 +94,7 @@ policyRouter.get(
  */
 policyRouter.get(
   "/inventory",
-  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  authMiddleware.authenticate,
   PolicyController.getInventoryPolicies
 );
 
@@ -140,7 +141,7 @@ policyRouter.get(
  */
 policyRouter.patch(
   "/tax",
-  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  authMiddleware.authenticate,
   validateBody(updateTaxPoliciesSchema),
   PolicyController.updateTaxPolicies
 );
@@ -181,7 +182,7 @@ policyRouter.patch(
  */
 policyRouter.patch(
   "/currency",
-  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  authMiddleware.authenticate,
   validateBody(updateCurrencyPoliciesSchema),
   PolicyController.updateCurrencyPolicies
 );
@@ -230,7 +231,7 @@ policyRouter.patch(
  */
 policyRouter.patch(
   "/rounding",
-  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  authMiddleware.authenticate,
   validateBody(updateRoundingPoliciesSchema),
   PolicyController.updateRoundingPolicies
 );
@@ -273,10 +274,13 @@ policyRouter.patch(
  */
 policyRouter.patch(
   "/inventory",
-  (req, res, next) => authMiddleware.authenticate(req, res, next),
+  authMiddleware.authenticate,
   validateBody(updateInventoryPoliciesSchema),
   PolicyController.updateInventoryPolicies
 );
 
 // TODO: Add /cash-sessions PATCH endpoint when cash module is ready
 // TODO: Add /attendance PATCH endpoint when attendance module is ready
+
+  return policyRouter;
+}

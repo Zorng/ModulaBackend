@@ -1,5 +1,6 @@
 import { pool } from '#db'; // Use your existing pool import
 import { 
+  Account,
   Employee, 
   EmployeeStatus, 
   EmployeeRole, 
@@ -8,11 +9,54 @@ import {
   Invite, 
   Session, 
   ActivityLog, 
-  EmployeeBranchAssignment 
+  EmployeeBranchAssignment,
+  PhoneOtp,
+  PhoneOtpPurpose
 } from '../domain/entities.js';
 
 export class AuthRepository {
   constructor(private db = pool) {} // Use your existing pool
+
+  async createAccount(account: Pick<Account, "phone" | "password_hash" | "status"> & Partial<Pick<Account, "phone_verified_at">>): Promise<Account> {
+    const result = await this.db.query(
+      `INSERT INTO accounts (phone, password_hash, status, phone_verified_at)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [
+        account.phone,
+        account.password_hash,
+        account.status,
+        account.phone_verified_at ?? null,
+      ]
+    );
+    return this.mapAccount(result.rows[0]);
+  }
+
+  async findAccountById(id: string): Promise<Account | null> {
+    const result = await this.db.query("SELECT * FROM accounts WHERE id = $1", [
+      id,
+    ]);
+    return result.rows.length ? this.mapAccount(result.rows[0]) : null;
+  }
+
+  async findAccountByPhone(phone: string): Promise<Account | null> {
+    const result = await this.db.query(
+      "SELECT * FROM accounts WHERE phone = $1",
+      [phone]
+    );
+    return result.rows.length ? this.mapAccount(result.rows[0]) : null;
+  }
+
+  async updateAccountPassword(accountId: string, passwordHash: string): Promise<Account> {
+    const result = await this.db.query(
+      "UPDATE accounts SET password_hash = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+      [passwordHash, accountId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error("Account not found");
+    }
+    return this.mapAccount(result.rows[0]);
+  }
 
   async createTenant(tenant: Omit<Tenant, 'id' | 'created_at' | 'updated_at'>): Promise<Tenant> {
     const query = `
@@ -46,11 +90,12 @@ export class AuthRepository {
 
   async createEmployee(employee: Omit<Employee, 'id' | 'created_at' | 'updated_at'>): Promise<Employee> {
     const query = `
-      INSERT INTO employees (tenant_id, phone, email, password_hash, first_name, last_name, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO employees (account_id, tenant_id, phone, email, password_hash, first_name, last_name, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
     `;
     const values = [
+      employee.account_id,
       employee.tenant_id,
       employee.phone,
       employee.email,
@@ -84,6 +129,46 @@ export class AuthRepository {
     return result.rows.length ? this.mapEmployee(result.rows[0]) : null;
   }
 
+  async findEmployeesByPhoneAnyTenant(phone: string): Promise<Employee[]> {
+    const result = await this.db.query('SELECT * FROM employees WHERE phone = $1', [phone]);
+    return result.rows.map((row: any) => this.mapEmployee(row));
+  }
+
+  async findEmployeesByAccountId(accountId: string): Promise<Employee[]> {
+    const result = await this.db.query(
+      "SELECT * FROM employees WHERE account_id = $1",
+      [accountId]
+    );
+    return result.rows.map((row: any) => this.mapEmployee(row));
+  }
+
+  async findEmployeeByAccountAndTenant(accountId: string, tenantId: string): Promise<Employee | null> {
+    const result = await this.db.query(
+      "SELECT * FROM employees WHERE account_id = $1 AND tenant_id = $2 LIMIT 1",
+      [accountId, tenantId]
+    );
+    return result.rows.length ? this.mapEmployee(result.rows[0]) : null;
+  }
+
+  async listActiveMembershipTenants(accountId: string): Promise<Array<{ employee: Employee; tenant: Pick<Tenant, "id" | "name"> }>> {
+    const result = await this.db.query(
+      `SELECT
+         e.*,
+         t.id AS tenant_pk,
+         t.name AS tenant_name
+       FROM employees e
+       JOIN tenants t ON t.id = e.tenant_id
+       WHERE e.account_id = $1 AND e.status = 'ACTIVE'
+       ORDER BY t.name ASC`,
+      [accountId]
+    );
+
+    return result.rows.map((row: any) => ({
+      employee: this.mapEmployee(row),
+      tenant: { id: row.tenant_pk, name: row.tenant_name },
+    }));
+  }
+
   async updateEmployeeStatus(employeeId: string, status: EmployeeStatus): Promise<Employee> {
     const result = await this.db.query(
       'UPDATE employees SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
@@ -91,6 +176,33 @@ export class AuthRepository {
     );
     if (result.rows.length === 0) {
       throw new Error('Employee not found');
+    }
+    return this.mapEmployee(result.rows[0]);
+  }
+
+  async updateEmployeePassword(employeeId: string, passwordHash: string): Promise<Employee> {
+    const result = await this.db.query(
+      "UPDATE employees SET password_hash = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+      [passwordHash, employeeId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error("Employee not found");
+    }
+    return this.mapEmployee(result.rows[0]);
+  }
+
+  async touchEmployeeBranchContext(employeeId: string, branchId: string): Promise<Employee> {
+    const result = await this.db.query(
+      `UPDATE employees
+       SET default_branch_id = COALESCE(default_branch_id, $1),
+           last_branch_id = $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [branchId, employeeId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error("Employee not found");
     }
     return this.mapEmployee(result.rows[0]);
   }
@@ -218,6 +330,69 @@ export class AuthRepository {
     return this.mapInvite(result.rows[0]);
   }
 
+  async createPhoneOtp(input: {
+    phone: string;
+    purpose: PhoneOtpPurpose;
+    code_hash: string;
+    expires_at: Date;
+    max_attempts: number;
+  }): Promise<PhoneOtp> {
+    const result = await this.db.query(
+      `INSERT INTO auth_phone_otps (phone, purpose, code_hash, expires_at, max_attempts)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [
+        input.phone,
+        input.purpose,
+        input.code_hash,
+        input.expires_at,
+        input.max_attempts,
+      ]
+    );
+    return this.mapPhoneOtp(result.rows[0]);
+  }
+
+  async findLatestActivePhoneOtp(phone: string, purpose: PhoneOtpPurpose): Promise<PhoneOtp | null> {
+    const result = await this.db.query(
+      `SELECT *
+       FROM auth_phone_otps
+       WHERE phone = $1 AND purpose = $2 AND consumed_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [phone, purpose]
+    );
+    return result.rows.length ? this.mapPhoneOtp(result.rows[0]) : null;
+  }
+
+  async incrementPhoneOtpAttempts(otpId: string): Promise<PhoneOtp> {
+    const result = await this.db.query(
+      `UPDATE auth_phone_otps
+       SET attempts = attempts + 1,
+           consumed_at = CASE WHEN (attempts + 1) >= max_attempts THEN NOW() ELSE consumed_at END
+       WHERE id = $1
+       RETURNING *`,
+      [otpId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error("OTP not found");
+    }
+    return this.mapPhoneOtp(result.rows[0]);
+  }
+
+  async consumePhoneOtp(otpId: string): Promise<PhoneOtp> {
+    const result = await this.db.query(
+      `UPDATE auth_phone_otps
+       SET consumed_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [otpId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error("OTP not found");
+    }
+    return this.mapPhoneOtp(result.rows[0]);
+  }
+
   async createSession(session: Omit<Session, 'id' | 'created_at'>): Promise<Session> {
     const query = `
       INSERT INTO sessions (employee_id, refresh_token_hash, expires_at)
@@ -242,6 +417,13 @@ export class AuthRepository {
 
   async revokeSession(sessionId: string): Promise<void> {
     await this.db.query('UPDATE sessions SET revoked_at = NOW() WHERE id = $1', [sessionId]);
+  }
+
+  async revokeAllSessionsForEmployee(employeeId: string): Promise<void> {
+    await this.db.query(
+      "UPDATE sessions SET revoked_at = NOW() WHERE employee_id = $1 AND revoked_at IS NULL",
+      [employeeId]
+    );
   }
 
   async createActivityLog(activity: Omit<ActivityLog, 'id' | 'created_at'>): Promise<ActivityLog> {
@@ -288,13 +470,28 @@ export class AuthRepository {
     };
   }
 
+  private mapAccount(row: any): Account {
+    return {
+      id: row.id,
+      phone: row.phone,
+      password_hash: row.password_hash,
+      status: row.status,
+      phone_verified_at: row.phone_verified_at ? new Date(row.phone_verified_at) : undefined,
+      created_at: new Date(row.created_at),
+      updated_at: new Date(row.updated_at),
+    };
+  }
+
   private mapEmployee(row: any): Employee {
     return {
       id: row.id,
+      account_id: row.account_id,
       tenant_id: row.tenant_id,
       phone: row.phone,
       email: row.email,
       password_hash: row.password_hash,
+      default_branch_id: row.default_branch_id ?? undefined,
+      last_branch_id: row.last_branch_id ?? undefined,
       first_name: row.first_name,
       last_name: row.last_name,
       status: row.status,
@@ -341,6 +538,20 @@ export class AuthRepository {
       created_at: new Date(row.created_at),
       revoked_at: row.revoked_at ? new Date(row.revoked_at) : undefined,
       expires_at: new Date(row.expires_at)
+    };
+  }
+
+  private mapPhoneOtp(row: any): PhoneOtp {
+    return {
+      id: row.id,
+      phone: row.phone,
+      purpose: row.purpose,
+      code_hash: row.code_hash,
+      attempts: row.attempts,
+      max_attempts: row.max_attempts,
+      created_at: new Date(row.created_at),
+      expires_at: new Date(row.expires_at),
+      consumed_at: row.consumed_at ? new Date(row.consumed_at) : undefined,
     };
   }
 

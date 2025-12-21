@@ -2,6 +2,13 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 import * as crypto from 'crypto';
 import { JWTClaims, EmployeeRole } from '../domain/entities.js';
 
+interface TenantSelectionClaims {
+    accountId: string;
+    purpose: 'TENANT_SELECTION';
+    exp: number;
+    iat: number;
+}
+
 export class TokenService {
     constructor(
         private readonly jwtSecret: string,
@@ -26,6 +33,26 @@ export class TokenService {
         return jwt.verify(token, this.jwtSecret) as JWTClaims;
         } catch {
         return null;
+        }
+    }
+
+    generateTenantSelectionToken(accountId: string, expiresIn: string = '10m'): string {
+        return jwt.sign(
+            { accountId, purpose: 'TENANT_SELECTION' },
+            this.jwtSecret,
+            { expiresIn, issuer: 'modula-auth' } as SignOptions
+        );
+    }
+
+    verifyTenantSelectionToken(token: string): TenantSelectionClaims | null {
+        try {
+            const claims = jwt.verify(token, this.jwtSecret) as any;
+            if (!claims || claims.purpose !== 'TENANT_SELECTION' || typeof claims.accountId !== 'string') {
+                return null;
+            }
+            return claims as TenantSelectionClaims;
+        } catch {
+            return null;
         }
     }
 

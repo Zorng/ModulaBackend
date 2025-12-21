@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { AuthRequest } from "../../../../auth/api/middleware/auth.middleware.js";
+import type { AuthRequest } from "../../../../../platform/security/auth.js";
 import type {
   RecordCashMovementUseCase,
   GetActiveSessionUseCase,

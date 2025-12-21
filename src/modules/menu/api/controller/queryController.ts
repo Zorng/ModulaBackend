@@ -1,6 +1,6 @@
 // src/modules/menu/api/controllers/query.controller.ts
 import type { Request, Response, NextFunction } from "express";
-import type { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
+import type { AuthRequest } from "../../../../platform/security/auth.js";
 import { QueryFactory } from "../../domain/factories/query.factory.js";
 
 /**

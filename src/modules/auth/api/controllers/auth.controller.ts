@@ -5,6 +5,25 @@ import { AuthRequest } from '../middleware/auth.middleware.js';
 export class AuthController {
     constructor(private authService: AuthService) {}
 
+    requestRegisterTenantOtp = async (req: Request, res: Response) => {
+        try {
+        const { phone } = req.body;
+
+        if (!phone) {
+            return res.status(422).json({
+            error: "Phone is required"
+            });
+        }
+
+        const result = await this.authService.requestRegisterTenantOtp(phone);
+        res.json(result);
+        } catch (error) {
+        res.status(400).json({
+            error: "Failed to request OTP"
+        });
+        }
+    };
+
     registerTenant = async (req: Request, res: Response) => {
         try {
         const { business_name, phone, first_name, last_name, password, business_type } = req.body;
@@ -42,6 +61,129 @@ export class AuthController {
         }
     };
 
+    forgotPassword = async (req: Request, res: Response) => {
+        try {
+        const { phone } = req.body;
+
+        if (!phone) {
+            return res.status(422).json({
+            error: "Phone is required"
+            });
+        }
+
+        const result = await this.authService.requestForgotPasswordOtp(phone);
+        res.json(result);
+        } catch (error) {
+        res.status(400).json({
+            error: "Failed to request OTP"
+        });
+        }
+    };
+
+    confirmForgotPassword = async (req: Request, res: Response) => {
+        try {
+        const { phone, otp, new_password } = req.body;
+
+        if (!phone || !otp || !new_password) {
+            return res.status(422).json({
+            error: "Phone, otp, and new_password are required"
+            });
+        }
+
+        const result = await this.authService.confirmForgotPassword({
+            phone,
+            otp,
+            newPassword: new_password,
+        });
+
+        if (result.kind === "tenant_selection_required") {
+            return res.json({
+                requires_tenant_selection: true,
+                selection_token: result.selectionToken,
+                memberships: result.memberships
+            });
+        }
+
+        return res.json({
+            employee: {
+            id: result.employee.id,
+            first_name: result.employee.first_name,
+            last_name: result.employee.last_name,
+            phone: result.employee.phone,
+            status: result.employee.status
+            },
+            tokens: result.tokens,
+            branch_assignments: result.branchAssignments
+        });
+        } catch (error) {
+        res.status(400).json({
+            error: (error as Error).message
+        });
+        }
+    };
+
+    selectTenant = async (req: Request, res: Response) => {
+        try {
+            const { selection_token, tenant_id, branch_id } = req.body;
+
+            if (!selection_token || !tenant_id) {
+                return res.status(422).json({
+                    error: "selection_token and tenant_id are required"
+                });
+            }
+
+            const result = await this.authService.selectTenant({
+                selectionToken: selection_token,
+                tenantId: tenant_id,
+                branchId: branch_id,
+            });
+
+            return res.json({
+                employee: {
+                    id: result.employee.id,
+                    first_name: result.employee.first_name,
+                    last_name: result.employee.last_name,
+                    phone: result.employee.phone,
+                    status: result.employee.status
+                },
+                tokens: result.tokens,
+                branch_assignments: result.branchAssignments
+            });
+        } catch (error) {
+            res.status(400).json({
+                error: (error as Error).message
+            });
+        }
+    };
+
+    changePassword = async (req: AuthRequest, res: Response) => {
+        try {
+        if (!req.user) {
+            return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const { current_password, new_password } = req.body;
+
+        if (!current_password || !new_password) {
+            return res.status(422).json({
+            error: "current_password and new_password are required"
+            });
+        }
+
+        const result = await this.authService.changePassword({
+            employeeId: req.user.employeeId,
+            currentPassword: current_password,
+            newPassword: new_password,
+        });
+
+        res.json({ tokens: result.tokens });
+        } catch (error) {
+        res.status(400).json({
+            error: (error as Error).message
+        });
+        }
+    };
+
     login = async (req: Request, res: Response) => {
         try {
         const { phone, password } = req.body;
@@ -54,7 +196,15 @@ export class AuthController {
 
         const result = await this.authService.login({ phone, password });
 
-        res.json({
+        if (result.kind === "tenant_selection_required") {
+            return res.json({
+                requires_tenant_selection: true,
+                selection_token: result.selectionToken,
+                memberships: result.memberships
+            });
+        }
+
+        return res.json({
             employee: {
             id: result.employee.id,
             first_name: result.employee.first_name,
@@ -112,45 +262,6 @@ export class AuthController {
         }
     };
 
-    createInvite = async (req: AuthRequest, res: Response) => {
-        try {
-        if (!req.user) {
-            return res.status(401).json({ error: 'Authentication required' });
-        }
-
-        const { first_name, last_name, phone, role, branch_id, note, expires_in_hours } = req.body;
-
-        if (!first_name || !last_name || !phone || !role || !branch_id) {
-            return res.status(422).json({
-            error: 'First name, last name, phone, role, and branch are required'
-            });
-        }
-
-        const invite = await this.authService.createInvite(
-            req.user.tenantId,
-            req.user.employeeId,
-            { first_name, last_name, phone, role, branch_id, note, expires_in_hours }
-        );
-
-        res.status(201).json({
-            invite: {
-            id: invite.id,
-            first_name: invite.first_name,
-            last_name: invite.last_name,
-            phone: invite.phone,
-            role: invite.role,
-            branch_id: invite.branch_id,
-            expires_at: invite.expires_at
-            },
-            invite_token: invite.token_hash
-        });
-        } catch (error) {
-        res.status(409).json({
-            error: 'Failed to create invite: ' + (error as Error).message
-        });
-        }
-    };
-
     acceptInvite = async (req: Request, res: Response) => {
         try {
         const { token } = req.params;
@@ -177,142 +288,6 @@ export class AuthController {
         } catch (error) {
         res.status(409).json({
             error: 'Failed to accept invite: ' + (error as Error).message
-        });
-        }
-    };
-
-    revokeInvite = async (req: AuthRequest, res: Response) => {
-        try {
-        if (!req.user) {
-            return res.status(401).json({ error: 'Authentication required' });
-        }
-
-        const { inviteId } = req.params;
-        const invite = await this.authService.revokeInvite(req.user.tenantId, inviteId, req.user.employeeId);
-
-        res.json({ invite });
-        } catch (error) {
-        res.status(409).json({
-            error: 'Failed to revoke invite: ' + (error as Error).message
-        });
-        }
-    };
-
-    resendInvite = async (req: AuthRequest, res: Response) => {
-        try {
-        if (!req.user) {
-            return res.status(401).json({ error: 'Authentication required' });
-        }
-
-        const { inviteId } = req.params;
-        const invite = await this.authService.resendInvite(req.user.tenantId, inviteId, req.user.employeeId);
-
-        res.json({
-            invite: {
-            id: invite.id,
-            first_name: invite.first_name,
-            last_name: invite.last_name,
-            phone: invite.phone,
-            role: invite.role,
-            branch_id: invite.branch_id,
-            expires_at: invite.expires_at
-            },
-            invite_token: invite.token_hash
-        });
-        } catch (error) {
-        res.status(409).json({
-            error: 'Failed to resend invite: ' + (error as Error).message
-        });
-        }
-    };
-
-    assignBranch = async (req: AuthRequest, res: Response) => {
-        try {
-        if (!req.user) {
-            return res.status(401).json({ error: 'Authentication required' });
-        }
-
-        const { userId } = req.params;
-        const { branch_id, role } = req.body;
-
-        if (!branch_id || !role) {
-            return res.status(422).json({
-            error: 'Branch ID and role are required'
-            });
-        }
-
-        const assignment = await this.authService.assignBranch(
-            req.user.tenantId,
-            userId,
-            branch_id,
-            role,
-            req.user.employeeId
-        );
-
-        res.status(201).json({ assignment });
-        } catch (error) {
-        res.status(409).json({
-            error: 'Failed to assign branch: ' + (error as Error).message
-        });
-        }
-    };
-
-    updateRole = async (req: AuthRequest, res: Response) => {
-        try {
-        if (!req.user) {
-            return res.status(401).json({ error: 'Authentication required' });
-        }
-
-        const { userId } = req.params;
-        const { branch_id, role } = req.body;
-
-        if (!branch_id || !role) {
-            return res.status(422).json({
-            error: 'Branch ID and role are required'
-            });
-        }
-
-        const assignment = await this.authService.updateRole(
-            req.user.tenantId,
-            userId,
-            branch_id,
-            role,
-            req.user.employeeId
-        );
-
-        res.json({ assignment });
-        } catch (error) {
-        res.status(409).json({
-            error: 'Failed to update role: ' + (error as Error).message
-        });
-        }
-    };
-
-    disableEmployee = async (req: AuthRequest, res: Response) => {
-        try {
-        if (!req.user) {
-            return res.status(401).json({ error: 'Authentication required' });
-        }
-
-        const { userId } = req.params;
-        const employee = await this.authService.disableEmployee(
-            req.user.tenantId,
-            userId,
-            req.user.employeeId
-        );
-
-        res.json({ 
-            employee: {
-            id: employee.id,
-            first_name: employee.first_name,
-            last_name: employee.last_name,
-            phone: employee.phone,
-            status: employee.status
-            }
-        });
-        } catch (error) {
-        res.status(409).json({
-            error: 'Failed to disable employee: ' + (error as Error).message
         });
         }
     };

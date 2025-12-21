@@ -6,12 +6,12 @@ import { PgSalesRepository } from './infra/repository/sales.repository.js';
 import { PolicyAdapter } from './infra/adapters/policy.adapter.js';
 import { MenuAdapter } from './infra/adapters/menu.adapter.js';
 import { TransactionManager } from '../../platform/events/index.js';
-import { AuthMiddleware } from '../auth/api/middleware/auth.middleware.js';
+import type { AuthMiddlewarePort } from "../../platform/security/auth.js";
 
 export function bootstrapSalesModule(
   pool: Pool,
   transactionManager: TransactionManager,
-  authMiddleware: AuthMiddleware
+  authMiddleware: AuthMiddlewarePort
 ) {
   // Initialize repository
   const salesRepo = new PgSalesRepository(pool);

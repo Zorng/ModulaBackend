@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import type { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
+import type { AuthRequest } from "../../../../platform/security/auth.js";
 import { ModifierFactory } from "../../domain/factories/modifier.factory.js";
 import type {
   CreateModifierGroupInput,

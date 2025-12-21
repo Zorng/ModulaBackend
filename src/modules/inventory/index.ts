@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 import { createInventoryRouter } from "./api/router.js";
-import { AuthMiddleware } from "../auth/api/middleware/auth.middleware.js";
+import type { AuthMiddlewarePort } from "../../platform/security/auth.js";
 import { TransactionManager } from "../../platform/db/transactionManager.js";
 import { publishToOutbox } from "../../platform/events/outbox.js";
 
@@ -66,7 +66,7 @@ import {
 
 export function bootstrapInventoryModule(
   pool: Pool,
-  authMiddleware: AuthMiddleware,
+  authMiddleware: AuthMiddlewarePort,
   imageStorage: any // IImageStoragePort from menu module
 ) {
   const txManager = new TransactionManager();

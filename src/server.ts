@@ -1,12 +1,12 @@
 // src/server.ts
 import express from "express";
 import cors from "cors";
-import { authRouter } from "#modules/auth/api/auth.router.js";
 import { ping } from "#db";
 import { log } from "#logger";
-import { tenantRouter } from "#modules/tenant/api/router.js";
-import { menuRouter } from "./modules/menu/api/router/index.js";
-import { policyRouter } from "./modules/policy/index.js";
+import { bootstrapTenantModule } from "#modules/tenant/index.js";
+import { createMenuRouter } from "./modules/menu/api/router/index.js";
+import { createPolicyRouter } from "./modules/policy/index.js";
+import { PgPolicyRepository } from "./modules/policy/infra/repository.js";
 import {
   errorHandler,
   notFoundHandler,
@@ -20,8 +20,13 @@ import { bootstrapInventoryModule } from "./modules/inventory/index.js";
 import { bootstrapCashModule } from "./modules/cash/index.js";
 import { pool } from "./platform/db/index.js";
 import { TransactionManager } from "./platform/db/transactionManager.js";
-import { setupAuthModule } from "./modules/auth/index.js";
+import {
+  createMembershipProvisioningPort,
+  setupAuthModule,
+} from "./modules/auth/index.js";
 import { imageProxyRouter } from "./platform/http/routes/image-proxy.js";
+import { bootstrapAccountSettingsModule } from "./modules/accountSettings/index.js";
+import { bootstrapStaffManagementModule } from "./modules/staffManagement/index.js";
 
 const app = express();
 // Enable CORS for all origins (customize as needed for production)
@@ -53,9 +58,38 @@ log.info("✓ Outbox dispatcher started - reliable event delivery enabled");
 
 // ==================== Bootstrap Modules ====================
 
+const policyRepo = new PgPolicyRepository(pool);
+const staffManagementModule = bootstrapStaffManagementModule(pool);
+
+// Setup Tenant Module (provisioning + admin-only business profile endpoints)
+const membershipProvisioningPort = createMembershipProvisioningPort();
+const tenantModule = bootstrapTenantModule(pool, {
+  membershipProvisioningPort,
+  policyDefaultsPort: {
+    ensureDefaultPolicies: async (tenantId: string) => {
+      await policyRepo.ensureDefaultPolicies(tenantId);
+    },
+  },
+});
+
 // Setup Auth Module
-const authModule = setupAuthModule(pool);
+const authModule = setupAuthModule(pool, {
+  invitationPort: staffManagementModule.invitationPort,
+  tenantProvisioningPort: tenantModule.tenantProvisioningPort,
+});
 const { authRoutes, authMiddleware } = authModule;
+const staffManagementAuthRouter = staffManagementModule.createRouter(authMiddleware);
+const tenantRouter = tenantModule.createRouter(authMiddleware);
+
+// Setup Policy Router (requires auth middleware)
+const policyRouter = createPolicyRouter(authMiddleware);
+
+// Setup Menu Router (requires auth middleware)
+const menuRouter = createMenuRouter(authMiddleware);
+
+// Setup Account Settings Module (display name, etc.)
+const accountSettingsModule = bootstrapAccountSettingsModule(pool, authMiddleware);
+const { router: accountSettingsRouter } = accountSettingsModule;
 
 // Setup Sales Module
 const salesModule = bootstrapSalesModule(
@@ -148,6 +182,7 @@ app.get("/health", async (_req, res) => {
 });
 
 app.locals.imageStorage = imageStorage;
+app.locals.tenantMetadataPort = tenantModule.tenantMetadataPort;
 
 // Swagger UI setup - must be before routes
 setupSwagger(app);
@@ -229,7 +264,9 @@ app.get("/health", async (_req, res) => {
 
 // Mount module routers
 app.use("/v1/tenants", tenantRouter);
-app.use("/v1/auth", authRouter);
+app.use("/v1/auth", authRoutes);
+app.use("/v1/auth", staffManagementAuthRouter);
+app.use("/v1/account", accountSettingsRouter);
 app.use(menuRouter); // Menu routes already include /v1/menu prefix
 app.use("/v1/sales", salesRouter);
 app.use("/v1/inventory", inventoryRouter);

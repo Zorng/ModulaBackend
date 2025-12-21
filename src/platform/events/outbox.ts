@@ -14,8 +14,8 @@ export async function publishToOutbox(
   const payload = JSON.stringify(event);
 
   await client.query(
-    `INSERT INTO platform_outbox (id, tenant_id, type, payload, created_at)
-     VALUES (gen_random_uuid(), $1, $2, $3, NOW())`,
+    `INSERT INTO platform_outbox (tenant_id, type, payload, created_at)
+     VALUES ($1, $2, $3, NOW())`,
     [event.tenantId, event.type, payload]
   );
 }

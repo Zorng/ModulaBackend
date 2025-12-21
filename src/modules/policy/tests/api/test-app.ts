@@ -1,7 +1,8 @@
 import express, { Express } from "express";
 import { Pool } from "pg";
 import { setupAuthModule } from "../../../auth/index.js";
-import { policyRouter } from "../../api/router.js";
+import { createPolicyRouter } from "../../api/router.js";
+import type { InvitationPort } from "../../../../shared/ports/staff-management.js";
 import {
   errorHandler,
   notFoundHandler,
@@ -15,10 +16,25 @@ export function createTestApp(pool: Pool): Express {
   app.use(express.json());
 
   // Setup auth module
-  const authModule = setupAuthModule(pool);
+  const invitationPort: InvitationPort = {
+    peekValidInvite: async () => {
+      throw new Error("not implemented");
+    },
+    acceptInvite: async () => {
+      throw new Error("not implemented");
+    },
+  };
+  const { authMiddleware } = setupAuthModule(pool, {
+    invitationPort,
+    tenantProvisioningPort: {
+      provisionTenant: async () => {
+        throw new Error("not implemented");
+      },
+    },
+  });
 
   // Mount policy routes
-  app.use(policyRouter);
+  app.use("/v1/policies", createPolicyRouter(authMiddleware));
 
   // Error handlers
   app.use(notFoundHandler);
@@ -26,4 +42,3 @@ export function createTestApp(pool: Pool): Express {
 
   return app;
 }
-

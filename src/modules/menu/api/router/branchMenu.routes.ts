@@ -3,7 +3,7 @@ import {
   validateBody,
   validateParams,
 } from "../../../../platform/http/middleware/index.js";
-import { authMiddleware } from "../../../auth/index.js";
+import type { AuthMiddlewarePort } from "../../../../platform/security/auth.js";
 import { BranchMenuController } from "../controller/index.js";
 import {
   setBranchAvailabilitySchema,
@@ -11,7 +11,8 @@ import {
   menuItemIdParamSchema,
 } from "../schemas/schemas.js";
 
-const branchMenuRouter = Router();
+export function createBranchMenuRouter(authMiddleware: AuthMiddlewarePort) {
+  const branchMenuRouter = Router();
 
 /**
  * @openapi
@@ -38,6 +39,21 @@ const branchMenuRouter = Router();
  *     responses:
  *       200:
  *         description: Branch availability set
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 menuItemId:
+ *                   type: string
+ *                   format: uuid
+ *                 branchId:
+ *                   type: string
+ *                   format: uuid
+ *                 isAvailable:
+ *                   type: boolean
  *       400:
  *         description: Invalid input
  *       401:
@@ -78,6 +94,21 @@ branchMenuRouter.put(
  *     responses:
  *       200:
  *         description: Branch price override set
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 menuItemId:
+ *                   type: string
+ *                   format: uuid
+ *                 branchId:
+ *                   type: string
+ *                   format: uuid
+ *                 priceUsd:
+ *                   type: number
  *       400:
  *         description: Invalid input
  *       401:
@@ -93,4 +124,5 @@ branchMenuRouter.put(
   BranchMenuController.setPriceOverride
 );
 
-export { branchMenuRouter };
+  return branchMenuRouter;
+}

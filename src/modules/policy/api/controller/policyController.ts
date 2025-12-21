@@ -1,5 +1,5 @@
 import type { Response, NextFunction } from "express";
-import type { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
+import type { AuthenticatedRequest } from "../../../../platform/security/auth.js";
 import { PolicyFactory } from "../../domain/factory.js";
 import type {
   UpdateTaxPoliciesInput,
@@ -18,7 +18,7 @@ export class PolicyController {
    * Get all tenant policies (combined view)
    */
   static async getTenantPolicies(
-    req: AuthRequest,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ) {
@@ -45,7 +45,7 @@ export class PolicyController {
    * Get sales policies (Tax & Currency)
    */
   static async getSalesPolicies(
-    req: AuthRequest,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ) {
@@ -72,7 +72,7 @@ export class PolicyController {
    * Get inventory policies
    */
   static async getInventoryPolicies(
-    req: AuthRequest,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ) {
@@ -102,7 +102,7 @@ export class PolicyController {
    * Update tax policies (VAT)
    */
   static async updateTaxPolicies(
-    req: AuthRequest,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ) {
@@ -140,7 +140,7 @@ export class PolicyController {
    * Update currency policies (FX rate)
    */
   static async updateCurrencyPolicies(
-    req: AuthRequest,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ) {
@@ -177,7 +177,7 @@ export class PolicyController {
    * Update rounding policies
    */
   static async updateRoundingPolicies(
-    req: AuthRequest,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ) {
@@ -216,7 +216,7 @@ export class PolicyController {
    * Update inventory policies
    */
   static async updateInventoryPolicies(
-    req: AuthRequest,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ) {

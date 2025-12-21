@@ -1,7 +1,7 @@
 // Policy module exports
 
 // API
-export { policyRouter } from "./api/router.js";
+export { createPolicyRouter } from "./api/router.js";
 export { PolicyController } from "./api/controller/policyController.js";
 
 // Domain
@@ -13,4 +13,3 @@ export * from "./app/use-cases.js";
 
 // Infrastructure
 export * from "./infra/repository.js";
-

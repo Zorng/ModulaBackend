@@ -1,6 +1,10 @@
 export type EmployeeStatus = 'ACTIVE' | 'INVITED' | 'DISABLED';
 export type EmployeeRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'CLERK';
+export type AccountStatus = 'ACTIVE' | 'DISABLED';
 export type AuthActionType = 
+  | 'AUTH_LOGIN_SUCCESS'
+  | 'AUTH_LOGIN_FAILED'
+  | 'AUTH_LOGOUT'
   | 'AUTH_INVITE_CREATED'
   | 'AUTH_INVITE_ACCEPTED'
   | 'AUTH_INVITE_REISSUED'
@@ -8,7 +12,9 @@ export type AuthActionType =
   | 'AUTH_ROLE_CHANGED'
   | 'AUTH_BRANCH_TRANSFERRED'
   | 'AUTH_EMPLOYEE_DISABLED'
-  | 'AUTH_NAME_EDITED_BY_ADMIN';
+  | 'AUTH_NAME_EDITED_BY_ADMIN'
+  | 'CREDENTIAL_CHANGE_REQUESTED'
+  | 'CREDENTIAL_CHANGED';
 
 export interface Tenant {
   id: string;
@@ -28,12 +34,25 @@ export interface Branch {
   updated_at: Date;
 }
 
+export interface Account {
+  id: string;
+  phone: string;
+  password_hash: string;
+  status: AccountStatus;
+  phone_verified_at?: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export interface Employee {
   id: string;
+  account_id: string;
   tenant_id: string;
   phone: string;
   email?: string;
   password_hash: string;
+  default_branch_id?: string;
+  last_branch_id?: string;
   first_name: string;
   last_name: string;
   status: EmployeeStatus;
@@ -74,6 +93,20 @@ export interface Session {
   created_at: Date;
   revoked_at?: Date;
   expires_at: Date;
+}
+
+export type PhoneOtpPurpose = "REGISTER_TENANT" | "FORGOT_PASSWORD";
+
+export interface PhoneOtp {
+  id: string;
+  phone: string;
+  purpose: PhoneOtpPurpose;
+  code_hash: string;
+  attempts: number;
+  max_attempts: number;
+  created_at: Date;
+  expires_at: Date;
+  consumed_at?: Date;
 }
 
 export interface AuthPolicy {

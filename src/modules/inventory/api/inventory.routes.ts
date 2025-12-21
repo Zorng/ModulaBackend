@@ -6,7 +6,7 @@ import {
   MenuStockMapController,
   CategoryController,
 } from "./controller/index.js";
-import { AuthMiddleware } from "../../auth/api/middleware/auth.middleware.js";
+import type { AuthMiddlewarePort } from "../../../platform/security/auth.js";
 import { uploadOptionalSingleImage } from "../../../platform/http/middleware/multer.js";
 
 export function createInventoryRoutes(
@@ -15,7 +15,7 @@ export function createInventoryRoutes(
   inventoryJournalController: InventoryJournalController,
   menuStockMapController: MenuStockMapController,
   categoryController: CategoryController,
-  authMiddleware: AuthMiddleware
+  authMiddleware: AuthMiddlewarePort
 ): Router {
   const router = Router();
 

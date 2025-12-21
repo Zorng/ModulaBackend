@@ -65,6 +65,10 @@ coverage/
 *.dump
 *.sql
 
+# Keep SQL migrations tracked
+!migrations/*.sql
+!migrations/**/*.sql
+
 # =========================
 #  Optional: generated docs or reports
 # =========================
@@ -76,5 +80,8 @@ reports/
 # =========================
 tmp/
 temp/
+.tmp/
 
 *.http
+refactorPlans/
+modSpec/

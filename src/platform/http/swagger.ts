@@ -112,6 +112,20 @@ export function setupSwagger(app: Express) {
               },
             },
           },
+
+          NotFoundError: {
+            description: "Resource not found",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    message: { type: "string", example: "Not Found" },
+                  },
+                },
+              },
+            },
+          },
         },
 
         schemas: {
@@ -154,6 +168,64 @@ export function setupSwagger(app: Express) {
             },
           },
 
+          TenantProfile: {
+            type: "object",
+            properties: {
+              id: { type: "string", format: "uuid" },
+              name: { type: "string", description: "Business name" },
+              business_type: { type: "string", nullable: true },
+              status: { type: "string" },
+              logo_url: { type: "string", nullable: true },
+              contact_phone: { type: "string", nullable: true },
+              contact_email: { type: "string", nullable: true },
+              contact_address: { type: "string", nullable: true },
+              created_at: { type: "string", format: "date-time" },
+              updated_at: { type: "string", format: "date-time" },
+              branch_count: { type: "number", example: 1 },
+            },
+          },
+
+          TenantProfileResponse: {
+            type: "object",
+            properties: {
+              tenant: { $ref: "#/components/schemas/TenantProfile" },
+            },
+          },
+
+          UpdateTenantProfileRequest: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Business name" },
+              contact_phone: { type: "string", nullable: true },
+              contact_email: { type: "string", nullable: true },
+              contact_address: { type: "string", nullable: true },
+            },
+          },
+
+          TenantProfileUpdateResponse: {
+            type: "object",
+            properties: {
+              tenant: { $ref: "#/components/schemas/TenantProfile" },
+            },
+          },
+
+          TenantMetadata: {
+            type: "object",
+            properties: {
+              id: { type: "string", format: "uuid" },
+              name: { type: "string" },
+              logo_url: { type: "string", nullable: true },
+              status: { type: "string" },
+            },
+          },
+
+          TenantMetadataResponse: {
+            type: "object",
+            properties: {
+              tenant: { $ref: "#/components/schemas/TenantMetadata" },
+            },
+          },
+
           Employee: {
             type: "object",
             properties: {
@@ -183,13 +255,18 @@ export function setupSwagger(app: Express) {
           Tokens: {
             type: "object",
             properties: {
-              access_token: {
+              accessToken: {
                 type: "string",
                 description: "JWT access token for API authentication",
               },
-              refresh_token: {
+              refreshToken: {
                 type: "string",
                 description: "Refresh token for obtaining new access tokens",
+              },
+              expiresIn: {
+                type: "number",
+                description: "Access token expiry in seconds",
+                example: 43200,
               },
             },
           },
@@ -222,6 +299,11 @@ export function setupSwagger(app: Express) {
               active: {
                 type: "boolean",
                 description: "Whether this assignment is currently active",
+              },
+              assigned_at: {
+                type: "string",
+                format: "date-time",
+                description: "When this assignment was created",
               },
             },
           },
@@ -404,6 +486,133 @@ export function setupSwagger(app: Express) {
             },
           },
 
+          RequestOtpRequest: {
+            type: "object",
+            required: ["phone"],
+            properties: {
+              phone: {
+                type: "string",
+                description: "Phone number (E.164 recommended)",
+                example: "+1234567890",
+              },
+            },
+          },
+
+          RequestOtpResponse: {
+            type: "object",
+            properties: {
+              message: { type: "string", example: "OTP sent" },
+              debugOtp: {
+                type: "string",
+                description:
+                  "Development-only OTP echo (never returned in production)",
+                example: "123456",
+              },
+            },
+          },
+
+          ConfirmForgotPasswordRequest: {
+            type: "object",
+            required: ["phone", "otp", "new_password"],
+            properties: {
+              phone: {
+                type: "string",
+                description: "Phone number (E.164 recommended)",
+                example: "+1234567890",
+              },
+              otp: {
+                type: "string",
+                description: "OTP code received via SMS",
+                example: "123456",
+              },
+              new_password: {
+                type: "string",
+                format: "password",
+                description: "New password to set",
+                example: "NewPassword123!",
+              },
+            },
+          },
+
+          ChangePasswordRequest: {
+            type: "object",
+            required: ["current_password", "new_password"],
+            properties: {
+              current_password: {
+                type: "string",
+                format: "password",
+                description: "Current password",
+                example: "OldPassword123!",
+              },
+              new_password: {
+                type: "string",
+                format: "password",
+                description: "New password to set",
+                example: "NewPassword123!",
+              },
+            },
+          },
+
+          ChangePasswordResponse: {
+            type: "object",
+            properties: {
+              tokens: { $ref: "#/components/schemas/Tokens" },
+            },
+          },
+
+          SelectTenantRequest: {
+            type: "object",
+            required: ["selection_token", "tenant_id"],
+            properties: {
+              selection_token: {
+                type: "string",
+                description:
+                  "Short-lived token from login/forgot-password when tenant selection is required",
+              },
+              tenant_id: {
+                type: "string",
+                format: "uuid",
+                description: "Tenant ID to enter",
+              },
+              branch_id: {
+                type: "string",
+                format: "uuid",
+                description: "Optional branch ID to use for the session",
+              },
+            },
+          },
+
+          TenantSelectionRequiredResponse: {
+            type: "object",
+            required: ["requires_tenant_selection", "selection_token", "memberships"],
+            properties: {
+              requires_tenant_selection: { type: "boolean", example: true },
+              selection_token: {
+                type: "string",
+                description:
+                  "Short-lived token used to exchange a tenant selection for normal session tokens",
+              },
+              memberships: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["tenant", "employeeId"],
+                  properties: {
+                    tenant: {
+                      type: "object",
+                      required: ["id", "name"],
+                      properties: {
+                        id: { type: "string", format: "uuid" },
+                        name: { type: "string" },
+                      },
+                    },
+                    employeeId: { type: "string", format: "uuid" },
+                  },
+                },
+              },
+            },
+          },
+
           AssignBranchRequest: {
             type: "object",
             required: ["branch_id", "role"],
@@ -553,12 +762,36 @@ export function setupSwagger(app: Express) {
           description: "Employee invitation management (Admin only)",
         },
         {
+          name: "Tenant",
+          description: "Tenant business profile and metadata",
+        },
+        {
           name: "User Management",
           description: "Employee and branch assignment management (Admin only)",
         },
         {
           name: "Menu",
           description: "Menu management endpoints",
+        },
+        {
+          name: "Categories",
+          description: "Menu category management",
+        },
+        {
+          name: "MenuItems",
+          description: "Menu item management",
+        },
+        {
+          name: "Modifiers",
+          description: "Modifier groups/options and item attachments",
+        },
+        {
+          name: "BranchMenu",
+          description: "Branch-specific menu overrides (availability, price)",
+        },
+        {
+          name: "Query",
+          description: "Optimized read-only menu queries (snapshots)",
         },
       ],
     },

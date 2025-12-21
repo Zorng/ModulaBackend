@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 import { createCashRouter } from "./api/router.js";
-import { AuthMiddleware } from "../auth/api/middleware/auth.middleware.js";
+import type { AuthMiddlewarePort } from "../../platform/security/auth.js";
 import { TransactionManager } from "../../platform/db/transactionManager.js";
 import { publishToOutbox } from "../../platform/events/outbox.js";
 
@@ -46,7 +46,7 @@ import {
  */
 export function bootstrapCashModule(
   pool: Pool,
-  authMiddleware: AuthMiddleware
+  authMiddleware: AuthMiddlewarePort
 ) {
   const txManager = new TransactionManager();
 

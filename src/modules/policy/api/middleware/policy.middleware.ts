@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { AuthRequest } from "../../../auth/api/middleware/auth.middleware.js";
+import type { AuthenticatedRequest } from "../../../../platform/security/auth.js";
 
 /**
  * Policy module middleware
@@ -15,7 +15,7 @@ export function requireAdmin(
   res: Response,
   next: NextFunction
 ): void {
-  const authReq = req as AuthRequest;
+  const authReq = req as AuthenticatedRequest;
 
   if (!authReq.user) {
     res.status(401).json({
@@ -47,7 +47,7 @@ export function logPolicyChange(
   res: Response,
   next: NextFunction
 ): void {
-  const authReq = req as AuthRequest;
+  const authReq = req as AuthenticatedRequest;
 
   // Store original send function
   const originalSend = res.send;
@@ -99,7 +99,7 @@ export function rateLimitPolicyUpdates(
     return;
   }
 
-  const authReq = req as AuthRequest;
+  const authReq = req as AuthenticatedRequest;
   const tenantId = authReq.user?.tenantId;
 
   if (!tenantId) {
@@ -184,4 +184,3 @@ export function cleanupRateLimitStore(): void {
 
 // Cleanup every 5 minutes
 setInterval(cleanupRateLimitStore, 5 * 60 * 1000);
-

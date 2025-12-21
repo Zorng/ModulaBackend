@@ -2,13 +2,18 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { AuthService } from '../app/auth.service.js';
 import { AuthRepository } from '../infra/repository.js';
 import { TokenService } from '../app/token.service.js';
-import { PgPolicyRepository } from '../../policy/infra/repository.js';
+import type { InvitationPort } from '../../../shared/ports/staff-management.js';
+import { createMembershipProvisioningPort } from "../index.js";
+import { TenantRepository } from "../../tenant/infra/repository.js";
+import {
+  createTenantProvisioningPort,
+  TenantProvisioningService,
+} from "../../tenant/app/tenant-provisioning.service.js";
 import { Pool } from 'pg';
 
 describe('Auth Integration Tests', () => {
   let pool: Pool;
   let authRepo: AuthRepository;
-  let policyRepo: PgPolicyRepository;
   let tokenService: TokenService;
   let authService: AuthService;
 
@@ -19,14 +24,34 @@ describe('Auth Integration Tests', () => {
     });
 
     authRepo = new AuthRepository(pool);
-    policyRepo = new PgPolicyRepository(pool);
     tokenService = new TokenService(
       'test-jwt-secret',
       'test-refresh-secret',
       '1h',
       '7d'
     );
-    authService = new AuthService(authRepo, tokenService, policyRepo, 72);
+    const invitationPort: InvitationPort = {
+      peekValidInvite: async () => {
+        throw new Error('not implemented');
+      },
+      acceptInvite: async () => {
+        throw new Error('not implemented');
+      },
+    };
+    const tenantRepo = new TenantRepository(pool);
+    const membershipProvisioningPort = createMembershipProvisioningPort();
+    const tenantProvisioningPort = createTenantProvisioningPort(
+      new TenantProvisioningService(pool, tenantRepo, membershipProvisioningPort, {
+        ensureDefaultPolicies: async () => {},
+      })
+    );
+
+    authService = new AuthService(
+      authRepo,
+      tokenService,
+      invitationPort,
+      tenantProvisioningPort
+    );
   });
 
   afterAll(async () => {
@@ -57,10 +82,14 @@ describe('Auth Integration Tests', () => {
         password: 'SecurePass123!'
       });
 
+      expect(loginResult.kind).toBe("single");
+      if (loginResult.kind !== "single") {
+        throw new Error("Expected single-tenant login result");
+      }
+
       expect(loginResult.employee.id).toBe(registrationResult.employee.id);
       expect(loginResult.tokens).toBeDefined();
       expect(loginResult.branchAssignments.length).toBeGreaterThan(0);
     });
   });
 });
-

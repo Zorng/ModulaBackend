@@ -2,6 +2,7 @@ import express, { Express } from "express";
 import { Pool } from "pg";
 import { bootstrapInventoryModule } from "../../index.js";
 import { setupAuthModule } from "../../../auth/index.js";
+import type { InvitationPort } from "../../../../shared/ports/staff-management.js";
 import {
   errorHandler,
   notFoundHandler,
@@ -32,7 +33,22 @@ export function createTestApp(pool: Pool): Express {
   app.use(express.json());
 
   // Setup auth module
-  const authModule = setupAuthModule(pool);
+  const invitationPort: InvitationPort = {
+    peekValidInvite: async () => {
+      throw new Error("not implemented");
+    },
+    acceptInvite: async () => {
+      throw new Error("not implemented");
+    },
+  };
+  const authModule = setupAuthModule(pool, {
+    invitationPort,
+    tenantProvisioningPort: {
+      provisionTenant: async () => {
+        throw new Error("not implemented");
+      },
+    },
+  });
   const { authMiddleware } = authModule;
 
   // Setup mock image storage for tests

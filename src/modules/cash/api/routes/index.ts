@@ -5,7 +5,7 @@ import {
   ReportController,
   RegisterController,
 } from "../controller/index.js";
-import { AuthMiddleware } from "../../../auth/api/middleware/auth.middleware.js";
+import type { AuthMiddlewarePort } from "../../../../platform/security/auth.js";
 
 /**
  * Cash Module Routes
@@ -18,7 +18,7 @@ export function createCashRoutes(
   movementController: MovementController,
   reportController: ReportController,
   registerController: RegisterController,
-  authMiddleware: AuthMiddleware
+  authMiddleware: AuthMiddlewarePort
 ): Router {
   const router = Router();
 
