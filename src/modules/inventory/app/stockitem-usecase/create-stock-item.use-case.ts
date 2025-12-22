@@ -2,6 +2,7 @@ import { Ok, Err, type Result } from "../../../../shared/result.js";
 import { StockItemRepository } from "../../domain/repositories.js";
 import { StockItem } from "../../domain/entities.js";
 import type { StockItemCreatedV1 } from "../../../../shared/events.js";
+import type { InventoryTenantLimitsPort } from "../tenant-limits.port.js";
 
 export interface CreateStockItemInput {
   tenantId: string;
@@ -40,6 +41,7 @@ export interface IImageStoragePort {
 export class CreateStockItemUseCase {
   constructor(
     private stockItemRepo: StockItemRepository,
+    private tenantLimits: InventoryTenantLimitsPort,
     private eventBus: IEventBus,
     private txManager: ITransactionManager,
     private imageStorage: IImageStoragePort
@@ -95,6 +97,29 @@ export class CreateStockItemUseCase {
     // Validate image URL if provided
     if (finalImageUrl && !this.imageStorage.isValidImageUrl(finalImageUrl)) {
       return Err("Invalid image URL format. Use .jpg, .jpeg, .webp, or .png");
+    }
+
+    if (isActive) {
+      const limits = await this.tenantLimits.getStockItemLimits(tenantId);
+      if (!limits) {
+        return Err("Tenant limits not found. Please contact support.");
+      }
+
+      const totalCount = await this.stockItemRepo.countByTenant(tenantId);
+      if (totalCount >= limits.maxStockItemsHard) {
+        return Err(
+          `Stock item hard limit reached (${totalCount}/${limits.maxStockItemsHard}).`
+        );
+      }
+
+      const activeCount = await this.stockItemRepo.countByTenant(tenantId, {
+        isActive: true,
+      });
+      if (activeCount >= limits.maxStockItemsSoft) {
+        return Err(
+          `Stock item limit reached (${activeCount}/${limits.maxStockItemsSoft}). Archive items or upgrade your plan.`
+        );
+      }
     }
 
     try {

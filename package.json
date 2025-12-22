@@ -15,7 +15,8 @@
     "migrate": "cross-env NODE_ENV=development tsx src/platform/db/migrate.ts",
     "start": "cross-env NODE_ENV=production node dist/server.js",
     "test": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "test:watch": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --watch"
+    "test:watch": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:integration": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand src/integration-tests"
   },
   "keywords": [],
   "author": "",

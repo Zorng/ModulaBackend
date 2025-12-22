@@ -1,6 +1,5 @@
 import type { Pool, PoolClient } from "pg";
 import type {
-  Branch,
   Tenant,
   TenantMetadata,
   TenantProfile,
@@ -39,20 +38,6 @@ export class TenantRepository {
       [tenant.name, tenant.business_type ?? null, tenant.status ?? "ACTIVE"]
     );
     return this.mapTenant(result.rows[0]);
-  }
-
-  async createBranch(
-    branch: Pick<Branch, "tenant_id" | "name"> & Partial<Pick<Branch, "address">>,
-    client?: PoolClient
-  ): Promise<Branch> {
-    const db: Queryable = client ?? this.pool;
-    const result = await db.query(
-      `INSERT INTO branches (tenant_id, name, address)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [branch.tenant_id, branch.name, branch.address ?? null]
-    );
-    return this.mapBranch(result.rows[0]);
   }
 
   async findTenantById(
@@ -217,6 +202,19 @@ export class TenantRepository {
     );
   }
 
+  async ensureTenantLimits(
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<void> {
+    const db: Queryable = client ?? this.pool;
+    await db.query(
+      `INSERT INTO tenant_limits (tenant_id)
+       VALUES ($1)
+       ON CONFLICT (tenant_id) DO NOTHING`,
+      [tenantId]
+    );
+  }
+
   private mapTenant(row: any): Tenant {
     return {
       id: row.id,
@@ -245,17 +243,6 @@ export class TenantRepository {
       name: row.name,
       logo_url: row.logo_url ?? null,
       status: row.status as TenantStatus,
-    };
-  }
-
-  private mapBranch(row: any): Branch {
-    return {
-      id: row.id,
-      tenant_id: row.tenant_id,
-      name: row.name,
-      address: row.address ?? null,
-      created_at: new Date(row.created_at),
-      updated_at: new Date(row.updated_at),
     };
   }
 }

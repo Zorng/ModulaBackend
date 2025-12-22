@@ -4,6 +4,7 @@ import cors from "cors";
 import { ping } from "#db";
 import { log } from "#logger";
 import { bootstrapTenantModule } from "#modules/tenant/index.js";
+import { bootstrapBranchModule } from "#modules/branch/index.js";
 import { createMenuRouter } from "./modules/menu/api/router/index.js";
 import { createPolicyRouter } from "./modules/policy/index.js";
 import { PgPolicyRepository } from "./modules/policy/infra/repository.js";
@@ -61,10 +62,14 @@ log.info("✓ Outbox dispatcher started - reliable event delivery enabled");
 const policyRepo = new PgPolicyRepository(pool);
 const staffManagementModule = bootstrapStaffManagementModule(pool);
 
+// Setup Branch Module (profile + lifecycle + provisioning ports)
+const branchModule = bootstrapBranchModule(pool);
+
 // Setup Tenant Module (provisioning + admin-only business profile endpoints)
 const membershipProvisioningPort = createMembershipProvisioningPort();
 const tenantModule = bootstrapTenantModule(pool, {
   membershipProvisioningPort,
+  branchProvisioningPort: branchModule.branchProvisioningPort,
   policyDefaultsPort: {
     ensureDefaultPolicies: async (tenantId: string) => {
       await policyRepo.ensureDefaultPolicies(tenantId);
@@ -80,6 +85,7 @@ const authModule = setupAuthModule(pool, {
 const { authRoutes, authMiddleware } = authModule;
 const staffManagementAuthRouter = staffManagementModule.createRouter(authMiddleware);
 const tenantRouter = tenantModule.createRouter(authMiddleware);
+const branchRouter = branchModule.createRouter(authMiddleware);
 
 // Setup Policy Router (requires auth middleware)
 const policyRouter = createPolicyRouter(authMiddleware);
@@ -183,6 +189,8 @@ app.get("/health", async (_req, res) => {
 
 app.locals.imageStorage = imageStorage;
 app.locals.tenantMetadataPort = tenantModule.tenantMetadataPort;
+app.locals.branchGuardPort = branchModule.branchGuardPort;
+app.locals.branchQueryPort = branchModule.branchQueryPort;
 
 // Swagger UI setup - must be before routes
 setupSwagger(app);
@@ -264,6 +272,7 @@ app.get("/health", async (_req, res) => {
 
 // Mount module routers
 app.use("/v1/tenants", tenantRouter);
+app.use("/v1/branches", branchRouter);
 app.use("/v1/auth", authRoutes);
 app.use("/v1/auth", staffManagementAuthRouter);
 app.use("/v1/account", accountSettingsRouter);

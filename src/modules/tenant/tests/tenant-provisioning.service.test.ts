@@ -26,15 +26,22 @@ describe("TenantProvisioningService", () => {
         created_at: new Date(),
         updated_at: new Date(),
       }),
-      createBranch: jest.fn().mockResolvedValue({
+      ensureTenantLimits: jest.fn().mockResolvedValue(undefined),
+      writeAuditLog: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const branchProvisioning = {
+      provisionBranch: jest.fn().mockResolvedValue({
         id: "branch-1",
         tenant_id: "tenant-1",
         name: "Main Branch",
         address: null,
+        contact_phone: null,
+        contact_email: null,
+        status: "ACTIVE",
         created_at: new Date(),
         updated_at: new Date(),
       }),
-      writeAuditLog: jest.fn().mockResolvedValue(undefined),
     };
 
     const membershipProvisioning = {
@@ -51,6 +58,7 @@ describe("TenantProvisioningService", () => {
       pool as any,
       repo as any,
       membershipProvisioning as any,
+      branchProvisioning as any,
       policyDefaults as any
     );
 
@@ -66,6 +74,7 @@ describe("TenantProvisioningService", () => {
     ).rejects.toThrow("membership failed");
 
     expect(client.query).toHaveBeenCalledWith("BEGIN");
+    expect(branchProvisioning.provisionBranch).toHaveBeenCalled();
     expect(client.query).toHaveBeenCalledWith("ROLLBACK");
     expect(client.query).not.toHaveBeenCalledWith("COMMIT");
     expect(policyDefaults.ensureDefaultPolicies).not.toHaveBeenCalled();
@@ -84,15 +93,22 @@ describe("TenantProvisioningService", () => {
         created_at: new Date(),
         updated_at: new Date(),
       }),
-      createBranch: jest.fn().mockResolvedValue({
+      ensureTenantLimits: jest.fn().mockResolvedValue(undefined),
+      writeAuditLog: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const branchProvisioning = {
+      provisionBranch: jest.fn().mockResolvedValue({
         id: "branch-1",
         tenant_id: "tenant-1",
         name: "Main Branch",
         address: null,
+        contact_phone: null,
+        contact_email: null,
+        status: "ACTIVE",
         created_at: new Date(),
         updated_at: new Date(),
       }),
-      writeAuditLog: jest.fn().mockResolvedValue(undefined),
     };
 
     const membershipProvisioning = {
@@ -123,6 +139,7 @@ describe("TenantProvisioningService", () => {
       pool as any,
       repo as any,
       membershipProvisioning as any,
+      branchProvisioning as any,
       policyDefaults as any
     );
 
@@ -138,6 +155,7 @@ describe("TenantProvisioningService", () => {
     ).rejects.toThrow("policy seed failed");
 
     expect(client.query).toHaveBeenCalledWith("BEGIN");
+    expect(branchProvisioning.provisionBranch).toHaveBeenCalled();
     expect(client.query).toHaveBeenCalledWith("COMMIT");
     expect(pool.query).toHaveBeenCalledWith(
       "DELETE FROM tenants WHERE id = $1",
@@ -145,4 +163,3 @@ describe("TenantProvisioningService", () => {
     );
   });
 });
-

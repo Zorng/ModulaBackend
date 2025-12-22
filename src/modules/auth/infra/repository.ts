@@ -1,11 +1,11 @@
 import { pool } from '#db'; // Use your existing pool import
+import type { Pool, PoolClient } from "pg";
 import { 
   Account,
   Employee, 
   EmployeeStatus, 
   EmployeeRole, 
   Tenant, 
-  Branch, 
   Invite, 
   Session, 
   ActivityLog, 
@@ -14,8 +14,10 @@ import {
   PhoneOtpPurpose
 } from '../domain/entities.js';
 
+type Queryable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
+
 export class AuthRepository {
-  constructor(private db = pool) {} // Use your existing pool
+  constructor(private db: Queryable = pool) {} // Use your existing pool
 
   async createAccount(account: Pick<Account, "phone" | "password_hash" | "status"> & Partial<Pick<Account, "phone_verified_at">>): Promise<Account> {
     const result = await this.db.query(
@@ -56,36 +58,6 @@ export class AuthRepository {
       throw new Error("Account not found");
     }
     return this.mapAccount(result.rows[0]);
-  }
-
-  async createTenant(tenant: Omit<Tenant, 'id' | 'created_at' | 'updated_at'>): Promise<Tenant> {
-    const query = `
-      INSERT INTO tenants (name, business_type, status)
-      VALUES ($1, $2, $3)
-      RETURNING *
-    `;
-    const result = await this.db.query(query, [tenant.name, tenant.business_type, tenant.status || 'ACTIVE']);
-    return this.mapTenant(result.rows[0]);
-  }
-
-  async findTenantById(id: string): Promise<Tenant | null> {
-    const result = await this.db.query('SELECT * FROM tenants WHERE id = $1', [id]);
-    return result.rows.length ? this.mapTenant(result.rows[0]) : null;
-  }
-
-  async createBranch(branch: Omit<Branch, 'id' | 'created_at' | 'updated_at'>): Promise<Branch> {
-    const query = `
-      INSERT INTO branches (tenant_id, name, address)
-      VALUES ($1, $2, $3)
-      RETURNING *
-    `;
-    const result = await this.db.query(query, [branch.tenant_id, branch.name, branch.address]);
-    return this.mapBranch(result.rows[0]);
-  }
-
-  async findBranchById(id: string): Promise<Branch | null> {
-    const result = await this.db.query('SELECT * FROM branches WHERE id = $1', [id]);
-    return result.rows.length ? this.mapBranch(result.rows[0]) : null;
   }
 
   async createEmployee(employee: Omit<Employee, 'id' | 'created_at' | 'updated_at'>): Promise<Employee> {
@@ -229,7 +201,9 @@ export class AuthRepository {
       `SELECT eba.*, b.name as branch_name
        FROM employee_branch_assignments eba
        JOIN branches b ON eba.branch_id = b.id
+       JOIN employees e ON e.id = eba.employee_id
        WHERE eba.employee_id = $1 AND eba.active = true
+         AND b.tenant_id = e.tenant_id
        ORDER BY eba.assigned_at DESC`,
       [employeeId]
     );
@@ -241,7 +215,9 @@ export class AuthRepository {
       `SELECT eba.*, b.name as branch_name
        FROM employee_branch_assignments eba
        JOIN branches b ON eba.branch_id = b.id
-       WHERE eba.employee_id = $1 AND eba.branch_id = $2 AND eba.active = true`,
+       JOIN employees e ON e.id = eba.employee_id
+       WHERE eba.employee_id = $1 AND eba.branch_id = $2 AND eba.active = true
+         AND b.tenant_id = e.tenant_id`,
       [employeeId, branchId]
     );
     return result.rows.length ? this.mapEmployeeBranchAssignment(result.rows[0]) : null;
@@ -448,28 +424,6 @@ export class AuthRepository {
   }
 
   // Mappers (keep the same as before)
-  private mapTenant(row: any): Tenant {
-    return {
-      id: row.id,
-      name: row.name,
-      business_type: row.business_type,
-      status: row.status,
-      created_at: new Date(row.created_at),
-      updated_at: new Date(row.updated_at)
-    };
-  }
-
-  private mapBranch(row: any): Branch {
-    return {
-      id: row.id,
-      tenant_id: row.tenant_id,
-      name: row.name,
-      address: row.address,
-      created_at: new Date(row.created_at),
-      updated_at: new Date(row.updated_at)
-    };
-  }
-
   private mapAccount(row: any): Account {
     return {
       id: row.id,

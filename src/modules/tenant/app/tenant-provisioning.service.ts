@@ -4,6 +4,7 @@ import type {
   PolicyDefaultsPort,
   TenantProvisioningPort,
 } from "../../../shared/ports/tenant.js";
+import type { BranchProvisioningPort } from "../../../shared/ports/branch.js";
 import { TenantRepository } from "../infra/repository.js";
 
 export class TenantProvisioningService {
@@ -11,6 +12,7 @@ export class TenantProvisioningService {
     private pool: Pool,
     private repo: TenantRepository,
     private membershipProvisioning: MembershipProvisioningPort,
+    private branchProvisioning: BranchProvisioningPort,
     private policyDefaults: PolicyDefaultsPort
   ) {}
 
@@ -40,14 +42,14 @@ export class TenantProvisioningService {
       );
       tenantIdForCleanup = tenant.id;
 
-      const branch = await this.repo.createBranch(
-        {
-          tenant_id: tenant.id,
-          name: "Main Branch",
-          address: "Primary business location",
-        },
-        client
-      );
+      await this.repo.ensureTenantLimits(tenant.id, client);
+
+      const branch = await this.branchProvisioning.provisionBranch({
+        client,
+        tenantId: tenant.id,
+        name: "Main Branch",
+        address: "Primary business location",
+      });
 
       const { employee, role } =
         await this.membershipProvisioning.createInitialAdminMembership({
@@ -72,21 +74,6 @@ export class TenantProvisioningService {
           details: {
             name,
             business_type: params.business_type ?? null,
-          },
-        },
-        client
-      );
-
-      await this.repo.writeAuditLog(
-        {
-          tenantId: tenant.id,
-          branchId: branch.id,
-          employeeId: employee.id,
-          actionType: "BRANCH_CREATED",
-          resourceType: "BRANCH",
-          resourceId: branch.id,
-          details: {
-            name: branch.name,
           },
         },
         client

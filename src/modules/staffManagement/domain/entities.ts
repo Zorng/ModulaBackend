@@ -1,14 +1,9 @@
-export type EmployeeStatus = "ACTIVE" | "INVITED" | "DISABLED";
+import type { BranchRecord } from "../../../shared/ports/branch.js";
+
+export type EmployeeStatus = "ACTIVE" | "INVITED" | "DISABLED" | "ARCHIVED";
 export type EmployeeRole = "ADMIN" | "MANAGER" | "CASHIER" | "CLERK";
 
-export interface Branch {
-  id: string;
-  tenant_id: string;
-  name: string;
-  address?: string;
-  created_at: Date;
-  updated_at: Date;
-}
+export type Branch = BranchRecord;
 
 export interface Employee {
   id: string;

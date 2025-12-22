@@ -13,6 +13,50 @@ import type {
 export class StaffManagementRepository {
   constructor(private db: Pool = pool) {}
 
+  async getStaffSeatLimits(
+    tenantId: string
+  ): Promise<{ maxStaffSeatsSoft: number; maxStaffSeatsHard: number } | null> {
+    const result = await this.db.query(
+      `SELECT max_staff_seats_soft, max_staff_seats_hard
+       FROM tenant_limits
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    if (result.rows.length === 0) return null;
+    return {
+      maxStaffSeatsSoft: Number(result.rows[0].max_staff_seats_soft),
+      maxStaffSeatsHard: Number(result.rows[0].max_staff_seats_hard),
+    };
+  }
+
+  async countEmployeesByStatus(
+    tenantId: string,
+    statuses: EmployeeStatus[]
+  ): Promise<number> {
+    if (statuses.length === 0) return 0;
+    const result = await this.db.query(
+      `SELECT COUNT(*)::INT AS count
+       FROM employees
+       WHERE tenant_id = $1
+         AND status = ANY($2::TEXT[])`,
+      [tenantId, statuses]
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
+  async countPendingInvites(tenantId: string): Promise<number> {
+    const result = await this.db.query(
+      `SELECT COUNT(*)::INT AS count
+       FROM invites
+       WHERE tenant_id = $1
+         AND accepted_at IS NULL
+         AND revoked_at IS NULL
+         AND expires_at > NOW()`,
+      [tenantId]
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
   async findBranchById(id: string): Promise<Branch | null> {
     const result = await this.db.query("SELECT * FROM branches WHERE id = $1", [
       id,
@@ -134,6 +178,13 @@ export class StaffManagementRepository {
     );
   }
 
+  async activateAllEmployeeBranchAssignments(employeeId: string): Promise<void> {
+    await this.db.query(
+      "UPDATE employee_branch_assignments SET active = true WHERE employee_id = $1",
+      [employeeId]
+    );
+  }
+
   async createInvite(input: {
     tenant_id: string;
     branch_id: string;
@@ -234,7 +285,10 @@ export class StaffManagementRepository {
       id: row.id,
       tenant_id: row.tenant_id,
       name: row.name,
-      address: row.address,
+      address: row.address ?? null,
+      contact_phone: row.contact_phone ?? null,
+      contact_email: row.contact_email ?? null,
+      status: row.status,
       created_at: new Date(row.created_at),
       updated_at: new Date(row.updated_at),
     };

@@ -226,6 +226,55 @@ export function setupSwagger(app: Express) {
             },
           },
 
+          BranchStatus: {
+            type: "string",
+            enum: ["ACTIVE", "FROZEN"],
+            description:
+              "Branch lifecycle status (ACTIVE allows operational writes; FROZEN blocks operational writes).",
+          },
+
+          Branch: {
+            type: "object",
+            properties: {
+              id: { type: "string", format: "uuid" },
+              tenant_id: { type: "string", format: "uuid" },
+              name: { type: "string" },
+              address: { type: "string", nullable: true },
+              contact_phone: { type: "string", nullable: true },
+              contact_email: { type: "string", nullable: true },
+              status: { $ref: "#/components/schemas/BranchStatus" },
+              created_at: { type: "string", format: "date-time" },
+              updated_at: { type: "string", format: "date-time" },
+            },
+          },
+
+          BranchResponse: {
+            type: "object",
+            properties: {
+              branch: { $ref: "#/components/schemas/Branch" },
+            },
+          },
+
+          BranchListResponse: {
+            type: "object",
+            properties: {
+              branches: {
+                type: "array",
+                items: { $ref: "#/components/schemas/Branch" },
+              },
+            },
+          },
+
+          UpdateBranchRequest: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              address: { type: "string", nullable: true },
+              contact_phone: { type: "string", nullable: true },
+              contact_email: { type: "string", nullable: true },
+            },
+          },
+
           Employee: {
             type: "object",
             properties: {
@@ -764,6 +813,10 @@ export function setupSwagger(app: Express) {
         {
           name: "Tenant",
           description: "Tenant business profile and metadata",
+        },
+        {
+          name: "Branch",
+          description: "Branch profile and lifecycle (freeze/unfreeze)",
         },
         {
           name: "User Management",

@@ -8,6 +8,7 @@ import {
 } from "./controller/index.js";
 import type { AuthMiddlewarePort } from "../../../platform/security/auth.js";
 import { uploadOptionalSingleImage } from "../../../platform/http/middleware/multer.js";
+import { requireActiveBranch } from "../../../platform/http/middlewares/branch-guard.middleware.js";
 
 export function createInventoryRoutes(
   stockItemController: StockItemController,
@@ -498,8 +499,14 @@ export function createInventoryRoutes(
    *       201:
    *         description: Stock received
    */
-  router.post("/journal/receive", async (req, res) =>
-    inventoryJournalController.receiveStock(req as any, res)
+  router.post(
+    "/journal/receive",
+    requireActiveBranch({
+      operation: "inventory.receive_stock",
+      resolveBranchId: (req) =>
+        typeof req.body?.branchId === "string" ? req.body.branchId : undefined,
+    }),
+    async (req, res) => inventoryJournalController.receiveStock(req as any, res)
   );
 
   /**
@@ -544,8 +551,14 @@ export function createInventoryRoutes(
    *       201:
    *         description: Stock waste recorded
    */
-  router.post("/journal/waste", async (req, res) =>
-    inventoryJournalController.wasteStock(req as any, res)
+  router.post(
+    "/journal/waste",
+    requireActiveBranch({
+      operation: "inventory.waste_stock",
+      resolveBranchId: (req) =>
+        typeof req.body?.branchId === "string" ? req.body.branchId : undefined,
+    }),
+    async (req, res) => inventoryJournalController.wasteStock(req as any, res)
   );
 
   /**
@@ -590,8 +603,14 @@ export function createInventoryRoutes(
    *       201:
    *         description: Stock correction recorded
    */
-  router.post("/journal/correct", async (req, res) =>
-    inventoryJournalController.correctStock(req as any, res)
+  router.post(
+    "/journal/correct",
+    requireActiveBranch({
+      operation: "inventory.correct_stock",
+      resolveBranchId: (req) =>
+        typeof req.body?.branchId === "string" ? req.body.branchId : undefined,
+    }),
+    async (req, res) => inventoryJournalController.correctStock(req as any, res)
   );
 
   /**
@@ -634,8 +653,11 @@ export function createInventoryRoutes(
    *       201:
    *         description: Sale deductions recorded
    */
-  router.post("/_internal/journal/sale", async (req, res) =>
-    inventoryJournalController.recordSaleDeductions(req as any, res)
+  router.post(
+    "/_internal/journal/sale",
+    requireActiveBranch({ operation: "inventory.record_sale_deductions" }),
+    async (req, res) =>
+      inventoryJournalController.recordSaleDeductions(req as any, res)
   );
 
   /**
@@ -669,8 +691,10 @@ export function createInventoryRoutes(
    *       201:
    *         description: Void reversals recorded
    */
-  router.post("/_internal/journal/void", async (req, res) =>
-    inventoryJournalController.recordVoid(req as any, res)
+  router.post(
+    "/_internal/journal/void",
+    requireActiveBranch({ operation: "inventory.record_void" }),
+    async (req, res) => inventoryJournalController.recordVoid(req as any, res)
   );
 
   /**
@@ -708,8 +732,10 @@ export function createInventoryRoutes(
    *       201:
    *         description: Reopen redeductions recorded
    */
-  router.post("/_internal/journal/reopen", async (req, res) =>
-    inventoryJournalController.recordReopen(req as any, res)
+  router.post(
+    "/_internal/journal/reopen",
+    requireActiveBranch({ operation: "inventory.record_reopen" }),
+    async (req, res) => inventoryJournalController.recordReopen(req as any, res)
   );
 
   /**

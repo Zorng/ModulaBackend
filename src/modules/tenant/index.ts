@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 import type { AuthMiddlewarePort } from "../../platform/security/auth.js";
+import type { BranchProvisioningPort } from "../../shared/ports/branch.js";
 import type {
   MembershipProvisioningPort,
   PolicyDefaultsPort,
@@ -17,6 +18,7 @@ export function bootstrapTenantModule(
   pool: Pool,
   deps: {
     membershipProvisioningPort: MembershipProvisioningPort;
+    branchProvisioningPort: BranchProvisioningPort;
     policyDefaultsPort: PolicyDefaultsPort;
   }
 ) {
@@ -26,6 +28,7 @@ export function bootstrapTenantModule(
     pool,
     repo,
     deps.membershipProvisioningPort,
+    deps.branchProvisioningPort,
     deps.policyDefaultsPort
   );
   const tenantProvisioningPort = createTenantProvisioningPort(provisioningService);

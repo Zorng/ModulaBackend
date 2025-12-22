@@ -1,4 +1,4 @@
-export type EmployeeStatus = 'ACTIVE' | 'INVITED' | 'DISABLED';
+export type EmployeeStatus = 'ACTIVE' | 'INVITED' | 'DISABLED' | 'ARCHIVED';
 export type EmployeeRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'CLERK';
 export type AccountStatus = 'ACTIVE' | 'DISABLED';
 export type AuthActionType = 
@@ -19,17 +19,8 @@ export type AuthActionType =
 export interface Tenant {
   id: string;
   name: string;
-  business_type?: string;
+  business_type?: string | null;
   status: string;
-  created_at: Date;
-  updated_at: Date;
-}
-
-export interface Branch {
-  id: string;
-  tenant_id: string;
-  name: string;
-  address?: string;
   created_at: Date;
   updated_at: Date;
 }

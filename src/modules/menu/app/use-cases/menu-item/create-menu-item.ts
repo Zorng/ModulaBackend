@@ -106,25 +106,22 @@ export class CreateMenuItemUseCase {
         }
 
         // 6 - Check quota limits
-        // TODO: Tenant limits module not complete - bypassing for now
-        // const limits = await this.limitsRepo.findByTenantId(tenantId, client);
-        // if (!limits) {
-        //   throw new Error("Tenant limits not found");
-        // }
+        const limits = await this.limitsRepo.findByTenantId(tenantId, client);
+        if (!limits) {
+          throw new Error("Tenant limits not found. Please contact support.");
+        }
 
-        // const currentCount = await this.menuItemRepo.countByTenantId(
-        //   tenantId,
-        //   client
-        // );
-        // const limitCheck = limits.checkItemLimit(currentCount);
+        const currentActiveCount = await this.menuItemRepo.countByTenantId(
+          tenantId,
+          client
+        );
 
-        // if (limitCheck.status === "exceeded") {
-        //   throw new Error(limitCheck.message);
-        // }
-
-        // if (limitCheck.status === "warning") {
-        //   console.warn(`[CreateMenuItem] ${limitCheck.message}`);
-        // }
+        // ModSpec: soft limit blocks creation; archiving frees the slot.
+        if (currentActiveCount >= limits.maxItemsSoft) {
+          throw new Error(
+            `Menu item limit reached (${currentActiveCount}/${limits.maxItemsSoft}). Archive items or upgrade your plan.`
+          );
+        }
 
         // 7 - Check name uniqueness in category
         const nameExists = await this.menuItemRepo.existsByNameInCategory(

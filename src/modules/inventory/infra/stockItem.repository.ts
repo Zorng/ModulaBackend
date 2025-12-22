@@ -44,6 +44,22 @@ export class StockItemRepository implements IStockItemRepository {
     return res.rows.map(this.toEntity);
   }
 
+  async countByTenant(
+    tenantId: string,
+    options?: { isActive?: boolean }
+  ): Promise<number> {
+    let query = "SELECT COUNT(*)::INT AS count FROM stock_items WHERE tenant_id = $1";
+    const params: any[] = [tenantId];
+
+    if (typeof options?.isActive === "boolean") {
+      query += " AND is_active = $2";
+      params.push(options.isActive);
+    }
+
+    const res = await this.pool.query(query, params);
+    return Number(res.rows[0]?.count ?? 0);
+  }
+
   async save(
     item: Omit<StockItem, "id" | "createdAt" | "updatedAt">
   ): Promise<StockItem> {

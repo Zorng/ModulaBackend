@@ -6,6 +6,18 @@ import {
   RegisterController,
 } from "../controller/index.js";
 import type { AuthMiddlewarePort } from "../../../../platform/security/auth.js";
+import { requireActiveBranch } from "../../../../platform/http/middlewares/branch-guard.middleware.js";
+import { pool } from "#db";
+
+async function resolveBranchIdForSession(req: any): Promise<string | undefined> {
+  const sessionId = req.params?.sessionId;
+  if (typeof sessionId !== "string" || sessionId.length === 0) return undefined;
+  const result = await pool.query(
+    "SELECT branch_id FROM cash_sessions WHERE id = $1",
+    [sessionId]
+  );
+  return result.rows.length ? (result.rows[0].branch_id as string) : undefined;
+}
 
 /**
  * Cash Module Routes
@@ -207,6 +219,11 @@ export function createCashRoutes(
    */
   router.post(
     "/sessions",
+    requireActiveBranch({
+      operation: "cash.open_session",
+      resolveBranchId: (req) =>
+        typeof req.body?.branchId === "string" ? req.body.branchId : undefined,
+    }),
     async (req, res) => await sessionController.openSession(req as any, res)
   );
 
@@ -262,6 +279,11 @@ export function createCashRoutes(
    */
   router.post(
     "/sessions/take-over",
+    requireActiveBranch({
+      operation: "cash.take_over_session",
+      resolveBranchId: (req) =>
+        typeof req.body?.branchId === "string" ? req.body.branchId : undefined,
+    }),
     async (req, res) => await sessionController.takeOverSession(req as any, res)
   );
 
@@ -313,6 +335,10 @@ export function createCashRoutes(
    */
   router.post(
     "/sessions/:sessionId/close",
+    requireActiveBranch({
+      operation: "cash.close_session",
+      resolveBranchId: resolveBranchIdForSession,
+    }),
     async (req, res) => await sessionController.closeSession(req as any, res)
   );
 
@@ -417,6 +443,10 @@ export function createCashRoutes(
    */
   router.post(
     "/sessions/:sessionId/movements",
+    requireActiveBranch({
+      operation: "cash.record_movement",
+      resolveBranchId: resolveBranchIdForSession,
+    }),
     async (req, res) => await movementController.recordMovement(req as any, res)
   );
 

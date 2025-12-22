@@ -1,5 +1,5 @@
 export type EmployeeRole = "ADMIN" | "MANAGER" | "CASHIER" | "CLERK";
-export type EmployeeStatus = "ACTIVE" | "INVITED" | "DISABLED";
+export type EmployeeStatus = "ACTIVE" | "INVITED" | "DISABLED" | "ARCHIVED";
 
 export interface InvitePreview {
   id: string;

@@ -9,6 +9,7 @@ import {
   createTenantProvisioningPort,
   TenantProvisioningService,
 } from "../../tenant/app/tenant-provisioning.service.js";
+import { bootstrapBranchModule } from "#modules/branch/index.js";
 import { Pool } from 'pg';
 
 describe('Auth Integration Tests', () => {
@@ -40,10 +41,17 @@ describe('Auth Integration Tests', () => {
     };
     const tenantRepo = new TenantRepository(pool);
     const membershipProvisioningPort = createMembershipProvisioningPort();
+    const branchModule = bootstrapBranchModule(pool);
     const tenantProvisioningPort = createTenantProvisioningPort(
-      new TenantProvisioningService(pool, tenantRepo, membershipProvisioningPort, {
-        ensureDefaultPolicies: async () => {},
-      })
+      new TenantProvisioningService(
+        pool,
+        tenantRepo,
+        membershipProvisioningPort,
+        branchModule.branchProvisioningPort,
+        {
+          ensureDefaultPolicies: async () => {},
+        }
+      )
     );
 
     authService = new AuthService(

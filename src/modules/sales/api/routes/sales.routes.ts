@@ -3,6 +3,7 @@ import { SalesController } from '../controllers/sales.controller.js';
 import { salesMiddleware } from '../middlewares/sales.middleware.js';
 import type { AuthRequest, AuthMiddlewarePort } from "../../../../platform/security/auth.js";
 import { validateRequest } from '../../../../platform/http/middlewares/validation.middleware.js';
+import { requireActiveBranch } from "../../../../platform/http/middlewares/branch-guard.middleware.js";
 import { 
   createSaleSchema, 
   addItemSchema, 
@@ -81,6 +82,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/drafts', 
+    requireActiveBranch({ operation: "sales.create_draft" }),
     validateRequest(createSaleSchema),
     async (req, res) => await controller.createDraftSale(req as AuthRequest, res)
   );
@@ -110,6 +112,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.get(
     '/drafts/:clientUuid',
+    requireActiveBranch({ operation: "sales.get_or_create_draft" }),
     async (req, res) => await controller.getOrCreateDraft(req as unknown as AuthRequest, res)
   );  // ==================== CART ITEM OPERATIONS ====================
 
@@ -163,6 +166,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/:saleId/items',
+    requireActiveBranch({ operation: "sales.add_item" }),
     validateRequest(addItemSchema),
     async (req, res) => await controller.addItem(req as AuthRequest, res)
   );
@@ -209,6 +213,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.patch(
     '/:saleId/items/:itemId/quantity',
+    requireActiveBranch({ operation: "sales.update_item_quantity" }),
     validateRequest(updateItemQuantitySchema),
     async (req, res) => await controller.updateItemQuantity(req as AuthRequest, res)
   );
@@ -243,6 +248,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.delete(
     '/:saleId/items/:itemId',
+    requireActiveBranch({ operation: "sales.remove_item" }),
     async (req, res) => await controller.removeItem(req as unknown as AuthRequest, res)
   );
 
@@ -296,6 +302,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/:saleId/pre-checkout',
+    requireActiveBranch({ operation: "sales.pre_checkout" }),
     validateRequest(preCheckoutSchema),
     async (req, res) => await controller.preCheckout(req as AuthRequest, res)
   );
@@ -331,6 +338,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/:saleId/finalize',
+    requireActiveBranch({ operation: "sales.finalize" }),
     async (req, res) => await controller.finalizeSale(req as AuthRequest, res)
   );
 
@@ -373,6 +381,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.patch(
     '/:saleId/fulfillment',
+    requireActiveBranch({ operation: "sales.update_fulfillment" }),
     validateRequest(updateFulfillmentBodySchema),
     async (req, res) => await controller.updateFulfillment(req as AuthRequest, res)
   );
@@ -416,6 +425,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/:saleId/void',
+    requireActiveBranch({ operation: "sales.void" }),
     validateRequest(voidSaleBodySchema),
     async (req, res) => await controller.voidSale(req as AuthRequest, res)
   );
@@ -449,6 +459,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.delete(
     '/:saleId',
+    requireActiveBranch({ operation: "sales.delete_draft" }),
     async (req, res) => await controller.deleteSale(req as unknown as AuthRequest, res)
   );
 
@@ -489,6 +500,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/:saleId/reopen',
+    requireActiveBranch({ operation: "sales.reopen" }),
     validateRequest(reopenSaleBodySchema),
     async (req, res) => await controller.reopenSale(req as AuthRequest, res)
   );

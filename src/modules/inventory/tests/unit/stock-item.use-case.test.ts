@@ -7,8 +7,10 @@ import type { StockItem } from "../../domain/entities.js";
 
 describe("Stock Item Use Cases", () => {
   let mockRepo: jest.Mocked<StockItemRepository>;
+  let mockTenantLimits: any;
   let mockEventBus: any;
   let mockTxManager: any;
+  let mockImageStorage: any;
 
   beforeEach(() => {
     mockRepo = {
@@ -17,7 +19,15 @@ describe("Stock Item Use Cases", () => {
       findById: jest.fn(),
       findByTenant: jest.fn(),
       findByTenantAndActive: jest.fn(),
+      countByTenant: jest.fn(),
     } as any;
+
+    mockTenantLimits = {
+      getStockItemLimits: jest.fn().mockResolvedValue({
+        maxStockItemsSoft: 50,
+        maxStockItemsHard: 75,
+      }),
+    };
 
     mockEventBus = {
       publishViaOutbox: jest.fn(),
@@ -26,14 +36,21 @@ describe("Stock Item Use Cases", () => {
     mockTxManager = {
       withTransaction: jest.fn((fn: (tx: any) => any) => fn({})),
     };
+
+    mockImageStorage = {
+      uploadImage: jest.fn(),
+      isValidImageUrl: jest.fn(() => true),
+    };
   });
 
   describe("CreateStockItemUseCase", () => {
     it("should create a stock item successfully", async () => {
       const useCase = new CreateStockItemUseCase(
         mockRepo,
+        mockTenantLimits,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockImageStorage
       );
 
       const mockStockItem: StockItem = {
@@ -50,6 +67,7 @@ describe("Stock Item Use Cases", () => {
       };
 
       mockRepo.save.mockResolvedValue(mockStockItem);
+      mockRepo.countByTenant.mockResolvedValue(0);
 
       const result = await useCase.execute({
         tenantId: "tenant-1",
@@ -73,8 +91,10 @@ describe("Stock Item Use Cases", () => {
     it("should fail if name is empty", async () => {
       const useCase = new CreateStockItemUseCase(
         mockRepo,
+        mockTenantLimits,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockImageStorage
       );
 
       const result = await useCase.execute({
@@ -95,8 +115,10 @@ describe("Stock Item Use Cases", () => {
     it("should fail if unitText is empty", async () => {
       const useCase = new CreateStockItemUseCase(
         mockRepo,
+        mockTenantLimits,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockImageStorage
       );
 
       const result = await useCase.execute({
@@ -118,8 +140,10 @@ describe("Stock Item Use Cases", () => {
     it("should update a stock item successfully", async () => {
       const useCase = new UpdateStockItemUseCase(
         mockRepo,
+        mockTenantLimits,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockImageStorage
       );
 
       const existingItem: StockItem = {
@@ -152,8 +176,10 @@ describe("Stock Item Use Cases", () => {
     it("should fail if stock item not found", async () => {
       const useCase = new UpdateStockItemUseCase(
         mockRepo,
+        mockTenantLimits,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockImageStorage
       );
 
       mockRepo.findById.mockResolvedValue(null);

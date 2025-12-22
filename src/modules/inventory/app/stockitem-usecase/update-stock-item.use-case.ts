@@ -2,6 +2,7 @@ import { Ok, Err, type Result } from "../../../../shared/result.js";
 import { StockItemRepository } from "../../domain/repositories.js";
 import { StockItem } from "../../domain/entities.js";
 import type { StockItemUpdatedV1 } from "../../../../shared/events.js";
+import type { InventoryTenantLimitsPort } from "../tenant-limits.port.js";
 
 export interface UpdateStockItemInput {
   name?: string;
@@ -40,6 +41,7 @@ interface IImageStoragePort {
 export class UpdateStockItemUseCase {
   constructor(
     private stockItemRepo: StockItemRepository,
+    private tenantLimits: InventoryTenantLimitsPort,
     private eventBus: IEventBus,
     private txManager: ITransactionManager,
     private imageStorage: IImageStoragePort
@@ -102,6 +104,24 @@ export class UpdateStockItemUseCase {
     if (input.categoryId !== undefined) updates.categoryId = input.categoryId;
     if (finalImageUrl !== undefined) updates.imageUrl = finalImageUrl;
     if (input.isActive !== undefined) updates.isActive = input.isActive;
+
+    const isReactivating =
+      updates.isActive === true && existing.isActive === false;
+    if (isReactivating) {
+      const limits = await this.tenantLimits.getStockItemLimits(existing.tenantId);
+      if (!limits) {
+        return Err("Tenant limits not found. Please contact support.");
+      }
+
+      const activeCount = await this.stockItemRepo.countByTenant(existing.tenantId, {
+        isActive: true,
+      });
+      if (activeCount >= limits.maxStockItemsSoft) {
+        return Err(
+          `Stock item limit reached (${activeCount}/${limits.maxStockItemsSoft}). Archive items or upgrade your plan.`
+        );
+      }
+    }
 
     try {
       let updatedItem: StockItem;

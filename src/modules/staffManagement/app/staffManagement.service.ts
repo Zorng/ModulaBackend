@@ -28,6 +28,24 @@ export class StaffManagementService {
     if (!branch || branch.tenant_id !== tenantId) {
       throw new Error("Invalid branch");
     }
+    if (branch.status === "FROZEN") {
+      throw new Error("Cannot assign staff to a frozen branch");
+    }
+
+    const limits = await this.repo.getStaffSeatLimits(tenantId);
+    if (!limits) {
+      throw new Error("Tenant limits not found. Please contact support.");
+    }
+
+    const [hardCount, pendingInvites] = await Promise.all([
+      this.repo.countEmployeesByStatus(tenantId, ["ACTIVE", "ARCHIVED"]),
+      this.repo.countPendingInvites(tenantId),
+    ]);
+    if (hardCount + pendingInvites >= limits.maxStaffSeatsHard) {
+      throw new Error(
+        `Staff seat hard limit reached (${hardCount + pendingInvites}/${limits.maxStaffSeatsHard}).`
+      );
+    }
 
     const existingEmployee = await this.repo.findEmployeeByPhone(
       tenantId,
@@ -246,6 +264,93 @@ export class StaffManagementService {
 
     return updatedEmployee;
   }
+
+  async reactivateEmployee(
+    tenantId: string,
+    employeeId: string,
+    adminEmployeeId: string
+  ): Promise<Employee> {
+    const employee = await this.repo.findEmployeeById(employeeId);
+    if (!employee || employee.tenant_id !== tenantId) {
+      throw new Error("Employee not found or does not belong to tenant");
+    }
+
+    if (employee.status !== "DISABLED") {
+      throw new Error("Employee is not disabled");
+    }
+
+    if (employeeId === adminEmployeeId) {
+      throw new Error("Cannot reactivate your own account");
+    }
+
+    const limits = await this.repo.getStaffSeatLimits(tenantId);
+    if (!limits) {
+      throw new Error("Tenant limits not found. Please contact support.");
+    }
+
+    const activeCount = await this.repo.countEmployeesByStatus(tenantId, [
+      "ACTIVE",
+    ]);
+    if (activeCount >= limits.maxStaffSeatsSoft) {
+      throw new Error(
+        `Staff seat limit reached (${activeCount}/${limits.maxStaffSeatsSoft}). Disable or archive staff, or upgrade your plan.`
+      );
+    }
+
+    const updatedEmployee = await this.repo.updateEmployeeStatus(
+      employeeId,
+      "ACTIVE"
+    );
+    await this.repo.activateAllEmployeeBranchAssignments(employeeId);
+
+    await this.repo.createActivityLog({
+      tenant_id: tenantId,
+      employee_id: adminEmployeeId,
+      action_type: "AUTH_EMPLOYEE_REACTIVATED",
+      resource_type: "EMPLOYEE",
+      resource_id: employeeId,
+    });
+
+    return updatedEmployee;
+  }
+
+  async archiveEmployee(
+    tenantId: string,
+    employeeId: string,
+    adminEmployeeId: string
+  ): Promise<Employee> {
+    const employee = await this.repo.findEmployeeById(employeeId);
+    if (!employee || employee.tenant_id !== tenantId) {
+      throw new Error("Employee not found or does not belong to tenant");
+    }
+
+    if (employee.status === "ARCHIVED") {
+      throw new Error("Employee is already archived");
+    }
+    if (employee.status === "INVITED") {
+      throw new Error("Cannot archive an invited employee");
+    }
+
+    if (employeeId === adminEmployeeId) {
+      throw new Error("Cannot archive your own account");
+    }
+
+    const updatedEmployee = await this.repo.updateEmployeeStatus(
+      employeeId,
+      "ARCHIVED"
+    );
+    await this.repo.deactivateAllEmployeeBranchAssignments(employeeId);
+
+    await this.repo.createActivityLog({
+      tenant_id: tenantId,
+      employee_id: adminEmployeeId,
+      action_type: "AUTH_EMPLOYEE_ARCHIVED",
+      resource_type: "EMPLOYEE",
+      resource_id: employeeId,
+    });
+
+    return updatedEmployee;
+  }
 }
 
 export function createInvitationPort(
@@ -301,6 +406,34 @@ export function createInvitationPort(
       }
       if (invite.accepted_at) {
         throw new Error("Invite has already been accepted");
+      }
+
+      const limits = await repo.getStaffSeatLimits(invite.tenant_id);
+      if (!limits) {
+        throw new Error("Tenant limits not found. Please contact support.");
+      }
+
+      const [hardCount, activeCount] = await Promise.all([
+        repo.countEmployeesByStatus(invite.tenant_id, ["ACTIVE", "ARCHIVED"]),
+        repo.countEmployeesByStatus(invite.tenant_id, ["ACTIVE"]),
+      ]);
+      if (hardCount >= limits.maxStaffSeatsHard) {
+        throw new Error(
+          `Staff seat hard limit reached (${hardCount}/${limits.maxStaffSeatsHard}).`
+        );
+      }
+      if (activeCount >= limits.maxStaffSeatsSoft) {
+        throw new Error(
+          `Staff seat limit reached (${activeCount}/${limits.maxStaffSeatsSoft}). Disable or archive staff, or upgrade your plan.`
+        );
+      }
+
+      const branch = await repo.findBranchById(invite.branch_id);
+      if (!branch || branch.tenant_id !== invite.tenant_id) {
+        throw new Error("Invalid branch");
+      }
+      if (branch.status === "FROZEN") {
+        throw new Error("Cannot join a frozen branch");
       }
 
       const employee = await repo.createEmployee({

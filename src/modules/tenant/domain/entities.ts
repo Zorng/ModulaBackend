@@ -30,12 +30,3 @@ export interface TenantMetadata {
   logo_url?: string | null;
   status: TenantStatus;
 }
-
-export interface Branch {
-  id: string;
-  tenant_id: string;
-  name: string;
-  address?: string | null;
-  created_at: Date;
-  updated_at: Date;
-}

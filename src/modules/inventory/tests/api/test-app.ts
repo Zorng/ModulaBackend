@@ -53,6 +53,9 @@ export function createTestApp(pool: Pool): Express {
 
   // Setup mock image storage for tests
   app.locals.imageStorage = mockImageStorage;
+  app.locals.branchGuardPort = {
+    assertBranchActive: async () => {},
+  };
 
   // Setup inventory module
   const inventoryModule = bootstrapInventoryModule(

@@ -10,6 +10,7 @@ import { BranchStockRepository } from "./infra/branchStock.repository.js";
 import { InventoryJournalRepository } from "./infra/InventoryJournal.repository.js";
 import { MenuStockMapRepository } from "./infra/MenuStockMap.repository.js";
 import { InventoryCategoryRepository } from "./infra/inventoryCategory.repository.js";
+import { PgInventoryTenantLimitsRepository } from "./infra/tenantLimits.repository.js";
 
 // Adapters
 import { InventoryPolicyAdapter } from "./infra/adapters/policy.adapter.js";
@@ -78,6 +79,7 @@ export function bootstrapInventoryModule(
 
   // Initialize repositories
   const stockItemRepo = new StockItemRepository(pool);
+  const tenantLimitsRepo = new PgInventoryTenantLimitsRepository(pool);
   const branchStockRepo = new BranchStockRepository(pool);
   const journalRepo = new InventoryJournalRepository(pool);
   const menuStockMapRepo = new MenuStockMapRepository(pool);
@@ -86,12 +88,14 @@ export function bootstrapInventoryModule(
   // Initialize use cases - Stock Item
   const createStockItemUseCase = new CreateStockItemUseCase(
     stockItemRepo,
+    tenantLimitsRepo,
     eventPublisher,
     txManager,
     imageStorage
   );
   const updateStockItemUseCase = new UpdateStockItemUseCase(
     stockItemRepo,
+    tenantLimitsRepo,
     eventPublisher,
     txManager,
     imageStorage

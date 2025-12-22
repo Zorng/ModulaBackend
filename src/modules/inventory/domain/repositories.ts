@@ -16,6 +16,10 @@ export interface StockItemRepository {
     tenantId: string,
     isActive?: boolean
   ): Promise<StockItem[]>;
+  countByTenant(
+    tenantId: string,
+    options?: { isActive?: boolean }
+  ): Promise<number>;
   save(
     item: Omit<StockItem, "id" | "createdAt" | "updatedAt">
   ): Promise<StockItem>;

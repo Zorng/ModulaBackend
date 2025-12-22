@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import type { BranchRecord } from "./branch.js";
 import type { EmployeeRole, EmployeeStatus } from "./staff-management.js";
 
 export type TenantStatus = "ACTIVE" | "PAST_DUE" | "EXPIRED" | "CANCELED";
@@ -21,15 +22,6 @@ export interface TenantMetadata {
   name: string;
   logo_url?: string | null;
   status: TenantStatus;
-}
-
-export interface BranchRecord {
-  id: string;
-  tenant_id: string;
-  name: string;
-  address?: string | null;
-  created_at: Date;
-  updated_at: Date;
 }
 
 export interface EmployeeRecord {
