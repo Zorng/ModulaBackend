@@ -27,7 +27,10 @@ describe("TenantProvisioningService", () => {
         updated_at: new Date(),
       }),
       ensureTenantLimits: jest.fn().mockResolvedValue(undefined),
-      writeAuditLog: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const auditWriter = {
+      write: jest.fn().mockResolvedValue(undefined),
     };
 
     const branchProvisioning = {
@@ -57,6 +60,7 @@ describe("TenantProvisioningService", () => {
     const service = new TenantProvisioningService(
       pool as any,
       repo as any,
+      auditWriter as any,
       membershipProvisioning as any,
       branchProvisioning as any,
       policyDefaults as any
@@ -94,7 +98,10 @@ describe("TenantProvisioningService", () => {
         updated_at: new Date(),
       }),
       ensureTenantLimits: jest.fn().mockResolvedValue(undefined),
-      writeAuditLog: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const auditWriter = {
+      write: jest.fn().mockResolvedValue(undefined),
     };
 
     const branchProvisioning = {
@@ -138,6 +145,7 @@ describe("TenantProvisioningService", () => {
     const service = new TenantProvisioningService(
       pool as any,
       repo as any,
+      auditWriter as any,
       membershipProvisioning as any,
       branchProvisioning as any,
       policyDefaults as any

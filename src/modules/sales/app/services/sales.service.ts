@@ -25,12 +25,14 @@ import { SalesRepository, PolicyPort, MenuPort } from '../ports/sales.ports.js';
 import { TransactionManager } from '../../../../platform/events/index.js';
 import { publishToOutbox } from '../../../../platform/events/outbox.js';
 import { PoolClient } from 'pg';
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export interface CreateSaleCommand {
   clientUuid: string;
   tenantId: string;
   branchId: string;
   employeeId: string;
+  actorRole?: string;
   saleType: SaleType;
 }
 
@@ -39,12 +41,16 @@ export interface AddItemCommand {
   menuItemId: string;
   quantity: number;
   modifiers?: any[];
+  actorId: string;
+  actorRole?: string;
 }
 
 export interface UpdateItemQuantityCommand {
   saleId: string;
   itemId: string;
   quantity: number;
+  actorId: string;
+  actorRole?: string;
 }
 
 export interface PreCheckoutCommand {
@@ -57,24 +63,28 @@ export interface PreCheckoutCommand {
 export interface FinalizeSaleCommand {
   saleId: string;
   actorId: string;
+  actorRole?: string;
 }
 
 export interface UpdateFulfillmentCommand {
   saleId: string;
   status: FulfillmentStatus;
   actorId: string;
+  actorRole?: string;
 }
 
 export interface VoidSaleCommand {
   saleId: string;
   actorId: string;
   reason: string;
+  actorRole?: string;
 }
 
 export interface ReopenSaleCommand {
   saleId: string;
   actorId: string;
   reason: string;
+  actorRole?: string;
 }
 
 export class SalesService {
@@ -82,7 +92,8 @@ export class SalesService {
     private salesRepo: SalesRepository,
     private policyPort: PolicyPort,
     private menuPort: MenuPort,
-    private transactionManager: TransactionManager
+    private transactionManager: TransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async createDraftSale(cmd: CreateSaleCommand): Promise<Sale> {
@@ -100,6 +111,24 @@ export class SalesService {
       applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
 
       await this.salesRepo.save(sale, trx);
+
+      await this.auditWriter.write(
+        {
+          tenantId: cmd.tenantId,
+          branchId: cmd.branchId,
+          employeeId: cmd.employeeId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "CART_CREATED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            sale_type: cmd.saleType,
+            client_uuid: cmd.clientUuid,
+          },
+        },
+        trx
+      );
       
       await publishToOutbox({
         type: 'sales.draft_created',
@@ -166,13 +195,37 @@ export class SalesService {
       applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
 
       await this.salesRepo.save(sale, trx);
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "CART_UPDATED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            operation: "ADD_ITEM",
+            menu_item_id: cmd.menuItemId,
+            quantity: cmd.quantity,
+          },
+        },
+        trx
+      );
       return sale;
     });
   }
 
-  async removeItemFromSale(saleId: string, itemId: string): Promise<Sale> {
+  async removeItemFromSale(params: {
+    saleId: string;
+    itemId: string;
+    actorId: string;
+    actorRole?: string;
+  }): Promise<Sale> {
     return await this.transactionManager.withTransaction(async (trx) => {
-      const sale = await this.salesRepo.findById(saleId, trx);
+      const sale = await this.salesRepo.findById(params.saleId, trx);
       if (!sale) {
         throw new Error('Sale not found');
       }
@@ -181,13 +234,31 @@ export class SalesService {
         throw new Error('Cannot remove items from non-draft sale');
       }
 
-      removeItemFromSale(sale, itemId);
+      removeItemFromSale(sale, params.itemId);
       
       // Reapply VAT after items change
       const vatPolicy = await this.policyPort.getVatPolicy(sale.tenantId);
       applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
       
       await this.salesRepo.save(sale, trx);
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: params.actorId,
+          actorRole: params.actorRole ?? null,
+          actionType: "CART_UPDATED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            operation: "REMOVE_ITEM",
+            item_id: params.itemId,
+          },
+        },
+        trx
+      );
       return sale;
     });
   }
@@ -210,6 +281,25 @@ export class SalesService {
       applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
       
       await this.salesRepo.save(sale, trx);
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "CART_UPDATED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            operation: "UPDATE_ITEM_QTY",
+            item_id: cmd.itemId,
+            quantity: cmd.quantity,
+          },
+        },
+        trx
+      );
       return sale;
     });
   }
@@ -260,17 +350,24 @@ export class SalesService {
       }
 
       finalizeSale(sale, cmd.actorId);
-      
-      // Write to audit log
-      await this.salesRepo.writeAuditLog({
-        tenantId: sale.tenantId,
-        branchId: sale.branchId,
-        saleId: sale.id,
-        actorId: cmd.actorId,
-        action: 'finalize',
-        oldValues: { state: 'draft' },
-        newValues: { state: 'finalized', finalizedAt: sale.finalizedAt }
-      }, trx);
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "SALE_FINALIZED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            old_values: { state: "draft" },
+            new_values: { state: "finalized", finalized_at: sale.finalizedAt },
+          },
+        },
+        trx
+      );
       
       await this.salesRepo.save(sale, trx);
 
@@ -304,33 +401,33 @@ export class SalesService {
     });
   }
 
-  async updateFulfillment(saleId: string, status: FulfillmentStatus, actorId: string): Promise<Sale> {
+  async updateFulfillment(cmd: UpdateFulfillmentCommand): Promise<Sale> {
     return await this.transactionManager.withTransaction(async (trx) => {
-      const sale = await this.salesRepo.findById(saleId, trx);
+      const sale = await this.salesRepo.findById(cmd.saleId, trx);
       if (!sale) {
         throw new Error('Sale not found');
       }
 
       const oldStatus = sale.fulfillmentStatus;
-      updateFulfillment(sale, status, actorId);
-      
-      // Write to audit log
-      const actionMap: Record<string, string> = {
-        'ready': 'set_ready',
-        'delivered': 'set_delivered',
-        'cancelled': 'revert_fulfillment',
-        'in_prep': 'revert_fulfillment'
-      };
-      
-      await this.salesRepo.writeAuditLog({
-        tenantId: sale.tenantId,
-        branchId: sale.branchId,
-        saleId: sale.id,
-        actorId: actorId,
-        action: actionMap[status] || 'fulfillment_updated',
-        oldValues: { fulfillmentStatus: oldStatus },
-        newValues: { fulfillmentStatus: status }
-      }, trx);
+      updateFulfillment(sale, cmd.status, cmd.actorId);
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "ORDER_STATUS_UPDATED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            old_values: { fulfillment_status: oldStatus },
+            new_values: { fulfillment_status: cmd.status },
+          },
+        },
+        trx
+      );
       
       await this.salesRepo.save(sale, trx);
 
@@ -340,8 +437,8 @@ export class SalesService {
         tenantId: sale.tenantId,
         branchId: sale.branchId,
         saleId: sale.id,
-        actorId: actorId,
-        fulfillmentStatus: status,
+        actorId: cmd.actorId,
+        fulfillmentStatus: cmd.status,
         timestamp: new Date().toISOString()
       }, trx);
 
@@ -349,9 +446,9 @@ export class SalesService {
     });
   }
 
-  async voidSale(saleId: string, actorId: string, reason: string): Promise<Sale> {
+  async voidSale(cmd: VoidSaleCommand): Promise<Sale> {
     return await this.transactionManager.withTransaction(async (trx) => {
-      const sale = await this.salesRepo.findById(saleId, trx);
+      const sale = await this.salesRepo.findById(cmd.saleId, trx);
       if (!sale) {
         throw new Error('Sale not found');
       }
@@ -371,19 +468,26 @@ export class SalesService {
         throw new Error('Only same-day sales can be voided. This sale was finalized on a different day.');
       }
 
-      voidSale(sale, actorId, reason);
-      
-      // Write to audit log
-      await this.salesRepo.writeAuditLog({
-        tenantId: sale.tenantId,
-        branchId: sale.branchId,
-        saleId: sale.id,
-        actorId: actorId,
-        action: 'void',
-        reason: reason,
-        oldValues: { state: 'finalized', fulfillmentStatus: sale.fulfillmentStatus },
-        newValues: { state: 'voided', fulfillmentStatus: 'cancelled' }
-      }, trx);
+      voidSale(sale, cmd.actorId, cmd.reason);
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "VOID_APPROVED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            reason: cmd.reason,
+            old_values: { state: "finalized", fulfillment_status: sale.fulfillmentStatus },
+            new_values: { state: "voided", fulfillment_status: "cancelled" },
+          },
+        },
+        trx
+      );
       
       await this.salesRepo.save(sale, trx);
 
@@ -398,8 +502,8 @@ export class SalesService {
           menuItemId: item.menuItemId,
           qty: item.quantity
         })),
-        actorId: actorId,
-        reason: reason,
+        actorId: cmd.actorId,
+        reason: cmd.reason,
         timestamp: new Date().toISOString()
       }, trx);
 
@@ -463,28 +567,42 @@ export class SalesService {
       await this.salesRepo.save(originalSale, trx);
       await this.salesRepo.save(reopenedSale, trx);
       
-      // Write audit log for original sale
-      await this.salesRepo.writeAuditLog({
-        tenantId: originalSale.tenantId,
-        branchId: originalSale.branchId,
-        saleId: originalSale.id,
-        actorId: cmd.actorId,
-        action: 'reopen',
-        reason: cmd.reason,
-        oldValues: { state: 'finalized' },
-        newValues: { state: 'reopened', newSaleId: reopenedSale.id }
-      }, trx);
+      await this.auditWriter.write(
+        {
+          tenantId: originalSale.tenantId,
+          branchId: originalSale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "SALE_REOPENED",
+          resourceType: "SALE",
+          resourceId: originalSale.id,
+          outcome: "SUCCESS",
+          details: {
+            reason: cmd.reason,
+            old_values: { state: "finalized" },
+            new_values: { state: "reopened", new_sale_id: reopenedSale.id },
+          },
+        },
+        trx
+      );
       
-      // Write audit log for new sale
-      await this.salesRepo.writeAuditLog({
-        tenantId: reopenedSale.tenantId,
-        branchId: reopenedSale.branchId,
-        saleId: reopenedSale.id,
-        actorId: cmd.actorId,
-        action: 'create_draft',
-        reason: `Reopened from sale ${originalSale.id}: ${cmd.reason}`,
-        newValues: { state: 'draft', refPreviousSaleId: originalSale.id }
-      }, trx);
+      await this.auditWriter.write(
+        {
+          tenantId: reopenedSale.tenantId,
+          branchId: reopenedSale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "CART_CREATED",
+          resourceType: "SALE",
+          resourceId: reopenedSale.id,
+          outcome: "SUCCESS",
+          details: {
+            reason: `Reopened from sale ${originalSale.id}: ${cmd.reason}`,
+            new_values: { state: "draft", ref_previous_sale_id: originalSale.id },
+          },
+        },
+        trx
+      );
 
       await publishToOutbox({
         type: 'sales.sale_reopened',

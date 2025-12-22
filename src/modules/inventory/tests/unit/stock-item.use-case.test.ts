@@ -11,6 +11,7 @@ describe("Stock Item Use Cases", () => {
   let mockEventBus: any;
   let mockTxManager: any;
   let mockImageStorage: any;
+  let mockAuditWriter: any;
 
   beforeEach(() => {
     mockRepo = {
@@ -41,6 +42,10 @@ describe("Stock Item Use Cases", () => {
       uploadImage: jest.fn(),
       isValidImageUrl: jest.fn(() => true),
     };
+
+    mockAuditWriter = {
+      write: jest.fn(),
+    };
   });
 
   describe("CreateStockItemUseCase", () => {
@@ -50,7 +55,8 @@ describe("Stock Item Use Cases", () => {
         mockTenantLimits,
         mockEventBus,
         mockTxManager,
-        mockImageStorage
+        mockImageStorage,
+        mockAuditWriter
       );
 
       const mockStockItem: StockItem = {
@@ -59,7 +65,8 @@ describe("Stock Item Use Cases", () => {
         name: "Premium Flour",
         unitText: "kg",
         barcode: "FLOUR001",
-        defaultCostUsd: 5.5,
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
         createdBy: "user-1",
         createdAt: new Date(),
@@ -75,7 +82,8 @@ describe("Stock Item Use Cases", () => {
         name: "Premium Flour",
         unitText: "kg",
         barcode: "FLOUR001",
-        defaultCostUsd: 5.5,
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
       });
 
@@ -94,7 +102,8 @@ describe("Stock Item Use Cases", () => {
         mockTenantLimits,
         mockEventBus,
         mockTxManager,
-        mockImageStorage
+        mockImageStorage,
+        mockAuditWriter
       );
 
       const result = await useCase.execute({
@@ -102,6 +111,8 @@ describe("Stock Item Use Cases", () => {
         userId: "user-1",
         name: "",
         unitText: "kg",
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
       });
 
@@ -118,7 +129,8 @@ describe("Stock Item Use Cases", () => {
         mockTenantLimits,
         mockEventBus,
         mockTxManager,
-        mockImageStorage
+        mockImageStorage,
+        mockAuditWriter
       );
 
       const result = await useCase.execute({
@@ -126,6 +138,8 @@ describe("Stock Item Use Cases", () => {
         userId: "user-1",
         name: "Flour",
         unitText: "",
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
       });
 
@@ -143,7 +157,8 @@ describe("Stock Item Use Cases", () => {
         mockTenantLimits,
         mockEventBus,
         mockTxManager,
-        mockImageStorage
+        mockImageStorage,
+        mockAuditWriter
       );
 
       const existingItem: StockItem = {
@@ -151,6 +166,8 @@ describe("Stock Item Use Cases", () => {
         tenantId: "tenant-1",
         name: "Premium Flour",
         unitText: "kg",
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
         createdBy: "user-1",
         createdAt: new Date(),
@@ -179,7 +196,8 @@ describe("Stock Item Use Cases", () => {
         mockTenantLimits,
         mockEventBus,
         mockTxManager,
-        mockImageStorage
+        mockImageStorage,
+        mockAuditWriter
       );
 
       mockRepo.findById.mockResolvedValue(null);
@@ -205,6 +223,8 @@ describe("Stock Item Use Cases", () => {
           tenantId: "tenant-1",
           name: "Flour",
           unitText: "kg",
+          isIngredient: true,
+          isSellable: false,
           isActive: true,
           createdBy: "user-1",
           createdAt: new Date(),
@@ -215,6 +235,8 @@ describe("Stock Item Use Cases", () => {
           tenantId: "tenant-1",
           name: "Sugar",
           unitText: "kg",
+          isIngredient: true,
+          isSellable: false,
           isActive: true,
           createdBy: "user-1",
           createdAt: new Date(),

@@ -5,6 +5,7 @@ import {
   CreateMenuItemInput,
   UpdateMenuItemInput,
 } from "../schemas/schemas.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export class MenuItemController {
   static async listByBranch(
@@ -94,7 +95,7 @@ export class MenuItemController {
 
   static async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { tenantId, employeeId } = req.user!;
+      const { tenantId, employeeId, branchId, role } = req.user!;
       const input = req.body as CreateMenuItemInput;
 
       let ImageUrl = undefined;
@@ -121,6 +122,30 @@ export class MenuItemController {
       }
 
       const item = result.value;
+
+      const auditWriter: AuditWriterPort | undefined = (req as any).app?.locals
+        ?.auditWriterPort;
+      if (auditWriter?.write) {
+        void auditWriter
+          .write({
+            tenantId,
+            branchId,
+            employeeId,
+            actorRole: role ?? null,
+            actionType: "MENU_ITEM_CREATED",
+            resourceType: "menu_item",
+            resourceId: item.id,
+            details: {
+              categoryId: item.categoryId ?? null,
+              name: item.name,
+              description: item.description ?? null,
+              priceUsd: item.priceUsd,
+              imageUrl: item.imageUrl ?? null,
+              isActive: item.isActive,
+            },
+          })
+          .catch(() => {});
+      }
 
       // Return success response
       return res.status(201).json({
@@ -217,7 +242,7 @@ export class MenuItemController {
 
   static async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { tenantId, employeeId } = req.user!;
+      const { tenantId, employeeId, branchId, role } = req.user!;
       const { menuItemId } = req.params;
       const input = req.body as UpdateMenuItemInput;
 
@@ -249,6 +274,31 @@ export class MenuItemController {
         });
       }
       const item = result.value;
+
+      const auditWriter: AuditWriterPort | undefined = (req as any).app?.locals
+        ?.auditWriterPort;
+      if (auditWriter?.write) {
+        void auditWriter
+          .write({
+            tenantId,
+            branchId,
+            employeeId,
+            actorRole: role ?? null,
+            actionType: "MENU_ITEM_UPDATED",
+            resourceType: "menu_item",
+            resourceId: menuItemId,
+            details: {
+              changes: {
+                name: input.name,
+                description: input.description,
+                priceUsd: input.priceUsd,
+                categoryId: input.categoryId,
+                imageUrl,
+              },
+            },
+          })
+          .catch(() => {});
+      }
       // Return success response
       return res.status(200).json({
         id: item.id,
@@ -267,7 +317,7 @@ export class MenuItemController {
 
   static async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { tenantId, employeeId } = req.user!;
+      const { tenantId, employeeId, branchId, role } = req.user!;
       const { menuItemId } = req.params;
 
       // Get use case from factory
@@ -285,6 +335,22 @@ export class MenuItemController {
           error: "Bad Request",
           message: result.error,
         });
+      }
+
+      const auditWriter: AuditWriterPort | undefined = (req as any).app?.locals
+        ?.auditWriterPort;
+      if (auditWriter?.write) {
+        void auditWriter
+          .write({
+            tenantId,
+            branchId,
+            employeeId,
+            actorRole: role ?? null,
+            actionType: "MENU_ITEM_ARCHIVED",
+            resourceType: "menu_item",
+            resourceId: menuItemId,
+          })
+          .catch(() => {});
       }
 
       // Return success response

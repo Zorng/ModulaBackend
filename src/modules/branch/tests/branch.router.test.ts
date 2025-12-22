@@ -178,6 +178,7 @@ describe("Branch router handlers", () => {
       tenantId: "tenant-1",
       branchId: "branch-1",
       actorEmployeeId: "emp-1",
+      actorRole: "ADMIN",
     });
     expect(res.body.branch.status).toBe("ACTIVE");
   });

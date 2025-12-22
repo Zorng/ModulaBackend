@@ -39,6 +39,7 @@ export class MovementController {
         registerId: activeSessionResult.value.registerId, // May be undefined for device-agnostic sessions
         sessionId,
         actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
         type: validatedData.type,
         amountUsd: validatedData.amountUsd,
         amountKhr: validatedData.amountKhr,

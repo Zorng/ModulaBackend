@@ -6,6 +6,7 @@ import type {
   PolicyDefaultsPort,
   TenantMetadataPort,
 } from "../../shared/ports/tenant.js";
+import type { AuditWriterPort } from "../../shared/ports/audit.js";
 import {
   createTenantProvisioningPort,
   TenantProvisioningService,
@@ -20,13 +21,15 @@ export function bootstrapTenantModule(
     membershipProvisioningPort: MembershipProvisioningPort;
     branchProvisioningPort: BranchProvisioningPort;
     policyDefaultsPort: PolicyDefaultsPort;
+    auditWriterPort: AuditWriterPort;
   }
 ) {
   const repo = new TenantRepository(pool);
-  const service = new TenantService(repo);
+  const service = new TenantService(repo, deps.auditWriterPort);
   const provisioningService = new TenantProvisioningService(
     pool,
     repo,
+    deps.auditWriterPort,
     deps.membershipProvisioningPort,
     deps.branchProvisioningPort,
     deps.policyDefaultsPort

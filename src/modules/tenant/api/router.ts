@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Response, NextFunction } from "express";
 import type { AuthMiddlewarePort } from "../../../platform/security/auth.js";
 import {
   handleMulterError,
@@ -163,6 +164,7 @@ export function createTenantRouter(
         const updated = await tenantService.updateProfile({
           tenantId,
           actorEmployeeId: employeeId,
+          actorRole: req.user?.role,
           updates: {
             name: updates.name,
             contact_phone: updates.contact_phone,
@@ -243,7 +245,7 @@ export function createTenantRouter(
     requireRole(authMiddleware, ["ADMIN"]),
     uploadSingleImage,
     handleMulterError,
-    async (req: any, res, next) => {
+    async (req: any, res: Response, next: NextFunction) => {
       try {
         const tenantId = req.user?.tenantId;
         const employeeId = req.user?.employeeId;
@@ -270,6 +272,7 @@ export function createTenantRouter(
           tenantId,
           logoUrl,
           actorEmployeeId: employeeId,
+          actorRole: req.user?.role,
         });
 
         res.json({

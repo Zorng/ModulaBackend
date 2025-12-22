@@ -3,6 +3,7 @@ import { AuthRepository } from './infra/repository.js';
 import { AuthService } from './app/auth.service.js';
 import type { InvitationPort } from '../../shared/ports/staff-management.js';
 import type { TenantProvisioningPort } from "../../shared/ports/tenant.js";
+import type { AuditWriterPort } from "../../shared/ports/audit.js";
 import { TokenService } from './app/token.service.js';
 import { AuthController } from './api/controllers/auth.controller.js';
 import { AuthMiddleware } from './api/middleware/auth.middleware.js';
@@ -15,7 +16,11 @@ export let authMiddleware: AuthMiddleware;
 
 export function setupAuthModule(
     db: Pool,
-    deps: { invitationPort: InvitationPort; tenantProvisioningPort: TenantProvisioningPort }
+    deps: {
+      invitationPort: InvitationPort;
+      tenantProvisioningPort: TenantProvisioningPort;
+      auditWriterPort: AuditWriterPort;
+    }
 ) {
      // Initialize repositories
     const authRepo = new AuthRepository(db);
@@ -32,7 +37,8 @@ export function setupAuthModule(
         authRepo,
         tokenService,
         deps.invitationPort,
-        deps.tenantProvisioningPort
+        deps.tenantProvisioningPort,
+        deps.auditWriterPort
     );
 
     // Initialize controllers and middleware

@@ -24,8 +24,8 @@ export async function publishToOutbox(
  * Background dispatcher - polls outbox and publishes to in-process bus
  * In production, run this as a separate worker or cron job
  */
-export async function startOutboxDispatcher(db: any, intervalMs = 1000) {
-  setInterval(async () => {
+export function startOutboxDispatcher(db: any, intervalMs = 1000) {
+  const timer = setInterval(async () => {
     try {
       // Fetch unsent events (with row locking to prevent duplicate processing)
       const result = await db.query(
@@ -56,6 +56,10 @@ export async function startOutboxDispatcher(db: any, intervalMs = 1000) {
       // TODO: Add proper logging and alerting
     }
   }, intervalMs);
+
+  return {
+    stop: () => clearInterval(timer),
+  };
 }
 
 /**

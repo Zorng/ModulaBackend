@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import type { Branch, BranchProfileUpdate, BranchStatus } from "../domain/entities.js";
 import { BranchRepository } from "../infra/repository.js";
+import type { AuditWriterPort } from "../../../shared/ports/audit.js";
 
 export class BranchFrozenError extends Error {
   readonly code = "BRANCH_FROZEN";
@@ -10,7 +11,10 @@ export class BranchFrozenError extends Error {
 }
 
 export class BranchService {
-  constructor(private repo: BranchRepository) {}
+  constructor(
+    private repo: BranchRepository,
+    private auditWriter: AuditWriterPort
+  ) {}
 
   async provisionBranch(params: {
     client: PoolClient;
@@ -37,7 +41,7 @@ export class BranchService {
       params.client
     );
 
-    await this.repo.writeAuditLog(
+    await this.auditWriter.write(
       {
         tenantId: branch.tenant_id,
         branchId: branch.id,
@@ -80,6 +84,7 @@ export class BranchService {
     tenantId: string;
     branchId: string;
     actorEmployeeId: string;
+    actorRole?: string;
     updates: BranchProfileUpdate;
   }): Promise<Branch> {
     const updates: BranchProfileUpdate = {};
@@ -128,10 +133,11 @@ export class BranchService {
       updates,
     });
 
-    await this.repo.writeAuditLog({
+    await this.auditWriter.write({
       tenantId: updated.tenant_id,
       branchId: updated.id,
       employeeId: params.actorEmployeeId,
+      actorRole: params.actorRole ?? null,
       actionType: "BRANCH_UPDATED",
       resourceType: "BRANCH",
       resourceId: updated.id,
@@ -150,6 +156,7 @@ export class BranchService {
     tenantId: string;
     branchId: string;
     actorEmployeeId: string;
+    actorRole?: string;
     status: BranchStatus;
   }): Promise<Branch> {
     const updated = await this.repo.setBranchStatus({
@@ -158,10 +165,11 @@ export class BranchService {
       status: params.status,
     });
 
-    await this.repo.writeAuditLog({
+    await this.auditWriter.write({
       tenantId: updated.tenant_id,
       branchId: updated.id,
       employeeId: params.actorEmployeeId,
+      actorRole: params.actorRole ?? null,
       actionType: params.status === "FROZEN" ? "BRANCH_FROZEN" : "BRANCH_UNFROZEN",
       resourceType: "BRANCH",
       resourceId: updated.id,
@@ -177,11 +185,13 @@ export class BranchService {
     tenantId: string;
     branchId: string;
     actorEmployeeId: string;
+    actorRole?: string;
   }): Promise<Branch> {
     return this.setBranchStatus({
       tenantId: params.tenantId,
       branchId: params.branchId,
       actorEmployeeId: params.actorEmployeeId,
+      actorRole: params.actorRole,
       status: "FROZEN",
     });
   }
@@ -190,11 +200,13 @@ export class BranchService {
     tenantId: string;
     branchId: string;
     actorEmployeeId: string;
+    actorRole?: string;
   }): Promise<Branch> {
     return this.setBranchStatus({
       tenantId: params.tenantId,
       branchId: params.branchId,
       actorEmployeeId: params.actorEmployeeId,
+      actorRole: params.actorRole,
       status: "ACTIVE",
     });
   }

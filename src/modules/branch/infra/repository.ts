@@ -143,35 +143,6 @@ export class BranchRepository {
     return this.mapBranch(result.rows[0]);
   }
 
-  async writeAuditLog(
-    entry: {
-      tenantId: string;
-      branchId?: string;
-      employeeId?: string;
-      actionType: string;
-      resourceType?: string;
-      resourceId?: string;
-      details?: Record<string, any>;
-    },
-    client?: PoolClient
-  ): Promise<void> {
-    const db: Queryable = client ?? this.pool;
-    await db.query(
-      `INSERT INTO activity_log
-        (tenant_id, branch_id, employee_id, action_type, resource_type, resource_id, details)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [
-        entry.tenantId,
-        entry.branchId ?? null,
-        entry.employeeId ?? null,
-        entry.actionType,
-        entry.resourceType ?? null,
-        entry.resourceId ?? null,
-        entry.details ? JSON.stringify(entry.details) : null,
-      ]
-    );
-  }
-
   private mapBranch(row: any): Branch {
     return {
       id: row.id,
@@ -186,4 +157,3 @@ export class BranchRepository {
     };
   }
 }
-

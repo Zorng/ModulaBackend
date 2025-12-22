@@ -31,6 +31,7 @@ export class StockItemController {
       const result = await this.createStockItemUseCase.execute({
         tenantId: req.user!.tenantId,
         userId: req.user!.employeeId,
+        actorRole: req.user!.role,
         name,
         unitText,
         barcode,
@@ -83,7 +84,8 @@ export class StockItemController {
           imageFile: req.file ? req.file.buffer : undefined,
           imageFilename: req.file ? req.file.originalname : undefined,
           isActive,
-        }
+        },
+        req.user!.role
       );
 
       if (!result.ok) {

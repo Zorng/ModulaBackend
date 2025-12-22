@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Pool } from "pg";
 import { requireActiveBranch } from "../platform/http/middlewares/branch-guard.middleware.js";
+import { bootstrapAuditModule } from "../modules/audit/index.js";
 import { bootstrapBranchModule } from "../modules/branch/index.js";
 import { createTestPool } from "../test-utils/db.js";
 import {
@@ -22,7 +23,10 @@ describe("Branch lifecycle + guard (DB-backed)", () => {
 
   it("freeze/unfreeze persists and writes audit log entries", async () => {
     const seeded = await seedTenantMultiBranch(pool);
-    const branchModule = bootstrapBranchModule(pool);
+    const auditModule = bootstrapAuditModule(pool);
+    const branchModule = bootstrapBranchModule(pool, {
+      auditWriterPort: auditModule.auditWriterPort,
+    });
 
     await branchModule.service.freezeBranch({
       tenantId: seeded.tenantId,
@@ -73,7 +77,10 @@ describe("Branch lifecycle + guard (DB-backed)", () => {
 
   it("branch guard rejects frozen-branch writes and appends denial audit (effective branchId)", async () => {
     const seeded = await seedTenantMultiBranch(pool);
-    const branchModule = bootstrapBranchModule(pool);
+    const auditModule = bootstrapAuditModule(pool);
+    const branchModule = bootstrapBranchModule(pool, {
+      auditWriterPort: auditModule.auditWriterPort,
+    });
 
     // Ensure the target branch is frozen for denial scenarios.
     await setBranchStatus({
@@ -190,4 +197,3 @@ describe("Branch lifecycle + guard (DB-backed)", () => {
     await cleanupSeededTenant(pool, seeded);
   });
 });
-

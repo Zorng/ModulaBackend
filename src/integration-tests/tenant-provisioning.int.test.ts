@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Pool } from "pg";
+import { bootstrapAuditModule } from "../modules/audit/index.js";
 import { PgPolicyRepository } from "../modules/policy/infra/repository.js";
 import { bootstrapBranchModule } from "../modules/branch/index.js";
 import { bootstrapTenantModule } from "../modules/tenant/index.js";
@@ -7,6 +8,12 @@ import { createMembershipProvisioningPort } from "../modules/auth/app/membership
 import { PasswordService } from "../modules/auth/app/password.service.js";
 import { createTestPool } from "../test-utils/db.js";
 import { cleanupSeededTenant } from "../test-utils/seed.js";
+
+function shouldCleanupAfterTests(): boolean {
+  const value = process.env.CLEANUP_AFTER_TESTS;
+  if (!value) return false;
+  return value === "1" || value.toLowerCase() === "true";
+}
 
 function uniquePhone(): string {
   const now = Date.now().toString().slice(-9);
@@ -52,7 +59,10 @@ describe("Tenant provisioning (DB-backed)", () => {
     const account = await createAccount(pool);
     const tenantName = uniqueTenantName();
 
-    const branchModule = bootstrapBranchModule(pool);
+    const auditModule = bootstrapAuditModule(pool);
+    const branchModule = bootstrapBranchModule(pool, {
+      auditWriterPort: auditModule.auditWriterPort,
+    });
     const policyRepo = new PgPolicyRepository(pool);
 
     const tenantModule = bootstrapTenantModule(pool, {
@@ -63,6 +73,7 @@ describe("Tenant provisioning (DB-backed)", () => {
           await policyRepo.ensureDefaultPolicies(tenantId);
         },
       },
+      auditWriterPort: auditModule.auditWriterPort,
     });
 
     const provisioned = await tenantModule.tenantProvisioningPort.provisionTenant({
@@ -157,7 +168,10 @@ describe("Tenant provisioning (DB-backed)", () => {
     const account = await createAccount(pool);
     const tenantName = uniqueTenantName("Rollback Tenant");
 
-    const branchModule = bootstrapBranchModule(pool);
+    const auditModule = bootstrapAuditModule(pool);
+    const branchModule = bootstrapBranchModule(pool, {
+      auditWriterPort: auditModule.auditWriterPort,
+    });
     const policyRepo = new PgPolicyRepository(pool);
 
     const tenantModule = bootstrapTenantModule(pool, {
@@ -172,6 +186,7 @@ describe("Tenant provisioning (DB-backed)", () => {
           await policyRepo.ensureDefaultPolicies(tenantId);
         },
       },
+      auditWriterPort: auditModule.auditWriterPort,
     });
 
     await expect(
@@ -192,14 +207,19 @@ describe("Tenant provisioning (DB-backed)", () => {
     );
     expect(tenantCount.rows[0].count).toBe(0);
 
-    await pool.query(`DELETE FROM accounts WHERE id = $1`, [account.accountId]);
+    if (shouldCleanupAfterTests()) {
+      await pool.query(`DELETE FROM accounts WHERE id = $1`, [account.accountId]);
+    }
   });
 
   it("cleans up the tenant if default policy seeding fails after commit", async () => {
     const account = await createAccount(pool);
     const tenantName = uniqueTenantName("Policy Failure Tenant");
 
-    const branchModule = bootstrapBranchModule(pool);
+    const auditModule = bootstrapAuditModule(pool);
+    const branchModule = bootstrapBranchModule(pool, {
+      auditWriterPort: auditModule.auditWriterPort,
+    });
 
     const tenantModule = bootstrapTenantModule(pool, {
       membershipProvisioningPort: createMembershipProvisioningPort(),
@@ -209,6 +229,7 @@ describe("Tenant provisioning (DB-backed)", () => {
           throw new Error("policy seeding failed");
         },
       },
+      auditWriterPort: auditModule.auditWriterPort,
     });
 
     await expect(
@@ -235,14 +256,19 @@ describe("Tenant provisioning (DB-backed)", () => {
     );
     expect(employeesForAccount.rows[0].count).toBe(0);
 
-    await pool.query(`DELETE FROM accounts WHERE id = $1`, [account.accountId]);
+    if (shouldCleanupAfterTests()) {
+      await pool.query(`DELETE FROM accounts WHERE id = $1`, [account.accountId]);
+    }
   });
 
   it("creates tenant limits during provisioning (menu + inventory + staff seats)", async () => {
     const account = await createAccount(pool);
     const tenantName = uniqueTenantName("Limits Tenant");
 
-    const branchModule = bootstrapBranchModule(pool);
+    const auditModule = bootstrapAuditModule(pool);
+    const branchModule = bootstrapBranchModule(pool, {
+      auditWriterPort: auditModule.auditWriterPort,
+    });
     const policyRepo = new PgPolicyRepository(pool);
 
     const tenantModule = bootstrapTenantModule(pool, {
@@ -253,6 +279,7 @@ describe("Tenant provisioning (DB-backed)", () => {
           await policyRepo.ensureDefaultPolicies(tenantId);
         },
       },
+      auditWriterPort: auditModule.auditWriterPort,
     });
 
     const provisioned = await tenantModule.tenantProvisioningPort.provisionTenant({

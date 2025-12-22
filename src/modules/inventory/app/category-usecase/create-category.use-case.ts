@@ -2,6 +2,7 @@ import { Ok, Err, type Result } from "../../../../shared/result.js";
 import { InventoryCategoryRepository } from "../../domain/repositories.js";
 import { InventoryCategory } from "../../domain/entities.js";
 import type { InventoryCategoryCreatedV1 } from "../../../../shared/events.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export interface CreateCategoryInput {
   tenantId: string;
@@ -9,6 +10,7 @@ export interface CreateCategoryInput {
   displayOrder?: number;
   isActive?: boolean;
   userId: string;
+  actorRole?: string | null;
 }
 
 interface IEventBus {
@@ -26,7 +28,8 @@ export class CreateCategoryUseCase {
   constructor(
     private categoryRepo: InventoryCategoryRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -51,6 +54,23 @@ export class CreateCategoryUseCase {
           isActive,
           createdBy: userId,
         });
+
+        await this.auditWriter.write(
+          {
+            tenantId,
+            employeeId: userId,
+            actorRole: input.actorRole ?? null,
+            actionType: "STOCK_CATEGORY_CREATED",
+            resourceType: "stock_category",
+            resourceId: category.id,
+            details: {
+              name: category.name,
+              displayOrder: category.displayOrder,
+              isActive: category.isActive,
+            },
+          },
+          client
+        );
 
         // Publish event via outbox
         const event: InventoryCategoryCreatedV1 = {

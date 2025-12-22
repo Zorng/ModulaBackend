@@ -20,9 +20,9 @@ describe("BranchService", () => {
   it("provisions a branch and writes audit log", async () => {
     const repo = {
       createBranch: jest.fn().mockResolvedValue(makeBranch()),
-      writeAuditLog: jest.fn().mockResolvedValue(undefined),
     };
-    const service = new BranchService(repo as any);
+    const auditWriter = { write: jest.fn().mockResolvedValue(undefined) };
+    const service = new BranchService(repo as any, auditWriter as any);
     const client = { query: jest.fn() } as any;
 
     const branch = await service.provisionBranch({
@@ -40,7 +40,7 @@ describe("BranchService", () => {
       }),
       client
     );
-    expect(repo.writeAuditLog).toHaveBeenCalledWith(
+    expect(auditWriter.write).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: "tenant-1",
         branchId: "branch-1",
@@ -55,9 +55,9 @@ describe("BranchService", () => {
   it("rejects provisioning with empty name", async () => {
     const repo = {
       createBranch: jest.fn(),
-      writeAuditLog: jest.fn(),
     };
-    const service = new BranchService(repo as any);
+    const auditWriter = { write: jest.fn() };
+    const service = new BranchService(repo as any, auditWriter as any);
 
     await expect(
       service.provisionBranch({
@@ -73,7 +73,8 @@ describe("BranchService", () => {
       listBranchesForTenant: jest.fn().mockResolvedValue([makeBranch()]),
       listBranchesForEmployee: jest.fn(),
     };
-    const service = new BranchService(repo as any);
+    const auditWriter = { write: jest.fn() };
+    const service = new BranchService(repo as any, auditWriter as any);
 
     const result = await service.listAccessibleBranches({
       tenantId: "tenant-1",
@@ -91,7 +92,8 @@ describe("BranchService", () => {
       listBranchesForTenant: jest.fn(),
       listBranchesForEmployee: jest.fn().mockResolvedValue([makeBranch()]),
     };
-    const service = new BranchService(repo as any);
+    const auditWriter = { write: jest.fn() };
+    const service = new BranchService(repo as any, auditWriter as any);
 
     const result = await service.listAccessibleBranches({
       tenantId: "tenant-1",
@@ -115,9 +117,9 @@ describe("BranchService", () => {
           contact_email: "owner@example.com",
         })
       ),
-      writeAuditLog: jest.fn().mockResolvedValue(undefined),
     };
-    const service = new BranchService(repo as any);
+    const auditWriter = { write: jest.fn().mockResolvedValue(undefined) };
+    const service = new BranchService(repo as any, auditWriter as any);
 
     const updated = await service.updateBranchProfile({
       tenantId: "tenant-1",
@@ -138,7 +140,7 @@ describe("BranchService", () => {
         contact_email: "owner@example.com",
       },
     });
-    expect(repo.writeAuditLog).toHaveBeenCalledWith(
+    expect(auditWriter.write).toHaveBeenCalledWith(
       expect.objectContaining({
         actionType: "BRANCH_UPDATED",
         employeeId: "emp-1",
@@ -149,9 +151,9 @@ describe("BranchService", () => {
   it("rejects invalid contact_email", async () => {
     const repo = {
       updateBranchProfile: jest.fn(),
-      writeAuditLog: jest.fn(),
     };
-    const service = new BranchService(repo as any);
+    const auditWriter = { write: jest.fn() };
+    const service = new BranchService(repo as any, auditWriter as any);
 
     await expect(
       service.updateBranchProfile({
@@ -169,9 +171,9 @@ describe("BranchService", () => {
         .fn()
         .mockResolvedValueOnce(makeBranch({ status: "FROZEN" }))
         .mockResolvedValueOnce(makeBranch({ status: "ACTIVE" })),
-      writeAuditLog: jest.fn().mockResolvedValue(undefined),
     };
-    const service = new BranchService(repo as any);
+    const auditWriter = { write: jest.fn().mockResolvedValue(undefined) };
+    const service = new BranchService(repo as any, auditWriter as any);
 
     const frozen = await service.freezeBranch({
       tenantId: "tenant-1",
@@ -179,7 +181,7 @@ describe("BranchService", () => {
       actorEmployeeId: "emp-1",
     });
     expect(frozen.status).toBe("FROZEN");
-    expect(repo.writeAuditLog).toHaveBeenCalledWith(
+    expect(auditWriter.write).toHaveBeenCalledWith(
       expect.objectContaining({ actionType: "BRANCH_FROZEN" })
     );
 
@@ -189,7 +191,7 @@ describe("BranchService", () => {
       actorEmployeeId: "emp-1",
     });
     expect(unfrozen.status).toBe("ACTIVE");
-    expect(repo.writeAuditLog).toHaveBeenCalledWith(
+    expect(auditWriter.write).toHaveBeenCalledWith(
       expect.objectContaining({ actionType: "BRANCH_UNFROZEN" })
     );
   });
@@ -198,11 +200,11 @@ describe("BranchService", () => {
     const repo = {
       findBranchById: jest.fn().mockResolvedValue(makeBranch({ status: "FROZEN" })),
     };
-    const service = new BranchService(repo as any);
+    const auditWriter = { write: jest.fn() };
+    const service = new BranchService(repo as any, auditWriter as any);
 
     await expect(
       service.assertBranchActive({ tenantId: "tenant-1", branchId: "branch-1" })
     ).rejects.toBeInstanceOf(BranchFrozenError);
   });
 });
-

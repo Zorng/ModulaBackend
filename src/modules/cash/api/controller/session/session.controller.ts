@@ -34,6 +34,7 @@ export class SessionController {
         branchId: validatedData.branchId || req.user!.branchId,
         registerId: validatedData.registerId,
         openedBy: req.user!.employeeId,
+        actorRole: req.user!.role,
         openingFloatUsd: validatedData.openingFloatUsd,
         openingFloatKhr: validatedData.openingFloatKhr,
         note: validatedData.note,
@@ -74,6 +75,7 @@ export class SessionController {
         branchId: validatedData.branchId || req.user!.branchId,
         registerId: validatedData.registerId,
         newOpenedBy: req.user!.employeeId,
+        actorRole: req.user!.role,
         reason: validatedData.reason,
         openingFloatUsd: validatedData.openingFloatUsd,
         openingFloatKhr: validatedData.openingFloatKhr,
@@ -105,6 +107,7 @@ export class SessionController {
       const input: CloseCashSessionInput = {
         sessionId,
         closedBy: req.user!.employeeId,
+        actorRole: req.user!.role,
         countedCashUsd: validatedData.countedCashUsd,
         countedCashKhr: validatedData.countedCashKhr,
         note: validatedData.note,

@@ -38,6 +38,7 @@ export class InventoryJournalController {
         qty,
         note,
         actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
         occurredAt: occurredAt ? new Date(occurredAt) : undefined,
       });
 
@@ -62,6 +63,7 @@ export class InventoryJournalController {
         qty,
         note,
         actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
         occurredAt: occurredAt ? new Date(occurredAt) : undefined,
       });
 
@@ -86,6 +88,7 @@ export class InventoryJournalController {
         delta,
         note,
         actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
         occurredAt: occurredAt ? new Date(occurredAt) : undefined,
       });
 
@@ -108,6 +111,8 @@ export class InventoryJournalController {
         branchId: req.user!.branchId,
         refSaleId,
         lines,
+        actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
       });
 
       if (!result.ok) {

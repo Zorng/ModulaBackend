@@ -3,6 +3,7 @@ import { createInventoryRouter } from "./api/router.js";
 import type { AuthMiddlewarePort } from "../../platform/security/auth.js";
 import { TransactionManager } from "../../platform/db/transactionManager.js";
 import { publishToOutbox } from "../../platform/events/outbox.js";
+import type { AuditWriterPort } from "../../shared/ports/audit.js";
 
 // Repositories
 import { StockItemRepository } from "./infra/stockItem.repository.js";
@@ -68,7 +69,8 @@ import {
 export function bootstrapInventoryModule(
   pool: Pool,
   authMiddleware: AuthMiddlewarePort,
-  imageStorage: any // IImageStoragePort from menu module
+  imageStorage: any, // IImageStoragePort from menu module
+  deps: { auditWriterPort: AuditWriterPort }
 ) {
   const txManager = new TransactionManager();
 
@@ -91,14 +93,16 @@ export function bootstrapInventoryModule(
     tenantLimitsRepo,
     eventPublisher,
     txManager,
-    imageStorage
+    imageStorage,
+    deps.auditWriterPort
   );
   const updateStockItemUseCase = new UpdateStockItemUseCase(
     stockItemRepo,
     tenantLimitsRepo,
     eventPublisher,
     txManager,
-    imageStorage
+    imageStorage,
+    deps.auditWriterPort
   );
   const getStockItemsUseCase = new GetStockItemsUseCase(stockItemRepo);
 
@@ -118,24 +122,28 @@ export function bootstrapInventoryModule(
     stockItemRepo,
     branchStockRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const wasteStockUseCase = new WasteStockUseCase(
     journalRepo,
     branchStockRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const correctStockUseCase = new CorrectStockUseCase(
     journalRepo,
     branchStockRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const recordSaleDeductionsUseCase = new RecordSaleDeductionsUseCase(
     journalRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const recordVoidUseCase = new RecordVoidUseCase(
     journalRepo,
@@ -181,13 +189,15 @@ export function bootstrapInventoryModule(
   const createCategoryUseCase = new CreateCategoryUseCase(
     categoryRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const getCategoriesUseCase = new GetCategoriesUseCase(categoryRepo);
   const updateCategoryUseCase = new UpdateCategoryUseCase(
     categoryRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const deleteCategoryUseCase = new DeleteCategoryUseCase(
     categoryRepo,

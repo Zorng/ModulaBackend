@@ -3,6 +3,7 @@ import { Pool } from "pg";
 import { bootstrapInventoryModule } from "../../index.js";
 import { setupAuthModule } from "../../../auth/index.js";
 import type { InvitationPort } from "../../../../shared/ports/staff-management.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 import {
   errorHandler,
   notFoundHandler,
@@ -32,6 +33,10 @@ export function createTestApp(pool: Pool): Express {
   const app = express();
   app.use(express.json());
 
+  const auditWriterPort: AuditWriterPort = {
+    write: async () => {},
+  };
+
   // Setup auth module
   const invitationPort: InvitationPort = {
     peekValidInvite: async () => {
@@ -48,6 +53,7 @@ export function createTestApp(pool: Pool): Express {
         throw new Error("not implemented");
       },
     },
+    auditWriterPort,
   });
   const { authMiddleware } = authModule;
 
@@ -61,7 +67,8 @@ export function createTestApp(pool: Pool): Express {
   const inventoryModule = bootstrapInventoryModule(
     pool,
     authMiddleware,
-    mockImageStorage
+    mockImageStorage,
+    { auditWriterPort }
   );
   const { router: inventoryRouter } = inventoryModule;
 

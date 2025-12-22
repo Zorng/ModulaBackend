@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import { pool } from "#db";
+import type { AuditWriterPort } from "../../../shared/ports/audit.js";
 
 type BranchGuardPortLike = {
   assertBranchActive(params: { tenantId: string; branchId: string }): Promise<void>;
@@ -18,11 +19,14 @@ type RequireActiveBranchOptions = {
   operation?: string;
 };
 
+type AuditWriterPortLike = Pick<AuditWriterPort, "write">;
+
 async function tryWriteFrozenBranchDenial(params: {
   db: Queryable;
   tenantId: string;
   branchId: string;
   employeeId?: string;
+  actorRole?: string;
   operation?: string;
   method?: string;
   path?: string;
@@ -30,8 +34,8 @@ async function tryWriteFrozenBranchDenial(params: {
   try {
     await params.db.query(
       `INSERT INTO activity_log
-        (tenant_id, branch_id, employee_id, action_type, resource_type, resource_id, details)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        (tenant_id, branch_id, employee_id, action_type, resource_type, resource_id, outcome, denial_reason, actor_role, details)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [
         params.tenantId,
         params.branchId,
@@ -39,6 +43,9 @@ async function tryWriteFrozenBranchDenial(params: {
         "ACTION_REJECTED_BRANCH_FROZEN",
         "BRANCH",
         params.branchId,
+        "REJECTED",
+        "BRANCH_FROZEN",
+        params.actorRole ?? null,
         JSON.stringify({
           reason: "BRANCH_FROZEN",
           operation: params.operation ?? null,
@@ -47,6 +54,39 @@ async function tryWriteFrozenBranchDenial(params: {
         }),
       ]
     );
+  } catch {
+    // Best-effort only: do not block request handling if audit log write fails.
+  }
+}
+
+async function tryWriteFrozenBranchDenialViaPort(params: {
+  auditWriter: AuditWriterPortLike;
+  tenantId: string;
+  branchId: string;
+  employeeId?: string;
+  actorRole?: string;
+  operation?: string;
+  method?: string;
+  path?: string;
+}): Promise<void> {
+  try {
+    await params.auditWriter.write({
+      tenantId: params.tenantId,
+      branchId: params.branchId,
+      employeeId: params.employeeId,
+      actorRole: params.actorRole ?? null,
+      actionType: "ACTION_REJECTED_BRANCH_FROZEN",
+      resourceType: "BRANCH",
+      resourceId: params.branchId,
+      outcome: "REJECTED",
+      denialReason: "BRANCH_FROZEN",
+      details: {
+        reason: "BRANCH_FROZEN",
+        operation: params.operation ?? null,
+        method: params.method ?? null,
+        path: params.path ?? null,
+      },
+    });
   } catch {
     // Best-effort only: do not block request handling if audit log write fails.
   }
@@ -101,15 +141,31 @@ export function requireActiveBranch(
       if (isBranchFrozenError(err)) {
         const user = req.user;
         if (user?.tenantId && effectiveBranchId) {
-          await tryWriteFrozenBranchDenial({
-            db: auditDb,
-            tenantId: user.tenantId,
-            branchId: effectiveBranchId,
-            employeeId: user.employeeId,
-            operation: options?.operation,
-            method: req.method,
-            path: req.originalUrl,
-          });
+          const auditWriter: AuditWriterPortLike | undefined =
+            req.app?.locals?.auditWriterPort;
+          if (auditWriter?.write) {
+            await tryWriteFrozenBranchDenialViaPort({
+              auditWriter,
+              tenantId: user.tenantId,
+              branchId: effectiveBranchId,
+              employeeId: user.employeeId,
+              actorRole: user.role,
+              operation: options?.operation,
+              method: req.method,
+              path: req.originalUrl,
+            });
+          } else {
+            await tryWriteFrozenBranchDenial({
+              db: auditDb,
+              tenantId: user.tenantId,
+              branchId: effectiveBranchId,
+              employeeId: user.employeeId,
+              actorRole: user.role,
+              operation: options?.operation,
+              method: req.method,
+              path: req.originalUrl,
+            });
+          }
         }
         return res.status(403).json({ error: "Branch is frozen", code: "BRANCH_FROZEN" });
       }

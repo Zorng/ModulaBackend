@@ -3,10 +3,12 @@ import { StockItemRepository } from "../../domain/repositories.js";
 import { StockItem } from "../../domain/entities.js";
 import type { StockItemCreatedV1 } from "../../../../shared/events.js";
 import type { InventoryTenantLimitsPort } from "../tenant-limits.port.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export interface CreateStockItemInput {
   tenantId: string;
   userId: string;
+  actorRole?: string | null;
   name: string;
   unitText: string;
   barcode?: string;
@@ -44,7 +46,8 @@ export class CreateStockItemUseCase {
     private tenantLimits: InventoryTenantLimitsPort,
     private eventBus: IEventBus,
     private txManager: ITransactionManager,
-    private imageStorage: IImageStoragePort
+    private imageStorage: IImageStoragePort,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -140,6 +143,29 @@ export class CreateStockItemUseCase {
           isActive,
           createdBy: userId,
         });
+
+        await this.auditWriter.write(
+          {
+            tenantId,
+            employeeId: userId,
+            actorRole: input.actorRole ?? null,
+            actionType: "STOCK_ITEM_CREATED",
+            resourceType: "stock_item",
+            resourceId: stockItem.id,
+            details: {
+              name: stockItem.name,
+              unitText: stockItem.unitText,
+              barcode: stockItem.barcode ?? null,
+              pieceSize: stockItem.pieceSize ?? null,
+              isIngredient: stockItem.isIngredient,
+              isSellable: stockItem.isSellable,
+              categoryId: stockItem.categoryId ?? null,
+              imageUrl: stockItem.imageUrl ?? null,
+              isActive: stockItem.isActive,
+            },
+          },
+          client
+        );
 
         // Publish event via outbox
         const event: StockItemCreatedV1 = {

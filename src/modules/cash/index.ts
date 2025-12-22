@@ -3,6 +3,7 @@ import { createCashRouter } from "./api/router.js";
 import type { AuthMiddlewarePort } from "../../platform/security/auth.js";
 import { TransactionManager } from "../../platform/db/transactionManager.js";
 import { publishToOutbox } from "../../platform/events/outbox.js";
+import type { AuditWriterPort } from "../../shared/ports/audit.js";
 
 // Repositories
 import {
@@ -46,7 +47,8 @@ import {
  */
 export function bootstrapCashModule(
   pool: Pool,
-  authMiddleware: AuthMiddlewarePort
+  authMiddleware: AuthMiddlewarePort,
+  deps: { auditWriterPort: AuditWriterPort }
 ) {
   const txManager = new TransactionManager();
 
@@ -65,28 +67,32 @@ export function bootstrapCashModule(
     sessionRepo,
     registerRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
 
   const takeOverSessionUseCase = new TakeOverSessionUseCase(
     sessionRepo,
     registerRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
 
   const closeSessionUseCase = new CloseCashSessionUseCase(
     sessionRepo,
     movementRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
 
   const recordMovementUseCase = new RecordCashMovementUseCase(
     sessionRepo,
     movementRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
 
   const getActiveSessionUseCase = new GetActiveSessionUseCase(
@@ -145,14 +151,16 @@ export function bootstrapCashModule(
     sessionRepo,
     movementRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
 
   const saleVoidedHandler = new OnSaleVoidedHandler(
     sessionRepo,
     movementRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
 
   // Create and return router

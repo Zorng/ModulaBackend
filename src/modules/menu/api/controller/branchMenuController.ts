@@ -2,6 +2,7 @@
 import type { Request, Response, NextFunction } from "express";
 import type { AuthRequest } from "../../../../platform/security/auth.js";
 import { BranchMenuFactory } from "../../domain/factories/index.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 import type {
   SetBranchAvailabilityInput,
   SetBranchPriceInput,
@@ -14,7 +15,7 @@ export class BranchMenuController {
     next: NextFunction
   ) {
     try {
-      const { tenantId, employeeId } = req.user!;
+      const { tenantId, employeeId, role } = req.user!;
       const { menuItemId } = req.params;
       const input = req.body as SetBranchAvailabilityInput;
 
@@ -36,6 +37,28 @@ export class BranchMenuController {
           error: "Bad Request",
           message: result.error,
         });
+      }
+
+      const auditWriter: AuditWriterPort | undefined = (req as any).app?.locals
+        ?.auditWriterPort;
+      if (auditWriter?.write) {
+        const actionType = input.isAvailable
+          ? "MENU_ITEM_BRANCH_ASSIGNED"
+          : "MENU_ITEM_BRANCH_UNASSIGNED";
+        void auditWriter
+          .write({
+            tenantId,
+            branchId: input.branchId,
+            employeeId,
+            actorRole: role ?? null,
+            actionType,
+            resourceType: "menu_item",
+            resourceId: menuItemId,
+            details: {
+              isAvailable: input.isAvailable,
+            },
+          })
+          .catch(() => {});
       }
 
       // Return success response

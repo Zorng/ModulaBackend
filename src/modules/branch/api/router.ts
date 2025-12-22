@@ -133,6 +133,7 @@ export function createBranchRouter(
           tenantId,
           branchId,
           actorEmployeeId: employeeId,
+          actorRole: req.user?.role,
           updates: {
             name: updates.name,
             address: updates.address,
@@ -218,6 +219,7 @@ export function createBranchRouter(
           tenantId,
           branchId,
           actorEmployeeId: employeeId,
+          actorRole: req.user?.role,
         });
 
         res.json({
@@ -288,6 +290,7 @@ export function createBranchRouter(
           tenantId,
           branchId,
           actorEmployeeId: employeeId,
+          actorRole: req.user?.role,
         });
 
         res.json({

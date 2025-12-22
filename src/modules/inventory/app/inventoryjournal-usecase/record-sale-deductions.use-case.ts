@@ -2,6 +2,7 @@ import { Ok, Err, type Result } from "../../../../shared/result.js";
 import { InventoryJournalRepository } from "../../domain/repositories.js";
 import { InventoryJournal } from "../../domain/entities.js";
 import type { StockSaleDeductedV1 } from "../../../../shared/events.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export interface SaleDeductionInput {
   tenantId: string;
@@ -9,6 +10,7 @@ export interface SaleDeductionInput {
   refSaleId: string;
   lines: Array<{ stockItemId: string; qtyDeducted: number }>; // qtyDeducted as positive, will be negated
   actorId?: string; // Employee who finalized the sale
+  actorRole?: string | null;
 }
 
 interface IEventBus {
@@ -23,7 +25,8 @@ export class RecordSaleDeductionsUseCase {
   constructor(
     private journalRepo: InventoryJournalRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -57,10 +60,28 @@ export class RecordSaleDeductionsUseCase {
             reason: "sale",
             refSaleId,
             actorId,
+            occurredAt: new Date(),
             createdBy: actorId,
           });
           journals.push(journal);
         }
+
+        await this.auditWriter.write(
+          {
+            tenantId,
+            branchId,
+            employeeId: actorId,
+            actorRole: input.actorRole ?? null,
+            actionType: "INVENTORY_DEDUCTION_APPLIED",
+            resourceType: "sale",
+            resourceId: refSaleId,
+            details: {
+              deductionsCount: journals.length,
+              stockItemIds: Array.from(new Set(journals.map((j) => j.stockItemId))),
+            },
+          },
+          client
+        );
 
         // Publish consolidated event
         const event: StockSaleDeductedV1 = {

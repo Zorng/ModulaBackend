@@ -6,11 +6,13 @@ import type {
 import type { CashSession } from "../domain/entities.js";
 import type { CashSessionClosedV1 } from "../../../shared/events.js";
 import type { IEventBus, ITransactionManager } from "./ports.js";
+import type { AuditWriterPort } from "../../../shared/ports/audit.js";
 
 // Close Cash Session
 export interface CloseCashSessionInput {
   sessionId: string;
   closedBy: string;
+  actorRole?: string | null;
   countedCashUsd: number;
   countedCashKhr: number;
   note?: string;
@@ -21,7 +23,8 @@ export class CloseCashSessionUseCase {
     private sessionRepo: CashSessionRepository,
     private movementRepo: CashMovementRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -73,6 +76,29 @@ export class CloseCashSessionUseCase {
         }
 
         updatedSession = result;
+
+        await this.auditWriter.write(
+          {
+            tenantId: session.tenantId,
+            branchId: session.branchId,
+            employeeId: closedBy,
+            actorRole: input.actorRole ?? null,
+            actionType: "CASH_SESSION_CLOSED",
+            resourceType: "cash_session",
+            resourceId: session.id,
+            details: {
+              status,
+              expectedCashUsd: session.expectedCashUsd,
+              expectedCashKhr: session.expectedCashKhr,
+              countedCashUsd,
+              countedCashKhr,
+              varianceUsd,
+              varianceKhr,
+              note: note ?? null,
+            },
+          },
+          client
+        );
 
         // Publish event via outbox
         const event: CashSessionClosedV1 = {

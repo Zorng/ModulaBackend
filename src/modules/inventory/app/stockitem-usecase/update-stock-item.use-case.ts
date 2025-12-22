@@ -3,6 +3,7 @@ import { StockItemRepository } from "../../domain/repositories.js";
 import { StockItem } from "../../domain/entities.js";
 import type { StockItemUpdatedV1 } from "../../../../shared/events.js";
 import type { InventoryTenantLimitsPort } from "../tenant-limits.port.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export interface UpdateStockItemInput {
   name?: string;
@@ -44,13 +45,15 @@ export class UpdateStockItemUseCase {
     private tenantLimits: InventoryTenantLimitsPort,
     private eventBus: IEventBus,
     private txManager: ITransactionManager,
-    private imageStorage: IImageStoragePort
+    private imageStorage: IImageStoragePort,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
     stockItemId: string,
     userId: string,
-    input: UpdateStockItemInput
+    input: UpdateStockItemInput,
+    actorRole?: string | null
   ): Promise<Result<StockItem, string>> {
     // Check if stock item exists
     const existing = await this.stockItemRepo.findById(stockItemId);
@@ -133,6 +136,29 @@ export class UpdateStockItemUseCase {
           throw new Error("Failed to update stock item");
         }
         updatedItem = result;
+
+        const isArchiving =
+          updates.isActive === false && existing.isActive === true;
+        const auditActionType = isArchiving
+          ? "STOCK_ITEM_ARCHIVED"
+          : isReactivating
+            ? "STOCK_ITEM_RESTORED"
+            : "STOCK_ITEM_UPDATED";
+
+        await this.auditWriter.write(
+          {
+            tenantId: existing.tenantId,
+            employeeId: userId,
+            actorRole: actorRole ?? null,
+            actionType: auditActionType,
+            resourceType: "stock_item",
+            resourceId: stockItemId,
+            details: {
+              changes: updates,
+            },
+          },
+          client
+        );
 
         // Publish event via outbox
         const event: StockItemUpdatedV1 = {

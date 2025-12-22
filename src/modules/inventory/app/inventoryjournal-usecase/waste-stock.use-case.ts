@@ -5,6 +5,7 @@ import {
 } from "../../domain/repositories.js";
 import { InventoryJournal } from "../../domain/entities.js";
 import type { StockWastedV1 } from "../../../../shared/events.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export interface WasteStockInput {
   tenantId: string;
@@ -13,6 +14,7 @@ export interface WasteStockInput {
   qty: number; // positive for waste (will be converted to negative delta)
   note: string; // mandatory per spec
   actorId?: string;
+  actorRole?: string | null;
   occurredAt?: Date; // When the transaction actually occurred (defaults to now)
 }
 
@@ -29,7 +31,8 @@ export class WasteStockUseCase {
     private journalRepo: InventoryJournalRepository,
     private branchStockRepo: BranchStockRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -61,17 +64,38 @@ export class WasteStockUseCase {
 
       await this.txManager.withTransaction(async (client) => {
         // Save journal entry with negative delta
+        const delta = -Math.abs(qty); // Ensure negative
         journal = await this.journalRepo.save({
           tenantId,
           branchId,
           stockItemId,
-          delta: -Math.abs(qty), // Ensure negative
+          delta,
           reason: "waste",
           note: note.trim(),
           actorId,
           occurredAt: input.occurredAt || new Date(),
           createdBy: actorId,
         });
+
+        await this.auditWriter.write(
+          {
+            tenantId,
+            branchId,
+            employeeId: actorId,
+            actorRole: input.actorRole ?? null,
+            actionType: "INVENTORY_JOURNAL_APPENDED",
+            resourceType: "inventory_journal",
+            resourceId: journal.id,
+            details: {
+              reason: "waste",
+              stockItemId,
+              delta,
+              note: note.trim(),
+              occurredAt: journal.occurredAt.toISOString(),
+            },
+          },
+          client
+        );
 
         // Publish event
         const event: StockWastedV1 = {
@@ -81,7 +105,7 @@ export class WasteStockUseCase {
           branchId,
           stockItemId,
           journalId: journal.id,
-          delta: -Math.abs(qty),
+          delta,
           note: note.trim(),
           actorId,
           createdAt: new Date().toISOString(),

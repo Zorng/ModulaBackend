@@ -6,6 +6,7 @@ import {
 } from "../../domain/repositories.js";
 import { InventoryJournal } from "../../domain/entities.js";
 import type { StockReceivedV1 } from "../../../../shared/events.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export interface ReceiveStockInput {
   tenantId: string;
@@ -14,6 +15,7 @@ export interface ReceiveStockInput {
   qty: number; // positive for receive
   note?: string;
   actorId?: string;
+  actorRole?: string | null;
   occurredAt?: Date; // When the transaction actually occurred (defaults to now)
 }
 
@@ -31,7 +33,8 @@ export class ReceiveStockUseCase {
     private stockItemRepo: StockItemRepository,
     private branchStockRepo: BranchStockRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -75,6 +78,26 @@ export class ReceiveStockUseCase {
           occurredAt: input.occurredAt || new Date(),
           createdBy: actorId,
         });
+
+        await this.auditWriter.write(
+          {
+            tenantId,
+            branchId,
+            employeeId: actorId,
+            actorRole: input.actorRole ?? null,
+            actionType: "INVENTORY_JOURNAL_APPENDED",
+            resourceType: "inventory_journal",
+            resourceId: journal.id,
+            details: {
+              reason: "receive",
+              stockItemId,
+              delta: qty,
+              note: note ?? null,
+              occurredAt: journal.occurredAt.toISOString(),
+            },
+          },
+          client
+        );
 
         // Publish event
         const event: StockReceivedV1 = {

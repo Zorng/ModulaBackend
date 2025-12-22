@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import type { AuthRequest } from "../../../../platform/security/auth.js";
 import { ModifierFactory } from "../../domain/factories/modifier.factory.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 import type {
   CreateModifierGroupInput,
   AddModifierOptionInput,
@@ -16,7 +17,7 @@ export class ModifierController {
     next: NextFunction
   ) {
     try {
-      const { tenantId, employeeId } = req.user!;
+      const { tenantId, employeeId, branchId, role } = req.user!;
       const input = req.body as CreateModifierGroupInput;
 
       const { createModifierGroupUseCase } = ModifierFactory.build();
@@ -37,6 +38,26 @@ export class ModifierController {
       }
 
       const group = result.value;
+
+      const auditWriter: AuditWriterPort | undefined = (req as any).app?.locals
+        ?.auditWriterPort;
+      if (auditWriter?.write) {
+        void auditWriter
+          .write({
+            tenantId,
+            branchId,
+            employeeId,
+            actorRole: role ?? null,
+            actionType: "MODIFIER_GROUP_CREATED",
+            resourceType: "modifier_group",
+            resourceId: group.id,
+            details: {
+              name: group.name,
+              selectionType: group.selectionType,
+            },
+          })
+          .catch(() => {});
+      }
 
       // Return success response
       return res.status(201).json({
@@ -221,7 +242,7 @@ export class ModifierController {
     next: NextFunction
   ) {
     try {
-      const { tenantId, employeeId } = req.user!;
+      const { tenantId, employeeId, branchId, role } = req.user!;
       const { modifierGroupId } = req.params;
       const input = req.body as UpdateModifierGroupInput;
 
@@ -243,6 +264,28 @@ export class ModifierController {
       }
 
       const group = result.value;
+
+      const auditWriter: AuditWriterPort | undefined = (req as any).app?.locals
+        ?.auditWriterPort;
+      if (auditWriter?.write) {
+        void auditWriter
+          .write({
+            tenantId,
+            branchId,
+            employeeId,
+            actorRole: role ?? null,
+            actionType: "MODIFIER_GROUP_UPDATED",
+            resourceType: "modifier_group",
+            resourceId: modifierGroupId,
+            details: {
+              changes: {
+                name: input.name,
+                selectionType: input.selectionType,
+              },
+            },
+          })
+          .catch(() => {});
+      }
 
       return res.status(200).json({
         id: group.id,

@@ -3,6 +3,7 @@ import { Pool } from "pg";
 import { setupAuthModule } from "../../../auth/index.js";
 import { createPolicyRouter } from "../../api/router.js";
 import type { InvitationPort } from "../../../../shared/ports/staff-management.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 import {
   errorHandler,
   notFoundHandler,
@@ -14,6 +15,10 @@ import {
 export function createTestApp(pool: Pool): Express {
   const app = express();
   app.use(express.json());
+
+  const auditWriterPort: AuditWriterPort = {
+    write: async () => {},
+  };
 
   // Setup auth module
   const invitationPort: InvitationPort = {
@@ -31,6 +36,7 @@ export function createTestApp(pool: Pool): Express {
         throw new Error("not implemented");
       },
     },
+    auditWriterPort,
   });
 
   // Mount policy routes

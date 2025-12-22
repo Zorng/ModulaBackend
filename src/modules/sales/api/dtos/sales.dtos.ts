@@ -110,6 +110,7 @@ export interface CreateSaleCommand {
   tenantId: string;
   branchId: string;
   employeeId: string;
+  actorRole?: string;
   saleType: SaleType;
 }
 
@@ -118,12 +119,16 @@ export interface AddItemCommand {
   menuItemId: string;
   quantity: number;
   modifiers?: any[];
+  actorId: string;
+  actorRole?: string;
 }
 
 export interface UpdateItemQuantityCommand {
   saleId: string;
   itemId: string;
   quantity: number;
+  actorId: string;
+  actorRole?: string;
 }
 
 export interface PreCheckoutCommand {
@@ -136,22 +141,26 @@ export interface PreCheckoutCommand {
 export interface FinalizeSaleCommand {
   saleId: string;
   actorId: string;
+  actorRole?: string;
 }
 
 export interface UpdateFulfillmentCommand {
   saleId: string;
   status: FulfillmentStatus;
   actorId: string;
+  actorRole?: string;
 }
 
 export interface VoidSaleCommand {
   saleId: string;
   actorId: string;
   reason: string;
+  actorRole?: string;
 }
 
 export interface ReopenSaleCommand {
   saleId: string;
   actorId: string;
   reason: string;
+  actorRole?: string;
 }

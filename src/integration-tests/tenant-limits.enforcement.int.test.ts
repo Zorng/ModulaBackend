@@ -19,6 +19,12 @@ import {
   createInvitationPort,
 } from "../modules/staffManagement/app/staffManagement.service.js";
 
+function shouldCleanupAfterTests(): boolean {
+  const value = process.env.CLEANUP_AFTER_TESTS;
+  if (!value) return false;
+  return value === "1" || value.toLowerCase() === "true";
+}
+
 function createTxManager(pool: Pool) {
   return {
     async withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -192,20 +198,23 @@ describe("Tenant limits enforcement (DB-backed)", () => {
       },
       isValidImageUrl: () => true,
     } as any;
+    const auditWriter = { write: async () => {} } as any;
 
     const createStockItem = new CreateStockItemUseCase(
       stockItemRepo,
       tenantLimitsRepo,
       eventBus,
       txManager as any,
-      imageStorage
+      imageStorage,
+      auditWriter
     );
     const updateStockItem = new UpdateStockItemUseCase(
       stockItemRepo,
       tenantLimitsRepo,
       eventBus,
       txManager as any,
-      imageStorage
+      imageStorage,
+      auditWriter
     );
 
     const item1 = await createStockItem.execute({
@@ -336,8 +345,10 @@ describe("Tenant limits enforcement (DB-backed)", () => {
         )
       ).rejects.toThrow(/seat|limit/i);
     } finally {
-      for (const accountId of createdAccounts) {
-        await pool.query(`DELETE FROM accounts WHERE id = $1`, [accountId]);
+      if (shouldCleanupAfterTests()) {
+        for (const accountId of createdAccounts) {
+          await pool.query(`DELETE FROM accounts WHERE id = $1`, [accountId]);
+        }
       }
       await cleanupSeededTenant(pool, seeded);
     }
@@ -390,7 +401,9 @@ describe("Tenant limits enforcement (DB-backed)", () => {
         })
       ).rejects.toThrow(/hard limit|seat/i);
     } finally {
-      await pool.query(`DELETE FROM accounts WHERE id = $1`, [account.accountId]);
+      if (shouldCleanupAfterTests()) {
+        await pool.query(`DELETE FROM accounts WHERE id = $1`, [account.accountId]);
+      }
       await cleanupSeededTenant(pool, seeded);
     }
   });

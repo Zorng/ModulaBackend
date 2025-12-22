@@ -17,16 +17,6 @@ export interface SalesRepository {
     limit: number;
   }, trx?: PoolClient): Promise<{ sales: Sale[]; total: number }>;
   findTodaySales(tenantId: string, branchId: string, trx?: PoolClient): Promise<Sale[]>;
-  writeAuditLog(entry: {
-    tenantId: string;
-    branchId: string;
-    saleId: string;
-    actorId: string;
-    action: string;
-    reason?: string;
-    oldValues?: any;
-    newValues?: any;
-  }, trx?: PoolClient): Promise<void>;
 }
 
 export interface PolicyPort {

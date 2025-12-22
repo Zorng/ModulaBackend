@@ -138,7 +138,7 @@ export type CashSaleRecordedV1 = {
   tenantId: string;
   branchId: string;
   sessionId: string;
-  registerId: string;
+  registerId?: string;
   saleId: string;
   amountUsd: number;
   amountKhr: number;
@@ -151,7 +151,7 @@ export type CashRefundRecordedV1 = {
   tenantId: string;
   branchId: string;
   sessionId: string;
-  registerId: string;
+  registerId?: string;
   saleId: string;
   amountUsd: number;
   amountKhr: number;

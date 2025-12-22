@@ -11,6 +11,7 @@ import type {
   CashRefundRecordedV1,
 } from "../../../shared/events.js";
 import type { IEventBus, ITransactionManager } from "./ports.js";
+import type { AuditWriterPort } from "../../../shared/ports/audit.js";
 
 // Event handler: Subscribe to sales.sale_finalized
 export class OnSaleFinalizedHandler {
@@ -18,7 +19,8 @@ export class OnSaleFinalizedHandler {
     private sessionRepo: CashSessionRepository,
     private movementRepo: CashMovementRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async handle(event: SaleFinalizedV1): Promise<void> {
@@ -46,7 +48,7 @@ export class OnSaleFinalizedHandler {
       // Use transaction to ensure atomicity
       await this.txManager.withTransaction(async (client) => {
         // Create cash movement
-        await this.movementRepo.save({
+        const movement = await this.movementRepo.save({
           tenantId: event.tenantId,
           branchId: event.branchId,
           registerId: openSession.registerId,
@@ -80,6 +82,26 @@ export class OnSaleFinalizedHandler {
           timestamp: new Date().toISOString(),
         };
         await this.eventBus.publishViaOutbox(cashEvent, client);
+
+        await this.auditWriter.write(
+          {
+            tenantId: event.tenantId,
+            branchId: event.branchId,
+            employeeId: event.actorId,
+            actionType: "CASH_TENDER_ATTACHED_TO_SALE",
+            resourceType: "sale",
+            resourceId: event.saleId,
+            details: {
+              sessionId: openSession.id,
+              registerId: openSession.registerId ?? null,
+              movementId: movement.id,
+              amountUsd: totalCashUsd,
+              amountKhr: totalCashKhr,
+              tenders: cashTenders,
+            },
+          },
+          client
+        );
       });
     } catch (error) {
       console.error("Error handling sale finalized event:", error);
@@ -95,7 +117,8 @@ export class OnSaleVoidedHandler {
     private sessionRepo: CashSessionRepository,
     private movementRepo: CashMovementRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async handle(event: SaleVoidedV1): Promise<void> {
@@ -117,7 +140,7 @@ export class OnSaleVoidedHandler {
       // Use transaction to ensure atomicity
       await this.txManager.withTransaction(async (client) => {
         // Create refund movement
-        await this.movementRepo.save({
+        const movement = await this.movementRepo.save({
           tenantId: event.tenantId,
           branchId: event.branchId,
           registerId: cashMovement.registerId,
@@ -154,6 +177,26 @@ export class OnSaleVoidedHandler {
           timestamp: new Date().toISOString(),
         };
         await this.eventBus.publishViaOutbox(refundEvent, client);
+
+        await this.auditWriter.write(
+          {
+            tenantId: event.tenantId,
+            branchId: event.branchId,
+            employeeId: event.actorId,
+            actionType: "CASH_REFUND_APPROVED",
+            resourceType: "sale",
+            resourceId: event.saleId,
+            details: {
+              sessionId: cashMovement.sessionId,
+              registerId: cashMovement.registerId ?? null,
+              movementId: movement.id,
+              amountUsd: cashMovement.amountUsd,
+              amountKhr: cashMovement.amountKhr,
+              reason: event.reason,
+            },
+          },
+          client
+        );
       });
     } catch (error) {
       console.error("Error handling sale voided event:", error);

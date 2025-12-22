@@ -5,13 +5,17 @@ import type {
   BranchProvisioningPort,
   BranchQueryPort,
 } from "../../shared/ports/branch.js";
+import type { AuditWriterPort } from "../../shared/ports/audit.js";
 import { BranchService } from "./app/branch.service.js";
 import { createBranchRouter } from "./api/router.js";
 import { BranchRepository } from "./infra/repository.js";
 
-export function bootstrapBranchModule(pool: Pool) {
+export function bootstrapBranchModule(
+  pool: Pool,
+  deps: { auditWriterPort: AuditWriterPort }
+) {
   const repo = new BranchRepository(pool);
-  const service = new BranchService(repo);
+  const service = new BranchService(repo, deps.auditWriterPort);
 
   const branchProvisioningPort: BranchProvisioningPort = {
     provisionBranch: async (params) => {
@@ -43,4 +47,3 @@ export function bootstrapBranchModule(pool: Pool) {
     createRouter: (auth: AuthMiddlewarePort) => createBranchRouter(service, auth),
   };
 }
-

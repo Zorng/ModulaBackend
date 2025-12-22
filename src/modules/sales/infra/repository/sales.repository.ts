@@ -240,34 +240,6 @@ export class PgSalesRepository implements SalesRepository {
     return sales;
   }
 
-  async writeAuditLog(entry: {
-    tenantId: string;
-    branchId: string;
-    saleId: string;
-    actorId: string;
-    action: string;
-    reason?: string;
-    oldValues?: any;
-    newValues?: any;
-  }, trx?: PoolClient): Promise<void> {
-    const client = trx || this.pool;
-    
-    await client.query(
-      `INSERT INTO sales_audit_log (tenant_id, branch_id, sale_id, actor_id, action, reason, old_values, new_values)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        entry.tenantId,
-        entry.branchId,
-        entry.saleId,
-        entry.actorId,
-        entry.action,
-        entry.reason || null,
-        entry.oldValues ? JSON.stringify(entry.oldValues) : null,
-        entry.newValues ? JSON.stringify(entry.newValues) : null
-      ]
-    );
-  }
-
   private async findItemsBySaleId(saleId: string, client: Pool | PoolClient): Promise<SaleItem[]> {
     const itemsResult = await client.query(
       `SELECT * FROM sale_items WHERE sale_id = $1 ORDER BY created_at`,

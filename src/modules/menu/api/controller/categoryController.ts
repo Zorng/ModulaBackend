@@ -2,11 +2,12 @@ import { Request, Response, NextFunction } from "express";
 import type { AuthRequest } from "../../../../platform/security/auth.js";
 import { CategoryFactory } from "../../domain/factories/category.factory.js";
 import { UpdateCategoryInput } from "../schemas/schemas.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export class CategoryController {
   static async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { tenantId, employeeId } = req.user!;
+      const { tenantId, employeeId, branchId, role } = req.user!;
       const { name, description, displayOrder } = req.body;
 
       const { createCategoryUseCase } = CategoryFactory.build();
@@ -26,6 +27,29 @@ export class CategoryController {
       }
 
       const category = result.value;
+
+      const auditWriter: AuditWriterPort | undefined = (req as any).app?.locals
+        ?.auditWriterPort;
+      if (auditWriter?.write) {
+        void auditWriter
+          .write({
+            tenantId,
+            branchId,
+            employeeId,
+            actorRole: role ?? null,
+            actionType: "MENU_CATEGORY_CREATED",
+            resourceType: "menu_category",
+            resourceId: category.id,
+            details: {
+              name: category.name,
+              description: category.description ?? null,
+              displayOrder: category.displayOrder,
+              isActive: category.isActive,
+            },
+          })
+          .catch(() => {});
+      }
+
       return res.status(201).json({
         id: category.id,
         name: category.name,
@@ -117,7 +141,7 @@ export class CategoryController {
 
   static async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { tenantId, employeeId } = req.user!;
+      const { tenantId, employeeId, branchId, role } = req.user!;
       const { categoryId } = req.params;
       const input = req.body as UpdateCategoryInput;
 
@@ -140,6 +164,28 @@ export class CategoryController {
 
       const category = result.value;
 
+      const auditWriter: AuditWriterPort | undefined = (req as any).app?.locals
+        ?.auditWriterPort;
+      if (auditWriter?.write) {
+        void auditWriter
+          .write({
+            tenantId,
+            branchId,
+            employeeId,
+            actorRole: role ?? null,
+            actionType: "MENU_CATEGORY_UPDATED",
+            resourceType: "menu_category",
+            resourceId: categoryId,
+            details: {
+              changes: {
+                name: input.name,
+                displayOrder: input.displayOrder,
+              },
+            },
+          })
+          .catch(() => {});
+      }
+
       return res.status(200).json({
         id: category.id,
         name: category.name,
@@ -155,7 +201,7 @@ export class CategoryController {
 
   static async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { tenantId, employeeId } = req.user!;
+      const { tenantId, employeeId, branchId, role } = req.user!;
       const { categoryId } = req.params;
 
       const { deleteCategoryUseCase } = CategoryFactory.build();
@@ -171,6 +217,24 @@ export class CategoryController {
           message: result.error,
         });
       }
+
+      const auditWriter: AuditWriterPort | undefined = (req as any).app?.locals
+        ?.auditWriterPort;
+      if (auditWriter?.write) {
+        void auditWriter
+          .write({
+            tenantId,
+            branchId,
+            employeeId,
+            actorRole: role ?? null,
+            actionType: "MENU_CATEGORY_UPDATED",
+            resourceType: "menu_category",
+            resourceId: categoryId,
+            details: { changes: { isActive: false } },
+          })
+          .catch(() => {});
+      }
+
       return res.status(200).json({
         message: "Category deleted successfully",
       });

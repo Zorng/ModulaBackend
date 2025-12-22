@@ -5,12 +5,14 @@ import type {
   TenantProvisioningPort,
 } from "../../../shared/ports/tenant.js";
 import type { BranchProvisioningPort } from "../../../shared/ports/branch.js";
+import type { AuditWriterPort } from "../../../shared/ports/audit.js";
 import { TenantRepository } from "../infra/repository.js";
 
 export class TenantProvisioningService {
   constructor(
     private pool: Pool,
     private repo: TenantRepository,
+    private auditWriter: AuditWriterPort,
     private membershipProvisioning: MembershipProvisioningPort,
     private branchProvisioning: BranchProvisioningPort,
     private policyDefaults: PolicyDefaultsPort
@@ -63,11 +65,12 @@ export class TenantProvisioningService {
           passwordHash: params.passwordHash,
         });
 
-      await this.repo.writeAuditLog(
+      await this.auditWriter.write(
         {
           tenantId: tenant.id,
           branchId: branch.id,
           employeeId: employee.id,
+          actorRole: role,
           actionType: "TENANT_CREATED",
           resourceType: "TENANT",
           resourceId: tenant.id,

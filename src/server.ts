@@ -5,6 +5,7 @@ import { ping } from "#db";
 import { log } from "#logger";
 import { bootstrapTenantModule } from "#modules/tenant/index.js";
 import { bootstrapBranchModule } from "#modules/branch/index.js";
+import { bootstrapAuditModule } from "#modules/audit/index.js";
 import { createMenuRouter } from "./modules/menu/api/router/index.js";
 import { createPolicyRouter } from "./modules/policy/index.js";
 import { PgPolicyRepository } from "./modules/policy/infra/repository.js";
@@ -36,7 +37,7 @@ app.use(
     origin: process.env.CORS_ORIGIN || "*",
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Tenant-Id"],
   })
 );
 
@@ -62,8 +63,13 @@ log.info("✓ Outbox dispatcher started - reliable event delivery enabled");
 const policyRepo = new PgPolicyRepository(pool);
 const staffManagementModule = bootstrapStaffManagementModule(pool);
 
+// Setup Audit Module (admin read + shared ports)
+const auditModule = bootstrapAuditModule(pool);
+
 // Setup Branch Module (profile + lifecycle + provisioning ports)
-const branchModule = bootstrapBranchModule(pool);
+const branchModule = bootstrapBranchModule(pool, {
+  auditWriterPort: auditModule.auditWriterPort,
+});
 
 // Setup Tenant Module (provisioning + admin-only business profile endpoints)
 const membershipProvisioningPort = createMembershipProvisioningPort();
@@ -75,17 +81,20 @@ const tenantModule = bootstrapTenantModule(pool, {
       await policyRepo.ensureDefaultPolicies(tenantId);
     },
   },
+  auditWriterPort: auditModule.auditWriterPort,
 });
 
 // Setup Auth Module
 const authModule = setupAuthModule(pool, {
   invitationPort: staffManagementModule.invitationPort,
   tenantProvisioningPort: tenantModule.tenantProvisioningPort,
+  auditWriterPort: auditModule.auditWriterPort,
 });
 const { authRoutes, authMiddleware } = authModule;
 const staffManagementAuthRouter = staffManagementModule.createRouter(authMiddleware);
 const tenantRouter = tenantModule.createRouter(authMiddleware);
 const branchRouter = branchModule.createRouter(authMiddleware);
+const auditRouter = auditModule.createRouter(authMiddleware);
 
 // Setup Policy Router (requires auth middleware)
 const policyRouter = createPolicyRouter(authMiddleware);
@@ -101,7 +110,8 @@ const { router: accountSettingsRouter } = accountSettingsModule;
 const salesModule = bootstrapSalesModule(
   pool,
   transactionManager,
-  authMiddleware
+  authMiddleware,
+  { auditWriterPort: auditModule.auditWriterPort }
 );
 const { router: salesRouter } = salesModule;
 
@@ -112,13 +122,16 @@ const imageStorage = createImageStorageAdapter();
 const inventoryModule = bootstrapInventoryModule(
   pool,
   authMiddleware,
-  imageStorage
+  imageStorage,
+  { auditWriterPort: auditModule.auditWriterPort }
 );
 const { router: inventoryRouter, eventHandlers: inventoryEventHandlers } =
   inventoryModule;
 
 // Setup Cash Module
-const cashModule = bootstrapCashModule(pool, authMiddleware);
+const cashModule = bootstrapCashModule(pool, authMiddleware, {
+  auditWriterPort: auditModule.auditWriterPort,
+});
 const { router: cashRouter, eventHandlers: cashEventHandlers } = cashModule;
 
 // ==================== Register Event Handlers ====================
@@ -191,6 +204,8 @@ app.locals.imageStorage = imageStorage;
 app.locals.tenantMetadataPort = tenantModule.tenantMetadataPort;
 app.locals.branchGuardPort = branchModule.branchGuardPort;
 app.locals.branchQueryPort = branchModule.branchQueryPort;
+app.locals.auditWriterPort = auditModule.auditWriterPort;
+app.locals.auditQueryPort = auditModule.auditQueryPort;
 
 // Swagger UI setup - must be before routes
 setupSwagger(app);
@@ -273,6 +288,7 @@ app.get("/health", async (_req, res) => {
 // Mount module routers
 app.use("/v1/tenants", tenantRouter);
 app.use("/v1/branches", branchRouter);
+app.use("/v1/audit", auditRouter);
 app.use("/v1/auth", authRoutes);
 app.use("/v1/auth", staffManagementAuthRouter);
 app.use("/v1/account", accountSettingsRouter);

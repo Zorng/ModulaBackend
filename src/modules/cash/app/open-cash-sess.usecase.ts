@@ -6,6 +6,7 @@ import type {
 import type { CashSession } from "../domain/entities.js";
 import type { CashSessionOpenedV1 } from "../../../shared/events.js";
 import type { IEventBus, ITransactionManager } from "./ports.js";
+import type { AuditWriterPort } from "../../../shared/ports/audit.js";
 
 // ==================== USE CASES ====================
 
@@ -15,6 +16,7 @@ export interface OpenCashSessionInput {
   branchId: string;
   registerId?: string; // Optional for device-agnostic sessions
   openedBy: string;
+  actorRole?: string | null;
   openingFloatUsd: number;
   openingFloatKhr: number;
   note?: string;
@@ -25,7 +27,8 @@ export class OpenCashSessionUseCase {
     private sessionRepo: CashSessionRepository,
     private registerRepo: CashRegisterRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -103,6 +106,25 @@ export class OpenCashSessionUseCase {
           varianceKhr: 0,
           note,
         });
+
+        await this.auditWriter.write(
+          {
+            tenantId,
+            branchId,
+            employeeId: openedBy,
+            actorRole: input.actorRole ?? null,
+            actionType: "CASH_SESSION_OPENED",
+            resourceType: "cash_session",
+            resourceId: session.id,
+            details: {
+              registerId: registerId ?? null,
+              openingFloatUsd,
+              openingFloatKhr,
+              note: note ?? null,
+            },
+          },
+          client
+        );
 
         // Publish event via outbox
         const event: CashSessionOpenedV1 = {

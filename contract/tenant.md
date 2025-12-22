@@ -18,6 +18,11 @@ Most tenant endpoints return errors like:
 { "error": "Human readable message" }
 ```
 
+Upload endpoints may return multer errors shaped like:
+```json
+{ "error": "File Too Large", "message": "Image must be less than 5MB" }
+```
+
 ### Casing
 - Tenant module uses `snake_case` in request/response bodies (e.g. `logo_url`, `contact_phone`).
 
@@ -28,6 +33,23 @@ Most tenant endpoints return errors like:
 ### `TenantStatus`
 ```ts
 type TenantStatus = "ACTIVE" | "PAST_DUE" | "EXPIRED" | "CANCELED";
+```
+
+### `Tenant` (admin-visible business profile fields)
+Note: `GET /v1/tenants/me` returns `TenantProfile` (includes `branch_count`). Update endpoints return `Tenant` (no `branch_count`).
+```ts
+type Tenant = {
+  id: string;
+  name: string;
+  business_type: string | null;
+  status: TenantStatus;
+  logo_url: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  contact_address: string | null;
+  created_at: string; // ISO date-time
+  updated_at: string; // ISO date-time
+};
 ```
 
 ### `TenantMetadata` (staff-visible projection)
@@ -137,8 +159,7 @@ Response `200`:
     "contact_email": "owner@example.com",
     "contact_address": "123 Main St",
     "created_at": "2025-12-18T00:00:00.000Z",
-    "updated_at": "2025-12-18T00:00:00.000Z",
-    "branch_count": 1
+    "updated_at": "2025-12-18T00:00:00.000Z"
   }
 }
 ```
@@ -162,7 +183,7 @@ Errors:
 Request body:
 - `multipart/form-data`
 - field name: `image`
-- allowed types: `image/jpeg`, `image/png`, `image/webp` (max 5MB)
+- allowed types: `image/jpeg`, `image/jpg`, `image/png`, `image/webp` (max 5MB)
 
 Response `200`:
 ```json
@@ -172,13 +193,12 @@ Response `200`:
     "name": "Test Restaurant",
     "business_type": "RESTAURANT",
     "status": "ACTIVE",
-    "logo_url": "http://localhost:3000/v1/images/<tenantId>/tenant/<file>.png",
+    "logo_url": "https://<storage>/<tenantId>/tenant/<file>.png",
     "contact_phone": null,
     "contact_email": null,
     "contact_address": null,
     "created_at": "2025-12-18T00:00:00.000Z",
-    "updated_at": "2025-12-18T00:00:00.000Z",
-    "branch_count": 1
+    "updated_at": "2025-12-18T00:00:00.000Z"
   }
 }
 ```
@@ -187,11 +207,10 @@ Errors:
 - `401` if missing/invalid auth
 - `403` if not an admin
 - `422` if no `image` file is provided
-- `400` if multer rejects file (size/type)
+- `400` if multer rejects file (size/type); may return `{ error, message }`
 
 ---
 
 ## Notes for Frontend
 - Tenant selection (when an account has multiple tenants) is handled by the **Auth** module (`POST /v1/auth/select-tenant`).
 - Use `GET /v1/tenants/me/metadata` for lightweight UI surfaces (header/logo/name) without requiring admin role.
-

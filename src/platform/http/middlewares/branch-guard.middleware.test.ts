@@ -111,9 +111,11 @@ describe("requireActiveBranch middleware", () => {
     expect(values[2]).toBe("emp-1");
     expect(values[3]).toBe("ACTION_REJECTED_BRANCH_FROZEN");
     expect(values[5]).toBe("branch-target");
-    const details = JSON.parse(values[6]);
+    expect(values[6]).toBe("REJECTED");
+    expect(values[7]).toBe("BRANCH_FROZEN");
+    expect(values[8]).toBe("CASHIER");
+    const details = JSON.parse(values[9]);
     expect(details.reason).toBe("BRANCH_FROZEN");
     expect(details.operation).toBe("test.write");
   });
 });
-

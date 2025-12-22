@@ -5,9 +5,13 @@ import type {
   TenantProfile,
   TenantProfileUpdate,
 } from "../domain/entities.js";
+import type { AuditWriterPort } from "../../../shared/ports/audit.js";
 
 export class TenantService {
-  constructor(private repo: TenantRepository) {}
+  constructor(
+    private repo: TenantRepository,
+    private auditWriter: AuditWriterPort
+  ) {}
 
   async getProfile(tenantId: string): Promise<TenantProfile> {
     const tenant = await this.repo.getTenantProfile(tenantId);
@@ -29,6 +33,7 @@ export class TenantService {
     tenantId: string;
     updates: TenantProfileUpdate;
     actorEmployeeId: string;
+    actorRole?: string;
   }): Promise<Tenant> {
     const validated = this.validateProfileUpdate(params.updates);
 
@@ -37,9 +42,10 @@ export class TenantService {
       validated
     );
 
-    await this.repo.writeAuditLog({
+    await this.auditWriter.write({
       tenantId: params.tenantId,
       employeeId: params.actorEmployeeId,
+      actorRole: params.actorRole ?? null,
       actionType: "TENANT_PROFILE_UPDATED",
       resourceType: "TENANT",
       resourceId: params.tenantId,
@@ -66,6 +72,7 @@ export class TenantService {
     tenantId: string;
     logoUrl: string;
     actorEmployeeId: string;
+    actorRole?: string;
   }): Promise<Tenant> {
     const trimmed = params.logoUrl.trim();
     if (trimmed.length === 0) {
@@ -74,9 +81,10 @@ export class TenantService {
 
     const updated = await this.repo.updateTenantLogo(params.tenantId, trimmed);
 
-    await this.repo.writeAuditLog({
+    await this.auditWriter.write({
       tenantId: params.tenantId,
       employeeId: params.actorEmployeeId,
+      actorRole: params.actorRole ?? null,
       actionType: "TENANT_LOGO_UPDATED",
       resourceType: "TENANT",
       resourceId: params.tenantId,

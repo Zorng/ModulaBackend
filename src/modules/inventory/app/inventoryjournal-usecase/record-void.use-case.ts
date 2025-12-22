@@ -55,6 +55,7 @@ export class RecordVoidUseCase {
             delta: Math.abs(line.qtyOriginallyDeducted), // Ensure positive
             reason: "void",
             refSaleId,
+            occurredAt: new Date(),
             createdBy: undefined, // System-generated
           });
           journals.push(journal);

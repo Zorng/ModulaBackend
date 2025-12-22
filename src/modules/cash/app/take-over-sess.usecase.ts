@@ -6,6 +6,7 @@ import type {
 import type { CashSession } from "../domain/entities.js";
 import type { CashSessionTakenOverV1 } from "../../../shared/events.js";
 import type { IEventBus, ITransactionManager } from "./ports.js";
+import type { AuditWriterPort } from "../../../shared/ports/audit.js";
 
 // 2. Take Over Session (Manager/Admin)
 export interface TakeOverSessionInput {
@@ -13,6 +14,7 @@ export interface TakeOverSessionInput {
   branchId: string;
   registerId?: string; // Optional for device-agnostic sessions
   newOpenedBy: string;
+  actorRole?: string | null;
   reason: string;
   openingFloatUsd: number;
   openingFloatKhr: number;
@@ -23,7 +25,8 @@ export class TakeOverSessionUseCase {
     private sessionRepo: CashSessionRepository,
     private registerRepo: CashRegisterRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -64,6 +67,24 @@ export class TakeOverSessionUseCase {
           note: `Taken over by manager. Reason: ${reason}`,
         });
 
+        await this.auditWriter.write(
+          {
+            tenantId,
+            branchId,
+            employeeId: newOpenedBy,
+            actorRole: input.actorRole ?? null,
+            actionType: "CASH_SESSION_FORCE_CLOSED",
+            resourceType: "cash_session",
+            resourceId: existingSession.id,
+            details: {
+              closureType: "TAKEOVER",
+              reason,
+              newOpenedBy,
+            },
+          },
+          client
+        );
+
         // Open new session
         newSession = await this.sessionRepo.save({
           tenantId,
@@ -82,6 +103,26 @@ export class TakeOverSessionUseCase {
           varianceKhr: 0,
           note: `Taken over from previous session. Reason: ${reason}`,
         });
+
+        await this.auditWriter.write(
+          {
+            tenantId,
+            branchId,
+            employeeId: newOpenedBy,
+            actorRole: input.actorRole ?? null,
+            actionType: "CASH_SESSION_OPENED",
+            resourceType: "cash_session",
+            resourceId: newSession.id,
+            details: {
+              registerId: registerId ?? null,
+              openingFloatUsd,
+              openingFloatKhr,
+              note: `Taken over from previous session. Reason: ${reason}`,
+              takenOverFromSessionId: existingSession.id,
+            },
+          },
+          client
+        );
 
         // Publish take-over event via outbox
         const event: CashSessionTakenOverV1 = {

@@ -8,14 +8,12 @@ function createMockRepo(): jest.Mocked<Pick<
   | "getTenantMetadata"
   | "updateTenantProfile"
   | "updateTenantLogo"
-  | "writeAuditLog"
 >> {
   return {
     getTenantProfile: jest.fn(),
     getTenantMetadata: jest.fn(),
     updateTenantProfile: jest.fn(),
     updateTenantLogo: jest.fn(),
-    writeAuditLog: jest.fn(),
   };
 }
 
@@ -23,7 +21,8 @@ describe("TenantService", () => {
   it("throws when tenant metadata is missing", async () => {
     const repo = createMockRepo();
     repo.getTenantMetadata.mockResolvedValue(null);
-    const service = new TenantService(repo as any);
+    const auditWriter = { write: jest.fn() };
+    const service = new TenantService(repo as any, auditWriter as any);
 
     await expect(service.getMetadata("tenant-1")).rejects.toThrow(
       "Tenant not found"
@@ -32,7 +31,8 @@ describe("TenantService", () => {
 
   it("validates email format before updating", async () => {
     const repo = createMockRepo();
-    const service = new TenantService(repo as any);
+    const auditWriter = { write: jest.fn() };
+    const service = new TenantService(repo as any, auditWriter as any);
 
     await expect(
       service.updateProfile({
@@ -43,7 +43,7 @@ describe("TenantService", () => {
     ).rejects.toThrow("valid email address");
 
     expect(repo.updateTenantProfile).not.toHaveBeenCalled();
-    expect(repo.writeAuditLog).not.toHaveBeenCalled();
+    expect(auditWriter.write).not.toHaveBeenCalled();
   });
 
   it("trims and updates name", async () => {
@@ -61,9 +61,10 @@ describe("TenantService", () => {
       updated_at: new Date(),
     } as any);
 
-    const service = new TenantService(repo as any);
+    const auditWriter = { write: jest.fn().mockResolvedValue(undefined) };
+    const serviceWithAudit = new TenantService(repo as any, auditWriter as any);
 
-    await service.updateProfile({
+    await serviceWithAudit.updateProfile({
       tenantId: "tenant-1",
       actorEmployeeId: "emp-1",
       updates: { name: "  My Shop  " },
@@ -72,12 +73,13 @@ describe("TenantService", () => {
     expect(repo.updateTenantProfile).toHaveBeenCalledWith("tenant-1", {
       name: "My Shop",
     });
-    expect(repo.writeAuditLog).toHaveBeenCalled();
+    expect(auditWriter.write).toHaveBeenCalled();
   });
 
   it("rejects empty logoUrl", async () => {
     const repo = createMockRepo();
-    const service = new TenantService(repo as any);
+    const auditWriter = { write: jest.fn() };
+    const service = new TenantService(repo as any, auditWriter as any);
 
     await expect(
       service.updateLogo({
@@ -90,4 +92,3 @@ describe("TenantService", () => {
     expect(repo.updateTenantLogo).not.toHaveBeenCalled();
   });
 });
-

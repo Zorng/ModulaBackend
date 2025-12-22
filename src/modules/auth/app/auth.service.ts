@@ -14,6 +14,7 @@ import { PasswordService } from './password.service.js';
 import { TokenService } from './token.service.js';
 import type { InvitationPort } from '../../../shared/ports/staff-management.js';
 import type { TenantProvisioningPort } from "../../../shared/ports/tenant.js";
+import type { AuditWriterPort } from "../../../shared/ports/audit.js";
 import * as crypto from 'crypto';
 
 type LoginResult =
@@ -37,7 +38,8 @@ export class AuthService {
     private authRepo: AuthRepository,
     private tokenService: TokenService,
     private invitationPort: InvitationPort,
-    private tenantProvisioningPort: TenantProvisioningPort
+    private tenantProvisioningPort: TenantProvisioningPort,
+    private auditWriter: AuditWriterPort
   ) {}
 
   private readonly otpExpiryMinutes = 10;
@@ -162,6 +164,25 @@ export class AuthService {
     };
   }
 
+  private async tryWriteLoginFailedAudit(accountId: string): Promise<void> {
+    try {
+      const memberships = await this.authRepo.listActiveMembershipTenants(accountId);
+      for (const m of memberships) {
+        await this.auditWriter.write({
+          tenantId: m.tenant.id,
+          employeeId: m.employee.id,
+          actionType: "LOGIN_FAILED",
+          resourceType: "EMPLOYEE",
+          resourceId: m.employee.id,
+          outcome: "FAILED",
+          details: { reason: "INVALID_CREDENTIALS" },
+        });
+      }
+    } catch {
+      // Best-effort: do not block auth flow if audit write fails.
+    }
+  }
+
   async login(credentials: LoginCredentials): Promise<LoginResult> {
     const account = await this.authRepo.findAccountByPhone(credentials.phone);
     if (!account || account.status !== "ACTIVE") {
@@ -173,6 +194,7 @@ export class AuthService {
       account.password_hash
     );
     if (!isValidPassword) {
+      await this.tryWriteLoginFailedAudit(account.id);
       throw new Error("Invalid credentials");
     }
 
@@ -215,13 +237,15 @@ export class AuthService {
       primaryAssignment.role
     );
 
-    await this.authRepo.createActivityLog({
-      tenant_id: employee.tenant_id,
-      branch_id: primaryAssignment.branch_id,
-      employee_id: employee.id,
-      action_type: "AUTH_LOGIN_SUCCESS",
-      resource_type: "EMPLOYEE",
-      resource_id: employee.id,
+    await this.auditWriter.write({
+      tenantId: employee.tenant_id,
+      branchId: primaryAssignment.branch_id,
+      employeeId: employee.id,
+      actorRole: primaryAssignment.role,
+      actionType: "LOGIN_SUCCESS",
+      resourceType: "EMPLOYEE",
+      resourceId: employee.id,
+      outcome: "SUCCESS",
     });
 
     return { kind: "single", employee, tokens, branchAssignments };
@@ -266,13 +290,15 @@ export class AuthService {
       chosenAssignment.role
     );
 
-    await this.authRepo.createActivityLog({
-      tenant_id: employee.tenant_id,
-      branch_id: chosenAssignment.branch_id,
-      employee_id: employee.id,
-      action_type: "AUTH_LOGIN_SUCCESS",
-      resource_type: "EMPLOYEE",
-      resource_id: employee.id,
+    await this.auditWriter.write({
+      tenantId: employee.tenant_id,
+      branchId: chosenAssignment.branch_id,
+      employeeId: employee.id,
+      actorRole: chosenAssignment.role,
+      actionType: "LOGIN_SUCCESS",
+      resourceType: "EMPLOYEE",
+      resourceId: employee.id,
+      outcome: "SUCCESS",
     });
 
     return { employee, tokens, branchAssignments };
@@ -352,12 +378,13 @@ export class AuthService {
     for (const employee of employees) {
       await this.authRepo.updateEmployeePassword(employee.id, passwordHash);
       await this.authRepo.revokeAllSessionsForEmployee(employee.id);
-      await this.authRepo.createActivityLog({
-        tenant_id: employee.tenant_id,
-        employee_id: employee.id,
-        action_type: "CREDENTIAL_CHANGED",
-        resource_type: "EMPLOYEE",
-        resource_id: employee.id,
+      await this.auditWriter.write({
+        tenantId: employee.tenant_id,
+        employeeId: employee.id,
+        actionType: "CREDENTIAL_CHANGED",
+        resourceType: "EMPLOYEE",
+        resourceId: employee.id,
+        outcome: "SUCCESS",
       });
     }
 
@@ -457,13 +484,15 @@ export class AuthService {
       primaryAssignment.role
     );
 
-    await this.authRepo.createActivityLog({
-      tenant_id: employee.tenant_id,
-      branch_id: primaryAssignment.branch_id,
-      employee_id: employee.id,
-      action_type: "CREDENTIAL_CHANGED",
-      resource_type: "EMPLOYEE",
-      resource_id: employee.id,
+    await this.auditWriter.write({
+      tenantId: employee.tenant_id,
+      branchId: primaryAssignment.branch_id,
+      employeeId: employee.id,
+      actorRole: primaryAssignment.role,
+      actionType: "CREDENTIAL_CHANGED",
+      resourceType: "EMPLOYEE",
+      resourceId: employee.id,
+      outcome: "SUCCESS",
     });
 
     return { tokens };

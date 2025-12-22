@@ -2,6 +2,12 @@ import type { Pool } from "pg";
 import { PasswordService } from "../modules/auth/app/password.service.js";
 import type { AuthContext } from "../platform/security/auth.js";
 
+function shouldCleanupAfterTests(): boolean {
+  const value = process.env.CLEANUP_AFTER_TESTS;
+  if (!value) return false;
+  return value === "1" || value.toLowerCase() === "true";
+}
+
 export type SeedMenuTenantLimitsInput = Partial<{
   max_categories_soft: number;
   max_categories_hard: number;
@@ -69,6 +75,10 @@ export async function cleanupSeededTenant(
   pool: Pool,
   params: Pick<SeedTenantResult, "tenantId" | "accountId">
 ): Promise<void> {
+  if (!shouldCleanupAfterTests()) {
+    return;
+  }
+
   // Not everything is FK-linked to tenants yet; keep explicit cleanup for safety.
   // Inventory tables use tenant FKs without ON DELETE CASCADE in early migrations.
   await pool.query(`DELETE FROM inventory_journal WHERE tenant_id = $1`, [

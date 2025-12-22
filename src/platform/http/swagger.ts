@@ -275,6 +275,82 @@ export function setupSwagger(app: Express) {
             },
           },
 
+          AuditOutcome: {
+            type: "string",
+            enum: ["SUCCESS", "REJECTED", "FAILED"],
+            description: "Outcome of the audited action attempt",
+          },
+
+          AuditDenialReason: {
+            type: "string",
+            enum: [
+              "PERMISSION_DENIED",
+              "POLICY_BLOCKED",
+              "VALIDATION_FAILED",
+              "BRANCH_FROZEN",
+              "TENANT_FROZEN",
+              "DEPENDENCY_MISSING",
+            ],
+            description: "Standardized denial reason when outcome=REJECTED",
+          },
+
+          AuditActorType: {
+            type: "string",
+            enum: ["EMPLOYEE", "SYSTEM"],
+            description: "Who initiated the action (human vs system)",
+          },
+
+          AuditLogEntry: {
+            type: "object",
+            properties: {
+              id: { type: "string", format: "uuid" },
+              tenant_id: { type: "string", format: "uuid" },
+              branch_id: { type: "string", format: "uuid", nullable: true },
+              employee_id: { type: "string", format: "uuid", nullable: true },
+              actor_role: { type: "string", nullable: true },
+              actor_type: { $ref: "#/components/schemas/AuditActorType" },
+              action_type: { type: "string" },
+              resource_type: { type: "string", nullable: true },
+              resource_id: { type: "string", format: "uuid", nullable: true },
+              details: { type: "object", nullable: true },
+              ip_address: { type: "string", nullable: true },
+              user_agent: { type: "string", nullable: true },
+              outcome: { $ref: "#/components/schemas/AuditOutcome" },
+              denial_reason: {
+                oneOf: [
+                  { $ref: "#/components/schemas/AuditDenialReason" },
+                  { type: "null" },
+                ],
+              },
+              occurred_at: { type: "string", format: "date-time" },
+              created_at: { type: "string", format: "date-time" },
+              client_event_id: { type: "string", nullable: true },
+            },
+            required: ["id", "tenant_id", "action_type", "outcome", "occurred_at", "created_at"],
+          },
+
+          AuditLogListResponse: {
+            type: "object",
+            properties: {
+              logs: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AuditLogEntry" },
+              },
+              page: { type: "integer", example: 1 },
+              limit: { type: "integer", example: 50 },
+              total: { type: "integer", example: 123 },
+            },
+            required: ["logs", "page", "limit", "total"],
+          },
+
+          AuditLogResponse: {
+            type: "object",
+            properties: {
+              log: { $ref: "#/components/schemas/AuditLogEntry" },
+            },
+            required: ["log"],
+          },
+
           Employee: {
             type: "object",
             properties: {
@@ -817,6 +893,10 @@ export function setupSwagger(app: Express) {
         {
           name: "Branch",
           description: "Branch profile and lifecycle (freeze/unfreeze)",
+        },
+        {
+          name: "Audit",
+          description: "Admin-only audit log read API",
         },
         {
           name: "User Management",

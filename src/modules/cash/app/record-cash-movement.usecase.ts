@@ -10,6 +10,7 @@ import type {
 } from "../domain/entities.js";
 import type { CashMovementRecordedV1 } from "../../../shared/events.js";
 import type { IEventBus, ITransactionManager } from "./ports.js";
+import type { AuditWriterPort } from "../../../shared/ports/audit.js";
 
 //Record Manual Cash Movement (Paid In/Out, Adjustment)
 
@@ -19,6 +20,7 @@ export interface RecordCashMovementInput {
   registerId?: string; // Optional for device-agnostic sessions
   sessionId: string;
   actorId: string;
+  actorRole?: string | null;
   type: CashMovementType;
   amountUsd: number;
   amountKhr: number;
@@ -31,7 +33,8 @@ export class RecordCashMovementUseCase {
     private sessionRepo: CashSessionRepository,
     private movementRepo: CashMovementRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -137,6 +140,28 @@ export class RecordCashMovementUseCase {
           timestamp: new Date().toISOString(),
         };
         await this.eventBus.publishViaOutbox(event, client);
+
+        await this.auditWriter.write(
+          {
+            tenantId,
+            branchId,
+            employeeId: actorId,
+            actorRole: input.actorRole ?? null,
+            actionType: "CASH_MOVEMENT_RECORDED",
+            resourceType: "cash_movement",
+            resourceId: movement.id,
+            details: {
+              sessionId,
+              registerId: registerId ?? null,
+              movementType: type,
+              status,
+              amountUsd,
+              amountKhr,
+              reason: reason.trim(),
+            },
+          },
+          client
+        );
       });
 
       return Ok(movement!);

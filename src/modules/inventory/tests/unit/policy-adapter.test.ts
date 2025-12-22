@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach, jest } from "@jest/globals";
 import { InventoryPolicyAdapter } from "../../infra/adapters/policy.adapter.js";
-import type { Pool } from "pg";
 
 /**
  * Unit tests for InventoryPolicyAdapter
@@ -13,7 +12,7 @@ import type { Pool } from "pg";
 
 describe("InventoryPolicyAdapter", () => {
   let adapter: InventoryPolicyAdapter;
-  let mockPool: jest.Mocked<Pool>;
+  let mockPool: any;
 
   beforeEach(() => {
     mockPool = {

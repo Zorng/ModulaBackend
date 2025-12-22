@@ -25,6 +25,7 @@ export class CategoryController {
         displayOrder,
         isActive: isActive ?? true,
         userId: req.user!.employeeId,
+        actorRole: req.user!.role,
       });
 
       if (!result.ok) {
@@ -68,6 +69,7 @@ export class CategoryController {
         displayOrder,
         isActive,
         userId: req.user!.employeeId,
+        actorRole: req.user!.role,
       });
 
       if (!result.ok) {

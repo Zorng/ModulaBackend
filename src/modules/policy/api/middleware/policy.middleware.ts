@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import type { AuthenticatedRequest } from "../../../../platform/security/auth.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 /**
  * Policy module middleware
@@ -56,23 +57,35 @@ export function logPolicyChange(
   res.send = function (data: any): Response {
     // Only log successful policy updates (PATCH requests with 200 status)
     if (req.method === "PATCH" && res.statusCode === 200) {
-      const logData = {
-        timestamp: new Date().toISOString(),
-        tenantId: authReq.user?.tenantId,
-        userId: authReq.user?.employeeId,
-        role: authReq.user?.role,
-        action: "POLICY_UPDATE",
-        endpoint: req.path,
-        changes: req.body,
-        ipAddress: req.ip || req.socket.remoteAddress,
-        userAgent: req.headers["user-agent"],
-      };
+      const auditWriter: AuditWriterPort | undefined = (req as any).app?.locals
+        ?.auditWriterPort;
+      const tenantId = authReq.user?.tenantId;
+      const employeeId = authReq.user?.employeeId;
+      const branchId = authReq.user?.branchId;
+      const role = authReq.user?.role;
 
-      // Log to console (in production, send to logging service)
-      console.log("[POLICY_AUDIT]", JSON.stringify(logData));
-
-      // TODO: Store in audit_log table when implemented
-      // await auditLogRepository.create(logData);
+      if (auditWriter?.write && tenantId && employeeId) {
+        void auditWriter
+          .write({
+            tenantId,
+            branchId,
+            employeeId,
+            actorRole: role ?? null,
+            actionType: "POLICY_UPDATED",
+            resourceType: "POLICY",
+            outcome: "SUCCESS",
+            details: {
+              endpoint: req.path,
+              method: req.method,
+              changes: req.body,
+            },
+            ipAddress: req.ip || req.socket.remoteAddress,
+            userAgent: req.headers["user-agent"] as string | undefined,
+          })
+          .catch(() => {
+            // Best-effort only.
+          });
+      }
     }
 
     // Call original send

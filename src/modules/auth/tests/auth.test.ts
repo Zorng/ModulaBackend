@@ -9,6 +9,7 @@ import {
   createTenantProvisioningPort,
   TenantProvisioningService,
 } from "../../tenant/app/tenant-provisioning.service.js";
+import { bootstrapAuditModule } from "#modules/audit/index.js";
 import { bootstrapBranchModule } from "#modules/branch/index.js";
 import { Pool } from 'pg';
 
@@ -41,11 +42,15 @@ describe('Auth Integration Tests', () => {
     };
     const tenantRepo = new TenantRepository(pool);
     const membershipProvisioningPort = createMembershipProvisioningPort();
-    const branchModule = bootstrapBranchModule(pool);
+    const auditModule = bootstrapAuditModule(pool);
+    const branchModule = bootstrapBranchModule(pool, {
+      auditWriterPort: auditModule.auditWriterPort,
+    });
     const tenantProvisioningPort = createTenantProvisioningPort(
       new TenantProvisioningService(
         pool,
         tenantRepo,
+        auditModule.auditWriterPort,
         membershipProvisioningPort,
         branchModule.branchProvisioningPort,
         {
@@ -58,7 +63,8 @@ describe('Auth Integration Tests', () => {
       authRepo,
       tokenService,
       invitationPort,
-      tenantProvisioningPort
+      tenantProvisioningPort,
+      auditModule.auditWriterPort
     );
   });
 
