@@ -28,7 +28,8 @@ describe("InventoryPolicyAdapter", () => {
       mockPool.query.mockResolvedValueOnce({
         rows: [
           {
-            inventory_subtract_on_finalize: true,
+            auto_subtract_on_sale: true,
+            expiry_tracking_enabled: false,
             branch_overrides: {},
             exclude_menu_item_ids: [],
           },
@@ -43,7 +44,8 @@ describe("InventoryPolicyAdapter", () => {
       mockPool.query.mockResolvedValueOnce({
         rows: [
           {
-            inventory_subtract_on_finalize: false,
+            auto_subtract_on_sale: false,
+            expiry_tracking_enabled: false,
             branch_overrides: {},
             exclude_menu_item_ids: [],
           },
@@ -58,7 +60,8 @@ describe("InventoryPolicyAdapter", () => {
       mockPool.query.mockResolvedValueOnce({
         rows: [
           {
-            inventory_subtract_on_finalize: true, // Tenant default: enabled
+            auto_subtract_on_sale: true, // Tenant default: enabled
+            expiry_tracking_enabled: false,
             branch_overrides: {
               "branch-1": { inventorySubtractOnFinalize: false }, // Branch override: disabled
             },
@@ -75,7 +78,8 @@ describe("InventoryPolicyAdapter", () => {
       mockPool.query.mockResolvedValueOnce({
         rows: [
           {
-            inventory_subtract_on_finalize: true,
+            auto_subtract_on_sale: true,
+            expiry_tracking_enabled: false,
             branch_overrides: {},
             exclude_menu_item_ids: ["menu-service-fee", "menu-gift-card"],
           },
@@ -94,7 +98,8 @@ describe("InventoryPolicyAdapter", () => {
       mockPool.query.mockResolvedValueOnce({
         rows: [
           {
-            inventory_subtract_on_finalize: true,
+            auto_subtract_on_sale: true,
+            expiry_tracking_enabled: false,
             branch_overrides: {},
             exclude_menu_item_ids: ["menu-service-fee"],
           },
@@ -134,7 +139,8 @@ describe("InventoryPolicyAdapter", () => {
       mockPool.query.mockResolvedValueOnce({
         rows: [
           {
-            inventory_subtract_on_finalize: true,
+            auto_subtract_on_sale: true,
+            expiry_tracking_enabled: false,
             branch_overrides: JSON.stringify({
               "branch-1": { inventorySubtractOnFinalize: false },
             }),
@@ -156,7 +162,8 @@ describe("InventoryPolicyAdapter", () => {
       mockPool.query.mockResolvedValueOnce({
         rows: [
           {
-            inventory_subtract_on_finalize: true,
+            auto_subtract_on_sale: true,
+            expiry_tracking_enabled: false,
             branch_overrides: { "branch-1": { inventorySubtractOnFinalize: false } },
             exclude_menu_item_ids: ["menu-1", "menu-2"],
           },
@@ -172,4 +179,3 @@ describe("InventoryPolicyAdapter", () => {
     });
   });
 });
-

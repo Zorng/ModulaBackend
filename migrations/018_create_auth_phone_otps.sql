@@ -2,7 +2,7 @@
 -- Idempotent: safe to run multiple times
 
 CREATE TABLE IF NOT EXISTS auth_phone_otps (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     phone VARCHAR(20) NOT NULL,
     purpose VARCHAR(50) NOT NULL,
     code_hash TEXT NOT NULL,
@@ -18,4 +18,3 @@ CREATE INDEX IF NOT EXISTS idx_auth_phone_otps_phone_purpose_created
 
 CREATE INDEX IF NOT EXISTS idx_auth_phone_otps_expires_at
     ON auth_phone_otps(expires_at);
-

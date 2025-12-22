@@ -17,13 +17,12 @@ CREATE TABLE stock_items (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT fk_stock_items_tenant
-        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     CONSTRAINT fk_stock_items_category
         FOREIGN KEY (category_id) REFERENCES inventory_categories(id)
         ON DELETE SET NULL
 );
-
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- Note: pg_trgm extension is enabled in `migrations/000_platform_bootstrap.sql`
 
 CREATE INDEX idx_stock_items_tenant ON stock_items(tenant_id);
 CREATE INDEX idx_stock_items_category ON stock_items(category_id);

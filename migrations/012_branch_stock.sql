@@ -11,13 +11,13 @@ CREATE TABLE branch_stock (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT fk_branch_stock_tenant
-        FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
 
     CONSTRAINT fk_branch_stock_branch
-        FOREIGN KEY (branch_id) REFERENCES branches(id),
+        FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
 
     CONSTRAINT fk_branch_stock_item
-        FOREIGN KEY (stock_item_id) REFERENCES stock_items(id),
+        FOREIGN KEY (stock_item_id) REFERENCES stock_items(id) ON DELETE CASCADE,
 
     -- Each item can be linked only once per branch
     CONSTRAINT uq_branch_stock UNIQUE (tenant_id, branch_id, stock_item_id)

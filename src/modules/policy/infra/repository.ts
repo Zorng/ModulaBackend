@@ -7,7 +7,6 @@ import type {
   AttendancePolicies,
   UpdateTenantPoliciesInput,
 } from "../domain/entities.js";
-import { InventorySyncAdapter } from "./inventory-sync.adapter.js";
 
 /**
  * Repository interface for policy operations
@@ -29,10 +28,7 @@ export interface IPolicyRepository {
  * PostgreSQL implementation of the policy repository
  */
 export class PgPolicyRepository implements IPolicyRepository {
-  private inventorySyncAdapter: InventorySyncAdapter;
-
   constructor(private pool: Pool) {
-    this.inventorySyncAdapter = new InventorySyncAdapter(pool);
   }
 
   /**
@@ -293,9 +289,6 @@ export class PgPolicyRepository implements IPolicyRepository {
       ),
     ]);
 
-    // Ensure inventory module's store_policy_inventory table is also initialized
-    await this.inventorySyncAdapter.ensureBothTablesInitialized(tenantId);
-
     const result = await this.getTenantPolicies(tenantId);
     if (!result) {
       throw new Error("Failed to create default policies");
@@ -371,14 +364,6 @@ export class PgPolicyRepository implements IPolicyRepository {
       `UPDATE inventory_policies SET ${setClauses.join(", ")} WHERE tenant_id = $1`,
       values
     );
-
-    // Sync auto_subtract_on_sale to inventory module's store_policy_inventory
-    if (updates.autoSubtractOnSale !== undefined) {
-      await this.inventorySyncAdapter.syncAutoSubtractSetting(
-        tenantId,
-        updates.autoSubtractOnSale
-      );
-    }
   }
 
   /**

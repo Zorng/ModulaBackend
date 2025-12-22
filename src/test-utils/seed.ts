@@ -130,11 +130,6 @@ export async function ensureDefaultPolicies(
        ON CONFLICT (tenant_id) DO NOTHING`,
       [tenantId]
     ),
-    pool.query(
-      `INSERT INTO store_policy_inventory (tenant_id) VALUES ($1)
-       ON CONFLICT (tenant_id) DO NOTHING`,
-      [tenantId]
-    ),
   ]);
 }
 

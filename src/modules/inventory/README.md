@@ -27,7 +27,7 @@
 The inventory module integrates with the **Policy Module** for automatic inventory deduction control.
 
 **Key Features:**
-- ✅ Tenant-level auto-subtract setting (synced with Policy Module)
+- ✅ Tenant-level auto-subtract setting (Policy Module)
 - ✅ Branch-specific overrides (manual inventory for specific branches)
 - ✅ Menu item exclusions (skip deduction for service fees, gift cards, etc.)
 - ✅ Event-driven deduction (automatic on sale finalization)
@@ -40,4 +40,4 @@ The inventory module integrates with the **Policy Module** for automatic invento
 - `branch_stock` - Live balance per branch
 - `inventory_journal` - Immutable movement log
 - `menu_stock_map` - Recipe mapping
-- `store_policy_inventory` - Rich policy configuration (synced with policy module)
+- `inventory_policies` - Inventory behavior settings (Policy Module)

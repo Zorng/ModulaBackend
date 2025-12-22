@@ -219,9 +219,8 @@ See `src/modules/sales/infra/adapters/policy.adapter.ts` for implementation deta
 
 ### Inventory Module
 
-- **Auto-Subtract:** Policy module's `inventory_policies.auto_subtract_on_sale` syncs to inventory module's `store_policy_inventory.inventory_subtract_on_finalize`
-- **Sync Adapter:** `InventorySyncAdapter` ensures both tables stay in sync
-- **Rich Policies:** Inventory module extends with branch overrides and menu item exclusions
+- **Auto-Subtract:** Inventory module reads `inventory_policies.auto_subtract_on_sale`
+- **Rich Policies:** Branch overrides + menu item exclusions are stored in `inventory_policies.branch_overrides` and `inventory_policies.exclude_menu_item_ids`
 
 See `src/modules/inventory/POLICY_INTEGRATION.md` for complete documentation.
 

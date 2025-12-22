@@ -114,7 +114,16 @@ describe("Tenant provisioning (DB-backed)", () => {
     const [salesPolicies, inventoryPolicies, cashPolicies, attendancePolicies] =
       await Promise.all([
         pool.query(`SELECT 1 FROM sales_policies WHERE tenant_id = $1`, [tenantId]),
-        pool.query(`SELECT 1 FROM inventory_policies WHERE tenant_id = $1`, [tenantId]),
+        pool.query(
+          `SELECT
+             auto_subtract_on_sale,
+             expiry_tracking_enabled,
+             branch_overrides,
+             exclude_menu_item_ids
+           FROM inventory_policies
+           WHERE tenant_id = $1`,
+          [tenantId]
+        ),
         pool.query(
           `SELECT 1 FROM cash_session_policies WHERE tenant_id = $1`,
           [tenantId]
@@ -123,14 +132,12 @@ describe("Tenant provisioning (DB-backed)", () => {
       ]);
     expect(salesPolicies.rows.length).toBe(1);
     expect(inventoryPolicies.rows.length).toBe(1);
+    expect(inventoryPolicies.rows[0].auto_subtract_on_sale).toBe(true);
+    expect(inventoryPolicies.rows[0].expiry_tracking_enabled).toBe(false);
+    expect(inventoryPolicies.rows[0].branch_overrides).toEqual({});
+    expect(inventoryPolicies.rows[0].exclude_menu_item_ids).toEqual([]);
     expect(cashPolicies.rows.length).toBe(1);
     expect(attendancePolicies.rows.length).toBe(1);
-
-    const storePolicy = await pool.query(
-      `SELECT 1 FROM store_policy_inventory WHERE tenant_id = $1`,
-      [tenantId]
-    );
-    expect(storePolicy.rows.length).toBe(1);
 
     const audit = await pool.query(
       `SELECT action_type

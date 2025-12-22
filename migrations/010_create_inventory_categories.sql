@@ -12,7 +12,7 @@ CREATE TABLE inventory_categories (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT fk_inventory_categories_tenant
-        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 
 -- Indexes for performance
@@ -29,7 +29,7 @@ DROP TRIGGER IF EXISTS trigger_inventory_categories_updated_at ON inventory_cate
 CREATE TRIGGER trigger_inventory_categories_updated_at
   BEFORE UPDATE ON inventory_categories
   FOR EACH ROW
-  EXECUTE PROCEDURE update_row_updated_at();
+  EXECUTE FUNCTION update_row_updated_at();
 
 -- Comment on table
 COMMENT ON TABLE inventory_categories IS 'Categories for organizing inventory stock items';

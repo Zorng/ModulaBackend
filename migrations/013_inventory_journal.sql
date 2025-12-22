@@ -32,9 +32,9 @@ CREATE TABLE inventory_journal (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    CONSTRAINT fk_journal_tenant    FOREIGN KEY (tenant_id)    REFERENCES tenants(id),
-    CONSTRAINT fk_journal_branch    FOREIGN KEY (branch_id)    REFERENCES branches(id),
-    CONSTRAINT fk_journal_stock     FOREIGN KEY (stock_item_id) REFERENCES stock_items(id)
+    CONSTRAINT fk_journal_tenant    FOREIGN KEY (tenant_id)    REFERENCES tenants(id) ON DELETE CASCADE,
+    CONSTRAINT fk_journal_branch    FOREIGN KEY (branch_id)    REFERENCES branches(id) ON DELETE CASCADE,
+    CONSTRAINT fk_journal_stock     FOREIGN KEY (stock_item_id) REFERENCES stock_items(id) ON DELETE CASCADE
 );
 
 -- Common filters

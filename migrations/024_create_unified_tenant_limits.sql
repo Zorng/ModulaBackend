@@ -37,31 +37,43 @@ CREATE TRIGGER trigger_tenant_limits_updated_at
 
 -- Migrate legacy menu-only limits into the unified table, keeping menu values and applying defaults
 -- for inventory + staff limits.
-INSERT INTO tenant_limits (
-  tenant_id,
-  max_categories_soft,
-  max_categories_hard,
-  max_items_soft,
-  max_items_hard,
-  max_modifier_groups_per_item,
-  max_modifier_options_per_group,
-  max_total_modifier_options_per_item,
-  max_media_quota_mb
-)
-SELECT
-  tenant_id,
-  max_categories_soft,
-  max_categories_hard,
-  max_items_soft,
-  max_items_hard,
-  max_modifier_groups_per_item,
-  max_modifier_options_per_group,
-  max_total_modifier_options_per_item,
-  max_media_quota_mb
-FROM menu_tenant_limits
+DO $$
+BEGIN
+  IF to_regclass('public.menu_tenant_limits') IS NOT NULL THEN
+    INSERT INTO tenant_limits (
+      tenant_id,
+      max_categories_soft,
+      max_categories_hard,
+      max_items_soft,
+      max_items_hard,
+      max_modifier_groups_per_item,
+      max_modifier_options_per_group,
+      max_total_modifier_options_per_item,
+      max_media_quota_mb
+    )
+    SELECT
+      tenant_id,
+      max_categories_soft,
+      max_categories_hard,
+      max_items_soft,
+      max_items_hard,
+      max_modifier_groups_per_item,
+      max_modifier_options_per_group,
+      max_total_modifier_options_per_item,
+      max_media_quota_mb
+    FROM menu_tenant_limits
+    ON CONFLICT (tenant_id) DO NOTHING;
+  END IF;
+END $$;
+
+-- Backfill defaults for all existing tenants (including dev/test tenants seeded elsewhere).
+INSERT INTO tenant_limits (tenant_id)
+SELECT id
+FROM tenants
 ON CONFLICT (tenant_id) DO NOTHING;
 
 -- Legacy table is superseded by `tenant_limits`.
 DROP TABLE IF EXISTS menu_tenant_limits CASCADE;
+DROP FUNCTION IF EXISTS menu_get_tenant_usage(UUID);
 
 COMMENT ON TABLE tenant_limits IS 'Resource quotas and limits per tenant (menu + inventory + staff)';

@@ -25,18 +25,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_menu_categories_unique_name
   ON menu_categories(tenant_id, LOWER(name));
 
 -- Trigger to update updated_at timestamp
-
-
--- Generic trigger function to update updated_at timestamp on any table
-CREATE OR REPLACE FUNCTION update_row_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-
+-- Note: shared trigger function is defined in `migrations/000_platform_bootstrap.sql`
 
 DROP TRIGGER IF EXISTS trigger_menu_categories_updated_at ON menu_categories;
 CREATE TRIGGER trigger_menu_categories_updated_at

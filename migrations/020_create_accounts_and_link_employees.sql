@@ -3,7 +3,7 @@
 
 -- Accounts (login identity: phone + password)
 CREATE TABLE IF NOT EXISTS accounts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     phone VARCHAR(20) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','DISABLED')),
@@ -61,4 +61,3 @@ BEGIN
             ADD CONSTRAINT employees_tenant_account_unique UNIQUE (tenant_id, account_id);
     END IF;
 END $$;
-

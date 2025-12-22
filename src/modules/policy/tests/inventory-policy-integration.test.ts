@@ -1,22 +1,21 @@
 import { describe, test, expect, beforeAll, afterAll } from "@jest/globals";
 import { Pool } from "pg";
+import { randomUUID } from "crypto";
 import { PgPolicyRepository } from "../infra/repository.js";
-import { InventorySyncAdapter } from "../infra/inventory-sync.adapter.js";
 
 /**
- * Integration test for Policy Module <-> Inventory Module sync
- * 
+ * Integration test for Policy Module inventory policy storage
+ *
  * Tests that:
- * 1. Policy module's inventory_policies table syncs with store_policy_inventory
- * 2. Updates to auto_subtract_on_sale propagate correctly
- * 3. Branch overrides and exclusions are preserved during sync
+ * 1. Policy module ensures inventory_policies defaults exist
+ * 2. Updates to auto_subtract_on_sale persist
+ * 3. Branch overrides and exclusions persist across updates
  */
 
 describe("Policy-Inventory Integration", () => {
   let pool: Pool;
   let policyRepo: PgPolicyRepository;
-  let syncAdapter: InventorySyncAdapter;
-  const testTenantId = "test-tenant-policy-inventory-integration";
+  const testTenantId = randomUUID();
 
   beforeAll(async () => {
     pool = new Pool({
@@ -24,54 +23,52 @@ describe("Policy-Inventory Integration", () => {
     });
 
     policyRepo = new PgPolicyRepository(pool);
-    syncAdapter = new InventorySyncAdapter(pool);
 
-    // Clean up test data
     await pool.query(
-      `DELETE FROM inventory_policies WHERE tenant_id = $1`,
-      [testTenantId]
-    );
-    await pool.query(
-      `DELETE FROM store_policy_inventory WHERE tenant_id = $1`,
+      `INSERT INTO tenants (id, name, business_type, status)
+       VALUES ($1, 'Policy Integration Tenant', NULL, 'ACTIVE')
+       ON CONFLICT (id) DO NOTHING`,
       [testTenantId]
     );
   });
 
   afterAll(async () => {
-    // Clean up
-    await pool.query(
-      `DELETE FROM inventory_policies WHERE tenant_id = $1`,
-      [testTenantId]
-    );
-    await pool.query(
-      `DELETE FROM store_policy_inventory WHERE tenant_id = $1`,
-      [testTenantId]
-    );
+    await pool.query(`DELETE FROM tenants WHERE id = $1`, [testTenantId]);
     await pool.end();
   });
 
-  test("should initialize both policy tables when creating defaults", async () => {
+  test("should initialize inventory_policies when creating defaults", async () => {
     // Create default policies
     await policyRepo.ensureDefaultPolicies(testTenantId);
 
-    // Check inventory_policies exists
     const inventoryPolicyResult = await pool.query(
-      `SELECT * FROM inventory_policies WHERE tenant_id = $1`,
+      `SELECT
+         auto_subtract_on_sale,
+         expiry_tracking_enabled,
+         branch_overrides,
+         exclude_menu_item_ids
+       FROM inventory_policies
+       WHERE tenant_id = $1`,
       [testTenantId]
     );
     expect(inventoryPolicyResult.rows.length).toBe(1);
     expect(inventoryPolicyResult.rows[0].auto_subtract_on_sale).toBe(true); // Default
-
-    // Check store_policy_inventory exists
-    const storePolicyResult = await pool.query(
-      `SELECT * FROM store_policy_inventory WHERE tenant_id = $1`,
-      [testTenantId]
-    );
-    expect(storePolicyResult.rows.length).toBe(1);
-    expect(storePolicyResult.rows[0].inventory_subtract_on_finalize).toBe(true); // Default
+    expect(inventoryPolicyResult.rows[0].expiry_tracking_enabled).toBe(false); // Default
+    expect(inventoryPolicyResult.rows[0].branch_overrides).toEqual({});
+    expect(inventoryPolicyResult.rows[0].exclude_menu_item_ids).toEqual([]);
   });
 
-  test("should sync auto_subtract_on_sale from inventory_policies to store_policy_inventory", async () => {
+  test("should update auto_subtract_on_sale and preserve branch overrides", async () => {
+    // Set up branch overrides
+    const branchId = randomUUID();
+    const overrides = { [branchId]: { inventorySubtractOnFinalize: true } };
+    await pool.query(
+      `UPDATE inventory_policies
+       SET branch_overrides = $1
+       WHERE tenant_id = $2`,
+      [JSON.stringify(overrides), testTenantId]
+    );
+
     // Update via policy module
     await policyRepo.updateTenantPolicies(testTenantId, {
       inventoryAutoSubtractOnSale: false, // Disable auto-subtract
@@ -79,54 +76,24 @@ describe("Policy-Inventory Integration", () => {
 
     // Check inventory_policies updated
     const inventoryPolicyResult = await pool.query(
-      `SELECT * FROM inventory_policies WHERE tenant_id = $1`,
+      `SELECT
+         auto_subtract_on_sale,
+         branch_overrides
+       FROM inventory_policies
+       WHERE tenant_id = $1`,
       [testTenantId]
     );
     expect(inventoryPolicyResult.rows[0].auto_subtract_on_sale).toBe(false);
-
-    // Check store_policy_inventory synced
-    const storePolicyResult = await pool.query(
-      `SELECT * FROM store_policy_inventory WHERE tenant_id = $1`,
-      [testTenantId]
-    );
-    expect(storePolicyResult.rows[0].inventory_subtract_on_finalize).toBe(false);
-  });
-
-  test("should preserve branch overrides during sync", async () => {
-    // Set up branch overrides in store_policy_inventory
-    const branchId = "test-branch-123";
-    await pool.query(
-      `UPDATE store_policy_inventory 
-       SET branch_overrides = $1
-       WHERE tenant_id = $2`,
-      [
-        JSON.stringify({
-          [branchId]: { inventorySubtractOnFinalize: true },
-        }),
-        testTenantId,
-      ]
-    );
-
-    // Update auto_subtract via policy module
-    await policyRepo.updateTenantPolicies(testTenantId, {
-      inventoryAutoSubtractOnSale: true, // Re-enable
-    });
-
-    // Check branch overrides still exist
-    const result = await pool.query(
-      `SELECT branch_overrides FROM store_policy_inventory WHERE tenant_id = $1`,
-      [testTenantId]
-    );
-    const branchOverrides = result.rows[0].branch_overrides;
+    const branchOverrides = inventoryPolicyResult.rows[0].branch_overrides;
     expect(branchOverrides[branchId]).toBeDefined();
     expect(branchOverrides[branchId].inventorySubtractOnFinalize).toBe(true);
   });
 
-  test("should preserve menu item exclusions during sync", async () => {
-    // Set up exclusions in store_policy_inventory
+  test("should preserve menu item exclusions during updates", async () => {
+    // Set up exclusions
     const excludedMenuItems = ["menu-item-1", "menu-item-2"];
     await pool.query(
-      `UPDATE store_policy_inventory 
+      `UPDATE inventory_policies
        SET exclude_menu_item_ids = $1
        WHERE tenant_id = $2`,
       [JSON.stringify(excludedMenuItems), testTenantId]
@@ -139,7 +106,7 @@ describe("Policy-Inventory Integration", () => {
 
     // Check exclusions still exist
     const result = await pool.query(
-      `SELECT exclude_menu_item_ids FROM store_policy_inventory WHERE tenant_id = $1`,
+      `SELECT exclude_menu_item_ids FROM inventory_policies WHERE tenant_id = $1`,
       [testTenantId]
     );
     const exclusions = result.rows[0].exclude_menu_item_ids;
@@ -154,46 +121,4 @@ describe("Policy-Inventory Integration", () => {
     expect(policies?.inventoryAutoSubtractOnSale).toBe(false); // From previous test
     expect(policies?.inventoryExpiryTrackingEnabled).toBe(false); // Default
   });
-
-  test("sync adapter should handle missing store_policy_inventory gracefully", async () => {
-    const newTenantId = "test-tenant-new-sync";
-
-    // Clean up first
-    await pool.query(
-      `DELETE FROM inventory_policies WHERE tenant_id = $1`,
-      [newTenantId]
-    );
-    await pool.query(
-      `DELETE FROM store_policy_inventory WHERE tenant_id = $1`,
-      [newTenantId]
-    );
-
-    // Create only inventory_policies
-    await pool.query(
-      `INSERT INTO inventory_policies (tenant_id, auto_subtract_on_sale) VALUES ($1, true)`,
-      [newTenantId]
-    );
-
-    // Sync should create store_policy_inventory
-    await syncAdapter.syncAutoSubtractSetting(newTenantId, true);
-
-    // Check store_policy_inventory was created
-    const result = await pool.query(
-      `SELECT * FROM store_policy_inventory WHERE tenant_id = $1`,
-      [newTenantId]
-    );
-    expect(result.rows.length).toBe(1);
-    expect(result.rows[0].inventory_subtract_on_finalize).toBe(true);
-
-    // Clean up
-    await pool.query(
-      `DELETE FROM inventory_policies WHERE tenant_id = $1`,
-      [newTenantId]
-    );
-    await pool.query(
-      `DELETE FROM store_policy_inventory WHERE tenant_id = $1`,
-      [newTenantId]
-    );
-  });
 });
-

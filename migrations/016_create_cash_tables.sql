@@ -1,12 +1,11 @@
 -- Migration: Create cash management tables
 -- Description: Creates tables for cash registers, sessions, and movements as per the Cash Session & Reconciliation spec
 
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Note: shared extensions are created in `migrations/000_platform_bootstrap.sql`
 
 -- Create cash_registers table
 CREATE TABLE IF NOT EXISTS cash_registers (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -17,7 +16,7 @@ CREATE TABLE IF NOT EXISTS cash_registers (
 
 -- Create cash_sessions table
 CREATE TABLE IF NOT EXISTS cash_sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
     register_id UUID REFERENCES cash_registers(id) ON DELETE CASCADE,
@@ -53,7 +52,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS unique_open_session_with_register
 
 -- Create cash_movements table
 CREATE TABLE IF NOT EXISTS cash_movements (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
     register_id UUID REFERENCES cash_registers(id) ON DELETE CASCADE,

@@ -1,9 +1,7 @@
 -- Migration: Create tenant policies tables
 -- Purpose: Store tenant-level configuration matching frontend UI
 -- Only includes policies displayed in the settings screen
-
--- Enable UUID extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Note: shared extensions are created in `migrations/000_platform_bootstrap.sql`
 
 -- ==================== SALES POLICIES (Tax & Currency) ====================
 CREATE TABLE IF NOT EXISTS sales_policies (
@@ -41,6 +39,13 @@ CREATE TABLE IF NOT EXISTS inventory_policies (
     
     -- Subtract stock on sale (On/Off)
     auto_subtract_on_sale BOOLEAN NOT NULL DEFAULT TRUE,
+
+    -- Branch-level overrides (JSONB object keyed by branchId)
+    -- Shape: { "<branchId>": { "inventorySubtractOnFinalize": true/false } }
+    branch_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    -- Menu items to exclude from automatic deduction (JSONB array of menu item IDs)
+    exclude_menu_item_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
     
     -- Expiry tracking (On/Off)
     expiry_tracking_enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -49,11 +54,45 @@ CREATE TABLE IF NOT EXISTS inventory_policies (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Backfill when replaying migrations on an existing DB (CREATE TABLE IF NOT EXISTS won't add columns).
+ALTER TABLE inventory_policies
+    ADD COLUMN IF NOT EXISTS branch_overrides JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE inventory_policies
+    ADD COLUMN IF NOT EXISTS exclude_menu_item_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+
 CREATE INDEX IF NOT EXISTS idx_inventory_policies_tenant_id ON inventory_policies(tenant_id);
 
 COMMENT ON TABLE inventory_policies IS 'Inventory behavior settings';
 COMMENT ON COLUMN inventory_policies.auto_subtract_on_sale IS 'Automatically subtract stock when sale is finalized';
+COMMENT ON COLUMN inventory_policies.branch_overrides IS 'Branch-specific overrides for inventory deduction policy';
+COMMENT ON COLUMN inventory_policies.exclude_menu_item_ids IS 'Menu items that should never trigger automatic inventory deduction';
 COMMENT ON COLUMN inventory_policies.expiry_tracking_enabled IS 'Track product expiry dates';
+
+-- Migrate legacy inventory policy table (if present) into the canonical `inventory_policies` row.
+DO $$
+BEGIN
+    IF to_regclass('public.store_policy_inventory') IS NOT NULL THEN
+        INSERT INTO inventory_policies (
+            tenant_id,
+            auto_subtract_on_sale,
+            branch_overrides,
+            exclude_menu_item_ids
+        )
+        SELECT
+            tenant_id,
+            inventory_subtract_on_finalize,
+            COALESCE(branch_overrides, '{}'::jsonb),
+            COALESCE(exclude_menu_item_ids, '[]'::jsonb)
+        FROM store_policy_inventory
+        ON CONFLICT (tenant_id) DO UPDATE SET
+            branch_overrides = EXCLUDED.branch_overrides,
+            exclude_menu_item_ids = EXCLUDED.exclude_menu_item_ids;
+    END IF;
+END $$;
+
+-- Legacy table is superseded by `inventory_policies`.
+DROP TABLE IF EXISTS store_policy_inventory CASCADE;
 
 -- ==================== CASH SESSION POLICIES ====================
 -- TODO: These are inactive by default until cash session module is implemented
@@ -151,26 +190,3 @@ CREATE TRIGGER trigger_attendance_policies_updated_at
     BEFORE UPDATE ON attendance_policies
     FOR EACH ROW
     EXECUTE FUNCTION update_policy_updated_at();
-
--- ==================== DEFAULT DATA ====================
--- Insert default policies for existing test tenants
-
--- Sales policies
-INSERT INTO sales_policies (tenant_id) VALUES 
-('550e8400-e29b-41d4-a716-446655440000')  -- Test Restaurant
-ON CONFLICT (tenant_id) DO NOTHING;
-
--- Inventory policies
-INSERT INTO inventory_policies (tenant_id) VALUES 
-('550e8400-e29b-41d4-a716-446655440000')
-ON CONFLICT (tenant_id) DO NOTHING;
-
--- Cash session policies
-INSERT INTO cash_session_policies (tenant_id) VALUES 
-('550e8400-e29b-41d4-a716-446655440000')
-ON CONFLICT (tenant_id) DO NOTHING;
-
--- Attendance policies
-INSERT INTO attendance_policies (tenant_id) VALUES 
-('550e8400-e29b-41d4-a716-446655440000')
-ON CONFLICT (tenant_id) DO NOTHING;

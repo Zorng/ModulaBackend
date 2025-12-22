@@ -3,19 +3,17 @@ import { Pool } from 'pg';
 /**
  * PolicyAdapter - Connects inventory module to policy module
  * 
- * Reads from store_policy_inventory table to apply:
+ * Reads from policy module's inventory_policies table to apply:
  * - Auto subtract on sale (enabled/disabled)
  * - Branch-specific overrides
  * - Menu item exclusions
- * 
- * Also syncs with inventory_policies table (policy module) for backwards compatibility
  */
 export class InventoryPolicyAdapter {
   constructor(private pool: Pool) {}
 
   /**
    * Get inventory policy for automatic stock subtraction on sale
-   * Reads from store_policy_inventory (rich policy system)
+   * Reads from policy module's inventory_policies
    * @param tenantId - The tenant ID
    * @returns Policy settings for inventory behavior
    */
@@ -26,13 +24,14 @@ export class InventoryPolicyAdapter {
     excludeMenuItemIds: string[];
   }> {
     try {
-      // Read from store_policy_inventory (inventory module's rich policy)
+      // Read from policy module's inventory_policies
       const result = await this.pool.query(
         `SELECT 
-          inventory_subtract_on_finalize,
+          auto_subtract_on_sale,
+          expiry_tracking_enabled,
           branch_overrides,
           exclude_menu_item_ids
-         FROM store_policy_inventory 
+         FROM inventory_policies 
          WHERE tenant_id = $1`,
         [tenantId]
       );
@@ -44,7 +43,7 @@ export class InventoryPolicyAdapter {
         // Return defaults
         return {
           autoSubtractOnSale: true, // Default: enabled
-          expiryTrackingEnabled: false, // Default: disabled (not yet implemented)
+          expiryTrackingEnabled: false, // Default: disabled
           branchOverrides: {},
           excludeMenuItemIds: [],
         };
@@ -52,8 +51,8 @@ export class InventoryPolicyAdapter {
 
       const row = result.rows[0];
       return {
-        autoSubtractOnSale: row.inventory_subtract_on_finalize,
-        expiryTrackingEnabled: false, // Not yet implemented
+        autoSubtractOnSale: row.auto_subtract_on_sale,
+        expiryTrackingEnabled: row.expiry_tracking_enabled,
         branchOverrides: typeof row.branch_overrides === 'string' 
           ? JSON.parse(row.branch_overrides) 
           : row.branch_overrides || {},
@@ -119,7 +118,7 @@ export class InventoryPolicyAdapter {
   private async ensureDefaultPolicy(tenantId: string): Promise<void> {
     try {
       await this.pool.query(
-        `INSERT INTO store_policy_inventory (tenant_id, inventory_subtract_on_finalize)
+        `INSERT INTO inventory_policies (tenant_id, auto_subtract_on_sale)
          VALUES ($1, true)
          ON CONFLICT (tenant_id) DO NOTHING`,
         [tenantId]
@@ -129,4 +128,3 @@ export class InventoryPolicyAdapter {
     }
   }
 }
-

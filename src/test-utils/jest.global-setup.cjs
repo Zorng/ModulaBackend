@@ -49,9 +49,7 @@ module.exports = async () => {
 
   const pool = new Pool({ connectionString });
   try {
-    // Ensure the test database starts clean. Migrations are replayed and some
-    // older seed inserts are not idempotent after later constraints (e.g.
-    // employees.account_id NOT NULL), so we reset the schema per test run.
+    // Ensure the test database starts clean and deterministic for integration tests.
     await pool.query(`DROP SCHEMA IF EXISTS public CASCADE`);
     await pool.query(`CREATE SCHEMA public`);
 
