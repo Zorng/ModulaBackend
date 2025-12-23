@@ -20,9 +20,15 @@ export interface SalesRepository {
 }
 
 export interface PolicyPort {
-  getCurrentFxRate(tenantId: string): Promise<number>;
-  getVatPolicy(tenantId: string): Promise<{ enabled: boolean; rate: number }>;
-  getRoundingPolicy(tenantId: string): Promise<{ enabled: boolean; method: string }>;
+  getCurrentFxRate(tenantId: string, branchId: string): Promise<number>;
+  getVatPolicy(
+    tenantId: string,
+    branchId: string
+  ): Promise<{ enabled: boolean; rate: number }>;
+  getRoundingPolicy(
+    tenantId: string,
+    branchId: string
+  ): Promise<{ enabled: boolean; method: string }>;
   getItemDiscountPolicies(tenantId: string, branchId: string, menuItemId: string): Promise<Array<{
     id: string;
     type: 'percentage' | 'fixed';

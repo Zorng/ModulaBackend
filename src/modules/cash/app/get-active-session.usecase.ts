@@ -10,6 +10,7 @@ export interface GetActiveSessionInput {
   tenantId: string;
   branchId: string;
   registerId?: string; // Optional for branch-level session lookup
+  openedBy: string;
 }
 
 export class GetActiveSessionUseCase {
@@ -24,10 +25,15 @@ export class GetActiveSessionUseCase {
     try {
       // Find session by register if provided, otherwise by branch
       const session = input.registerId
-        ? await this.sessionRepo.findOpenByRegister(input.registerId)
-        : await this.sessionRepo.findOpenByBranch(
+        ? await this.sessionRepo.findOpenByUserRegister(
             input.tenantId,
-            input.branchId
+            input.registerId,
+            input.openedBy
+          )
+        : await this.sessionRepo.findOpenByUserBranch(
+            input.tenantId,
+            input.branchId,
+            input.openedBy
           );
 
       if (!session) {

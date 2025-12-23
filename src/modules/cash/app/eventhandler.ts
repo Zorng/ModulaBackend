@@ -25,10 +25,17 @@ export class OnSaleFinalizedHandler {
 
   async handle(event: SaleFinalizedV1): Promise<void> {
     try {
-      // Find active session for this branch (assuming register mapping exists)
-      // For now, we'll need to find any open session in the branch
-      const sessions = await this.sessionRepo.findByBranch(event.branchId);
-      const openSession = sessions.find((s) => s.status === "OPEN");
+      const existingMovements = await this.movementRepo.findBySale(event.saleId);
+      const hasSaleCash = existingMovements.some((m) => m.type === "SALE_CASH");
+      if (hasSaleCash) {
+        return;
+      }
+
+      const openSession = await this.sessionRepo.findOpenByUserBranch(
+        event.tenantId,
+        event.branchId,
+        event.actorId
+      );
 
       if (!openSession) {
         // No open session - skip (cash policy may not require it for non-cash sales)

@@ -83,27 +83,29 @@ Start a new cash session with an opening float.
 
 ---
 
-#### 2. Take Over Session
+#### 2. Force Close Session
 
-**POST** `/v1/cash/sessions/take-over`
+**POST** `/v1/cash/sessions/:sessionId/force-close`
 
-Manager/Admin can take over an existing open session (closes old, opens new).
+Manager/Admin can force-close an existing open session with a required reason.
 
 **Request Body:**
 
 ```json
 {
-  "registerId": "uuid", // Optional - omit to take over branch-level session
+  "countedCashUsd": 20.0,
+  "countedCashKhr": 80000,
   "reason": "Previous cashier forgot to close session",
-  "openingFloatUsd": 20.0,
-  "openingFloatKhr": 80000
+  "note": "Force-closed by manager"
 }
 ```
 
 **Field Details:**
 
-- `registerId` (optional): UUID of the register. Omit to take over the active branch-level session.
-- `reason` (required): Explanation for takeover (3-500 characters)
+- `reason` (required): Explanation for force close (3-500 characters)
+- `countedCashUsd` (optional): Counted USD cash (defaults to expected cash)
+- `countedCashKhr` (optional): Counted KHR cash (defaults to expected cash)
+- `note` (optional): Additional force-close note
 
 **Response:** `201 Created`
 
@@ -368,7 +370,7 @@ Generate a live summary of the currently open session (same structure as Z Repor
 
 ---
 
-### Take Over Flow (Forgot to Close)
+### Force-Close Flow (Forgot to Close)
 
 1. **Next Morning**: Manager sees previous session still open
 
@@ -376,10 +378,10 @@ Generate a live summary of the currently open session (same structure as Z Repor
    GET /v1/cash/sessions/active?registerId=...
    ```
 
-2. **Manager Takes Over**:
+2. **Manager Force-Closes**:
    ```
-   POST /v1/cash/sessions/take-over
-   { "registerId": "...", "reason": "Previous session left open", ... }
+   POST /v1/cash/sessions/{sessionId}/force-close
+   { "reason": "Previous session left open", ... }
    ```
 
 ---

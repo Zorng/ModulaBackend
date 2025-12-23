@@ -2,27 +2,27 @@ import { Response } from "express";
 import type { AuthRequest } from "../../../../../platform/security/auth.js";
 import type {
   OpenCashSessionUseCase,
-  TakeOverSessionUseCase,
   CloseCashSessionUseCase,
   GetActiveSessionUseCase,
+  ForceCloseSessionUseCase,
   OpenCashSessionInput,
-  TakeOverSessionInput,
   CloseCashSessionInput,
   GetActiveSessionInput,
+  ForceCloseSessionInput,
 } from "../../../app/index.js";
 import {
   openSessionBodySchema,
-  takeOverSessionBodySchema,
   closeSessionBodySchema,
   getActiveSessionQuerySchema,
+  forceCloseSessionBodySchema,
 } from "../../dto/index.js";
 
 export class SessionController {
   constructor(
     private openSessionUseCase: OpenCashSessionUseCase,
-    private takeOverSessionUseCase: TakeOverSessionUseCase,
     private closeSessionUseCase: CloseCashSessionUseCase,
-    private getActiveSessionUseCase: GetActiveSessionUseCase
+    private getActiveSessionUseCase: GetActiveSessionUseCase,
+    private forceCloseSessionUseCase: ForceCloseSessionUseCase
   ) {}
 
   async openSession(req: AuthRequest, res: Response) {
@@ -41,47 +41,6 @@ export class SessionController {
       };
 
       const result = await this.openSessionUseCase.execute(input);
-
-      if (!result.ok) {
-        return res.status(400).json({
-          success: false,
-          error: result.error,
-        });
-      }
-
-      res.status(201).json({
-        success: true,
-        data: result.value,
-      });
-    } catch (error) {
-      this.handleError(res, error);
-    }
-  }
-
-  async takeOverSession(req: AuthRequest, res: Response) {
-    try {
-      // Authorization check: Only managers and admins can take over sessions
-      if (!["MANAGER", "ADMIN"].includes(req.user!.role)) {
-        return res.status(403).json({
-          success: false,
-          error: "Only managers and admins can take over sessions",
-        });
-      }
-
-      const validatedData = takeOverSessionBodySchema.parse(req.body);
-
-      const input: TakeOverSessionInput = {
-        tenantId: req.user!.tenantId,
-        branchId: validatedData.branchId || req.user!.branchId,
-        registerId: validatedData.registerId,
-        newOpenedBy: req.user!.employeeId,
-        actorRole: req.user!.role,
-        reason: validatedData.reason,
-        openingFloatUsd: validatedData.openingFloatUsd,
-        openingFloatKhr: validatedData.openingFloatKhr,
-      };
-
-      const result = await this.takeOverSessionUseCase.execute(input);
 
       if (!result.ok) {
         return res.status(400).json({
@@ -131,18 +90,56 @@ export class SessionController {
     }
   }
 
+  async forceCloseSession(req: AuthRequest, res: Response) {
+    try {
+      if (!["MANAGER", "ADMIN"].includes(req.user!.role)) {
+        return res.status(403).json({
+          success: false,
+          error: "Only managers and admins can force-close sessions",
+        });
+      }
+
+      const { sessionId } = req.params;
+      const validatedData = forceCloseSessionBodySchema.parse(req.body);
+
+      const input: ForceCloseSessionInput = {
+        sessionId,
+        closedBy: req.user!.employeeId,
+        actorRole: req.user!.role,
+        reason: validatedData.reason,
+        countedCashUsd: validatedData.countedCashUsd,
+        countedCashKhr: validatedData.countedCashKhr,
+        note: validatedData.note,
+      };
+
+      const result = await this.forceCloseSessionUseCase.execute(input);
+
+      if (!result.ok) {
+        return res.status(400).json({
+          success: false,
+          error: result.error,
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: result.value,
+      });
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  }
+
   async getActiveSession(req: AuthRequest, res: Response) {
     try {
-      const { branchId, registerId } = req.query;
+      const validated = getActiveSessionQuerySchema.parse(req.query);
 
       // registerId is now optional - if not provided, search by branch
       const input: GetActiveSessionInput = {
         tenantId: req.user!.tenantId,
-        branchId:
-          (branchId && typeof branchId === "string" ? branchId : undefined) ||
-          req.user!.branchId,
-        registerId:
-          registerId && typeof registerId === "string" ? registerId : undefined,
+        branchId: validated.branchId ?? req.user!.branchId,
+        registerId: validated.registerId,
+        openedBy: req.user!.employeeId,
       };
 
       const result = await this.getActiveSessionUseCase.execute(input);
@@ -157,9 +154,9 @@ export class SessionController {
       if (!result.value) {
         return res.status(404).json({
           success: false,
-          error: registerId
+          error: validated.registerId
             ? "No active session found for this register"
-            : "No active session found for this branch",
+            : "No active session found for this user in this branch",
         });
       }
 

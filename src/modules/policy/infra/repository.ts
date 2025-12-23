@@ -12,16 +12,35 @@ import type {
  * Repository interface for policy operations
  */
 export interface IPolicyRepository {
-  getTenantPolicies(tenantId: string): Promise<TenantPolicies | null>;
-  getSalesPolicies(tenantId: string): Promise<SalesPolicies | null>;
-  getInventoryPolicies(tenantId: string): Promise<InventoryPolicies | null>;
-  getCashSessionPolicies(tenantId: string): Promise<CashSessionPolicies | null>;
-  getAttendancePolicies(tenantId: string): Promise<AttendancePolicies | null>;
+  getTenantPolicies(
+    tenantId: string,
+    branchId: string
+  ): Promise<TenantPolicies | null>;
+  getSalesPolicies(
+    tenantId: string,
+    branchId: string
+  ): Promise<SalesPolicies | null>;
+  getInventoryPolicies(
+    tenantId: string,
+    branchId: string
+  ): Promise<InventoryPolicies | null>;
+  getCashSessionPolicies(
+    tenantId: string,
+    branchId: string
+  ): Promise<CashSessionPolicies | null>;
+  getAttendancePolicies(
+    tenantId: string,
+    branchId: string
+  ): Promise<AttendancePolicies | null>;
   updateTenantPolicies(
     tenantId: string,
+    branchId: string,
     updates: UpdateTenantPoliciesInput
   ): Promise<TenantPolicies>;
-  ensureDefaultPolicies(tenantId: string): Promise<TenantPolicies>;
+  ensureDefaultPolicies(
+    tenantId: string,
+    branchId: string
+  ): Promise<TenantPolicies>;
 }
 
 /**
@@ -34,12 +53,15 @@ export class PgPolicyRepository implements IPolicyRepository {
   /**
    * Get all policies for a tenant (combines all policy types)
    */
-  async getTenantPolicies(tenantId: string): Promise<TenantPolicies | null> {
+  async getTenantPolicies(
+    tenantId: string,
+    branchId: string
+  ): Promise<TenantPolicies | null> {
     const [sales, inventory, cashSession, attendance] = await Promise.all([
-      this.getSalesPolicies(tenantId),
-      this.getInventoryPolicies(tenantId),
-      this.getCashSessionPolicies(tenantId),
-      this.getAttendancePolicies(tenantId),
+      this.getSalesPolicies(tenantId, branchId),
+      this.getInventoryPolicies(tenantId, branchId),
+      this.getCashSessionPolicies(tenantId, branchId),
+      this.getAttendancePolicies(tenantId, branchId),
     ]);
 
     if (!sales || !inventory || !cashSession || !attendance) {
@@ -48,6 +70,7 @@ export class PgPolicyRepository implements IPolicyRepository {
 
     return {
       tenantId,
+      branchId,
       // Sales
       saleVatEnabled: sales.vatEnabled,
       saleVatRatePercent: sales.vatRatePercent,
@@ -85,10 +108,13 @@ export class PgPolicyRepository implements IPolicyRepository {
   /**
    * Get sales policies
    */
-  async getSalesPolicies(tenantId: string): Promise<SalesPolicies | null> {
+  async getSalesPolicies(
+    tenantId: string,
+    branchId: string
+  ): Promise<SalesPolicies | null> {
     const result = await this.pool.query(
-      `SELECT * FROM sales_policies WHERE tenant_id = $1`,
-      [tenantId]
+      `SELECT * FROM branch_sales_policies WHERE tenant_id = $1 AND branch_id = $2`,
+      [tenantId, branchId]
     );
 
     if (result.rows.length === 0) {
@@ -98,6 +124,7 @@ export class PgPolicyRepository implements IPolicyRepository {
     const row = result.rows[0];
     return {
       tenantId,
+      branchId,
       vatEnabled: row.vat_enabled,
       vatRatePercent: parseFloat(row.vat_rate_percent),
       fxRateKhrPerUsd: parseFloat(row.fx_rate_khr_per_usd),
@@ -113,11 +140,12 @@ export class PgPolicyRepository implements IPolicyRepository {
    * Get inventory policies
    */
   async getInventoryPolicies(
-    tenantId: string
+    tenantId: string,
+    branchId: string
   ): Promise<InventoryPolicies | null> {
     const result = await this.pool.query(
-      `SELECT * FROM inventory_policies WHERE tenant_id = $1`,
-      [tenantId]
+      `SELECT * FROM branch_inventory_policies WHERE tenant_id = $1 AND branch_id = $2`,
+      [tenantId, branchId]
     );
 
     if (result.rows.length === 0) {
@@ -127,6 +155,7 @@ export class PgPolicyRepository implements IPolicyRepository {
     const row = result.rows[0];
     return {
       tenantId,
+      branchId,
       autoSubtractOnSale: row.auto_subtract_on_sale,
       expiryTrackingEnabled: row.expiry_tracking_enabled,
       createdAt: new Date(row.created_at),
@@ -138,11 +167,12 @@ export class PgPolicyRepository implements IPolicyRepository {
    * Get cash session policies
    */
   async getCashSessionPolicies(
-    tenantId: string
+    tenantId: string,
+    branchId: string
   ): Promise<CashSessionPolicies | null> {
     const result = await this.pool.query(
-      `SELECT * FROM cash_session_policies WHERE tenant_id = $1`,
-      [tenantId]
+      `SELECT * FROM branch_cash_session_policies WHERE tenant_id = $1 AND branch_id = $2`,
+      [tenantId, branchId]
     );
 
     if (result.rows.length === 0) {
@@ -152,6 +182,7 @@ export class PgPolicyRepository implements IPolicyRepository {
     const row = result.rows[0];
     return {
       tenantId,
+      branchId,
       requireSessionForSales: row.require_session_for_sales,
       allowPaidOut: row.allow_paid_out,
       requireRefundApproval: row.require_refund_approval,
@@ -165,11 +196,12 @@ export class PgPolicyRepository implements IPolicyRepository {
    * Get attendance policies
    */
   async getAttendancePolicies(
-    tenantId: string
+    tenantId: string,
+    branchId: string
   ): Promise<AttendancePolicies | null> {
     const result = await this.pool.query(
-      `SELECT * FROM attendance_policies WHERE tenant_id = $1`,
-      [tenantId]
+      `SELECT * FROM branch_attendance_policies WHERE tenant_id = $1 AND branch_id = $2`,
+      [tenantId, branchId]
     );
 
     if (result.rows.length === 0) {
@@ -179,6 +211,7 @@ export class PgPolicyRepository implements IPolicyRepository {
     const row = result.rows[0];
     return {
       tenantId,
+      branchId,
       autoFromCashSession: row.auto_from_cash_session,
       requireOutOfShiftApproval: row.require_out_of_shift_approval,
       earlyCheckinBufferEnabled: row.early_checkin_buffer_enabled,
@@ -194,6 +227,7 @@ export class PgPolicyRepository implements IPolicyRepository {
    */
   async updateTenantPolicies(
     tenantId: string,
+    branchId: string,
     updates: UpdateTenantPoliciesInput
   ): Promise<TenantPolicies> {
     // Categorize updates by policy type
@@ -245,21 +279,21 @@ export class PgPolicyRepository implements IPolicyRepository {
     // Execute updates in parallel
     await Promise.all([
       Object.keys(salesUpdates).length > 0
-        ? this.updateSalesPolicies(tenantId, salesUpdates)
+        ? this.updateSalesPolicies(tenantId, branchId, salesUpdates)
         : Promise.resolve(),
       Object.keys(inventoryUpdates).length > 0
-        ? this.updateInventoryPolicies(tenantId, inventoryUpdates)
+        ? this.updateInventoryPolicies(tenantId, branchId, inventoryUpdates)
         : Promise.resolve(),
       Object.keys(cashSessionUpdates).length > 0
-        ? this.updateCashSessionPolicies(tenantId, cashSessionUpdates)
+        ? this.updateCashSessionPolicies(tenantId, branchId, cashSessionUpdates)
         : Promise.resolve(),
       Object.keys(attendanceUpdates).length > 0
-        ? this.updateAttendancePolicies(tenantId, attendanceUpdates)
+        ? this.updateAttendancePolicies(tenantId, branchId, attendanceUpdates)
         : Promise.resolve(),
     ]);
 
     // Return updated combined policies
-    const result = await this.getTenantPolicies(tenantId);
+    const result = await this.getTenantPolicies(tenantId, branchId);
     if (!result) {
       throw new Error("Failed to retrieve updated policies");
     }
@@ -269,27 +303,38 @@ export class PgPolicyRepository implements IPolicyRepository {
   /**
    * Ensure default policies exist for a tenant
    */
-  async ensureDefaultPolicies(tenantId: string): Promise<TenantPolicies> {
+  async ensureDefaultPolicies(
+    tenantId: string,
+    branchId: string
+  ): Promise<TenantPolicies> {
     await Promise.all([
       this.pool.query(
-        `INSERT INTO sales_policies (tenant_id) VALUES ($1) ON CONFLICT (tenant_id) DO NOTHING`,
-        [tenantId]
+        `INSERT INTO branch_sales_policies (tenant_id, branch_id)
+         VALUES ($1, $2)
+         ON CONFLICT (tenant_id, branch_id) DO NOTHING`,
+        [tenantId, branchId]
       ),
       this.pool.query(
-        `INSERT INTO inventory_policies (tenant_id) VALUES ($1) ON CONFLICT (tenant_id) DO NOTHING`,
-        [tenantId]
+        `INSERT INTO branch_inventory_policies (tenant_id, branch_id)
+         VALUES ($1, $2)
+         ON CONFLICT (tenant_id, branch_id) DO NOTHING`,
+        [tenantId, branchId]
       ),
       this.pool.query(
-        `INSERT INTO cash_session_policies (tenant_id) VALUES ($1) ON CONFLICT (tenant_id) DO NOTHING`,
-        [tenantId]
+        `INSERT INTO branch_cash_session_policies (tenant_id, branch_id)
+         VALUES ($1, $2)
+         ON CONFLICT (tenant_id, branch_id) DO NOTHING`,
+        [tenantId, branchId]
       ),
       this.pool.query(
-        `INSERT INTO attendance_policies (tenant_id) VALUES ($1) ON CONFLICT (tenant_id) DO NOTHING`,
-        [tenantId]
+        `INSERT INTO branch_attendance_policies (tenant_id, branch_id)
+         VALUES ($1, $2)
+         ON CONFLICT (tenant_id, branch_id) DO NOTHING`,
+        [tenantId, branchId]
       ),
     ]);
 
-    const result = await this.getTenantPolicies(tenantId);
+    const result = await this.getTenantPolicies(tenantId, branchId);
     if (!result) {
       throw new Error("Failed to create default policies");
     }
@@ -301,11 +346,12 @@ export class PgPolicyRepository implements IPolicyRepository {
    */
   private async updateSalesPolicies(
     tenantId: string,
+    branchId: string,
     updates: Partial<SalesPolicies>
   ): Promise<void> {
     const setClauses: string[] = [];
-    const values: any[] = [tenantId];
-    let paramIndex = 2;
+    const values: any[] = [tenantId, branchId];
+    let paramIndex = 3;
 
     const fieldMap: Record<string, string> = {
       vatEnabled: "vat_enabled",
@@ -328,7 +374,9 @@ export class PgPolicyRepository implements IPolicyRepository {
     if (setClauses.length === 0) return;
 
     await this.pool.query(
-      `UPDATE sales_policies SET ${setClauses.join(", ")} WHERE tenant_id = $1`,
+      `UPDATE branch_sales_policies
+       SET ${setClauses.join(", ")}
+       WHERE tenant_id = $1 AND branch_id = $2`,
       values
     );
   }
@@ -338,11 +386,12 @@ export class PgPolicyRepository implements IPolicyRepository {
    */
   private async updateInventoryPolicies(
     tenantId: string,
+    branchId: string,
     updates: Partial<InventoryPolicies>
   ): Promise<void> {
     const setClauses: string[] = [];
-    const values: any[] = [tenantId];
-    let paramIndex = 2;
+    const values: any[] = [tenantId, branchId];
+    let paramIndex = 3;
 
     const fieldMap: Record<string, string> = {
       autoSubtractOnSale: "auto_subtract_on_sale",
@@ -361,7 +410,9 @@ export class PgPolicyRepository implements IPolicyRepository {
     if (setClauses.length === 0) return;
 
     await this.pool.query(
-      `UPDATE inventory_policies SET ${setClauses.join(", ")} WHERE tenant_id = $1`,
+      `UPDATE branch_inventory_policies
+       SET ${setClauses.join(", ")}
+       WHERE tenant_id = $1 AND branch_id = $2`,
       values
     );
   }
@@ -371,11 +422,12 @@ export class PgPolicyRepository implements IPolicyRepository {
    */
   private async updateCashSessionPolicies(
     tenantId: string,
+    branchId: string,
     updates: Partial<CashSessionPolicies>
   ): Promise<void> {
     const setClauses: string[] = [];
-    const values: any[] = [tenantId];
-    let paramIndex = 2;
+    const values: any[] = [tenantId, branchId];
+    let paramIndex = 3;
 
     const fieldMap: Record<string, string> = {
       requireSessionForSales: "require_session_for_sales",
@@ -396,7 +448,9 @@ export class PgPolicyRepository implements IPolicyRepository {
     if (setClauses.length === 0) return;
 
     await this.pool.query(
-      `UPDATE cash_session_policies SET ${setClauses.join(", ")} WHERE tenant_id = $1`,
+      `UPDATE branch_cash_session_policies
+       SET ${setClauses.join(", ")}
+       WHERE tenant_id = $1 AND branch_id = $2`,
       values
     );
   }
@@ -406,11 +460,12 @@ export class PgPolicyRepository implements IPolicyRepository {
    */
   private async updateAttendancePolicies(
     tenantId: string,
+    branchId: string,
     updates: Partial<AttendancePolicies>
   ): Promise<void> {
     const setClauses: string[] = [];
-    const values: any[] = [tenantId];
-    let paramIndex = 2;
+    const values: any[] = [tenantId, branchId];
+    let paramIndex = 3;
 
     const fieldMap: Record<string, string> = {
       autoFromCashSession: "auto_from_cash_session",
@@ -432,7 +487,9 @@ export class PgPolicyRepository implements IPolicyRepository {
     if (setClauses.length === 0) return;
 
     await this.pool.query(
-      `UPDATE attendance_policies SET ${setClauses.join(", ")} WHERE tenant_id = $1`,
+      `UPDATE branch_attendance_policies
+       SET ${setClauses.join(", ")}
+       WHERE tenant_id = $1 AND branch_id = $2`,
       values
     );
   }

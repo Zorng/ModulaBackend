@@ -21,15 +21,18 @@ export class GetTenantPoliciesUseCase {
 
   async execute(params: {
     tenantId: string;
+    branchId: string;
   }): Promise<Result<TenantPolicies, string>> {
     const policies = await this.policyRepository.getTenantPolicies(
-      params.tenantId
+      params.tenantId,
+      params.branchId
     );
 
     if (!policies) {
       // Ensure default policies exist
       const defaultPolicies = await this.policyRepository.ensureDefaultPolicies(
-        params.tenantId
+        params.tenantId,
+        params.branchId
       );
       return ok(defaultPolicies);
     }
@@ -46,13 +49,23 @@ export class GetSalesPoliciesUseCase {
 
   async execute(params: {
     tenantId: string;
+    branchId: string;
   }): Promise<Result<SalesPolicies, string>> {
-    let policies = await this.policyRepository.getSalesPolicies(params.tenantId);
+    let policies = await this.policyRepository.getSalesPolicies(
+      params.tenantId,
+      params.branchId
+    );
 
     if (!policies) {
       // Ensure defaults exist
-      await this.policyRepository.ensureDefaultPolicies(params.tenantId);
-      policies = await this.policyRepository.getSalesPolicies(params.tenantId);
+      await this.policyRepository.ensureDefaultPolicies(
+        params.tenantId,
+        params.branchId
+      );
+      policies = await this.policyRepository.getSalesPolicies(
+        params.tenantId,
+        params.branchId
+      );
     }
 
     if (!policies) {
@@ -71,16 +84,22 @@ export class GetInventoryPoliciesUseCase {
 
   async execute(params: {
     tenantId: string;
+    branchId: string;
   }): Promise<Result<InventoryPolicies, string>> {
     let policies = await this.policyRepository.getInventoryPolicies(
-      params.tenantId
+      params.tenantId,
+      params.branchId
     );
 
     if (!policies) {
       // Ensure defaults exist
-      await this.policyRepository.ensureDefaultPolicies(params.tenantId);
+      await this.policyRepository.ensureDefaultPolicies(
+        params.tenantId,
+        params.branchId
+      );
       policies = await this.policyRepository.getInventoryPolicies(
-        params.tenantId
+        params.tenantId,
+        params.branchId
       );
     }
 
@@ -100,16 +119,22 @@ export class GetCashSessionPoliciesUseCase {
 
   async execute(params: {
     tenantId: string;
+    branchId: string;
   }): Promise<Result<CashSessionPolicies, string>> {
     let policies = await this.policyRepository.getCashSessionPolicies(
-      params.tenantId
+      params.tenantId,
+      params.branchId
     );
 
     if (!policies) {
       // Ensure defaults exist
-      await this.policyRepository.ensureDefaultPolicies(params.tenantId);
+      await this.policyRepository.ensureDefaultPolicies(
+        params.tenantId,
+        params.branchId
+      );
       policies = await this.policyRepository.getCashSessionPolicies(
-        params.tenantId
+        params.tenantId,
+        params.branchId
       );
     }
 
@@ -129,16 +154,22 @@ export class GetAttendancePoliciesUseCase {
 
   async execute(params: {
     tenantId: string;
+    branchId: string;
   }): Promise<Result<AttendancePolicies, string>> {
     let policies = await this.policyRepository.getAttendancePolicies(
-      params.tenantId
+      params.tenantId,
+      params.branchId
     );
 
     if (!policies) {
       // Ensure defaults exist
-      await this.policyRepository.ensureDefaultPolicies(params.tenantId);
+      await this.policyRepository.ensureDefaultPolicies(
+        params.tenantId,
+        params.branchId
+      );
       policies = await this.policyRepository.getAttendancePolicies(
-        params.tenantId
+        params.tenantId,
+        params.branchId
       );
     }
 
@@ -158,17 +189,22 @@ export class UpdateTenantPoliciesUseCase {
 
   async execute(
     tenantId: string,
+    branchId: string,
     updates: UpdateTenantPoliciesInput
   ): Promise<Result<TenantPolicies, string>> {
     // Ensure policies exist first
-    const existing = await this.policyRepository.getTenantPolicies(tenantId);
+    const existing = await this.policyRepository.getTenantPolicies(
+      tenantId,
+      branchId
+    );
     if (!existing) {
-      await this.policyRepository.ensureDefaultPolicies(tenantId);
+      await this.policyRepository.ensureDefaultPolicies(tenantId, branchId);
     }
 
     // Update policies
     const updatedPolicies = await this.policyRepository.updateTenantPolicies(
       tenantId,
+      branchId,
       updates
     );
 

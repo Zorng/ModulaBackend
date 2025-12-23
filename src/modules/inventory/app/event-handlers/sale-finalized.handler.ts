@@ -2,6 +2,7 @@ import { SaleFinalizedV1 } from "../../../../shared/events.js";
 import { GetMenuStockMapUseCase } from "../menustockmap-usecase/get-menu-stock-map.use-case.js";
 import { RecordSaleDeductionsUseCase } from "../inventoryjournal-usecase/record-sale-deductions.use-case.js";
 import { InventoryPolicyAdapter } from "../../infra/adapters/policy.adapter.js";
+import type { Pool } from "pg";
 
 /**
  * Event handler for sales.sale_finalized events
@@ -13,7 +14,8 @@ export class SaleFinalizedHandler {
   constructor(
     private policyAdapter: InventoryPolicyAdapter,
     private getMenuStockMapUseCase: GetMenuStockMapUseCase,
-    private recordSaleDeductionsUseCase: RecordSaleDeductionsUseCase
+    private recordSaleDeductionsUseCase: RecordSaleDeductionsUseCase,
+    private pool: Pool
   ) {}
 
   async handle(event: SaleFinalizedV1): Promise<void> {
@@ -22,6 +24,17 @@ export class SaleFinalizedHandler {
     console.log(
       `[SaleFinalizedHandler] Processing sale ${saleId} for tenant ${tenantId}, branch ${branchId}`
     );
+
+    const existing = await this.pool.query(
+      `SELECT 1
+       FROM inventory_journal
+       WHERE tenant_id = $1 AND branch_id = $2 AND ref_sale_id = $3 AND reason = 'sale'
+       LIMIT 1`,
+      [tenantId, branchId, saleId]
+    );
+    if (existing.rows.length > 0) {
+      return;
+    }
 
     // Extract menu item IDs for policy check
     const menuItemIds = lines.map(line => line.menuItemId);

@@ -35,7 +35,7 @@ export function bootstrapSalesModule(
   const salesController = new SalesController(salesService);
   
   // Create and return router
-  const router = createSalesRouter(salesController, authMiddleware);
+  const router = createSalesRouter(salesController, authMiddleware, pool);
   
   return {
     router,

@@ -16,6 +16,7 @@ describe("Policy-Inventory Integration", () => {
   let pool: Pool;
   let policyRepo: PgPolicyRepository;
   const testTenantId = randomUUID();
+  const testBranchId = randomUUID();
 
   beforeAll(async () => {
     pool = new Pool({
@@ -30,6 +31,13 @@ describe("Policy-Inventory Integration", () => {
        ON CONFLICT (id) DO NOTHING`,
       [testTenantId]
     );
+
+    await pool.query(
+      `INSERT INTO branches (id, tenant_id, name, status)
+       VALUES ($1, $2, 'Policy Integration Branch', 'ACTIVE')
+       ON CONFLICT (id) DO NOTHING`,
+      [testBranchId, testTenantId]
+    );
   });
 
   afterAll(async () => {
@@ -37,77 +45,73 @@ describe("Policy-Inventory Integration", () => {
     await pool.end();
   });
 
-  test("should initialize inventory_policies when creating defaults", async () => {
+  test("should initialize branch_inventory_policies when creating defaults", async () => {
     // Create default policies
-    await policyRepo.ensureDefaultPolicies(testTenantId);
+    await policyRepo.ensureDefaultPolicies(testTenantId, testBranchId);
 
     const inventoryPolicyResult = await pool.query(
       `SELECT
          auto_subtract_on_sale,
          expiry_tracking_enabled,
-         branch_overrides,
          exclude_menu_item_ids
-       FROM inventory_policies
-       WHERE tenant_id = $1`,
-      [testTenantId]
+       FROM branch_inventory_policies
+       WHERE tenant_id = $1 AND branch_id = $2`,
+      [testTenantId, testBranchId]
     );
     expect(inventoryPolicyResult.rows.length).toBe(1);
     expect(inventoryPolicyResult.rows[0].auto_subtract_on_sale).toBe(true); // Default
     expect(inventoryPolicyResult.rows[0].expiry_tracking_enabled).toBe(false); // Default
-    expect(inventoryPolicyResult.rows[0].branch_overrides).toEqual({});
     expect(inventoryPolicyResult.rows[0].exclude_menu_item_ids).toEqual([]);
   });
 
-  test("should update auto_subtract_on_sale and preserve branch overrides", async () => {
-    // Set up branch overrides
-    const branchId = randomUUID();
-    const overrides = { [branchId]: { inventorySubtractOnFinalize: true } };
+  test("should update auto_subtract_on_sale and preserve menu exclusions", async () => {
+    const excludedMenuItems = ["menu-item-1", "menu-item-2"];
     await pool.query(
-      `UPDATE inventory_policies
-       SET branch_overrides = $1
-       WHERE tenant_id = $2`,
-      [JSON.stringify(overrides), testTenantId]
+      `UPDATE branch_inventory_policies
+       SET exclude_menu_item_ids = $1
+       WHERE tenant_id = $2 AND branch_id = $3`,
+      [JSON.stringify(excludedMenuItems), testTenantId, testBranchId]
     );
 
-    // Update via policy module
-    await policyRepo.updateTenantPolicies(testTenantId, {
+    await policyRepo.updateTenantPolicies(testTenantId, testBranchId, {
       inventoryAutoSubtractOnSale: false, // Disable auto-subtract
     });
 
-    // Check inventory_policies updated
     const inventoryPolicyResult = await pool.query(
       `SELECT
          auto_subtract_on_sale,
-         branch_overrides
-       FROM inventory_policies
-       WHERE tenant_id = $1`,
-      [testTenantId]
+         exclude_menu_item_ids
+       FROM branch_inventory_policies
+       WHERE tenant_id = $1 AND branch_id = $2`,
+      [testTenantId, testBranchId]
     );
     expect(inventoryPolicyResult.rows[0].auto_subtract_on_sale).toBe(false);
-    const branchOverrides = inventoryPolicyResult.rows[0].branch_overrides;
-    expect(branchOverrides[branchId]).toBeDefined();
-    expect(branchOverrides[branchId].inventorySubtractOnFinalize).toBe(true);
+    expect(inventoryPolicyResult.rows[0].exclude_menu_item_ids).toEqual(
+      excludedMenuItems
+    );
   });
 
   test("should preserve menu item exclusions during updates", async () => {
     // Set up exclusions
     const excludedMenuItems = ["menu-item-1", "menu-item-2"];
     await pool.query(
-      `UPDATE inventory_policies
+      `UPDATE branch_inventory_policies
        SET exclude_menu_item_ids = $1
-       WHERE tenant_id = $2`,
-      [JSON.stringify(excludedMenuItems), testTenantId]
+       WHERE tenant_id = $2 AND branch_id = $3`,
+      [JSON.stringify(excludedMenuItems), testTenantId, testBranchId]
     );
 
     // Update auto_subtract via policy module
-    await policyRepo.updateTenantPolicies(testTenantId, {
+    await policyRepo.updateTenantPolicies(testTenantId, testBranchId, {
       inventoryAutoSubtractOnSale: false,
     });
 
     // Check exclusions still exist
     const result = await pool.query(
-      `SELECT exclude_menu_item_ids FROM inventory_policies WHERE tenant_id = $1`,
-      [testTenantId]
+      `SELECT exclude_menu_item_ids
+       FROM branch_inventory_policies
+       WHERE tenant_id = $1 AND branch_id = $2`,
+      [testTenantId, testBranchId]
     );
     const exclusions = result.rows[0].exclude_menu_item_ids;
     expect(exclusions).toEqual(excludedMenuItems);
@@ -115,7 +119,10 @@ describe("Policy-Inventory Integration", () => {
 
   test("should read combined policies correctly", async () => {
     // Get all policies
-    const policies = await policyRepo.getTenantPolicies(testTenantId);
+    const policies = await policyRepo.getTenantPolicies(
+      testTenantId,
+      testBranchId
+    );
 
     expect(policies).not.toBeNull();
     expect(policies?.inventoryAutoSubtractOnSale).toBe(false); // From previous test

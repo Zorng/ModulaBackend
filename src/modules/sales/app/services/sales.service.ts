@@ -26,6 +26,7 @@ import { TransactionManager } from '../../../../platform/events/index.js';
 import { publishToOutbox } from '../../../../platform/events/outbox.js';
 import { PoolClient } from 'pg';
 import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
+import type { CashSaleRecordedV1, StockSaleDeductedV1 } from "../../../../shared/events.js";
 
 export interface CreateSaleCommand {
   clientUuid: string;
@@ -99,7 +100,10 @@ export class SalesService {
   async createDraftSale(cmd: CreateSaleCommand): Promise<Sale> {
     return await this.transactionManager.withTransaction(async (trx) => {
       // Always fetch FX rate from tenant policy
-      const fxRate = await this.policyPort.getCurrentFxRate(cmd.tenantId);
+      const fxRate = await this.policyPort.getCurrentFxRate(
+        cmd.tenantId,
+        cmd.branchId
+      );
       
       const sale = createDraftSale({
         ...cmd,
@@ -107,7 +111,10 @@ export class SalesService {
       });
 
       // Apply VAT policy from the start
-      const vatPolicy = await this.policyPort.getVatPolicy(cmd.tenantId);
+      const vatPolicy = await this.policyPort.getVatPolicy(
+        cmd.tenantId,
+        cmd.branchId
+      );
       applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
 
       await this.salesRepo.save(sale, trx);
@@ -191,7 +198,10 @@ export class SalesService {
       }
 
       // Reapply VAT after items change
-      const vatPolicy = await this.policyPort.getVatPolicy(sale.tenantId);
+      const vatPolicy = await this.policyPort.getVatPolicy(
+        sale.tenantId,
+        sale.branchId
+      );
       applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
 
       await this.salesRepo.save(sale, trx);
@@ -237,7 +247,10 @@ export class SalesService {
       removeItemFromSale(sale, params.itemId);
       
       // Reapply VAT after items change
-      const vatPolicy = await this.policyPort.getVatPolicy(sale.tenantId);
+      const vatPolicy = await this.policyPort.getVatPolicy(
+        sale.tenantId,
+        sale.branchId
+      );
       applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
       
       await this.salesRepo.save(sale, trx);
@@ -277,7 +290,10 @@ export class SalesService {
       updateItemQuantity(sale, cmd.itemId, cmd.quantity);
       
       // Reapply VAT after items change
-      const vatPolicy = await this.policyPort.getVatPolicy(sale.tenantId);
+      const vatPolicy = await this.policyPort.getVatPolicy(
+        sale.tenantId,
+        sale.branchId
+      );
       applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
       
       await this.salesRepo.save(sale, trx);
@@ -316,7 +332,10 @@ export class SalesService {
       }
 
       // Get policies
-      const roundingPolicy = await this.policyPort.getRoundingPolicy(sale.tenantId);
+      const roundingPolicy = await this.policyPort.getRoundingPolicy(
+        sale.tenantId,
+        sale.branchId
+      );
       setTenderCurrency(sale, cmd.tenderCurrency, roundingPolicy);
 
       setPaymentMethod(sale, cmd.paymentMethod, cmd.cashReceived);
@@ -334,7 +353,10 @@ export class SalesService {
       }
 
       // Apply VAT
-      const vatPolicy = await this.policyPort.getVatPolicy(sale.tenantId);
+      const vatPolicy = await this.policyPort.getVatPolicy(
+        sale.tenantId,
+        sale.branchId
+      );
       applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
 
       await this.salesRepo.save(sale, trx);
@@ -350,6 +372,16 @@ export class SalesService {
       }
 
       finalizeSale(sale, cmd.actorId);
+
+      const cashSession =
+        sale.paymentMethod === "cash"
+          ? await this.resolveCashSessionForCashSale({
+              trx,
+              tenantId: sale.tenantId,
+              branchId: sale.branchId,
+              actorId: cmd.actorId,
+            })
+          : null;
 
       await this.auditWriter.write(
         {
@@ -371,7 +403,43 @@ export class SalesService {
       
       await this.salesRepo.save(sale, trx);
 
+      if (sale.paymentMethod === "cash" && cashSession) {
+        await this.recordSaleCashMovement({
+          trx,
+          sale,
+          session: cashSession,
+          actorId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+        });
+      }
+
+      await this.applyInventoryDeductions({
+        trx,
+        sale,
+        actorId: cmd.actorId,
+        actorRole: cmd.actorRole ?? null,
+      });
+
       // Publish sale finalized event
+      const tenders =
+        sale.paymentMethod === "cash"
+          ? [
+              {
+                method: "CASH" as const,
+                amountUsd: sale.totalUsdExact,
+                amountKhr: sale.totalKhrExact,
+              },
+            ]
+          : sale.paymentMethod === "qr"
+            ? [
+                {
+                  method: "QR" as const,
+                  amountUsd: sale.totalUsdExact,
+                  amountKhr: sale.totalKhrExact,
+                },
+              ]
+            : [];
+
       await publishToOutbox({
         type: 'sales.sale_finalized',
         v: 1,
@@ -388,17 +456,315 @@ export class SalesService {
           totalKhr: sale.totalKhrExact,
           vatAmountUsd: sale.vatAmountUsd
         },
-        tenders: [{
-          method: sale.paymentMethod as 'CASH' | 'QR',
-          amountUsd: sale.totalUsdExact,
-          amountKhr: sale.totalKhrExact
-        }],
+        tenders,
         finalizedAt: sale.finalizedAt!.toISOString(),
         actorId: cmd.actorId
       }, trx);
 
       return sale;
     });
+  }
+
+  private async resolveCashSessionForCashSale(params: {
+    trx: PoolClient;
+    tenantId: string;
+    branchId: string;
+    actorId: string;
+  }): Promise<{
+    id: string;
+    registerId: string | null;
+    expectedCashUsd: number;
+    expectedCashKhr: number;
+  } | null> {
+    const required = await this.readCashRequireSessionForSales({
+      trx: params.trx,
+      tenantId: params.tenantId,
+      branchId: params.branchId,
+    });
+
+    const res = await params.trx.query(
+      `SELECT id, register_id, expected_cash_usd, expected_cash_khr
+       FROM cash_sessions
+       WHERE tenant_id = $1 AND branch_id = $2 AND opened_by = $3 AND status = 'OPEN'
+       ORDER BY opened_at DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [params.tenantId, params.branchId, params.actorId]
+    );
+
+    if (res.rows.length === 0) {
+      if (required) {
+        throw new Error("Cannot finalize cash sale without an active cash session");
+      }
+      return null;
+    }
+
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      registerId: row.register_id,
+      expectedCashUsd: parseFloat(row.expected_cash_usd),
+      expectedCashKhr: parseFloat(row.expected_cash_khr),
+    };
+  }
+
+  private async readCashRequireSessionForSales(params: {
+    trx: PoolClient;
+    tenantId: string;
+    branchId: string;
+  }): Promise<boolean> {
+    const projected = await params.trx.query(
+      `SELECT cash_require_session_for_sales
+       FROM branch_policies
+       WHERE tenant_id = $1 AND branch_id = $2`,
+      [params.tenantId, params.branchId]
+    );
+    if (projected.rows.length > 0) {
+      return Boolean(projected.rows[0].cash_require_session_for_sales);
+    }
+
+    const fallback = await params.trx.query(
+      `SELECT require_session_for_sales
+       FROM branch_cash_session_policies
+       WHERE tenant_id = $1 AND branch_id = $2`,
+      [params.tenantId, params.branchId]
+    );
+    if (fallback.rows.length > 0) {
+      return Boolean(fallback.rows[0].require_session_for_sales);
+    }
+
+    return false;
+  }
+
+  private async recordSaleCashMovement(params: {
+    trx: PoolClient;
+    sale: Sale;
+    session: {
+      id: string;
+      registerId: string | null;
+      expectedCashUsd: number;
+      expectedCashKhr: number;
+    };
+    actorId: string;
+    actorRole: string | null;
+  }): Promise<void> {
+    const movementRes = await params.trx.query(
+      `INSERT INTO cash_movements (
+        tenant_id,
+        branch_id,
+        register_id,
+        session_id,
+        actor_id,
+        type,
+        status,
+        amount_usd,
+        amount_khr,
+        ref_sale_id,
+        reason
+      ) VALUES ($1,$2,$3,$4,$5,'SALE_CASH','APPROVED',$6,$7,$8,$9)
+      RETURNING id`,
+      [
+        params.sale.tenantId,
+        params.sale.branchId,
+        params.session.registerId,
+        params.session.id,
+        params.actorId,
+        params.sale.totalUsdExact,
+        params.sale.totalKhrExact,
+        params.sale.id,
+        `Sale ${params.sale.id}`,
+      ]
+    );
+    const movementId = movementRes.rows[0].id as string;
+
+    await params.trx.query(
+      `UPDATE cash_sessions
+       SET expected_cash_usd = $1, expected_cash_khr = $2, updated_at = NOW()
+       WHERE id = $3`,
+      [
+        params.session.expectedCashUsd + params.sale.totalUsdExact,
+        params.session.expectedCashKhr + params.sale.totalKhrExact,
+        params.session.id,
+      ]
+    );
+
+    const cashEvent: CashSaleRecordedV1 = {
+      type: "cash.sale_cash_recorded",
+      v: 1,
+      tenantId: params.sale.tenantId,
+      branchId: params.sale.branchId,
+      sessionId: params.session.id,
+      registerId: params.session.registerId ?? undefined,
+      saleId: params.sale.id,
+      amountUsd: params.sale.totalUsdExact,
+      amountKhr: params.sale.totalKhrExact,
+      timestamp: new Date().toISOString(),
+    };
+    await publishToOutbox(cashEvent, params.trx);
+
+    await this.auditWriter.write(
+      {
+        tenantId: params.sale.tenantId,
+        branchId: params.sale.branchId,
+        employeeId: params.actorId,
+        actorRole: params.actorRole ?? null,
+        actionType: "CASH_TENDER_ATTACHED_TO_SALE",
+        resourceType: "sale",
+        resourceId: params.sale.id,
+        details: {
+          sessionId: params.session.id,
+          registerId: params.session.registerId ?? null,
+          movementId,
+          amountUsd: params.sale.totalUsdExact,
+          amountKhr: params.sale.totalKhrExact,
+          tenders: [{ method: "CASH", amountUsd: params.sale.totalUsdExact, amountKhr: params.sale.totalKhrExact }],
+        },
+      },
+      params.trx
+    );
+  }
+
+  private async applyInventoryDeductions(params: {
+    trx: PoolClient;
+    sale: Sale;
+    actorId: string;
+    actorRole: string | null;
+  }): Promise<void> {
+    const shouldDeduct = await this.shouldSubtractInventory(params.trx, params.sale);
+    if (!shouldDeduct) {
+      return;
+    }
+
+    const menuItemIds = params.sale.items.map((item) => item.menuItemId);
+    if (menuItemIds.length === 0) {
+      return;
+    }
+
+    const mappings = await params.trx.query(
+      `SELECT menu_item_id, stock_item_id, qty_per_sale
+       FROM menu_stock_map
+       WHERE tenant_id = $1 AND menu_item_id = ANY($2::uuid[])`,
+      [params.sale.tenantId, menuItemIds]
+    );
+
+    if (mappings.rows.length === 0) {
+      return;
+    }
+
+    const qtyByStockItem = new Map<string, number>();
+    for (const line of params.sale.items) {
+      for (const mapping of mappings.rows.filter((row) => row.menu_item_id === line.menuItemId)) {
+        const stockItemId = mapping.stock_item_id as string;
+        const qtyPerSale = parseFloat(mapping.qty_per_sale);
+        const nextQty = (qtyByStockItem.get(stockItemId) ?? 0) + qtyPerSale * line.quantity;
+        qtyByStockItem.set(stockItemId, nextQty);
+      }
+    }
+
+    if (qtyByStockItem.size === 0) {
+      return;
+    }
+
+    const journals: Array<{ stockItemId: string; journalId: string; delta: number }> = [];
+    for (const [stockItemId, qtyDeducted] of qtyByStockItem.entries()) {
+      if (qtyDeducted <= 0) {
+        continue;
+      }
+      const res = await params.trx.query(
+        `INSERT INTO inventory_journal (
+          tenant_id,
+          branch_id,
+          stock_item_id,
+          delta,
+          reason,
+          ref_sale_id,
+          note,
+          actor_id,
+          occurred_at,
+          created_by
+        ) VALUES ($1,$2,$3,$4,'sale',$5,NULL,$6,NOW(),$6)
+        RETURNING id, delta`,
+        [
+          params.sale.tenantId,
+          params.sale.branchId,
+          stockItemId,
+          -Math.abs(qtyDeducted),
+          params.sale.id,
+          params.actorId,
+        ]
+      );
+      journals.push({
+        stockItemId,
+        journalId: res.rows[0].id,
+        delta: parseFloat(res.rows[0].delta),
+      });
+    }
+
+    if (journals.length === 0) {
+      return;
+    }
+
+    const inventoryEvent: StockSaleDeductedV1 = {
+      type: "inventory.stock_sale_deducted",
+      v: 1,
+      tenantId: params.sale.tenantId,
+      branchId: params.sale.branchId,
+      refSaleId: params.sale.id,
+      deductions: journals.map((j) => ({
+        stockItemId: j.stockItemId,
+        journalId: j.journalId,
+        delta: j.delta,
+      })),
+      createdAt: new Date().toISOString(),
+    };
+    await publishToOutbox(inventoryEvent, params.trx);
+
+    await this.auditWriter.write(
+      {
+        tenantId: params.sale.tenantId,
+        branchId: params.sale.branchId,
+        employeeId: params.actorId,
+        actorRole: params.actorRole ?? null,
+        actionType: "INVENTORY_DEDUCTION_APPLIED",
+        resourceType: "sale",
+        resourceId: params.sale.id,
+        details: {
+          deductionsCount: journals.length,
+          stockItemIds: Array.from(new Set(journals.map((j) => j.stockItemId))),
+        },
+      },
+      params.trx
+    );
+  }
+
+  private async shouldSubtractInventory(trx: PoolClient, sale: Sale): Promise<boolean> {
+    const res = await trx.query(
+      `SELECT auto_subtract_on_sale, exclude_menu_item_ids
+       FROM branch_inventory_policies
+       WHERE tenant_id = $1 AND branch_id = $2`,
+      [sale.tenantId, sale.branchId]
+    );
+
+    if (res.rows.length === 0) {
+      return true;
+    }
+
+    const row = res.rows[0];
+    const excludeMenuItemIds: string[] = Array.isArray(row.exclude_menu_item_ids)
+      ? row.exclude_menu_item_ids
+      : row.exclude_menu_item_ids
+        ? JSON.parse(row.exclude_menu_item_ids)
+        : [];
+    if (excludeMenuItemIds.length > 0) {
+      const hasExcluded = sale.items.some((item) =>
+        excludeMenuItemIds.includes(item.menuItemId)
+      );
+      if (hasExcluded) {
+        return false;
+      }
+    }
+
+    return Boolean(row.auto_subtract_on_sale);
   }
 
   async updateFulfillment(cmd: UpdateFulfillmentCommand): Promise<Sale> {

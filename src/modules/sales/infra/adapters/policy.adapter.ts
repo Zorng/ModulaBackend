@@ -4,7 +4,7 @@ import { PolicyPort } from '../../app/ports/sales.ports.js';
 /**
  * PolicyAdapter - Connects sales module to policy module
  * 
- * Reads from sales_policies table to apply:
+ * Reads from branch_sales_policies table to apply:
  * - VAT settings (enabled, rate)
  * - KHR rounding mode
  * - Discount scope rules
@@ -14,13 +14,13 @@ import { PolicyPort } from '../../app/ports/sales.ports.js';
 export class PolicyAdapter implements PolicyPort {
   constructor(private pool: Pool) {}
 
-  async getCurrentFxRate(tenantId: string): Promise<number> {
+  async getCurrentFxRate(tenantId: string, branchId: string): Promise<number> {
     try {
       const result = await this.pool.query(
         `SELECT fx_rate_khr_per_usd 
-         FROM sales_policies 
-         WHERE tenant_id = $1`,
-        [tenantId]
+         FROM branch_sales_policies 
+         WHERE tenant_id = $1 AND branch_id = $2`,
+        [tenantId, branchId]
       );
 
       if (result.rows.length === 0) {
@@ -36,13 +36,16 @@ export class PolicyAdapter implements PolicyPort {
     }
   }
 
-  async getVatPolicy(tenantId: string): Promise<{ enabled: boolean; rate: number }> {
+  async getVatPolicy(
+    tenantId: string,
+    branchId: string
+  ): Promise<{ enabled: boolean; rate: number }> {
     try {
       const result = await this.pool.query(
         `SELECT vat_enabled, vat_rate_percent 
-         FROM sales_policies 
-         WHERE tenant_id = $1`,
-        [tenantId]
+         FROM branch_sales_policies 
+         WHERE tenant_id = $1 AND branch_id = $2`,
+        [tenantId, branchId]
       );
 
       if (result.rows.length === 0) {
@@ -62,13 +65,16 @@ export class PolicyAdapter implements PolicyPort {
     }
   }
 
-  async getRoundingPolicy(tenantId: string): Promise<{ enabled: boolean; method: string }> {
+  async getRoundingPolicy(
+    tenantId: string,
+    branchId: string
+  ): Promise<{ enabled: boolean; method: string }> {
     try {
       const result = await this.pool.query(
         `SELECT khr_rounding_enabled, khr_rounding_mode, khr_rounding_granularity 
-         FROM sales_policies 
-         WHERE tenant_id = $1`,
-        [tenantId]
+         FROM branch_sales_policies 
+         WHERE tenant_id = $1 AND branch_id = $2`,
+        [tenantId, branchId]
       );
 
       if (result.rows.length === 0) {

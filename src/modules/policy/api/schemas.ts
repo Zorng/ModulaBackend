@@ -1,10 +1,13 @@
 import { z } from "zod";
 
+const branchIdSchema = z.string().uuid().optional();
+
 /**
  * Schema for updating tax policies (VAT)
  */
 export const updateTaxPoliciesSchema = z
   .object({
+    branchId: branchIdSchema,
     saleVatEnabled: z.boolean().optional(),
     saleVatRatePercent: z.number().min(0).max(100).optional(),
   })
@@ -22,6 +25,7 @@ export type UpdateTaxPoliciesInput = z.infer<
  */
 export const updateCurrencyPoliciesSchema = z
   .object({
+    branchId: branchIdSchema,
     saleFxRateKhrPerUsd: z.number().min(1000).max(10000).optional(),
   })
   .strict()
@@ -38,6 +42,7 @@ export type UpdateCurrencyPoliciesInput = z.infer<
  */
 export const updateRoundingPoliciesSchema = z
   .object({
+    branchId: branchIdSchema,
     saleKhrRoundingEnabled: z.boolean().optional(),
     saleKhrRoundingMode: z.enum(["NEAREST", "UP", "DOWN"]).optional(),
     saleKhrRoundingGranularity: z.enum(["100", "1000"]).optional(),
@@ -56,6 +61,7 @@ export type UpdateRoundingPoliciesInput = z.infer<
  */
 export const updateInventoryPoliciesSchema = z
   .object({
+    branchId: branchIdSchema,
     inventoryAutoSubtractOnSale: z.boolean().optional(),
     inventoryExpiryTrackingEnabled: z.boolean().optional(),
   })
@@ -73,6 +79,7 @@ export type UpdateInventoryPoliciesInput = z.infer<
  */
 export const updateCashSessionPoliciesSchema = z
   .object({
+    branchId: branchIdSchema,
     cashRequireSessionForSales: z.boolean().optional(),
     cashAllowPaidOut: z.boolean().optional(),
     cashRequireRefundApproval: z.boolean().optional(),
@@ -92,6 +99,7 @@ export type UpdateCashSessionPoliciesInput = z.infer<
  */
 export const updateAttendancePoliciesSchema = z
   .object({
+    branchId: branchIdSchema,
     attendanceAutoFromCashSession: z.boolean().optional(),
     attendanceRequireOutOfShiftApproval: z.boolean().optional(),
     attendanceEarlyCheckinBufferEnabled: z.boolean().optional(),

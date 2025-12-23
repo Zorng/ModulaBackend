@@ -10,6 +10,20 @@ import type {
   // TODO: Import UpdateAttendancePoliciesInput when attendance module is ready
 } from "../schemas.js";
 
+function resolveBranchIdFromQuery(req: AuthenticatedRequest): string | null {
+  const queryBranchId =
+    typeof req.query?.branchId === "string" ? req.query.branchId : undefined;
+  return queryBranchId ?? req.user?.branchId ?? null;
+}
+
+function resolveBranchIdFromBody(req: AuthenticatedRequest): string | null {
+  const bodyBranchId =
+    typeof (req.body as any)?.branchId === "string"
+      ? (req.body as any).branchId
+      : undefined;
+  return bodyBranchId ?? req.user?.branchId ?? null;
+}
+
 /**
  * Controller for policy-related operations
  */
@@ -24,9 +38,20 @@ export class PolicyController {
   ) {
     try {
       const { tenantId } = req.user!;
+      const branchId = resolveBranchIdFromQuery(req);
+
+      if (!branchId) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId is required",
+        });
+      }
 
       const { getTenantPoliciesUseCase } = PolicyFactory.build();
-      const result = await getTenantPoliciesUseCase.execute({ tenantId });
+      const result = await getTenantPoliciesUseCase.execute({
+        tenantId,
+        branchId,
+      });
 
       if (!result.ok) {
         return res.status(404).json({
@@ -51,9 +76,20 @@ export class PolicyController {
   ) {
     try {
       const { tenantId } = req.user!;
+      const branchId = resolveBranchIdFromQuery(req);
+
+      if (!branchId) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId is required",
+        });
+      }
 
       const { getSalesPoliciesUseCase } = PolicyFactory.build();
-      const result = await getSalesPoliciesUseCase.execute({ tenantId });
+      const result = await getSalesPoliciesUseCase.execute({
+        tenantId,
+        branchId,
+      });
 
       if (!result.ok) {
         return res.status(404).json({
@@ -78,9 +114,20 @@ export class PolicyController {
   ) {
     try {
       const { tenantId } = req.user!;
+      const branchId = resolveBranchIdFromQuery(req);
+
+      if (!branchId) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId is required",
+        });
+      }
 
       const { getInventoryPoliciesUseCase } = PolicyFactory.build();
-      const result = await getInventoryPoliciesUseCase.execute({ tenantId });
+      const result = await getInventoryPoliciesUseCase.execute({
+        tenantId,
+        branchId,
+      });
 
       if (!result.ok) {
         return res.status(404).json({
@@ -108,11 +155,21 @@ export class PolicyController {
   ) {
     try {
       const { tenantId } = req.user!;
-      const updates = req.body as UpdateTaxPoliciesInput;
+      const branchId = resolveBranchIdFromBody(req);
+      const { branchId: _branchId, ...updates } =
+        req.body as UpdateTaxPoliciesInput;
+
+      if (!branchId) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId is required",
+        });
+      }
 
       const { updateTenantPoliciesUseCase } = PolicyFactory.build();
       const result = await updateTenantPoliciesUseCase.execute(
         tenantId,
+        branchId,
         updates
       );
 
@@ -127,6 +184,7 @@ export class PolicyController {
       const { saleVatEnabled, saleVatRatePercent, updatedAt } = result.value;
       return res.status(200).json({
         tenantId,
+        branchId,
         vatEnabled: saleVatEnabled,
         vatRatePercent: saleVatRatePercent,
         updatedAt,
@@ -146,11 +204,21 @@ export class PolicyController {
   ) {
     try {
       const { tenantId } = req.user!;
-      const updates = req.body as UpdateCurrencyPoliciesInput;
+      const branchId = resolveBranchIdFromBody(req);
+      const { branchId: _branchId, ...updates } =
+        req.body as UpdateCurrencyPoliciesInput;
+
+      if (!branchId) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId is required",
+        });
+      }
 
       const { updateTenantPoliciesUseCase } = PolicyFactory.build();
       const result = await updateTenantPoliciesUseCase.execute(
         tenantId,
+        branchId,
         updates
       );
 
@@ -165,6 +233,7 @@ export class PolicyController {
       const { saleFxRateKhrPerUsd, updatedAt } = result.value;
       return res.status(200).json({
         tenantId,
+        branchId,
         fxRateKhrPerUsd: saleFxRateKhrPerUsd,
         updatedAt,
       });
@@ -183,11 +252,21 @@ export class PolicyController {
   ) {
     try {
       const { tenantId } = req.user!;
-      const updates = req.body as UpdateRoundingPoliciesInput;
+      const branchId = resolveBranchIdFromBody(req);
+      const { branchId: _branchId, ...updates } =
+        req.body as UpdateRoundingPoliciesInput;
+
+      if (!branchId) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId is required",
+        });
+      }
 
       const { updateTenantPoliciesUseCase } = PolicyFactory.build();
       const result = await updateTenantPoliciesUseCase.execute(
         tenantId,
+        branchId,
         updates
       );
 
@@ -202,6 +281,7 @@ export class PolicyController {
       const { saleKhrRoundingEnabled, saleKhrRoundingMode, saleKhrRoundingGranularity, updatedAt } = result.value;
       return res.status(200).json({
         tenantId,
+        branchId,
         khrRoundingEnabled: saleKhrRoundingEnabled,
         khrRoundingMode: saleKhrRoundingMode,
         khrRoundingGranularity: saleKhrRoundingGranularity,
@@ -222,11 +302,21 @@ export class PolicyController {
   ) {
     try {
       const { tenantId } = req.user!;
-      const updates = req.body as UpdateInventoryPoliciesInput;
+      const branchId = resolveBranchIdFromBody(req);
+      const { branchId: _branchId, ...updates } =
+        req.body as UpdateInventoryPoliciesInput;
+
+      if (!branchId) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId is required",
+        });
+      }
 
       const { updateTenantPoliciesUseCase } = PolicyFactory.build();
       const result = await updateTenantPoliciesUseCase.execute(
         tenantId,
+        branchId,
         updates
       );
 
@@ -241,6 +331,7 @@ export class PolicyController {
       const { inventoryAutoSubtractOnSale, inventoryExpiryTrackingEnabled, updatedAt } = result.value;
       return res.status(200).json({
         tenantId,
+        branchId,
         autoSubtractOnSale: inventoryAutoSubtractOnSale,
         expiryTrackingEnabled: inventoryExpiryTrackingEnabled,
         updatedAt,

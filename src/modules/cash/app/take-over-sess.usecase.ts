@@ -46,10 +46,14 @@ export class TakeOverSessionUseCase {
       return Err("Reason must be at least 3 characters");
     }
 
+    if (!registerId) {
+      return Err(
+        "Takeover without registerId is not supported (cash sessions are per-user). Use force-close instead."
+      );
+    }
+
     // Find existing open session (register-specific or branch-level)
-    const existingSession = registerId
-      ? await this.sessionRepo.findOpenByRegister(registerId)
-      : await this.sessionRepo.findOpenByBranch(tenantId, branchId);
+    const existingSession = await this.sessionRepo.findOpenByRegister(registerId);
 
     if (!existingSession) {
       return Err("No open session found to take over");

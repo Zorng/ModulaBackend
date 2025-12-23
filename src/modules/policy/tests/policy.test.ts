@@ -37,9 +37,11 @@ describe("Policy Use Cases", () => {
     it("should return tenant policies when they exist", async () => {
       const useCase = new GetTenantPoliciesUseCase(mockPolicyRepository);
       const tenantId = "test-tenant-id";
+      const branchId = "test-branch-id";
 
       const mockPolicies: TenantPolicies = {
         tenantId,
+        branchId,
         // Sales
         saleVatEnabled: false,
         saleVatRatePercent: 10.0,
@@ -68,21 +70,26 @@ describe("Policy Use Cases", () => {
 
       mockPolicyRepository.getTenantPolicies.mockResolvedValue(mockPolicies);
 
-      const result = await useCase.execute({ tenantId });
+      const result = await useCase.execute({ tenantId, branchId });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toEqual(mockPolicies);
       }
-      expect(mockPolicyRepository.getTenantPolicies).toHaveBeenCalledWith(tenantId);
+      expect(mockPolicyRepository.getTenantPolicies).toHaveBeenCalledWith(
+        tenantId,
+        branchId
+      );
     });
 
     it("should ensure default policies when they don't exist", async () => {
       const useCase = new GetTenantPoliciesUseCase(mockPolicyRepository);
       const tenantId = "test-tenant-id";
+      const branchId = "test-branch-id";
 
       const defaultPolicies: TenantPolicies = {
         tenantId,
+        branchId,
         saleVatEnabled: false,
         saleVatRatePercent: 10.0,
         saleFxRateKhrPerUsd: 4100,
@@ -107,13 +114,16 @@ describe("Policy Use Cases", () => {
       mockPolicyRepository.getTenantPolicies.mockResolvedValue(null);
       mockPolicyRepository.ensureDefaultPolicies.mockResolvedValue(defaultPolicies);
 
-      const result = await useCase.execute({ tenantId });
+      const result = await useCase.execute({ tenantId, branchId });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toEqual(defaultPolicies);
       }
-      expect(mockPolicyRepository.ensureDefaultPolicies).toHaveBeenCalledWith(tenantId);
+      expect(mockPolicyRepository.ensureDefaultPolicies).toHaveBeenCalledWith(
+        tenantId,
+        branchId
+      );
     });
   });
 
@@ -121,9 +131,11 @@ describe("Policy Use Cases", () => {
     it("should return sales policies when they exist", async () => {
       const useCase = new GetSalesPoliciesUseCase(mockPolicyRepository);
       const tenantId = "test-tenant-id";
+      const branchId = "test-branch-id";
 
       const mockSalesPolicies: SalesPolicies = {
         tenantId,
+        branchId,
         vatEnabled: true,
         vatRatePercent: 10,
         fxRateKhrPerUsd: 4100,
@@ -136,7 +148,7 @@ describe("Policy Use Cases", () => {
 
       mockPolicyRepository.getSalesPolicies.mockResolvedValue(mockSalesPolicies);
 
-      const result = await useCase.execute({ tenantId });
+      const result = await useCase.execute({ tenantId, branchId });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -149,9 +161,11 @@ describe("Policy Use Cases", () => {
     it("should return inventory policies when they exist", async () => {
       const useCase = new GetInventoryPoliciesUseCase(mockPolicyRepository);
       const tenantId = "test-tenant-id";
+      const branchId = "test-branch-id";
 
       const mockInventoryPolicies: InventoryPolicies = {
         tenantId,
+        branchId,
         autoSubtractOnSale: true,
         expiryTrackingEnabled: false,
         createdAt: new Date(),
@@ -162,7 +176,7 @@ describe("Policy Use Cases", () => {
         mockInventoryPolicies
       );
 
-      const result = await useCase.execute({ tenantId });
+      const result = await useCase.execute({ tenantId, branchId });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -175,6 +189,7 @@ describe("Policy Use Cases", () => {
     it("should update policies successfully", async () => {
       const useCase = new UpdateTenantPoliciesUseCase(mockPolicyRepository);
       const tenantId = "test-tenant-id";
+      const branchId = "test-branch-id";
       const updates: UpdateTenantPoliciesInput = {
         saleVatEnabled: true,
         saleVatRatePercent: 15.0,
@@ -182,6 +197,7 @@ describe("Policy Use Cases", () => {
 
       const existingPolicies: TenantPolicies = {
         tenantId,
+        branchId,
         saleVatEnabled: false,
         saleVatRatePercent: 10.0,
         saleFxRateKhrPerUsd: 4100,
@@ -212,7 +228,7 @@ describe("Policy Use Cases", () => {
       mockPolicyRepository.getTenantPolicies.mockResolvedValue(existingPolicies);
       mockPolicyRepository.updateTenantPolicies.mockResolvedValue(updatedPolicies);
 
-      const result = await useCase.execute(tenantId, updates);
+      const result = await useCase.execute(tenantId, branchId, updates);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -220,6 +236,7 @@ describe("Policy Use Cases", () => {
       }
       expect(mockPolicyRepository.updateTenantPolicies).toHaveBeenCalledWith(
         tenantId,
+        branchId,
         updates
       );
     });
@@ -227,12 +244,14 @@ describe("Policy Use Cases", () => {
     it("should ensure default policies before updating if they don't exist", async () => {
       const useCase = new UpdateTenantPoliciesUseCase(mockPolicyRepository);
       const tenantId = "test-tenant-id";
+      const branchId = "test-branch-id";
       const updates: UpdateTenantPoliciesInput = {
         saleVatEnabled: true,
       };
 
       const defaultPolicies: TenantPolicies = {
         tenantId,
+        branchId,
         saleVatEnabled: false,
         saleVatRatePercent: 10.0,
         saleFxRateKhrPerUsd: 4100,
@@ -263,12 +282,16 @@ describe("Policy Use Cases", () => {
       mockPolicyRepository.ensureDefaultPolicies.mockResolvedValue(defaultPolicies);
       mockPolicyRepository.updateTenantPolicies.mockResolvedValue(updatedPolicies);
 
-      const result = await useCase.execute(tenantId, updates);
+      const result = await useCase.execute(tenantId, branchId, updates);
 
       expect(result.ok).toBe(true);
-      expect(mockPolicyRepository.ensureDefaultPolicies).toHaveBeenCalledWith(tenantId);
+      expect(mockPolicyRepository.ensureDefaultPolicies).toHaveBeenCalledWith(
+        tenantId,
+        branchId
+      );
       expect(mockPolicyRepository.updateTenantPolicies).toHaveBeenCalledWith(
         tenantId,
+        branchId,
         updates
       );
     });

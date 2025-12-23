@@ -46,6 +46,17 @@ export class OpenCashSessionUseCase {
 
     // Validate register if provided
     if (registerId) {
+      const existingForUser = await this.sessionRepo.findOpenByUserBranch(
+        tenantId,
+        branchId,
+        openedBy
+      );
+      if (existingForUser) {
+        return Err(
+          "You already have an open session for this branch. Close it before opening another."
+        );
+      }
+
       const register = await this.registerRepo.findById(registerId);
       if (!register) {
         return Err("Register not found");
@@ -63,18 +74,19 @@ export class OpenCashSessionUseCase {
       );
       if (existingSession) {
         return Err(
-          "A session is already open on this register. Close it or take over first."
+          "A session is already open on this register. Close it or force-close first."
         );
       }
     } else {
-      // For device-agnostic sessions, check for existing open session at branch level
-      const existingSession = await this.sessionRepo.findOpenByBranch(
+      // For device-agnostic sessions, enforce at most one OPEN session per user per branch.
+      const existingSession = await this.sessionRepo.findOpenByUserBranch(
         tenantId,
-        branchId
+        branchId,
+        openedBy
       );
       if (existingSession) {
         return Err(
-          "A session is already open for this branch. Close it or take over first."
+          "You already have an open session for this branch. Close it before opening another."
         );
       }
     }

@@ -117,7 +117,8 @@ export async function setBranchStatus(params: {
 
 export async function ensureDefaultPolicies(
   pool: Pool,
-  tenantId: string
+  tenantId: string,
+  branchId: string
 ): Promise<void> {
   await Promise.all([
     pool.query(
@@ -139,6 +140,30 @@ export async function ensureDefaultPolicies(
       `INSERT INTO attendance_policies (tenant_id) VALUES ($1)
        ON CONFLICT (tenant_id) DO NOTHING`,
       [tenantId]
+    ),
+    pool.query(
+      `INSERT INTO branch_sales_policies (tenant_id, branch_id)
+       VALUES ($1, $2)
+       ON CONFLICT (tenant_id, branch_id) DO NOTHING`,
+      [tenantId, branchId]
+    ),
+    pool.query(
+      `INSERT INTO branch_inventory_policies (tenant_id, branch_id)
+       VALUES ($1, $2)
+       ON CONFLICT (tenant_id, branch_id) DO NOTHING`,
+      [tenantId, branchId]
+    ),
+    pool.query(
+      `INSERT INTO branch_cash_session_policies (tenant_id, branch_id)
+       VALUES ($1, $2)
+       ON CONFLICT (tenant_id, branch_id) DO NOTHING`,
+      [tenantId, branchId]
+    ),
+    pool.query(
+      `INSERT INTO branch_attendance_policies (tenant_id, branch_id)
+       VALUES ($1, $2)
+       ON CONFLICT (tenant_id, branch_id) DO NOTHING`,
+      [tenantId, branchId]
     ),
   ]);
 }
@@ -288,7 +313,7 @@ export async function seedTenantSingleBranch(
   );
 
   if (ensurePolicies) {
-    await ensureDefaultPolicies(pool, tenantId);
+    await ensureDefaultPolicies(pool, tenantId, branchId);
   }
 
   if (ensureMenuLimits) {

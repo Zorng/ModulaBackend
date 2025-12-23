@@ -2,6 +2,7 @@ import { Router } from "express";
 import { validateBody } from "../../../platform/http/middleware/validation.js";
 import type { AuthMiddlewarePort } from "../../../platform/security/auth.js";
 import { PolicyController } from "./controller/policyController.js";
+import { requireAdmin } from "./middleware/policy.middleware.js";
 import {
   updateTaxPoliciesSchema,
   updateCurrencyPoliciesSchema,
@@ -142,6 +143,7 @@ policyRouter.get(
 policyRouter.patch(
   "/tax",
   authMiddleware.authenticate,
+  requireAdmin,
   validateBody(updateTaxPoliciesSchema),
   PolicyController.updateTaxPolicies
 );
@@ -183,6 +185,7 @@ policyRouter.patch(
 policyRouter.patch(
   "/currency",
   authMiddleware.authenticate,
+  requireAdmin,
   validateBody(updateCurrencyPoliciesSchema),
   PolicyController.updateCurrencyPolicies
 );
@@ -232,6 +235,7 @@ policyRouter.patch(
 policyRouter.patch(
   "/rounding",
   authMiddleware.authenticate,
+  requireAdmin,
   validateBody(updateRoundingPoliciesSchema),
   PolicyController.updateRoundingPolicies
 );
@@ -275,6 +279,7 @@ policyRouter.patch(
 policyRouter.patch(
   "/inventory",
   authMiddleware.authenticate,
+  requireAdmin,
   validateBody(updateInventoryPoliciesSchema),
   PolicyController.updateInventoryPolicies
 );

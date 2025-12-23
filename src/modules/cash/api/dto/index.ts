@@ -53,6 +53,25 @@ export const takeOverSessionSchema = z.object({
 
 export type TakeOverSessionInput = z.infer<typeof takeOverSessionSchema>;
 
+// Force Close Session
+export const forceCloseSessionBodySchema = z.object({
+  countedCashUsd: nonNegativeNumber.optional(),
+  countedCashKhr: nonNegativeNumber.optional(),
+  reason: z.string().min(3).max(500),
+  note: z.string().max(500).optional(),
+});
+
+export const forceCloseSessionSchema = z.object({
+  sessionId: uuidSchema,
+  closedBy: uuidSchema,
+  countedCashUsd: nonNegativeNumber.optional(),
+  countedCashKhr: nonNegativeNumber.optional(),
+  reason: z.string().min(3).max(500),
+  note: z.string().max(500).optional(),
+});
+
+export type ForceCloseSessionInput = z.infer<typeof forceCloseSessionSchema>;
+
 // Close Session
 export const closeSessionBodySchema = z.object({
   countedCashUsd: nonNegativeNumber,

@@ -69,8 +69,8 @@ describe("Tenant provisioning (DB-backed)", () => {
       membershipProvisioningPort: createMembershipProvisioningPort(),
       branchProvisioningPort: branchModule.branchProvisioningPort,
       policyDefaultsPort: {
-        ensureDefaultPolicies: async (tenantId) => {
-          await policyRepo.ensureDefaultPolicies(tenantId);
+        ensureDefaultPolicies: async (tenantId, branchId) => {
+          await policyRepo.ensureDefaultPolicies(tenantId, branchId);
         },
       },
       auditWriterPort: auditModule.auditWriterPort,
@@ -182,8 +182,8 @@ describe("Tenant provisioning (DB-backed)", () => {
       },
       branchProvisioningPort: branchModule.branchProvisioningPort,
       policyDefaultsPort: {
-        ensureDefaultPolicies: async (tenantId) => {
-          await policyRepo.ensureDefaultPolicies(tenantId);
+        ensureDefaultPolicies: async (tenantId, branchId) => {
+          await policyRepo.ensureDefaultPolicies(tenantId, branchId);
         },
       },
       auditWriterPort: auditModule.auditWriterPort,
@@ -225,7 +225,7 @@ describe("Tenant provisioning (DB-backed)", () => {
       membershipProvisioningPort: createMembershipProvisioningPort(),
       branchProvisioningPort: branchModule.branchProvisioningPort,
       policyDefaultsPort: {
-        ensureDefaultPolicies: async () => {
+        ensureDefaultPolicies: async (_tenantId, _branchId) => {
           throw new Error("policy seeding failed");
         },
       },
@@ -275,8 +275,8 @@ describe("Tenant provisioning (DB-backed)", () => {
       membershipProvisioningPort: createMembershipProvisioningPort(),
       branchProvisioningPort: branchModule.branchProvisioningPort,
       policyDefaultsPort: {
-        ensureDefaultPolicies: async (tenantId) => {
-          await policyRepo.ensureDefaultPolicies(tenantId);
+        ensureDefaultPolicies: async (tenantId, branchId) => {
+          await policyRepo.ensureDefaultPolicies(tenantId, branchId);
         },
       },
       auditWriterPort: auditModule.auditWriterPort,

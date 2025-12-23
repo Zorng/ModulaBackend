@@ -219,6 +219,21 @@ export class CashSessionRepository implements ICashSessionRepository {
     return this.toEntity(res.rows[0]);
   }
 
+  async findOpenByUserRegister(
+    tenantId: string,
+    registerId: string,
+    openedBy: string,
+    client?: PoolClient
+  ): Promise<CashSession | null> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
+      "SELECT * FROM cash_sessions WHERE tenant_id = $1 AND register_id = $2 AND opened_by = $3 AND status = 'OPEN' ORDER BY opened_at DESC LIMIT 1",
+      [tenantId, registerId, openedBy]
+    );
+    if (res.rows.length === 0) return null;
+    return this.toEntity(res.rows[0]);
+  }
+
   async findOpenByBranch(
     tenantId: string,
     branchId: string,
@@ -228,6 +243,21 @@ export class CashSessionRepository implements ICashSessionRepository {
     const res = await db.query(
       "SELECT * FROM cash_sessions WHERE tenant_id = $1 AND branch_id = $2 AND status = 'OPEN' AND register_id IS NULL ORDER BY opened_at DESC LIMIT 1",
       [tenantId, branchId]
+    );
+    if (res.rows.length === 0) return null;
+    return this.toEntity(res.rows[0]);
+  }
+
+  async findOpenByUserBranch(
+    tenantId: string,
+    branchId: string,
+    openedBy: string,
+    client?: PoolClient
+  ): Promise<CashSession | null> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
+      "SELECT * FROM cash_sessions WHERE tenant_id = $1 AND branch_id = $2 AND opened_by = $3 AND status = 'OPEN' ORDER BY opened_at DESC LIMIT 1",
+      [tenantId, branchId, openedBy]
     );
     if (res.rows.length === 0) return null;
     return this.toEntity(res.rows[0]);

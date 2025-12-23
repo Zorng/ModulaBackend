@@ -52,11 +52,23 @@ export interface CashSessionRepository {
     registerId: string,
     client?: PoolClient
   ): Promise<CashSession | null>;
+  findOpenByUserRegister(
+    tenantId: string,
+    registerId: string,
+    openedBy: string,
+    client?: PoolClient
+  ): Promise<CashSession | null>;
   findOpenByBranch(
     tenantId: string,
     branchId: string,
     client?: PoolClient
   ): Promise<CashSession | null>; // For device-agnostic sessions
+  findOpenByUserBranch(
+    tenantId: string,
+    branchId: string,
+    openedBy: string,
+    client?: PoolClient
+  ): Promise<CashSession | null>;
   findByTenantAndBranch(
     tenantId: string,
     branchId: string,

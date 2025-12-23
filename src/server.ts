@@ -81,8 +81,8 @@ const tenantModule = bootstrapTenantModule(pool, {
   membershipProvisioningPort,
   branchProvisioningPort: branchModule.branchProvisioningPort,
   policyDefaultsPort: {
-    ensureDefaultPolicies: async (tenantId: string) => {
-      await policyRepo.ensureDefaultPolicies(tenantId);
+    ensureDefaultPolicies: async (tenantId: string, branchId: string) => {
+      await policyRepo.ensureDefaultPolicies(tenantId, branchId);
     },
   },
   auditWriterPort: auditModule.auditWriterPort,

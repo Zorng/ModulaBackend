@@ -41,7 +41,7 @@ export interface EmployeeRecord {
 }
 
 export interface PolicyDefaultsPort {
-  ensureDefaultPolicies(tenantId: string): Promise<void>;
+  ensureDefaultPolicies(tenantId: string, branchId: string): Promise<void>;
 }
 
 export interface MembershipProvisioningPort {

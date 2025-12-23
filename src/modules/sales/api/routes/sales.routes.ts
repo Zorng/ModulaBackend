@@ -4,6 +4,8 @@ import { salesMiddleware } from '../middlewares/sales.middleware.js';
 import type { AuthRequest, AuthMiddlewarePort } from "../../../../platform/security/auth.js";
 import { validateRequest } from '../../../../platform/http/middlewares/validation.middleware.js';
 import { requireActiveBranch } from "../../../../platform/http/middlewares/branch-guard.middleware.js";
+import type { Pool } from "pg";
+import { createRequireCashSessionForSalesMiddleware } from "../middlewares/cash-session-policy.middleware.js";
 import { 
   createSaleSchema, 
   addItemSchema, 
@@ -29,7 +31,11 @@ import {
  * All routes are protected by authentication and sales-specific middleware.
  */
 
-export function createSalesRoutes(controller: SalesController, authMiddleware: AuthMiddlewarePort): Router {
+export function createSalesRoutes(
+  controller: SalesController,
+  authMiddleware: AuthMiddlewarePort,
+  pool: Pool
+): Router {
   const router = Router();
 
   // ==================== MIDDLEWARE ====================
@@ -39,6 +45,12 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
   
   // Apply sales-specific middleware (branch permissions, etc.)
   router.use(salesMiddleware);
+
+  const requireCashSessionForCart = createRequireCashSessionForSalesMiddleware(pool);
+  const requireCashSessionForDraftGetOrCreate =
+    createRequireCashSessionForSalesMiddleware(pool, {
+      mode: "only_if_creating_draft",
+    });
 
   // ==================== DRAFT & CART MANAGEMENT ====================
 
@@ -83,6 +95,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
   router.post(
     '/drafts', 
     requireActiveBranch({ operation: "sales.create_draft" }),
+    requireCashSessionForCart,
     validateRequest(createSaleSchema),
     async (req, res) => await controller.createDraftSale(req as AuthRequest, res)
   );
@@ -113,6 +126,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
   router.get(
     '/drafts/:clientUuid',
     requireActiveBranch({ operation: "sales.get_or_create_draft" }),
+    requireCashSessionForDraftGetOrCreate,
     async (req, res) => await controller.getOrCreateDraft(req as unknown as AuthRequest, res)
   );  // ==================== CART ITEM OPERATIONS ====================
 
@@ -167,6 +181,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
   router.post(
     '/:saleId/items',
     requireActiveBranch({ operation: "sales.add_item" }),
+    requireCashSessionForCart,
     validateRequest(addItemSchema),
     async (req, res) => await controller.addItem(req as AuthRequest, res)
   );
@@ -214,6 +229,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
   router.patch(
     '/:saleId/items/:itemId/quantity',
     requireActiveBranch({ operation: "sales.update_item_quantity" }),
+    requireCashSessionForCart,
     validateRequest(updateItemQuantitySchema),
     async (req, res) => await controller.updateItemQuantity(req as AuthRequest, res)
   );
@@ -249,6 +265,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
   router.delete(
     '/:saleId/items/:itemId',
     requireActiveBranch({ operation: "sales.remove_item" }),
+    requireCashSessionForCart,
     async (req, res) => await controller.removeItem(req as unknown as AuthRequest, res)
   );
 

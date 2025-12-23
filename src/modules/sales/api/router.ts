@@ -1,6 +1,7 @@
 import { SalesController } from './controllers/sales.controller.js';
 import { createSalesRoutes } from './routes/sales.routes.js';
 import type { AuthMiddlewarePort } from "../../../platform/security/auth.js";
+import type { Pool } from "pg";
 
 /**
  * Sales Module Router
@@ -9,8 +10,16 @@ import type { AuthMiddlewarePort } from "../../../platform/security/auth.js";
  * with all the route definitions and middleware.
  */
 
-export function createSalesRouter(controller: SalesController, authMiddleware: AuthMiddlewarePort) {
-  return createSalesRoutes(controller, authMiddleware);
+export function createSalesRouter(
+  controller: SalesController,
+  authMiddleware: AuthMiddlewarePort,
+  pool: Pool
+) {
+  return createSalesRoutes(controller, authMiddleware, pool);
 }
 
-export type SalesRouterFactory = (controller: SalesController, authMiddleware: AuthMiddlewarePort) => ReturnType<typeof createSalesRoutes>;
+export type SalesRouterFactory = (
+  controller: SalesController,
+  authMiddleware: AuthMiddlewarePort,
+  pool: Pool
+) => ReturnType<typeof createSalesRoutes>;

@@ -96,7 +96,10 @@ export class TenantProvisioningService {
     }
 
     try {
-      await this.policyDefaults.ensureDefaultPolicies(provisioned.tenant.id);
+      await this.policyDefaults.ensureDefaultPolicies(
+        provisioned.tenant.id,
+        provisioned.branch.id
+      );
     } catch (err) {
       if (tenantIdForCleanup) {
         try {

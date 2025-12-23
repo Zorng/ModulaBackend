@@ -23,8 +23,8 @@ import {
 // Use Cases
 import {
   OpenCashSessionUseCase,
-  TakeOverSessionUseCase,
   CloseCashSessionUseCase,
+  ForceCloseSessionUseCase,
   RecordCashMovementUseCase,
   GetActiveSessionUseCase,
   GenerateZReportUseCase,
@@ -71,15 +71,15 @@ export function bootstrapCashModule(
     deps.auditWriterPort
   );
 
-  const takeOverSessionUseCase = new TakeOverSessionUseCase(
+  const closeSessionUseCase = new CloseCashSessionUseCase(
     sessionRepo,
-    registerRepo,
+    movementRepo,
     eventPublisher,
     txManager,
     deps.auditWriterPort
   );
 
-  const closeSessionUseCase = new CloseCashSessionUseCase(
+  const forceCloseSessionUseCase = new ForceCloseSessionUseCase(
     sessionRepo,
     movementRepo,
     eventPublisher,
@@ -124,9 +124,9 @@ export function bootstrapCashModule(
   // Create controllers
   const sessionController = new SessionController(
     openSessionUseCase,
-    takeOverSessionUseCase,
     closeSessionUseCase,
-    getActiveSessionUseCase
+    getActiveSessionUseCase,
+    forceCloseSessionUseCase
   );
 
   const movementController = new MovementController(

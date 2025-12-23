@@ -251,7 +251,8 @@ export function bootstrapInventoryModule(
   const saleFinalizedHandler = new SaleFinalizedHandler(
     policyAdapter,
     getMenuStockMapUseCase,
-    recordSaleDeductionsUseCase
+    recordSaleDeductionsUseCase,
+    pool
   );
 
   const saleVoidedHandler = new SaleVoidedHandler(

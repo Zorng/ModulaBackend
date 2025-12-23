@@ -7,6 +7,7 @@
  */
 export interface TenantPolicies {
   tenantId: string;
+  branchId: string;
 
   // ==================== TAX & CURRENCY ====================
   saleVatEnabled: boolean;
@@ -43,6 +44,7 @@ export interface TenantPolicies {
  */
 export interface SalesPolicies {
   tenantId: string;
+  branchId: string;
   vatEnabled: boolean;
   vatRatePercent: number;
   fxRateKhrPerUsd: number;
@@ -58,6 +60,7 @@ export interface SalesPolicies {
  */
 export interface InventoryPolicies {
   tenantId: string;
+  branchId: string;
   autoSubtractOnSale: boolean;
   expiryTrackingEnabled: boolean;
   createdAt: Date;
@@ -69,6 +72,7 @@ export interface InventoryPolicies {
  */
 export interface CashSessionPolicies {
   tenantId: string;
+  branchId: string;
   requireSessionForSales: boolean;
   allowPaidOut: boolean;
   requireRefundApproval: boolean;
@@ -82,6 +86,7 @@ export interface CashSessionPolicies {
  */
 export interface AttendancePolicies {
   tenantId: string;
+  branchId: string;
   autoFromCashSession: boolean;
   requireOutOfShiftApproval: boolean;
   earlyCheckinBufferEnabled: boolean;

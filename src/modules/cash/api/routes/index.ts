@@ -229,14 +229,21 @@ export function createCashRoutes(
 
   /**
    * @openapi
-   * /v1/cash/sessions/take-over:
+   * /v1/cash/sessions/{sessionId}/force-close:
    *   post:
    *     tags:
    *       - Cash
-   *     summary: Take over an open session (Manager/Admin)
-   *     description: Close previous session and open new one (manager approval)
+   *     summary: Force-close an open session (Manager/Admin)
+   *     description: Close an open session with a required reason (manager override)
    *     security:
    *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: sessionId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
    *     requestBody:
    *       required: true
    *       content:
@@ -245,31 +252,23 @@ export function createCashRoutes(
    *             type: object
    *             required:
    *               - reason
-   *               - openingFloatUsd
-   *               - openingFloatKhr
    *             properties:
-   *               branchId:
-   *                 type: string
-   *                 format: uuid
-   *                 description: Branch ID (optional - defaults to user's branch)
-   *               registerId:
-   *                 type: string
-   *                 format: uuid
-   *                 description: Register ID (optional - omit for device-agnostic sessions)
+   *               countedCashUsd:
+   *                 type: number
+   *                 minimum: 0
+   *               countedCashKhr:
+   *                 type: number
+   *                 minimum: 0
    *               reason:
    *                 type: string
    *                 minLength: 3
    *                 maxLength: 500
-   *                 description: Reason for taking over
-   *               openingFloatUsd:
-   *                 type: number
-   *                 minimum: 0
-   *               openingFloatKhr:
-   *                 type: number
-   *                 minimum: 0
+   *               note:
+   *                 type: string
+   *                 maxLength: 500
    *     responses:
-   *       201:
-   *         description: Session taken over successfully
+   *       200:
+   *         description: Session force-closed successfully
    *       400:
    *         description: Bad request
    *       401:
@@ -278,13 +277,13 @@ export function createCashRoutes(
    *         description: Insufficient permissions
    */
   router.post(
-    "/sessions/take-over",
+    "/sessions/:sessionId/force-close",
     requireActiveBranch({
-      operation: "cash.take_over_session",
-      resolveBranchId: (req) =>
-        typeof req.body?.branchId === "string" ? req.body.branchId : undefined,
+      operation: "cash.force_close_session",
+      resolveBranchId: resolveBranchIdForSession,
     }),
-    async (req, res) => await sessionController.takeOverSession(req as any, res)
+    async (req, res) =>
+      await sessionController.forceCloseSession(req as any, res)
   );
 
   /**

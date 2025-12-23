@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 /**
  * PolicyAdapter - Connects inventory module to policy module
  * 
- * Reads from policy module's inventory_policies table to apply:
+ * Reads from branch_inventory_policies table to apply:
  * - Auto subtract on sale (enabled/disabled)
  * - Branch-specific overrides
  * - Menu item exclusions
@@ -13,38 +13,38 @@ export class InventoryPolicyAdapter {
 
   /**
    * Get inventory policy for automatic stock subtraction on sale
-   * Reads from policy module's inventory_policies
+   * Reads from branch-scoped inventory policies
    * @param tenantId - The tenant ID
    * @returns Policy settings for inventory behavior
    */
-  async getInventoryPolicy(tenantId: string): Promise<{
+  async getInventoryPolicy(
+    tenantId: string,
+    branchId: string
+  ): Promise<{
     autoSubtractOnSale: boolean;
     expiryTrackingEnabled: boolean;
-    branchOverrides: Record<string, any>;
     excludeMenuItemIds: string[];
   }> {
     try {
-      // Read from policy module's inventory_policies
+      // Read from branch-scoped policy table
       const result = await this.pool.query(
         `SELECT 
           auto_subtract_on_sale,
           expiry_tracking_enabled,
-          branch_overrides,
           exclude_menu_item_ids
-         FROM inventory_policies 
-         WHERE tenant_id = $1`,
-        [tenantId]
+         FROM branch_inventory_policies 
+         WHERE tenant_id = $1 AND branch_id = $2`,
+        [tenantId, branchId]
       );
 
       if (result.rows.length === 0) {
         // No policy found - create default policy
-        await this.ensureDefaultPolicy(tenantId);
+        await this.ensureDefaultPolicy(tenantId, branchId);
         
         // Return defaults
         return {
           autoSubtractOnSale: true, // Default: enabled
           expiryTrackingEnabled: false, // Default: disabled
-          branchOverrides: {},
           excludeMenuItemIds: [],
         };
       }
@@ -53,9 +53,6 @@ export class InventoryPolicyAdapter {
       return {
         autoSubtractOnSale: row.auto_subtract_on_sale,
         expiryTrackingEnabled: row.expiry_tracking_enabled,
-        branchOverrides: typeof row.branch_overrides === 'string' 
-          ? JSON.parse(row.branch_overrides) 
-          : row.branch_overrides || {},
         excludeMenuItemIds: typeof row.exclude_menu_item_ids === 'string'
           ? JSON.parse(row.exclude_menu_item_ids)
           : row.exclude_menu_item_ids || [],
@@ -66,7 +63,6 @@ export class InventoryPolicyAdapter {
       return {
         autoSubtractOnSale: true,
         expiryTrackingEnabled: false,
-        branchOverrides: {},
         excludeMenuItemIds: [],
       };
     }
@@ -86,7 +82,11 @@ export class InventoryPolicyAdapter {
     branchId?: string,
     menuItemIds?: string[]
   ): Promise<boolean> {
-    const policy = await this.getInventoryPolicy(tenantId);
+    if (!branchId) {
+      return true;
+    }
+
+    const policy = await this.getInventoryPolicy(tenantId, branchId);
     
     // Check if any menu items are excluded
     if (menuItemIds && menuItemIds.length > 0 && policy.excludeMenuItemIds.length > 0) {
@@ -100,14 +100,6 @@ export class InventoryPolicyAdapter {
       }
     }
     
-    // Check branch-specific override
-    if (branchId && policy.branchOverrides[branchId] !== undefined) {
-      const branchPolicy = policy.branchOverrides[branchId];
-      console.log(`[InventoryPolicyAdapter] Using branch override for ${branchId}: ${branchPolicy.inventorySubtractOnFinalize}`);
-      return branchPolicy.inventorySubtractOnFinalize;
-    }
-    
-    // Use tenant-level default
     return policy.autoSubtractOnSale;
   }
 
@@ -115,13 +107,16 @@ export class InventoryPolicyAdapter {
    * Ensure default policy exists for tenant
    * @param tenantId - The tenant ID
    */
-  private async ensureDefaultPolicy(tenantId: string): Promise<void> {
+  private async ensureDefaultPolicy(
+    tenantId: string,
+    branchId: string
+  ): Promise<void> {
     try {
       await this.pool.query(
-        `INSERT INTO inventory_policies (tenant_id, auto_subtract_on_sale)
-         VALUES ($1, true)
-         ON CONFLICT (tenant_id) DO NOTHING`,
-        [tenantId]
+        `INSERT INTO branch_inventory_policies (tenant_id, branch_id, auto_subtract_on_sale)
+         VALUES ($1, $2, true)
+         ON CONFLICT (tenant_id, branch_id) DO NOTHING`,
+        [tenantId, branchId]
       );
     } catch (error) {
       console.error('[InventoryPolicyAdapter] Error creating default policy:', error);

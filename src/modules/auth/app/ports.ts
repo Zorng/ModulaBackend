@@ -1,4 +1,3 @@
 export interface PolicyPort {
-  ensureDefaultPolicies(tenantId: string): Promise<void>;
+  ensureDefaultPolicies(tenantId: string, branchId: string): Promise<void>;
 }
-

@@ -452,7 +452,10 @@ export class OfflineSyncService {
 
     const payload = parsed.data;
 
-    const fxRate = await this.policyPort.getCurrentFxRate(params.tenantId);
+    const fxRate = await this.policyPort.getCurrentFxRate(
+      params.tenantId,
+      params.branchId
+    );
 
     const sale = createDraftSale({
       clientUuid: payload.client_sale_uuid,
@@ -463,7 +466,10 @@ export class OfflineSyncService {
       fxRateUsed: fxRate,
     });
 
-    const vatPolicy = await this.policyPort.getVatPolicy(params.tenantId);
+    const vatPolicy = await this.policyPort.getVatPolicy(
+      params.tenantId,
+      params.branchId
+    );
     applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
 
     // Add items (server-authoritative pricing)
@@ -504,7 +510,10 @@ export class OfflineSyncService {
     }
 
     // Pre-checkout (tender + order discounts + VAT)
-    const roundingPolicy = await this.policyPort.getRoundingPolicy(params.tenantId);
+    const roundingPolicy = await this.policyPort.getRoundingPolicy(
+      params.tenantId,
+      params.branchId
+    );
     setTenderCurrency(sale, payload.tender_currency, roundingPolicy);
     setPaymentMethod(sale, payload.payment_method, payload.cash_received);
 
@@ -521,7 +530,10 @@ export class OfflineSyncService {
       applyOrderDiscount(sale, best.type, best.value, [best.id]);
     }
 
-    const vatPolicy2 = await this.policyPort.getVatPolicy(params.tenantId);
+    const vatPolicy2 = await this.policyPort.getVatPolicy(
+      params.tenantId,
+      params.branchId
+    );
     applyVAT(sale, vatPolicy2.rate, vatPolicy2.enabled);
 
     // Finalize
@@ -909,4 +921,3 @@ function findBestPolicy(
     policies[0]
   );
 }
-
