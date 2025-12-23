@@ -39,7 +39,7 @@ describe("Sales cart gating (cashRequireSessionForSales)", () => {
     await pool.end();
   });
 
-  it("blocks draft creation when policy requires session and none is OPEN", async () => {
+  it("blocks draft creation when no cash session is OPEN", async () => {
     const seeded = await seedTenantSingleBranch(pool, {
       admin: { role: "CASHIER" },
     });
@@ -78,13 +78,6 @@ describe("Sales cart gating (cashRequireSessionForSales)", () => {
     app.locals.auditWriterPort = auditModule.auditWriterPort;
     app.locals.auditDb = pool;
     app.use("/v1/sales", salesModule.router);
-
-    await pool.query(
-      `UPDATE branch_cash_session_policies
-       SET require_session_for_sales = TRUE
-       WHERE tenant_id = $1 AND branch_id = $2`,
-      [seeded.tenantId, seeded.branchId]
-    );
 
     const login = await authModule.authService.login({
       phone: seeded.admin.phone,
@@ -108,7 +101,7 @@ describe("Sales cart gating (cashRequireSessionForSales)", () => {
     await cleanupSeededTenant(pool, seeded);
   });
 
-  it("allows draft creation when policy requires session and one is OPEN", async () => {
+  it("allows draft creation when a cash session is OPEN", async () => {
     const seeded = await seedTenantSingleBranch(pool, {
       admin: { role: "CASHIER" },
     });
@@ -147,13 +140,6 @@ describe("Sales cart gating (cashRequireSessionForSales)", () => {
     app.locals.auditWriterPort = auditModule.auditWriterPort;
     app.locals.auditDb = pool;
     app.use("/v1/sales", salesModule.router);
-
-    await pool.query(
-      `UPDATE branch_cash_session_policies
-       SET require_session_for_sales = TRUE
-       WHERE tenant_id = $1 AND branch_id = $2`,
-      [seeded.tenantId, seeded.branchId]
-    );
 
     await pool.query(
       `INSERT INTO cash_sessions (tenant_id, branch_id, register_id, opened_by, status)
@@ -222,13 +208,6 @@ describe("Sales cart gating (cashRequireSessionForSales)", () => {
     app.locals.auditWriterPort = auditModule.auditWriterPort;
     app.locals.auditDb = pool;
     app.use("/v1/sales", salesModule.router);
-
-    await pool.query(
-      `UPDATE branch_cash_session_policies
-       SET require_session_for_sales = TRUE
-       WHERE tenant_id = $1 AND branch_id = $2`,
-      [seeded.tenantId, seeded.branchId]
-    );
 
     const phone2 = `+1777${Date.now().toString().slice(-9)}`;
     const account2Res = await pool.query(

@@ -19,6 +19,38 @@ export function createStaffManagementRoutes(
 
   /**
    * @openapi
+   * /v1/auth/staff:
+   *   get:
+   *     tags:
+   *       - Staff
+   *     summary: List staff (Admin all branches, Manager own branch)
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: branch_id
+   *         required: false
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Staff list retrieved
+   *       401:
+   *         description: Authentication required
+   *       403:
+   *         description: Role required
+   *       409:
+   *         description: Failed to list staff
+   */
+  router.get(
+    "/staff",
+    requireRole(authMiddleware, ["ADMIN", "MANAGER"]),
+    controller.listStaff
+  );
+
+  /**
+   * @openapi
    * /v1/auth/invites:
    *   post:
    *     tags:
@@ -251,6 +283,187 @@ export function createStaffManagementRoutes(
     "/users/:userId/disable",
     requireRole(authMiddleware, ["ADMIN"]),
     controller.disableEmployee
+  );
+
+  /**
+   * @openapi
+   * /v1/auth/users/{userId}/reactivate:
+   *   post:
+   *     tags:
+   *       - User Management
+   *     summary: Reactivate an employee (Admin only)
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Employee ID
+   *     responses:
+   *       200:
+   *         description: Employee reactivated
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: "#/components/schemas/EmployeeResponse"
+   *       401:
+   *         description: Authentication required
+   *       403:
+   *         description: Admin role required
+   *       409:
+   *         description: Reactivate failed
+   */
+  router.post(
+    "/users/:userId/reactivate",
+    requireRole(authMiddleware, ["ADMIN"]),
+    controller.reactivateEmployee
+  );
+
+  /**
+   * @openapi
+   * /v1/auth/users/{userId}/archive:
+   *   post:
+   *     tags:
+   *       - User Management
+   *     summary: Archive an employee (Admin only)
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Employee ID
+   *     responses:
+   *       200:
+   *         description: Employee archived
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: "#/components/schemas/EmployeeResponse"
+   *       401:
+   *         description: Authentication required
+   *       403:
+   *         description: Admin role required
+   *       409:
+   *         description: Archive failed
+   */
+  router.post(
+    "/users/:userId/archive",
+    requireRole(authMiddleware, ["ADMIN"]),
+    controller.archiveEmployee
+  );
+
+  /**
+   * @openapi
+   * /v1/auth/users/{userId}/shifts:
+   *   get:
+   *     tags:
+   *       - Staff Shifts
+   *     summary: Get staff shift schedule (Admin only)
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Employee ID
+   *       - in: query
+   *         name: branch_id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Shift schedule retrieved
+   *       401:
+   *         description: Authentication required
+   *       403:
+   *         description: Admin role required
+   *       409:
+   *         description: Failed to list shift schedule
+   */
+  router.get(
+    "/users/:userId/shifts",
+    requireRole(authMiddleware, ["ADMIN"]),
+    controller.listShiftSchedule
+  );
+
+  /**
+   * @openapi
+   * /v1/auth/users/{userId}/shifts:
+   *   post:
+   *     tags:
+   *       - Staff Shifts
+   *     summary: Set staff shift schedule (Admin only)
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Employee ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - branch_id
+   *               - schedule
+   *             properties:
+   *               branch_id:
+   *                 type: string
+   *                 format: uuid
+   *               schedule:
+   *                 type: array
+   *                 items:
+   *                   type: object
+   *                   required:
+   *                     - day_of_week
+   *                     - is_off
+   *                   properties:
+   *                     day_of_week:
+   *                       type: integer
+   *                       minimum: 0
+   *                       maximum: 6
+   *                     start_time:
+   *                       type: string
+   *                       example: "10:00"
+   *                     end_time:
+   *                       type: string
+   *                       example: "17:00"
+   *                     is_off:
+   *                       type: boolean
+   *     responses:
+   *       200:
+   *         description: Shift schedule saved
+   *       401:
+   *         description: Authentication required
+   *       403:
+   *         description: Admin role required
+   *       422:
+   *         description: Validation error
+   *       409:
+   *         description: Failed to set shift schedule
+   */
+  router.post(
+    "/users/:userId/shifts",
+    requireRole(authMiddleware, ["ADMIN"]),
+    controller.setShiftSchedule
   );
 
   return router;

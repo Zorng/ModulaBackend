@@ -56,3 +56,39 @@ export interface CreateInviteRequest {
   note?: string;
   expires_in_hours?: number;
 }
+
+export type StaffListItemType = "EMPLOYEE" | "INVITE";
+
+export interface StaffListItem {
+  id: string;
+  record_type: StaffListItemType;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  status: EmployeeStatus;
+  branch_id: string | null;
+  branch_name: string | null;
+  role: EmployeeRole | null;
+  assignment_active: boolean | null;
+  created_at: Date;
+}
+
+export interface StaffShiftAssignment {
+  id: string;
+  tenant_id: string;
+  employee_id: string;
+  branch_id: string;
+  day_of_week: number;
+  start_time: string | null;
+  end_time: string | null;
+  is_off: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface StaffShiftScheduleEntry {
+  day_of_week: number;
+  start_time?: string | null;
+  end_time?: string | null;
+  is_off: boolean;
+}

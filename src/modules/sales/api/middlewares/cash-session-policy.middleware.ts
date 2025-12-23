@@ -4,35 +4,7 @@ import type { AuthRequest } from "../../../../platform/security/auth.js";
 
 type GateMode = "always" | "only_if_creating_draft";
 
-async function readCashRequireSessionForSales(params: {
-  pool: Pool;
-  tenantId: string;
-  branchId: string;
-}): Promise<boolean> {
-  const projected = await params.pool.query(
-    `SELECT cash_require_session_for_sales
-     FROM branch_policies
-     WHERE tenant_id = $1 AND branch_id = $2`,
-    [params.tenantId, params.branchId]
-  );
-
-  if (projected.rows.length > 0) {
-    return Boolean(projected.rows[0].cash_require_session_for_sales);
-  }
-
-  const fallback = await params.pool.query(
-    `SELECT require_session_for_sales
-     FROM branch_cash_session_policies
-     WHERE tenant_id = $1 AND branch_id = $2`,
-    [params.tenantId, params.branchId]
-  );
-
-  if (fallback.rows.length > 0) {
-    return Boolean(fallback.rows[0].require_session_for_sales);
-  }
-
-  return false;
-}
+const cashSessionRequired = true;
 
 async function hasOpenCashSessionForUser(params: {
   pool: Pool;
@@ -88,12 +60,7 @@ export function createRequireCashSessionForSalesMiddleware(
         });
       }
 
-      const required = await readCashRequireSessionForSales({
-        pool,
-        tenantId,
-        branchId,
-      });
-      if (!required) {
+      if (!cashSessionRequired) {
         return next();
       }
 

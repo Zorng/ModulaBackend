@@ -30,6 +30,8 @@ import {
 import { imageProxyRouter } from "./platform/http/routes/image-proxy.js";
 import { bootstrapAccountSettingsModule } from "./modules/accountSettings/index.js";
 import { bootstrapStaffManagementModule } from "./modules/staffManagement/index.js";
+import { bootstrapReportingModule } from "./modules/reporting/index.js";
+import { bootstrapAttendanceModule } from "./modules/attendance/index.js";
 
 const app = express();
 // Enable CORS for all origins (customize as needed for production)
@@ -137,6 +139,16 @@ const cashModule = bootstrapCashModule(pool, authMiddleware, {
   auditWriterPort: auditModule.auditWriterPort,
 });
 const { router: cashRouter, eventHandlers: cashEventHandlers } = cashModule;
+
+// Setup Reporting Module (read-only reports)
+const reportingModule = bootstrapReportingModule(pool, authMiddleware);
+const { router: reportingRouter } = reportingModule;
+
+// Setup Attendance Module
+const attendanceModule = bootstrapAttendanceModule(pool, authMiddleware, {
+  branchGuardPort: branchModule.branchGuardPort,
+});
+const { router: attendanceRouter } = attendanceModule;
 
 // Setup Offline Sync Module (apply queued offline operations)
 const offlineSyncModule = bootstrapOfflineSyncModule(
@@ -313,6 +325,8 @@ app.use("/v1/sales", salesRouter);
 app.use("/v1/inventory", inventoryRouter);
 app.use("/v1/cash", cashRouter);
 app.use("/v1/policies", policyRouter);
+app.use("/v1/reports", reportingRouter);
+app.use("/v1/attendance", attendanceRouter);
 app.use("/v1/sync", offlineSyncRouter);
 app.use("/v1", imageProxyRouter); // Image proxy for CORS-free access
 

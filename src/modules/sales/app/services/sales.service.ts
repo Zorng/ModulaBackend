@@ -421,21 +421,22 @@ export class SalesService {
       });
 
       // Publish sale finalized event
+      const tenderAmounts = this.getTenderAmountsForSale(sale);
       const tenders =
         sale.paymentMethod === "cash"
           ? [
               {
                 method: "CASH" as const,
-                amountUsd: sale.totalUsdExact,
-                amountKhr: sale.totalKhrExact,
+                amountUsd: tenderAmounts.amountUsd,
+                amountKhr: tenderAmounts.amountKhr,
               },
             ]
           : sale.paymentMethod === "qr"
             ? [
                 {
                   method: "QR" as const,
-                  amountUsd: sale.totalUsdExact,
-                  amountKhr: sale.totalKhrExact,
+                  amountUsd: tenderAmounts.amountUsd,
+                  amountKhr: tenderAmounts.amountKhr,
                 },
               ]
             : [];
@@ -508,32 +509,25 @@ export class SalesService {
     };
   }
 
-  private async readCashRequireSessionForSales(params: {
+  private async readCashRequireSessionForSales(_params: {
     trx: PoolClient;
     tenantId: string;
     branchId: string;
   }): Promise<boolean> {
-    const projected = await params.trx.query(
-      `SELECT cash_require_session_for_sales
-       FROM branch_policies
-       WHERE tenant_id = $1 AND branch_id = $2`,
-      [params.tenantId, params.branchId]
-    );
-    if (projected.rows.length > 0) {
-      return Boolean(projected.rows[0].cash_require_session_for_sales);
-    }
+    return true;
+  }
 
-    const fallback = await params.trx.query(
-      `SELECT require_session_for_sales
-       FROM branch_cash_session_policies
-       WHERE tenant_id = $1 AND branch_id = $2`,
-      [params.tenantId, params.branchId]
-    );
-    if (fallback.rows.length > 0) {
-      return Boolean(fallback.rows[0].require_session_for_sales);
+  private getTenderAmountsForSale(sale: Sale): {
+    amountUsd: number;
+    amountKhr: number;
+  } {
+    if (sale.tenderCurrency === "KHR") {
+      return {
+        amountUsd: 0,
+        amountKhr: sale.totalKhrRounded ?? sale.totalKhrExact,
+      };
     }
-
-    return false;
+    return { amountUsd: sale.totalUsdExact, amountKhr: 0 };
   }
 
   private async recordSaleCashMovement(params: {
@@ -548,6 +542,7 @@ export class SalesService {
     actorId: string;
     actorRole: string | null;
   }): Promise<void> {
+    const tenderAmounts = this.getTenderAmountsForSale(params.sale);
     const movementRes = await params.trx.query(
       `INSERT INTO cash_movements (
         tenant_id,
@@ -569,8 +564,8 @@ export class SalesService {
         params.session.registerId,
         params.session.id,
         params.actorId,
-        params.sale.totalUsdExact,
-        params.sale.totalKhrExact,
+        tenderAmounts.amountUsd,
+        tenderAmounts.amountKhr,
         params.sale.id,
         `Sale ${params.sale.id}`,
       ]
@@ -582,8 +577,8 @@ export class SalesService {
        SET expected_cash_usd = $1, expected_cash_khr = $2, updated_at = NOW()
        WHERE id = $3`,
       [
-        params.session.expectedCashUsd + params.sale.totalUsdExact,
-        params.session.expectedCashKhr + params.sale.totalKhrExact,
+        params.session.expectedCashUsd + tenderAmounts.amountUsd,
+        params.session.expectedCashKhr + tenderAmounts.amountKhr,
         params.session.id,
       ]
     );
@@ -596,8 +591,8 @@ export class SalesService {
       sessionId: params.session.id,
       registerId: params.session.registerId ?? undefined,
       saleId: params.sale.id,
-      amountUsd: params.sale.totalUsdExact,
-      amountKhr: params.sale.totalKhrExact,
+      amountUsd: tenderAmounts.amountUsd,
+      amountKhr: tenderAmounts.amountKhr,
       timestamp: new Date().toISOString(),
     };
     await publishToOutbox(cashEvent, params.trx);
@@ -615,9 +610,15 @@ export class SalesService {
           sessionId: params.session.id,
           registerId: params.session.registerId ?? null,
           movementId,
-          amountUsd: params.sale.totalUsdExact,
-          amountKhr: params.sale.totalKhrExact,
-          tenders: [{ method: "CASH", amountUsd: params.sale.totalUsdExact, amountKhr: params.sale.totalKhrExact }],
+          amountUsd: tenderAmounts.amountUsd,
+          amountKhr: tenderAmounts.amountKhr,
+          tenders: [
+            {
+              method: "CASH",
+              amountUsd: tenderAmounts.amountUsd,
+              amountKhr: tenderAmounts.amountKhr,
+            },
+          ],
         },
       },
       params.trx

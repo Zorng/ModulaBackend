@@ -23,6 +23,7 @@ import {
   setPaymentMethod,
   setTenderCurrency,
 } from "../../sales/domain/entities/sale.entity.js";
+import type { Sale } from "../../sales/domain/entities/sale.entity.js";
 import type { MenuPort, PolicyPort, SalesRepository } from "../../sales/app/ports/sales.ports.js";
 import type {
   OfflineSyncAppliedResult,
@@ -353,6 +354,16 @@ export class OfflineSyncService {
     });
   }
 
+  private getTenderAmountsForSale(sale: Sale): { amountUsd: number; amountKhr: number } {
+    if (sale.tenderCurrency === "KHR") {
+      return {
+        amountUsd: 0,
+        amountKhr: sale.totalKhrRounded ?? sale.totalKhrExact,
+      };
+    }
+    return { amountUsd: sale.totalUsdExact, amountKhr: 0 };
+  }
+
   private async failOperation(params: {
     trx: PoolClient;
     tenantId: string;
@@ -576,6 +587,7 @@ export class OfflineSyncService {
 
     const tenderMethod: "CASH" | "QR" =
       payload.payment_method === "cash" ? "CASH" : "QR";
+    const tenderAmounts = this.getTenderAmountsForSale(sale);
 
     const event: SaleFinalizedV1 = {
       type: "sales.sale_finalized",
@@ -596,8 +608,8 @@ export class OfflineSyncService {
       tenders: [
         {
           method: tenderMethod,
-          amountUsd: sale.totalUsdExact,
-          amountKhr: sale.totalKhrExact,
+          amountUsd: tenderAmounts.amountUsd,
+          amountKhr: tenderAmounts.amountKhr,
         },
       ],
       finalizedAt: sale.finalizedAt!.toISOString(),

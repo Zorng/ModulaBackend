@@ -11,6 +11,9 @@ import type {
   EmployeeBranchAssignment,
   EmployeeRole,
   Invite,
+  StaffListItem,
+  StaffShiftAssignment,
+  StaffShiftScheduleEntry,
 } from "../domain/entities.js";
 import { StaffManagementRepository } from "../infra/repository.js";
 
@@ -183,6 +186,9 @@ export class StaffManagementService {
     if (!branch || branch.tenant_id !== tenantId) {
       throw new Error("Branch not found or does not belong to tenant");
     }
+    if (branch.status === "FROZEN") {
+      throw new Error("Cannot assign staff to a frozen branch");
+    }
 
     const existingAssignment = await this.repo.findEmployeeBranchAssignment(
       employeeId,
@@ -214,6 +220,67 @@ export class StaffManagementService {
     return assignment;
   }
 
+  async setShiftSchedule(params: {
+    tenantId: string;
+    employeeId: string;
+    branchId: string;
+    schedule: StaffShiftScheduleEntry[];
+    adminEmployeeId: string;
+  }): Promise<StaffShiftAssignment[]> {
+    const employee = await this.repo.findEmployeeById(params.employeeId);
+    if (!employee || employee.tenant_id !== params.tenantId) {
+      throw new Error("Employee not found or does not belong to tenant");
+    }
+
+    const branch = await this.repo.findBranchById(params.branchId);
+    if (!branch || branch.tenant_id !== params.tenantId) {
+      throw new Error("Branch not found or does not belong to tenant");
+    }
+    if (branch.status === "FROZEN") {
+      throw new Error("Cannot assign shifts to a frozen branch");
+    }
+
+    const assignment = await this.repo.findEmployeeBranchAssignment(
+      params.employeeId,
+      params.branchId
+    );
+    if (!assignment) {
+      throw new Error("Employee is not assigned to this branch");
+    }
+
+    const updated = await this.repo.replaceShiftSchedule({
+      tenantId: params.tenantId,
+      employeeId: params.employeeId,
+      branchId: params.branchId,
+      schedule: params.schedule,
+    });
+
+    await this.tryWriteAudit({
+      tenantId: params.tenantId,
+      branchId: params.branchId,
+      employeeId: params.adminEmployeeId,
+      actorRole: "ADMIN",
+      actionType: "STAFF_SHIFT_ASSIGNED",
+      resourceType: "EMPLOYEE",
+      resourceId: params.employeeId,
+      outcome: "SUCCESS",
+      details: {
+        branch_id: params.branchId,
+        schedule: params.schedule,
+      },
+    });
+
+    return updated;
+  }
+
+  async listShiftSchedule(params: {
+    tenantId: string;
+    employeeId: string;
+    branchId: string;
+  }): Promise<StaffShiftAssignment[]> {
+    return this.repo.listShiftSchedule(params);
+  }
+
   async updateRole(
     tenantId: string,
     employeeId: string,
@@ -229,6 +296,9 @@ export class StaffManagementService {
     const branch = await this.repo.findBranchById(branchId);
     if (!branch || branch.tenant_id !== tenantId) {
       throw new Error("Branch not found or does not belong to tenant");
+    }
+    if (branch.status === "FROZEN") {
+      throw new Error("Cannot assign staff to a frozen branch");
     }
 
     const previousAssignment = await this.repo.findEmployeeBranchAssignment(
@@ -371,6 +441,23 @@ export class StaffManagementService {
       throw new Error("Cannot archive your own account");
     }
 
+    if (employee.status === "DISABLED") {
+      const limits = await this.repo.getStaffSeatLimits(tenantId);
+      if (!limits) {
+        throw new Error("Tenant limits not found. Please contact support.");
+      }
+
+      const hardCount = await this.repo.countEmployeesByStatus(tenantId, [
+        "ACTIVE",
+        "ARCHIVED",
+      ]);
+      if (hardCount >= limits.maxStaffSeatsHard) {
+        throw new Error(
+          `Staff seat hard limit reached (${hardCount}/${limits.maxStaffSeatsHard}).`
+        );
+      }
+    }
+
     const updatedEmployee = await this.repo.updateEmployeeStatus(
       employeeId,
       "ARCHIVED"
@@ -389,6 +476,13 @@ export class StaffManagementService {
     });
 
     return updatedEmployee;
+  }
+
+  async listStaff(
+    tenantId: string,
+    branchId?: string
+  ): Promise<StaffListItem[]> {
+    return this.repo.listStaff(tenantId, branchId);
   }
 }
 

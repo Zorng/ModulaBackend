@@ -6,8 +6,8 @@ import type {
   UpdateCurrencyPoliciesInput,
   UpdateRoundingPoliciesInput,
   UpdateInventoryPoliciesInput,
-  // TODO: Import UpdateCashSessionPoliciesInput when cash module is ready
-  // TODO: Import UpdateAttendancePoliciesInput when attendance module is ready
+  UpdateCashSessionPoliciesInput,
+  UpdateAttendancePoliciesInput,
 } from "../schemas.js";
 
 function resolveBranchIdFromQuery(req: AuthenticatedRequest): string | null {
@@ -60,7 +60,9 @@ export class PolicyController {
         });
       }
 
-      return res.status(200).json(result.value);
+      const { cashRequireSessionForSales: _cashGate, ...policies } =
+        result.value;
+      return res.status(200).json(policies);
     } catch (error) {
       next(error);
     }
@@ -98,7 +100,8 @@ export class PolicyController {
         });
       }
 
-      return res.status(200).json(result.value);
+      const { requireSessionForSales: _cashGate, ...policies } = result.value;
+      return res.status(200).json(policies);
     } catch (error) {
       next(error);
     }
@@ -142,8 +145,81 @@ export class PolicyController {
     }
   }
 
-  // TODO: Add getCashSessionPolicies when cash module is ready
-  // TODO: Add getAttendancePolicies when attendance module is ready
+  /**
+   * Get cash session policies
+   */
+  static async getCashSessionPolicies(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { tenantId } = req.user!;
+      const branchId = resolveBranchIdFromQuery(req);
+
+      if (!branchId) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId is required",
+        });
+      }
+
+      const { getCashSessionPoliciesUseCase } = PolicyFactory.build();
+      const result = await getCashSessionPoliciesUseCase.execute({
+        tenantId,
+        branchId,
+      });
+
+      if (!result.ok) {
+        return res.status(404).json({
+          error: "Not Found",
+          message: result.error,
+        });
+      }
+
+      return res.status(200).json(result.value);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get attendance policies
+   */
+  static async getAttendancePolicies(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { tenantId } = req.user!;
+      const branchId = resolveBranchIdFromQuery(req);
+
+      if (!branchId) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId is required",
+        });
+      }
+
+      const { getAttendancePoliciesUseCase } = PolicyFactory.build();
+      const result = await getAttendancePoliciesUseCase.execute({
+        tenantId,
+        branchId,
+      });
+
+      if (!result.ok) {
+        return res.status(404).json({
+          error: "Not Found",
+          message: result.error,
+        });
+      }
+
+      return res.status(200).json(result.value);
+    } catch (error) {
+      next(error);
+    }
+  }
 
   /**
    * Update tax policies (VAT)
@@ -166,7 +242,18 @@ export class PolicyController {
         });
       }
 
-      const { updateTenantPoliciesUseCase } = PolicyFactory.build();
+      const { getSalesPoliciesUseCase, updateTenantPoliciesUseCase } =
+        PolicyFactory.build();
+      const existingResult = await getSalesPoliciesUseCase.execute({
+        tenantId,
+        branchId,
+      });
+      const before = existingResult.ok
+        ? {
+            vatEnabled: existingResult.value.vatEnabled,
+            vatRatePercent: existingResult.value.vatRatePercent,
+          }
+        : null;
       const result = await updateTenantPoliciesUseCase.execute(
         tenantId,
         branchId,
@@ -182,6 +269,15 @@ export class PolicyController {
 
       // Return only tax-related fields
       const { saleVatEnabled, saleVatRatePercent, updatedAt } = result.value;
+      res.locals.policyAudit = {
+        branchId,
+        changes: updates,
+        before,
+        after: {
+          vatEnabled: saleVatEnabled,
+          vatRatePercent: saleVatRatePercent,
+        },
+      };
       return res.status(200).json({
         tenantId,
         branchId,
@@ -215,7 +311,17 @@ export class PolicyController {
         });
       }
 
-      const { updateTenantPoliciesUseCase } = PolicyFactory.build();
+      const { getSalesPoliciesUseCase, updateTenantPoliciesUseCase } =
+        PolicyFactory.build();
+      const existingResult = await getSalesPoliciesUseCase.execute({
+        tenantId,
+        branchId,
+      });
+      const before = existingResult.ok
+        ? {
+            fxRateKhrPerUsd: existingResult.value.fxRateKhrPerUsd,
+          }
+        : null;
       const result = await updateTenantPoliciesUseCase.execute(
         tenantId,
         branchId,
@@ -231,6 +337,14 @@ export class PolicyController {
 
       // Return only FX rate
       const { saleFxRateKhrPerUsd, updatedAt } = result.value;
+      res.locals.policyAudit = {
+        branchId,
+        changes: updates,
+        before,
+        after: {
+          fxRateKhrPerUsd: saleFxRateKhrPerUsd,
+        },
+      };
       return res.status(200).json({
         tenantId,
         branchId,
@@ -263,7 +377,19 @@ export class PolicyController {
         });
       }
 
-      const { updateTenantPoliciesUseCase } = PolicyFactory.build();
+      const { getSalesPoliciesUseCase, updateTenantPoliciesUseCase } =
+        PolicyFactory.build();
+      const existingResult = await getSalesPoliciesUseCase.execute({
+        tenantId,
+        branchId,
+      });
+      const before = existingResult.ok
+        ? {
+            khrRoundingEnabled: existingResult.value.khrRoundingEnabled,
+            khrRoundingMode: existingResult.value.khrRoundingMode,
+            khrRoundingGranularity: existingResult.value.khrRoundingGranularity,
+          }
+        : null;
       const result = await updateTenantPoliciesUseCase.execute(
         tenantId,
         branchId,
@@ -278,7 +404,22 @@ export class PolicyController {
       }
 
       // Return only rounding fields
-      const { saleKhrRoundingEnabled, saleKhrRoundingMode, saleKhrRoundingGranularity, updatedAt } = result.value;
+      const {
+        saleKhrRoundingEnabled,
+        saleKhrRoundingMode,
+        saleKhrRoundingGranularity,
+        updatedAt,
+      } = result.value;
+      res.locals.policyAudit = {
+        branchId,
+        changes: updates,
+        before,
+        after: {
+          khrRoundingEnabled: saleKhrRoundingEnabled,
+          khrRoundingMode: saleKhrRoundingMode,
+          khrRoundingGranularity: saleKhrRoundingGranularity,
+        },
+      };
       return res.status(200).json({
         tenantId,
         branchId,
@@ -313,7 +454,18 @@ export class PolicyController {
         });
       }
 
-      const { updateTenantPoliciesUseCase } = PolicyFactory.build();
+      const { getInventoryPoliciesUseCase, updateTenantPoliciesUseCase } =
+        PolicyFactory.build();
+      const existingResult = await getInventoryPoliciesUseCase.execute({
+        tenantId,
+        branchId,
+      });
+      const before = existingResult.ok
+        ? {
+            autoSubtractOnSale: existingResult.value.autoSubtractOnSale,
+            expiryTrackingEnabled: existingResult.value.expiryTrackingEnabled,
+          }
+        : null;
       const result = await updateTenantPoliciesUseCase.execute(
         tenantId,
         branchId,
@@ -328,7 +480,20 @@ export class PolicyController {
       }
 
       // Return only inventory fields
-      const { inventoryAutoSubtractOnSale, inventoryExpiryTrackingEnabled, updatedAt } = result.value;
+      const {
+        inventoryAutoSubtractOnSale,
+        inventoryExpiryTrackingEnabled,
+        updatedAt,
+      } = result.value;
+      res.locals.policyAudit = {
+        branchId,
+        changes: updates,
+        before,
+        after: {
+          autoSubtractOnSale: inventoryAutoSubtractOnSale,
+          expiryTrackingEnabled: inventoryExpiryTrackingEnabled,
+        },
+      };
       return res.status(200).json({
         tenantId,
         branchId,
@@ -341,6 +506,169 @@ export class PolicyController {
     }
   }
 
-  // TODO: Add updateCashSessionPolicies when cash module is ready
-  // TODO: Add updateAttendancePolicies when attendance module is ready
+  /**
+   * Update cash session policies
+   */
+  static async updateCashSessionPolicies(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { tenantId } = req.user!;
+      const branchId = resolveBranchIdFromBody(req);
+      const { branchId: _branchId, ...updates } =
+        req.body as UpdateCashSessionPoliciesInput;
+
+      if (!branchId) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId is required",
+        });
+      }
+
+      const { getCashSessionPoliciesUseCase, updateTenantPoliciesUseCase } =
+        PolicyFactory.build();
+      const existingResult = await getCashSessionPoliciesUseCase.execute({
+        tenantId,
+        branchId,
+      });
+      const before = existingResult.ok
+        ? {
+            requireSessionForSales:
+              existingResult.value.requireSessionForSales,
+            allowPaidOut: existingResult.value.allowPaidOut,
+            requireRefundApproval: existingResult.value.requireRefundApproval,
+            allowManualAdjustment: existingResult.value.allowManualAdjustment,
+          }
+        : null;
+      const result = await updateTenantPoliciesUseCase.execute(
+        tenantId,
+        branchId,
+        updates
+      );
+
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
+
+      const {
+        cashRequireSessionForSales,
+        cashAllowPaidOut,
+        cashRequireRefundApproval,
+        cashAllowManualAdjustment,
+        updatedAt,
+      } = result.value;
+      res.locals.policyAudit = {
+        branchId,
+        changes: updates,
+        before,
+        after: {
+          requireSessionForSales: cashRequireSessionForSales,
+          allowPaidOut: cashAllowPaidOut,
+          requireRefundApproval: cashRequireRefundApproval,
+          allowManualAdjustment: cashAllowManualAdjustment,
+        },
+      };
+      return res.status(200).json({
+        tenantId,
+        branchId,
+        allowPaidOut: cashAllowPaidOut,
+        requireRefundApproval: cashRequireRefundApproval,
+        allowManualAdjustment: cashAllowManualAdjustment,
+        updatedAt,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Update attendance policies
+   */
+  static async updateAttendancePolicies(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const { tenantId } = req.user!;
+      const branchId = resolveBranchIdFromBody(req);
+      const { branchId: _branchId, ...updates } =
+        req.body as UpdateAttendancePoliciesInput;
+
+      if (!branchId) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "branchId is required",
+        });
+      }
+
+      const { getAttendancePoliciesUseCase, updateTenantPoliciesUseCase } =
+        PolicyFactory.build();
+      const existingResult = await getAttendancePoliciesUseCase.execute({
+        tenantId,
+        branchId,
+      });
+      const before = existingResult.ok
+        ? {
+            autoFromCashSession: existingResult.value.autoFromCashSession,
+            requireOutOfShiftApproval:
+              existingResult.value.requireOutOfShiftApproval,
+            earlyCheckinBufferEnabled:
+              existingResult.value.earlyCheckinBufferEnabled,
+            checkinBufferMinutes: existingResult.value.checkinBufferMinutes,
+            allowManagerEdits: existingResult.value.allowManagerEdits,
+          }
+        : null;
+      const result = await updateTenantPoliciesUseCase.execute(
+        tenantId,
+        branchId,
+        updates
+      );
+
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: result.error,
+        });
+      }
+
+      const {
+        attendanceAutoFromCashSession,
+        attendanceRequireOutOfShiftApproval,
+        attendanceEarlyCheckinBufferEnabled,
+        attendanceCheckinBufferMinutes,
+        attendanceAllowManagerEdits,
+        updatedAt,
+      } = result.value;
+      res.locals.policyAudit = {
+        branchId,
+        changes: updates,
+        before,
+        after: {
+          autoFromCashSession: attendanceAutoFromCashSession,
+          requireOutOfShiftApproval: attendanceRequireOutOfShiftApproval,
+          earlyCheckinBufferEnabled: attendanceEarlyCheckinBufferEnabled,
+          checkinBufferMinutes: attendanceCheckinBufferMinutes,
+          allowManagerEdits: attendanceAllowManagerEdits,
+        },
+      };
+      return res.status(200).json({
+        tenantId,
+        branchId,
+        autoFromCashSession: attendanceAutoFromCashSession,
+        requireOutOfShiftApproval: attendanceRequireOutOfShiftApproval,
+        earlyCheckinBufferEnabled: attendanceEarlyCheckinBufferEnabled,
+        checkinBufferMinutes: attendanceCheckinBufferMinutes,
+        allowManagerEdits: attendanceAllowManagerEdits,
+        updatedAt,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

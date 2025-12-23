@@ -61,8 +61,19 @@ export function logPolicyChange(
         ?.auditWriterPort;
       const tenantId = authReq.user?.tenantId;
       const employeeId = authReq.user?.employeeId;
-      const branchId = authReq.user?.branchId;
+      const branchId =
+        (res.locals?.policyAudit?.branchId as string | undefined) ??
+        authReq.user?.branchId;
       const role = authReq.user?.role;
+      const before = res.locals?.policyAudit?.before as
+        | Record<string, any>
+        | undefined;
+      const after = res.locals?.policyAudit?.after as
+        | Record<string, any>
+        | undefined;
+      const changes = res.locals?.policyAudit?.changes as
+        | Record<string, any>
+        | undefined;
 
       if (auditWriter?.write && tenantId && employeeId) {
         void auditWriter
@@ -77,7 +88,9 @@ export function logPolicyChange(
             details: {
               endpoint: req.path,
               method: req.method,
-              changes: req.body,
+              changes: changes ?? req.body,
+              before,
+              after,
             },
             ipAddress: req.ip || req.socket.remoteAddress,
             userAgent: req.headers["user-agent"] as string | undefined,

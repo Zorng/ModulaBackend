@@ -2,14 +2,14 @@ import { Router } from "express";
 import { validateBody } from "../../../platform/http/middleware/validation.js";
 import type { AuthMiddlewarePort } from "../../../platform/security/auth.js";
 import { PolicyController } from "./controller/policyController.js";
-import { requireAdmin } from "./middleware/policy.middleware.js";
+import { requireAdmin, logPolicyChange } from "./middleware/policy.middleware.js";
 import {
   updateTaxPoliciesSchema,
   updateCurrencyPoliciesSchema,
   updateRoundingPoliciesSchema,
   updateInventoryPoliciesSchema,
-  // TODO: Import updateCashSessionPoliciesSchema when cash module is ready
-  // TODO: Import updateAttendancePoliciesSchema when attendance module is ready
+  updateCashSessionPoliciesSchema,
+  updateAttendancePoliciesSchema,
 } from "./schemas.js";
 
 export function createPolicyRouter(authMiddleware: AuthMiddlewarePort) {
@@ -99,8 +99,63 @@ policyRouter.get(
   PolicyController.getInventoryPolicies
 );
 
-// TODO: Add /cash-sessions GET endpoint when cash module is ready
-// TODO: Add /attendance GET endpoint when attendance module is ready
+/**
+ * @swagger
+ * /v1/policies/cash-sessions:
+ *   get:
+ *     summary: Get cash session policies
+ *     description: |
+ *       Retrieves cash session control settings.
+ *
+ *       **Settings include:**
+ *       - Require session for sales
+ *       - Allow paid out
+ *       - Require refund approval
+ *       - Allow manual adjustment
+ *     tags:
+ *       - Policies
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Cash session policies retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ */
+policyRouter.get(
+  "/cash-sessions",
+  authMiddleware.authenticate,
+  PolicyController.getCashSessionPolicies
+);
+
+/**
+ * @swagger
+ * /v1/policies/attendance:
+ *   get:
+ *     summary: Get attendance policies
+ *     description: |
+ *       Retrieves attendance and shift settings.
+ *
+ *       **Settings include:**
+ *       - Auto attendance from cash session
+ *       - Require out-of-shift approval
+ *       - Check-in buffer
+ *       - Allow manager edits
+ *     tags:
+ *       - Policies
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Attendance policies retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ */
+policyRouter.get(
+  "/attendance",
+  authMiddleware.authenticate,
+  PolicyController.getAttendancePolicies
+);
 
 /**
  * @swagger
@@ -144,6 +199,7 @@ policyRouter.patch(
   "/tax",
   authMiddleware.authenticate,
   requireAdmin,
+  logPolicyChange,
   validateBody(updateTaxPoliciesSchema),
   PolicyController.updateTaxPolicies
 );
@@ -186,6 +242,7 @@ policyRouter.patch(
   "/currency",
   authMiddleware.authenticate,
   requireAdmin,
+  logPolicyChange,
   validateBody(updateCurrencyPoliciesSchema),
   PolicyController.updateCurrencyPolicies
 );
@@ -236,6 +293,7 @@ policyRouter.patch(
   "/rounding",
   authMiddleware.authenticate,
   requireAdmin,
+  logPolicyChange,
   validateBody(updateRoundingPoliciesSchema),
   PolicyController.updateRoundingPolicies
 );
@@ -280,8 +338,118 @@ policyRouter.patch(
   "/inventory",
   authMiddleware.authenticate,
   requireAdmin,
+  logPolicyChange,
   validateBody(updateInventoryPoliciesSchema),
   PolicyController.updateInventoryPolicies
+);
+
+/**
+ * @swagger
+ * /v1/policies/cash-sessions:
+ *   patch:
+ *     summary: Update cash session policies
+ *     description: |
+ *       Updates cash session control settings.
+ *
+ *       **Updatable fields:**
+ *       - Require session for sales
+ *       - Allow paid out
+ *       - Require refund approval
+ *       - Allow manual adjustment
+ *     tags:
+ *       - Policies
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               cashRequireSessionForSales:
+ *                 type: boolean
+ *                 example: true
+ *               cashAllowPaidOut:
+ *                 type: boolean
+ *                 example: false
+ *               cashRequireRefundApproval:
+ *                 type: boolean
+ *                 example: false
+ *               cashAllowManualAdjustment:
+ *                 type: boolean
+ *                 example: false
+ *     responses:
+ *       200:
+ *         description: Cash session policies updated successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ */
+policyRouter.patch(
+  "/cash-sessions",
+  authMiddleware.authenticate,
+  requireAdmin,
+  logPolicyChange,
+  validateBody(updateCashSessionPoliciesSchema),
+  PolicyController.updateCashSessionPolicies
+);
+
+/**
+ * @swagger
+ * /v1/policies/attendance:
+ *   patch:
+ *     summary: Update attendance policies
+ *     description: |
+ *       Updates attendance and shift settings.
+ *
+ *       **Updatable fields:**
+ *       - Auto attendance from cash session
+ *       - Require out-of-shift approval
+ *       - Check-in buffer
+ *       - Allow manager edits
+ *     tags:
+ *       - Policies
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               attendanceAutoFromCashSession:
+ *                 type: boolean
+ *                 example: false
+ *               attendanceRequireOutOfShiftApproval:
+ *                 type: boolean
+ *                 example: false
+ *               attendanceEarlyCheckinBufferEnabled:
+ *                 type: boolean
+ *                 example: false
+ *               attendanceCheckinBufferMinutes:
+ *                 type: number
+ *                 example: 15
+ *               attendanceAllowManagerEdits:
+ *                 type: boolean
+ *                 example: false
+ *     responses:
+ *       200:
+ *         description: Attendance policies updated successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ */
+policyRouter.patch(
+  "/attendance",
+  authMiddleware.authenticate,
+  requireAdmin,
+  logPolicyChange,
+  validateBody(updateAttendancePoliciesSchema),
+  PolicyController.updateAttendancePolicies
 );
 
 // TODO: Add /cash-sessions PATCH endpoint when cash module is ready

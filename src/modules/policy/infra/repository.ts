@@ -230,6 +230,7 @@ export class PgPolicyRepository implements IPolicyRepository {
     branchId: string,
     updates: UpdateTenantPoliciesInput
   ): Promise<TenantPolicies> {
+    const client = await this.pool.connect();
     // Categorize updates by policy type
     const salesUpdates: Partial<SalesPolicies> = {};
     const inventoryUpdates: Partial<InventoryPolicies> = {};
@@ -276,21 +277,42 @@ export class PgPolicyRepository implements IPolicyRepository {
         attendanceUpdates.allowManagerEdits = value as boolean;
     }
 
-    // Execute updates in parallel
-    await Promise.all([
-      Object.keys(salesUpdates).length > 0
-        ? this.updateSalesPolicies(tenantId, branchId, salesUpdates)
-        : Promise.resolve(),
-      Object.keys(inventoryUpdates).length > 0
-        ? this.updateInventoryPolicies(tenantId, branchId, inventoryUpdates)
-        : Promise.resolve(),
-      Object.keys(cashSessionUpdates).length > 0
-        ? this.updateCashSessionPolicies(tenantId, branchId, cashSessionUpdates)
-        : Promise.resolve(),
-      Object.keys(attendanceUpdates).length > 0
-        ? this.updateAttendancePolicies(tenantId, branchId, attendanceUpdates)
-        : Promise.resolve(),
-    ]);
+    try {
+      await client.query("BEGIN");
+      if (Object.keys(salesUpdates).length > 0) {
+        await this.updateSalesPolicies(client, tenantId, branchId, salesUpdates);
+      }
+      if (Object.keys(inventoryUpdates).length > 0) {
+        await this.updateInventoryPolicies(
+          client,
+          tenantId,
+          branchId,
+          inventoryUpdates
+        );
+      }
+      if (Object.keys(cashSessionUpdates).length > 0) {
+        await this.updateCashSessionPolicies(
+          client,
+          tenantId,
+          branchId,
+          cashSessionUpdates
+        );
+      }
+      if (Object.keys(attendanceUpdates).length > 0) {
+        await this.updateAttendancePolicies(
+          client,
+          tenantId,
+          branchId,
+          attendanceUpdates
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
 
     // Return updated combined policies
     const result = await this.getTenantPolicies(tenantId, branchId);
@@ -345,6 +367,7 @@ export class PgPolicyRepository implements IPolicyRepository {
    * Update sales policies
    */
   private async updateSalesPolicies(
+    queryRunner: Pick<Pool, "query">,
     tenantId: string,
     branchId: string,
     updates: Partial<SalesPolicies>
@@ -373,7 +396,7 @@ export class PgPolicyRepository implements IPolicyRepository {
 
     if (setClauses.length === 0) return;
 
-    await this.pool.query(
+    await queryRunner.query(
       `UPDATE branch_sales_policies
        SET ${setClauses.join(", ")}
        WHERE tenant_id = $1 AND branch_id = $2`,
@@ -385,6 +408,7 @@ export class PgPolicyRepository implements IPolicyRepository {
    * Update inventory policies
    */
   private async updateInventoryPolicies(
+    queryRunner: Pick<Pool, "query">,
     tenantId: string,
     branchId: string,
     updates: Partial<InventoryPolicies>
@@ -409,7 +433,7 @@ export class PgPolicyRepository implements IPolicyRepository {
 
     if (setClauses.length === 0) return;
 
-    await this.pool.query(
+    await queryRunner.query(
       `UPDATE branch_inventory_policies
        SET ${setClauses.join(", ")}
        WHERE tenant_id = $1 AND branch_id = $2`,
@@ -421,6 +445,7 @@ export class PgPolicyRepository implements IPolicyRepository {
    * Update cash session policies
    */
   private async updateCashSessionPolicies(
+    queryRunner: Pick<Pool, "query">,
     tenantId: string,
     branchId: string,
     updates: Partial<CashSessionPolicies>
@@ -447,7 +472,7 @@ export class PgPolicyRepository implements IPolicyRepository {
 
     if (setClauses.length === 0) return;
 
-    await this.pool.query(
+    await queryRunner.query(
       `UPDATE branch_cash_session_policies
        SET ${setClauses.join(", ")}
        WHERE tenant_id = $1 AND branch_id = $2`,
@@ -459,6 +484,7 @@ export class PgPolicyRepository implements IPolicyRepository {
    * Update attendance policies
    */
   private async updateAttendancePolicies(
+    queryRunner: Pick<Pool, "query">,
     tenantId: string,
     branchId: string,
     updates: Partial<AttendancePolicies>
@@ -486,7 +512,7 @@ export class PgPolicyRepository implements IPolicyRepository {
 
     if (setClauses.length === 0) return;
 
-    await this.pool.query(
+    await queryRunner.query(
       `UPDATE branch_attendance_policies
        SET ${setClauses.join(", ")}
        WHERE tenant_id = $1 AND branch_id = $2`,

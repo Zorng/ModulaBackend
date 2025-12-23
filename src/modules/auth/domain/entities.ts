@@ -14,6 +14,7 @@ export interface Tenant {
 export interface Account {
   id: string;
   phone: string;
+  email?: string | null;
   password_hash: string;
   status: AccountStatus;
   phone_verified_at?: Date;

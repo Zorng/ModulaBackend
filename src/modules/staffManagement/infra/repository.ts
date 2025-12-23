@@ -7,6 +7,9 @@ import type {
   EmployeeRole,
   EmployeeStatus,
   Invite,
+  StaffListItem,
+  StaffShiftAssignment,
+  StaffShiftScheduleEntry,
 } from "../domain/entities.js";
 
 export class StaffManagementRepository {
@@ -257,6 +260,143 @@ export class StaffManagementRepository {
     return this.mapInvite(result.rows[0]);
   }
 
+  async listStaff(
+    tenantId: string,
+    branchId?: string
+  ): Promise<StaffListItem[]> {
+    const values: Array<string> = [tenantId];
+    let branchFilter = "";
+    if (branchId) {
+      values.push(branchId);
+      branchFilter = "AND items.branch_id = $2";
+    }
+
+    const query = `
+      WITH employee_items AS (
+        SELECT
+          e.id,
+          'EMPLOYEE'::text AS record_type,
+          e.first_name,
+          e.last_name,
+          e.phone,
+          e.status,
+          e.created_at,
+          eba.branch_id,
+          b.name AS branch_name,
+          eba.role,
+          eba.active AS assignment_active
+        FROM employees e
+        LEFT JOIN LATERAL (
+          SELECT *
+          FROM employee_branch_assignments
+          WHERE employee_id = e.id
+          ORDER BY active DESC, assigned_at DESC
+          LIMIT 1
+        ) eba ON true
+        LEFT JOIN branches b ON b.id = eba.branch_id
+        WHERE e.tenant_id = $1
+      ),
+      invite_items AS (
+        SELECT
+          i.id,
+          'INVITE'::text AS record_type,
+          i.first_name,
+          i.last_name,
+          i.phone,
+          'INVITED'::text AS status,
+          i.created_at,
+          i.branch_id,
+          b.name AS branch_name,
+          i.role,
+          true AS assignment_active
+        FROM invites i
+        JOIN branches b ON b.id = i.branch_id
+        WHERE i.tenant_id = $1
+          AND i.accepted_at IS NULL
+          AND i.revoked_at IS NULL
+          AND i.expires_at > NOW()
+      )
+      SELECT * FROM (
+        SELECT * FROM employee_items
+        UNION ALL
+        SELECT * FROM invite_items
+      ) items
+      ${branchFilter}
+      ORDER BY items.created_at DESC
+    `;
+
+    const result = await this.db.query(query, values);
+    return result.rows.map((row) => ({
+      id: row.id,
+      record_type: row.record_type,
+      first_name: row.first_name,
+      last_name: row.last_name,
+      phone: row.phone,
+      status: row.status,
+      branch_id: row.branch_id ?? null,
+      branch_name: row.branch_name ?? null,
+      role: row.role ?? null,
+      assignment_active:
+        row.assignment_active !== null ? Boolean(row.assignment_active) : null,
+      created_at: new Date(row.created_at),
+    }));
+  }
+
+  async replaceShiftSchedule(params: {
+    tenantId: string;
+    employeeId: string;
+    branchId: string;
+    schedule: StaffShiftScheduleEntry[];
+  }): Promise<StaffShiftAssignment[]> {
+    await this.db.query(
+      `DELETE FROM staff_shift_assignments
+       WHERE tenant_id = $1 AND employee_id = $2 AND branch_id = $3`,
+      [params.tenantId, params.employeeId, params.branchId]
+    );
+
+    const assignments: StaffShiftAssignment[] = [];
+    for (const entry of params.schedule) {
+      const result = await this.db.query(
+        `INSERT INTO staff_shift_assignments (
+          tenant_id,
+          employee_id,
+          branch_id,
+          day_of_week,
+          start_time,
+          end_time,
+          is_off
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+        RETURNING *`,
+        [
+          params.tenantId,
+          params.employeeId,
+          params.branchId,
+          entry.day_of_week,
+          entry.start_time ?? null,
+          entry.end_time ?? null,
+          entry.is_off,
+        ]
+      );
+      assignments.push(this.mapShiftAssignment(result.rows[0]));
+    }
+
+    return assignments;
+  }
+
+  async listShiftSchedule(params: {
+    tenantId: string;
+    employeeId: string;
+    branchId: string;
+  }): Promise<StaffShiftAssignment[]> {
+    const result = await this.db.query(
+      `SELECT * FROM staff_shift_assignments
+       WHERE tenant_id = $1 AND employee_id = $2 AND branch_id = $3
+       ORDER BY day_of_week ASC`,
+      [params.tenantId, params.employeeId, params.branchId]
+    );
+    return result.rows.map((row) => this.mapShiftAssignment(row));
+  }
+
   private mapBranch(row: any): Branch {
     return {
       id: row.id,
@@ -316,6 +456,21 @@ export class StaffManagementRepository {
       accepted_at: row.accepted_at ? new Date(row.accepted_at) : undefined,
       revoked_at: row.revoked_at ? new Date(row.revoked_at) : undefined,
       created_at: new Date(row.created_at),
+    };
+  }
+
+  private mapShiftAssignment(row: any): StaffShiftAssignment {
+    return {
+      id: row.id,
+      tenant_id: row.tenant_id,
+      employee_id: row.employee_id,
+      branch_id: row.branch_id,
+      day_of_week: Number(row.day_of_week),
+      start_time: row.start_time ? String(row.start_time) : null,
+      end_time: row.end_time ? String(row.end_time) : null,
+      is_off: row.is_off,
+      created_at: new Date(row.created_at),
+      updated_at: new Date(row.updated_at),
     };
   }
 }

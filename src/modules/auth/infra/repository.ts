@@ -406,6 +406,7 @@ export class AuthRepository {
     return {
       id: row.id,
       phone: row.phone,
+      email: row.email ?? null,
       password_hash: row.password_hash,
       status: row.status,
       phone_verified_at: row.phone_verified_at ? new Date(row.phone_verified_at) : undefined,
