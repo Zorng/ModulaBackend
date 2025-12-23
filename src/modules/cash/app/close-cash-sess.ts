@@ -69,7 +69,7 @@ export class CloseCashSessionUseCase {
           varianceUsd,
           varianceKhr,
           note,
-        });
+        }, client);
 
         if (!result) {
           throw new Error("Failed to update session");

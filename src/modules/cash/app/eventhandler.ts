@@ -60,13 +60,13 @@ export class OnSaleFinalizedHandler {
           amountKhr: totalCashKhr,
           refSaleId: event.saleId,
           reason: `Sale ${event.saleId}`,
-        });
+        }, client);
 
         // Update session expected cash
         await this.sessionRepo.update(openSession.id, {
           expectedCashUsd: openSession.expectedCashUsd + totalCashUsd,
           expectedCashKhr: openSession.expectedCashKhr + totalCashKhr,
-        });
+        }, client);
 
         // Publish cash movement event via outbox for audit/reporting
         const cashEvent: CashSaleRecordedV1 = {
@@ -152,14 +152,14 @@ export class OnSaleVoidedHandler {
           amountKhr: cashMovement.amountKhr,
           refSaleId: event.saleId,
           reason: `Void sale ${event.saleId}: ${event.reason}`,
-        });
+        }, client);
 
         // Update session expected cash (reduce by refund amount)
         if (session.status === "OPEN") {
           await this.sessionRepo.update(session.id, {
             expectedCashUsd: session.expectedCashUsd - cashMovement.amountUsd,
             expectedCashKhr: session.expectedCashKhr - cashMovement.amountKhr,
-          });
+          }, client);
         }
 
         // Publish refund event via outbox for audit/reporting

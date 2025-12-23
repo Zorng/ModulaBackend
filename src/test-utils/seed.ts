@@ -20,26 +20,26 @@ export type SeedMenuTenantLimitsInput = Partial<{
 }>;
 
 export type SeedTenantSingleBranchInput = Partial<{
-  tenant: {
+  tenant: Partial<{
     name: string;
     business_type: string | null;
     status: "ACTIVE" | "PAST_DUE" | "EXPIRED" | "CANCELED";
-  };
-  branch: {
+  }>;
+  branch: Partial<{
     name: string;
     address: string | null;
     status: "ACTIVE" | "FROZEN";
     contact_phone: string | null;
     contact_email: string | null;
-  };
-  admin: {
+  }>;
+  admin: Partial<{
     phone: string;
     password: string;
     first_name: string;
     last_name: string;
     display_name: string | null;
     role: "ADMIN" | "MANAGER" | "CASHIER" | "CLERK";
-  };
+  }>;
   ensureDefaultPolicies: boolean;
   ensureMenuTenantLimits: boolean;
   menuTenantLimits: SeedMenuTenantLimitsInput;
@@ -317,7 +317,7 @@ export async function seedTenantSingleBranch(
 export async function seedTenantMultiBranch(
   pool: Pool,
   input?: SeedTenantSingleBranchInput & {
-    branchB?: Partial<SeedTenantSingleBranchInput["branch"]>;
+    branchB?: SeedTenantSingleBranchInput["branch"];
     assignAdminToBranchB?: boolean;
   }
 ): Promise<SeedTenantMultiBranchResult> {

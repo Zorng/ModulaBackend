@@ -41,6 +41,153 @@ export function createAuditRouter(
 
   /**
    * @openapi
+   * /v1/audit/ingest:
+   *   post:
+   *     tags:
+   *       - Audit
+   *     summary: Ingest offline audit events (authenticated)
+   *     description: |
+   *       Accepts client-generated audit events for offline operation and persists them idempotently using `client_event_id`.
+   *       Tenant/branch/actor context is derived from the authenticated user.
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: "#/components/schemas/AuditOfflineIngestRequest"
+   *     responses:
+   *       200:
+   *         description: Ingestion result
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: "#/components/schemas/AuditOfflineIngestResponse"
+   *       401:
+   *         description: Authentication required
+   *       422:
+   *         description: Validation error
+   */
+  router.post(
+    "/ingest",
+    async (req: any, res: Response, next: NextFunction) => {
+      try {
+        const tenantId = req.user?.tenantId;
+        const branchId = req.user?.branchId;
+        const employeeId = req.user?.employeeId;
+        const actorRole = req.user?.role;
+        if (!tenantId || !branchId || !employeeId || !actorRole) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const body = req.body as any;
+        const rawEvents = Array.isArray(body?.events) ? body.events : null;
+        if (!rawEvents || rawEvents.length === 0) {
+          return res.status(422).json({ error: "events must be a non-empty array" });
+        }
+        if (rawEvents.length > 100) {
+          return res.status(422).json({ error: "events cannot exceed 100 per request" });
+        }
+
+        const events = rawEvents.map((e: any) => {
+          if (!e || typeof e !== "object") {
+            throw new Error("each event must be an object");
+          }
+
+          const clientEventId =
+            typeof e.client_event_id === "string" ? e.client_event_id : "";
+          const actionType = typeof e.action_type === "string" ? e.action_type : "";
+
+          let occurredAt: Date;
+          try {
+            const parsed = parseOptionalDate(e.occurred_at);
+            if (!parsed) {
+              throw new Error("occurred_at is required");
+            }
+            occurredAt = parsed;
+          } catch {
+            throw new Error("occurred_at must be a valid ISO date-time string");
+          }
+
+          let outcome: AuditOutcome | undefined;
+          if (typeof e.outcome === "string") {
+            if (!OUTCOMES.includes(e.outcome as AuditOutcome)) {
+              throw new Error(`outcome must be one of: ${OUTCOMES.join(", ")}`);
+            }
+            outcome = e.outcome as AuditOutcome;
+          }
+
+          let denialReason: AuditDenialReason | undefined;
+          if (typeof e.denial_reason === "string") {
+            if (!DENIAL_REASONS.includes(e.denial_reason as AuditDenialReason)) {
+              throw new Error(
+                `denial_reason must be one of: ${DENIAL_REASONS.join(", ")}`
+              );
+            }
+            denialReason = e.denial_reason as AuditDenialReason;
+          }
+
+          if (denialReason && outcome !== "REJECTED") {
+            throw new Error("denial_reason is only allowed when outcome=REJECTED");
+          }
+
+          const details =
+            e.details == null
+              ? undefined
+              : typeof e.details === "object" && !Array.isArray(e.details)
+                ? (e.details as Record<string, any>)
+                : (() => {
+                    throw new Error("details must be an object");
+                  })();
+
+          return {
+            clientEventId,
+            occurredAt,
+            actionType,
+            resourceType: typeof e.resource_type === "string" ? e.resource_type : undefined,
+            resourceId: typeof e.resource_id === "string" ? e.resource_id : undefined,
+            outcome,
+            denialReason,
+            details,
+          };
+        });
+
+        const result = await auditService.ingestOfflineEvents({
+          tenantId,
+          branchId,
+          employeeId,
+          actorRole,
+          events,
+          ipAddress: req.ip || req.socket?.remoteAddress,
+          userAgent: req.headers["user-agent"] as string | undefined,
+        });
+
+        return res.json(result);
+      } catch (err) {
+        if (err instanceof Error) {
+          const message = err.message || "Validation error";
+          if (
+            message.includes("events") ||
+            message.includes("client_event_id") ||
+            message.includes("occurred_at") ||
+            message.includes("action_type") ||
+            message.includes("resource_type") ||
+            message.includes("resource_id") ||
+            message.includes("outcome") ||
+            message.includes("denial_reason") ||
+            message.includes("details")
+          ) {
+            return res.status(422).json({ error: message });
+          }
+        }
+        next(err);
+      }
+    }
+  );
+
+  /**
+   * @openapi
    * /v1/audit/logs:
    *   get:
    *     tags:

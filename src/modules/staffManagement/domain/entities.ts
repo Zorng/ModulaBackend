@@ -47,20 +47,6 @@ export interface Invite {
   created_at: Date;
 }
 
-export interface ActivityLog {
-  id: string;
-  tenant_id: string;
-  branch_id?: string;
-  employee_id?: string;
-  action_type: string;
-  resource_type?: string;
-  resource_id?: string;
-  details?: Record<string, any>;
-  ip_address?: string;
-  user_agent?: string;
-  created_at: Date;
-}
-
 export interface CreateInviteRequest {
   first_name: string;
   last_name: string;

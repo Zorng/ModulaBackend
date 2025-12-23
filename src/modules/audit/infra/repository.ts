@@ -31,9 +31,31 @@ export class AuditRepository {
     },
     client?: PoolClient
   ): Promise<void> {
+    await this.writeIdempotent(entry, client);
+  }
+
+  async writeIdempotent(
+    entry: {
+      tenantId: string;
+      branchId?: string;
+      employeeId?: string;
+      actorRole?: string | null;
+      actionType: string;
+      resourceType?: string;
+      resourceId?: string;
+      outcome?: AuditOutcome;
+      denialReason?: AuditDenialReason;
+      occurredAt?: Date;
+      clientEventId?: string;
+      details?: Record<string, any>;
+      ipAddress?: string;
+      userAgent?: string;
+    },
+    client?: PoolClient
+  ): Promise<boolean> {
     const db: Queryable = client ?? this.pool;
 
-    await db.query(
+    const res = await db.query(
       `INSERT INTO activity_log
         (
           tenant_id,
@@ -51,7 +73,10 @@ export class AuditRepository {
           ip_address,
           user_agent
         )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       ON CONFLICT (tenant_id, client_event_id) WHERE client_event_id IS NOT NULL
+       DO NOTHING
+       RETURNING id`,
       [
         entry.tenantId,
         entry.branchId ?? null,
@@ -69,6 +94,8 @@ export class AuditRepository {
         entry.userAgent ?? null,
       ]
     );
+
+    return res.rowCount > 0;
   }
 
   async list(params: {
@@ -189,4 +216,3 @@ export class AuditRepository {
     };
   }
 }
-

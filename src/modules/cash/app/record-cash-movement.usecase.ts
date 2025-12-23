@@ -93,7 +93,7 @@ export class RecordCashMovementUseCase {
           amountUsd,
           amountKhr,
           reason: reason.trim(),
-        });
+        }, client);
 
         // Update session expected cash if approved
         if (status === "APPROVED") {
@@ -120,7 +120,7 @@ export class RecordCashMovementUseCase {
           await this.sessionRepo.update(sessionId, {
             expectedCashUsd: newExpectedUsd,
             expectedCashKhr: newExpectedKhr,
-          });
+          }, client);
         }
 
         // Publish activity event via outbox

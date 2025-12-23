@@ -105,7 +105,7 @@ export class OpenCashSessionUseCase {
           varianceUsd: 0,
           varianceKhr: 0,
           note,
-        });
+        }, client);
 
         await this.auditWriter.write(
           {

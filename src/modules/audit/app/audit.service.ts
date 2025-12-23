@@ -53,5 +53,96 @@ export class AuditService {
     }
     return entry;
   }
-}
 
+  async ingestOfflineEvents(params: {
+    tenantId: string;
+    branchId: string;
+    employeeId: string;
+    actorRole: string;
+    ipAddress?: string;
+    userAgent?: string;
+    events: Array<{
+      clientEventId: string;
+      occurredAt: Date;
+      actionType: string;
+      resourceType?: string;
+      resourceId?: string;
+      outcome?: AuditOutcome;
+      denialReason?: AuditDenialReason;
+      details?: Record<string, any>;
+    }>;
+  }): Promise<{ ingested: number; deduped: number }> {
+    if (!Array.isArray(params.events) || params.events.length === 0) {
+      throw new Error("events must be a non-empty array");
+    }
+
+    if (params.events.length > 100) {
+      throw new Error("events cannot exceed 100 per request");
+    }
+
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    const seen = new Set<string>();
+    let ingested = 0;
+    let deduped = 0;
+
+    for (const event of params.events) {
+      if (!event || typeof event !== "object") {
+        throw new Error("each event must be an object");
+      }
+      if (typeof event.clientEventId !== "string" || event.clientEventId.trim().length === 0) {
+        throw new Error("client_event_id is required");
+      }
+      if (seen.has(event.clientEventId)) {
+        deduped += 1;
+        continue;
+      }
+      seen.add(event.clientEventId);
+
+      if (!(event.occurredAt instanceof Date) || Number.isNaN(event.occurredAt.getTime())) {
+        throw new Error("occurred_at must be a valid date");
+      }
+
+      if (typeof event.actionType !== "string" || event.actionType.trim().length === 0) {
+        throw new Error("action_type is required");
+      }
+      if (event.actionType.length > 100) {
+        throw new Error("action_type must be at most 100 characters");
+      }
+
+      if (event.resourceType && event.resourceType.length > 100) {
+        throw new Error("resource_type must be at most 100 characters");
+      }
+
+      if (event.resourceId && !uuidRegex.test(event.resourceId)) {
+        throw new Error("resource_id must be a UUID");
+      }
+
+      const inserted = await this.repo.writeIdempotent({
+        tenantId: params.tenantId,
+        branchId: params.branchId,
+        employeeId: params.employeeId,
+        actorRole: params.actorRole,
+        actionType: event.actionType,
+        resourceType: event.resourceType,
+        resourceId: event.resourceId,
+        outcome: event.outcome,
+        denialReason: event.denialReason,
+        occurredAt: event.occurredAt,
+        clientEventId: event.clientEventId,
+        details: event.details,
+        ipAddress: params.ipAddress,
+        userAgent: params.userAgent,
+      });
+
+      if (inserted) {
+        ingested += 1;
+      } else {
+        deduped += 1;
+      }
+    }
+
+    return { ingested, deduped };
+  }
+}

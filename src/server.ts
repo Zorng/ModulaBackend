@@ -20,6 +20,7 @@ import { startOutboxDispatcher } from "./platform/events/outbox.js";
 import { bootstrapSalesModule } from "./modules/sales/index.js";
 import { bootstrapInventoryModule } from "./modules/inventory/index.js";
 import { bootstrapCashModule } from "./modules/cash/index.js";
+import { bootstrapOfflineSyncModule } from "#modules/offlineSync/index.js";
 import { pool } from "./platform/db/index.js";
 import { TransactionManager } from "./platform/db/transactionManager.js";
 import {
@@ -61,10 +62,13 @@ log.info("✓ Outbox dispatcher started - reliable event delivery enabled");
 // ==================== Bootstrap Modules ====================
 
 const policyRepo = new PgPolicyRepository(pool);
-const staffManagementModule = bootstrapStaffManagementModule(pool);
 
 // Setup Audit Module (admin read + shared ports)
 const auditModule = bootstrapAuditModule(pool);
+
+const staffManagementModule = bootstrapStaffManagementModule(pool, {
+  auditWriterPort: auditModule.auditWriterPort,
+});
 
 // Setup Branch Module (profile + lifecycle + provisioning ports)
 const branchModule = bootstrapBranchModule(pool, {
@@ -133,6 +137,18 @@ const cashModule = bootstrapCashModule(pool, authMiddleware, {
   auditWriterPort: auditModule.auditWriterPort,
 });
 const { router: cashRouter, eventHandlers: cashEventHandlers } = cashModule;
+
+// Setup Offline Sync Module (apply queued offline operations)
+const offlineSyncModule = bootstrapOfflineSyncModule(
+  pool,
+  transactionManager,
+  authMiddleware,
+  {
+    branchGuardPort: branchModule.branchGuardPort,
+    auditWriterPort: auditModule.auditWriterPort,
+  }
+);
+const { router: offlineSyncRouter } = offlineSyncModule;
 
 // ==================== Register Event Handlers ====================
 
@@ -297,6 +313,7 @@ app.use("/v1/sales", salesRouter);
 app.use("/v1/inventory", inventoryRouter);
 app.use("/v1/cash", cashRouter);
 app.use("/v1/policies", policyRouter);
+app.use("/v1/sync", offlineSyncRouter);
 app.use("/v1", imageProxyRouter); // Image proxy for CORS-free access
 
 // Error handlers

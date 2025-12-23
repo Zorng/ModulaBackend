@@ -1,20 +1,6 @@
 export type EmployeeStatus = 'ACTIVE' | 'INVITED' | 'DISABLED' | 'ARCHIVED';
 export type EmployeeRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'CLERK';
 export type AccountStatus = 'ACTIVE' | 'DISABLED';
-export type AuthActionType = 
-  | 'AUTH_LOGIN_SUCCESS'
-  | 'AUTH_LOGIN_FAILED'
-  | 'AUTH_LOGOUT'
-  | 'AUTH_INVITE_CREATED'
-  | 'AUTH_INVITE_ACCEPTED'
-  | 'AUTH_INVITE_REISSUED'
-  | 'AUTH_INVITE_REVOKED'
-  | 'AUTH_ROLE_CHANGED'
-  | 'AUTH_BRANCH_TRANSFERRED'
-  | 'AUTH_EMPLOYEE_DISABLED'
-  | 'AUTH_NAME_EDITED_BY_ADMIN'
-  | 'CREDENTIAL_CHANGE_REQUESTED'
-  | 'CREDENTIAL_CHANGED';
 
 export interface Tenant {
   id: string;
@@ -108,20 +94,6 @@ export interface AuthPolicy {
   data: Record<string, any>;
   version: number;
   effective_from: Date;
-  created_at: Date;
-}
-
-export interface ActivityLog {
-  id: string;
-  tenant_id: string;
-  branch_id?: string;
-  employee_id?: string;
-  action_type: AuthActionType;
-  resource_type?: string;
-  resource_id?: string;
-  details?: Record<string, any>;
-  ip_address?: string;
-  user_agent?: string;
   created_at: Date;
 }
 

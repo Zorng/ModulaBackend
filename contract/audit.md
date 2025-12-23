@@ -4,7 +4,7 @@ This document describes the **current** Audit HTTP contract exposed by the backe
 
 **Base path:** `/v1/audit`  
 **Auth header:** `Authorization: Bearer <accessToken>`  
-**Access control:** **Admin only**
+**Access control:** Read endpoints are **Admin only**; offline ingestion is **authenticated** (any role)
 
 ---
 
@@ -77,6 +77,40 @@ Notes:
 ---
 
 ## Endpoints
+
+### 0) Ingest offline audit events (Authenticated)
+`POST /v1/audit/ingest`
+
+Notes:
+- Tenant/branch/actor context is derived from the authenticated user (request body cannot override it).
+- Idempotency is enforced via `(tenant_id, client_event_id)`; retries must not create duplicates.
+
+Request body:
+```json
+{
+  "events": [
+    {
+      "client_event_id": "string",
+      "occurred_at": "2025-01-01T00:00:00.000Z",
+      "action_type": "SYNC_OPERATION_APPLIED",
+      "resource_type": "SYNC",
+      "resource_id": "uuid",
+      "outcome": "SUCCESS",
+      "denial_reason": null,
+      "details": { "source": "offline_queue" }
+    }
+  ]
+}
+```
+
+Response `200`:
+```json
+{ "ingested": 1, "deduped": 0 }
+```
+
+Errors:
+- `401` if missing/invalid auth
+- `422` if body is invalid
 
 ### 1) List audit logs (Admin only)
 `GET /v1/audit/logs`
@@ -161,4 +195,3 @@ Errors:
 - `401` if missing/invalid auth
 - `403` if not an admin
 - `404` if not found
-

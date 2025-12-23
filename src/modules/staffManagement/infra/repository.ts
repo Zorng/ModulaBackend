@@ -1,7 +1,6 @@
 import { pool } from "#db";
 import type { Pool } from "pg";
 import type {
-  ActivityLog,
   Branch,
   Employee,
   EmployeeBranchAssignment,
@@ -258,28 +257,6 @@ export class StaffManagementRepository {
     return this.mapInvite(result.rows[0]);
   }
 
-  async createActivityLog(
-    activity: Omit<ActivityLog, "id" | "created_at">
-  ): Promise<ActivityLog> {
-    const result = await this.db.query(
-      `INSERT INTO activity_log (tenant_id, branch_id, employee_id, action_type, resource_type, resource_id, details, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING *`,
-      [
-        activity.tenant_id,
-        activity.branch_id ?? null,
-        activity.employee_id ?? null,
-        activity.action_type,
-        activity.resource_type ?? null,
-        activity.resource_id ?? null,
-        activity.details ? JSON.stringify(activity.details) : null,
-        activity.ip_address ?? null,
-        activity.user_agent ?? null,
-      ]
-    );
-    return this.mapActivityLog(result.rows[0]);
-  }
-
   private mapBranch(row: any): Branch {
     return {
       id: row.id,
@@ -338,22 +315,6 @@ export class StaffManagementRepository {
       expires_at: new Date(row.expires_at),
       accepted_at: row.accepted_at ? new Date(row.accepted_at) : undefined,
       revoked_at: row.revoked_at ? new Date(row.revoked_at) : undefined,
-      created_at: new Date(row.created_at),
-    };
-  }
-
-  private mapActivityLog(row: any): ActivityLog {
-    return {
-      id: row.id,
-      tenant_id: row.tenant_id,
-      branch_id: row.branch_id,
-      employee_id: row.employee_id,
-      action_type: row.action_type,
-      resource_type: row.resource_type,
-      resource_id: row.resource_id,
-      details: row.details,
-      ip_address: row.ip_address,
-      user_agent: row.user_agent,
       created_at: new Date(row.created_at),
     };
   }

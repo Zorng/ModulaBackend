@@ -1,6 +1,6 @@
 // Cash repository implementations
 
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type {
   CashRegisterRepository as ICashRegisterRepository,
   CashSessionRepository as ICashSessionRepository,
@@ -16,6 +16,10 @@ import {
   CashMovementStatus,
 } from "../domain/entities.js";
 
+type Queryable = {
+  query: (text: string, params?: any[]) => Promise<any>;
+};
+
 export class CashRegisterRepository implements ICashRegisterRepository {
   private pool: Pool;
 
@@ -23,8 +27,9 @@ export class CashRegisterRepository implements ICashRegisterRepository {
     this.pool = pool;
   }
 
-  async findById(id: string): Promise<CashRegister | null> {
-    const res = await this.pool.query(
+  async findById(id: string, client?: PoolClient): Promise<CashRegister | null> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_registers WHERE id = $1",
       [id]
     );
@@ -32,16 +37,18 @@ export class CashRegisterRepository implements ICashRegisterRepository {
     return this.toEntity(res.rows[0]);
   }
 
-  async findByTenant(tenantId: string): Promise<CashRegister[]> {
-    const res = await this.pool.query(
+  async findByTenant(tenantId: string, client?: PoolClient): Promise<CashRegister[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_registers WHERE tenant_id = $1 ORDER BY name ASC",
       [tenantId]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByBranch(branchId: string): Promise<CashRegister[]> {
-    const res = await this.pool.query(
+  async findByBranch(branchId: string, client?: PoolClient): Promise<CashRegister[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_registers WHERE branch_id = $1 ORDER BY name ASC",
       [branchId]
     );
@@ -50,9 +57,11 @@ export class CashRegisterRepository implements ICashRegisterRepository {
 
   async findByBranchAndName(
     branchId: string,
-    name: string
+    name: string,
+    client?: PoolClient
   ): Promise<CashRegister | null> {
-    const res = await this.pool.query(
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_registers WHERE branch_id = $1 AND LOWER(name) = LOWER($2)",
       [branchId, name]
     );
@@ -62,9 +71,11 @@ export class CashRegisterRepository implements ICashRegisterRepository {
 
   async findByTenantAndBranch(
     tenantId: string,
-    branchId: string
+    branchId: string,
+    client?: PoolClient
   ): Promise<CashRegister[]> {
-    const res = await this.pool.query(
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_registers WHERE tenant_id = $1 AND branch_id = $2 ORDER BY name ASC",
       [tenantId, branchId]
     );
@@ -73,9 +84,11 @@ export class CashRegisterRepository implements ICashRegisterRepository {
 
   async findByTenantAndStatus(
     tenantId: string,
-    status: CashRegisterStatus
+    status: CashRegisterStatus,
+    client?: PoolClient
   ): Promise<CashRegister[]> {
-    const res = await this.pool.query(
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_registers WHERE tenant_id = $1 AND status = $2 ORDER BY name ASC",
       [tenantId, status]
     );
@@ -83,9 +96,11 @@ export class CashRegisterRepository implements ICashRegisterRepository {
   }
 
   async save(
-    register: Omit<CashRegister, "id" | "createdAt" | "updatedAt">
+    register: Omit<CashRegister, "id" | "createdAt" | "updatedAt">,
+    client?: PoolClient
   ): Promise<CashRegister> {
-    const res = await this.pool.query(
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       `INSERT INTO cash_registers (
         tenant_id, branch_id, name, status
       ) VALUES ($1, $2, $3, $4) RETURNING *`,
@@ -96,10 +111,11 @@ export class CashRegisterRepository implements ICashRegisterRepository {
 
   async update(
     id: string,
-    updates: Partial<Omit<CashRegister, "id" | "tenantId" | "createdAt">>
+    updates: Partial<Omit<CashRegister, "id" | "tenantId" | "createdAt">>,
+    client?: PoolClient
   ): Promise<CashRegister | null> {
     const fields = Object.keys(updates);
-    if (fields.length === 0) return this.findById(id);
+    if (fields.length === 0) return this.findById(id, client);
 
     const fieldMap: Record<string, string> = {
       branchId: "branch_id",
@@ -120,18 +136,20 @@ export class CashRegisterRepository implements ICashRegisterRepository {
       }
     }
 
-    if (setClauses.length === 0) return this.findById(id);
+    if (setClauses.length === 0) return this.findById(id, client);
 
     const query = `UPDATE cash_registers SET ${setClauses.join(
       ", "
     )}, updated_at = NOW() WHERE id = $1 RETURNING *`;
-    const res = await this.pool.query(query, [id, ...values]);
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(query, [id, ...values]);
     if (res.rows.length === 0) return null;
     return this.toEntity(res.rows[0]);
   }
 
-  async delete(id: string): Promise<void> {
-    await this.pool.query("DELETE FROM cash_registers WHERE id = $1", [id]);
+  async delete(id: string, client?: PoolClient): Promise<void> {
+    const db: Queryable = client ?? this.pool;
+    await db.query("DELETE FROM cash_registers WHERE id = $1", [id]);
   }
 
   private toEntity(row: any): CashRegister {
@@ -154,8 +172,9 @@ export class CashSessionRepository implements ICashSessionRepository {
     this.pool = pool;
   }
 
-  async findById(id: string): Promise<CashSession | null> {
-    const res = await this.pool.query(
+  async findById(id: string, client?: PoolClient): Promise<CashSession | null> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_sessions WHERE id = $1",
       [id]
     );
@@ -163,32 +182,36 @@ export class CashSessionRepository implements ICashSessionRepository {
     return this.toEntity(res.rows[0]);
   }
 
-  async findByTenant(tenantId: string): Promise<CashSession[]> {
-    const res = await this.pool.query(
+  async findByTenant(tenantId: string, client?: PoolClient): Promise<CashSession[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_sessions WHERE tenant_id = $1 ORDER BY opened_at DESC",
       [tenantId]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByBranch(branchId: string): Promise<CashSession[]> {
-    const res = await this.pool.query(
+  async findByBranch(branchId: string, client?: PoolClient): Promise<CashSession[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_sessions WHERE branch_id = $1 ORDER BY opened_at DESC",
       [branchId]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByRegister(registerId: string): Promise<CashSession[]> {
-    const res = await this.pool.query(
+  async findByRegister(registerId: string, client?: PoolClient): Promise<CashSession[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_sessions WHERE register_id = $1 ORDER BY opened_at DESC",
       [registerId]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findOpenByRegister(registerId: string): Promise<CashSession | null> {
-    const res = await this.pool.query(
+  async findOpenByRegister(registerId: string, client?: PoolClient): Promise<CashSession | null> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_sessions WHERE register_id = $1 AND status = 'OPEN'",
       [registerId]
     );
@@ -198,9 +221,11 @@ export class CashSessionRepository implements ICashSessionRepository {
 
   async findOpenByBranch(
     tenantId: string,
-    branchId: string
+    branchId: string,
+    client?: PoolClient
   ): Promise<CashSession | null> {
-    const res = await this.pool.query(
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_sessions WHERE tenant_id = $1 AND branch_id = $2 AND status = 'OPEN' AND register_id IS NULL ORDER BY opened_at DESC LIMIT 1",
       [tenantId, branchId]
     );
@@ -210,25 +235,29 @@ export class CashSessionRepository implements ICashSessionRepository {
 
   async findByTenantAndBranch(
     tenantId: string,
-    branchId: string
+    branchId: string,
+    client?: PoolClient
   ): Promise<CashSession[]> {
-    const res = await this.pool.query(
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_sessions WHERE tenant_id = $1 AND branch_id = $2 ORDER BY opened_at DESC",
       [tenantId, branchId]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByStatus(status: CashSessionStatus): Promise<CashSession[]> {
-    const res = await this.pool.query(
+  async findByStatus(status: CashSessionStatus, client?: PoolClient): Promise<CashSession[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_sessions WHERE status = $1 ORDER BY opened_at DESC",
       [status]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByDateRange(fromDate: Date, toDate: Date): Promise<CashSession[]> {
-    const res = await this.pool.query(
+  async findByDateRange(fromDate: Date, toDate: Date, client?: PoolClient): Promise<CashSession[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_sessions WHERE opened_at >= $1 AND opened_at <= $2 ORDER BY opened_at DESC",
       [fromDate, toDate]
     );
@@ -236,9 +265,11 @@ export class CashSessionRepository implements ICashSessionRepository {
   }
 
   async save(
-    session: Omit<CashSession, "id" | "createdAt" | "updatedAt">
+    session: Omit<CashSession, "id" | "createdAt" | "updatedAt">,
+    client?: PoolClient
   ): Promise<CashSession> {
-    const res = await this.pool.query(
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       `INSERT INTO cash_sessions (
         tenant_id, branch_id, register_id, opened_by, opened_at,
         opening_float_usd, opening_float_khr, status, closed_by, closed_at,
@@ -270,10 +301,11 @@ export class CashSessionRepository implements ICashSessionRepository {
 
   async update(
     id: string,
-    updates: Partial<Omit<CashSession, "id" | "tenantId" | "createdAt">>
+    updates: Partial<Omit<CashSession, "id" | "tenantId" | "createdAt">>,
+    client?: PoolClient
   ): Promise<CashSession | null> {
     const fields = Object.keys(updates);
-    if (fields.length === 0) return this.findById(id);
+    if (fields.length === 0) return this.findById(id, client);
 
     const fieldMap: Record<string, string> = {
       branchId: "branch_id",
@@ -307,26 +339,28 @@ export class CashSessionRepository implements ICashSessionRepository {
       }
     }
 
-    if (setClauses.length === 0) return this.findById(id);
+    if (setClauses.length === 0) return this.findById(id, client);
 
     const query = `UPDATE cash_sessions SET ${setClauses.join(
       ", "
     )}, updated_at = NOW() WHERE id = $1 RETURNING *`;
-    const res = await this.pool.query(query, [id, ...values]);
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(query, [id, ...values]);
     if (res.rows.length === 0) return null;
     return this.toEntity(res.rows[0]);
   }
 
-  async getSessionSummary(sessionId: string): Promise<{
+  async getSessionSummary(sessionId: string, client?: PoolClient): Promise<{
     session: CashSession;
     totalMovements: number;
     totalCashIn: number;
     totalCashOut: number;
   } | null> {
-    const session = await this.findById(sessionId);
+    const db: Queryable = client ?? this.pool;
+    const session = await this.findById(sessionId, client);
     if (!session) return null;
 
-    const res = await this.pool.query(
+    const res = await db.query(
       `SELECT
         COUNT(*) as total_movements,
         COALESCE(SUM(CASE WHEN type IN ('SALE_CASH', 'PAID_IN') THEN amount_usd ELSE 0 END), 0) as total_cash_in_usd,
@@ -377,8 +411,9 @@ export class CashMovementRepository implements ICashMovementRepository {
     this.pool = pool;
   }
 
-  async findById(id: string): Promise<CashMovement | null> {
-    const res = await this.pool.query(
+  async findById(id: string, client?: PoolClient): Promise<CashMovement | null> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE id = $1",
       [id]
     );
@@ -386,80 +421,90 @@ export class CashMovementRepository implements ICashMovementRepository {
     return this.toEntity(res.rows[0]);
   }
 
-  async findBySession(sessionId: string): Promise<CashMovement[]> {
-    const res = await this.pool.query(
+  async findBySession(sessionId: string, client?: PoolClient): Promise<CashMovement[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE session_id = $1 ORDER BY created_at ASC",
       [sessionId]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByRegister(registerId: string): Promise<CashMovement[]> {
-    const res = await this.pool.query(
+  async findByRegister(registerId: string, client?: PoolClient): Promise<CashMovement[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE register_id = $1 ORDER BY created_at DESC",
       [registerId]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByTenant(tenantId: string): Promise<CashMovement[]> {
-    const res = await this.pool.query(
+  async findByTenant(tenantId: string, client?: PoolClient): Promise<CashMovement[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE tenant_id = $1 ORDER BY created_at DESC",
       [tenantId]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByBranch(branchId: string): Promise<CashMovement[]> {
-    const res = await this.pool.query(
+  async findByBranch(branchId: string, client?: PoolClient): Promise<CashMovement[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE branch_id = $1 ORDER BY created_at DESC",
       [branchId]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByType(type: CashMovementType): Promise<CashMovement[]> {
-    const res = await this.pool.query(
+  async findByType(type: CashMovementType, client?: PoolClient): Promise<CashMovement[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE type = $1 ORDER BY created_at DESC",
       [type]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByStatus(status: CashMovementStatus): Promise<CashMovement[]> {
-    const res = await this.pool.query(
+  async findByStatus(status: CashMovementStatus, client?: PoolClient): Promise<CashMovement[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE status = $1 ORDER BY created_at DESC",
       [status]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByActor(actorId: string): Promise<CashMovement[]> {
-    const res = await this.pool.query(
+  async findByActor(actorId: string, client?: PoolClient): Promise<CashMovement[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE actor_id = $1 ORDER BY created_at DESC",
       [actorId]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findBySale(refSaleId: string): Promise<CashMovement[]> {
-    const res = await this.pool.query(
+  async findBySale(refSaleId: string, client?: PoolClient): Promise<CashMovement[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE ref_sale_id = $1 ORDER BY created_at DESC",
       [refSaleId]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findByDateRange(fromDate: Date, toDate: Date): Promise<CashMovement[]> {
-    const res = await this.pool.query(
+  async findByDateRange(fromDate: Date, toDate: Date, client?: PoolClient): Promise<CashMovement[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE created_at >= $1 AND created_at <= $2 ORDER BY created_at DESC",
       [fromDate, toDate]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async findPendingApprovals(): Promise<CashMovement[]> {
-    const res = await this.pool.query(
+  async findPendingApprovals(client?: PoolClient): Promise<CashMovement[]> {
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE status = 'PENDING' ORDER BY created_at ASC",
       []
     );
@@ -467,9 +512,11 @@ export class CashMovementRepository implements ICashMovementRepository {
   }
 
   async save(
-    movement: Omit<CashMovement, "id" | "createdAt">
+    movement: Omit<CashMovement, "id" | "createdAt">,
+    client?: PoolClient
   ): Promise<CashMovement> {
-    const res = await this.pool.query(
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       `INSERT INTO cash_movements (
         tenant_id, branch_id, register_id, session_id, actor_id,
         type, status, amount_usd, amount_khr, ref_sale_id, reason
@@ -493,10 +540,11 @@ export class CashMovementRepository implements ICashMovementRepository {
 
   async update(
     id: string,
-    updates: Partial<Omit<CashMovement, "id" | "tenantId" | "createdAt">>
+    updates: Partial<Omit<CashMovement, "id" | "tenantId" | "createdAt">>,
+    client?: PoolClient
   ): Promise<CashMovement | null> {
     const fields = Object.keys(updates);
-    if (fields.length === 0) return this.findById(id);
+    if (fields.length === 0) return this.findById(id, client);
 
     const fieldMap: Record<string, string> = {
       branchId: "branch_id",
@@ -524,12 +572,13 @@ export class CashMovementRepository implements ICashMovementRepository {
       }
     }
 
-    if (setClauses.length === 0) return this.findById(id);
+    if (setClauses.length === 0) return this.findById(id, client);
 
     const query = `UPDATE cash_movements SET ${setClauses.join(
       ", "
     )} WHERE id = $1 RETURNING *`;
-    const res = await this.pool.query(query, [id, ...values]);
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(query, [id, ...values]);
     if (res.rows.length === 0) return null;
     return this.toEntity(res.rows[0]);
   }
@@ -537,28 +586,31 @@ export class CashMovementRepository implements ICashMovementRepository {
   async getDailyMovements(
     tenantId: string,
     branchId: string,
-    date: Date
+    date: Date,
+    client?: PoolClient
   ): Promise<CashMovement[]> {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const res = await this.pool.query(
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       "SELECT * FROM cash_movements WHERE tenant_id = $1 AND branch_id = $2 AND created_at >= $3 AND created_at <= $4 ORDER BY created_at ASC",
       [tenantId, branchId, startOfDay, endOfDay]
     );
     return res.rows.map(this.toEntity);
   }
 
-  async getMovementSummary(sessionId: string): Promise<{
+  async getMovementSummary(sessionId: string, client?: PoolClient): Promise<{
     totalPaidIn: number;
     totalPaidOut: number;
     totalRefunds: number;
     totalAdjustments: number;
     netCashFlow: number;
   }> {
-    const res = await this.pool.query(
+    const db: Queryable = client ?? this.pool;
+    const res = await db.query(
       `SELECT
         COALESCE(SUM(CASE WHEN type = 'PAID_IN' THEN amount_usd ELSE 0 END), 0) as total_paid_in,
         COALESCE(SUM(CASE WHEN type = 'PAID_OUT' THEN amount_usd ELSE 0 END), 0) as total_paid_out,

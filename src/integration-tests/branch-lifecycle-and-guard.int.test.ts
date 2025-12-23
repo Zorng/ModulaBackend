@@ -192,6 +192,21 @@ describe("Branch lifecycle + guard (DB-backed)", () => {
         [seeded.tenantId, c.expectedBranchId, seeded.employeeId, c.operation]
       );
       expect(denialCount.rows[0].count).toBeGreaterThan(0);
+
+      const denialRow = await pool.query(
+        `SELECT outcome, denial_reason
+         FROM activity_log
+         WHERE tenant_id = $1
+           AND branch_id = $2
+           AND employee_id = $3
+           AND action_type = 'ACTION_REJECTED_BRANCH_FROZEN'
+           AND details->>'operation' = $4
+         ORDER BY occurred_at DESC, id DESC
+         LIMIT 1`,
+        [seeded.tenantId, c.expectedBranchId, seeded.employeeId, c.operation]
+      );
+      expect(denialRow.rows[0]?.outcome).toBe("REJECTED");
+      expect(denialRow.rows[0]?.denial_reason).toBe("BRANCH_FROZEN");
     }
 
     await cleanupSeededTenant(pool, seeded);

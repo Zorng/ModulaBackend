@@ -18,6 +18,7 @@ import {
   StaffManagementService,
   createInvitationPort,
 } from "../modules/staffManagement/app/staffManagement.service.js";
+import type { AuditWriterPort } from "../shared/ports/audit.js";
 
 function shouldCleanupAfterTests(): boolean {
   const value = process.env.CLEANUP_AFTER_TESTS;
@@ -281,8 +282,9 @@ describe("Tenant limits enforcement (DB-backed)", () => {
     );
 
     const repo = new StaffManagementRepository(pool);
-    const service = new StaffManagementService(repo, 72);
-    const invitationPort = createInvitationPort(repo);
+    const auditWriter: AuditWriterPort = { write: async () => {} };
+    const service = new StaffManagementService(repo, auditWriter, 72);
+    const invitationPort = createInvitationPort(repo, auditWriter);
 
     const invite1Phone = uniquePhone();
     const invite1 = await service.createInvite(seeded.tenantId, seeded.employeeId, {
@@ -365,8 +367,9 @@ describe("Tenant limits enforcement (DB-backed)", () => {
     );
 
     const repo = new StaffManagementRepository(pool);
-    const service = new StaffManagementService(repo, 72);
-    const invitationPort = createInvitationPort(repo);
+    const auditWriter: AuditWriterPort = { write: async () => {} };
+    const service = new StaffManagementService(repo, auditWriter, 72);
+    const invitationPort = createInvitationPort(repo, auditWriter);
 
     const staffPhone = uniquePhone();
     const invite = await service.createInvite(seeded.tenantId, seeded.employeeId, {

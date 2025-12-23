@@ -65,7 +65,7 @@ export class TakeOverSessionUseCase {
           closedBy: newOpenedBy,
           closedAt: new Date(),
           note: `Taken over by manager. Reason: ${reason}`,
-        });
+        }, client);
 
         await this.auditWriter.write(
           {
@@ -102,7 +102,7 @@ export class TakeOverSessionUseCase {
           varianceUsd: 0,
           varianceKhr: 0,
           note: `Taken over from previous session. Reason: ${reason}`,
-        });
+        }, client);
 
         await this.auditWriter.write(
           {

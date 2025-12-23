@@ -351,6 +351,54 @@ export function setupSwagger(app: Express) {
             required: ["log"],
           },
 
+          AuditOfflineIngestEvent: {
+            type: "object",
+            properties: {
+              client_event_id: {
+                type: "string",
+                description: "Client-generated unique ID for idempotency (unique per tenant)",
+              },
+              occurred_at: {
+                type: "string",
+                format: "date-time",
+                description: "Client timestamp (for audit only; backend ordering remains authoritative)",
+              },
+              action_type: { type: "string", description: "Audit action/event name" },
+              resource_type: { type: "string", nullable: true },
+              resource_id: { type: "string", format: "uuid", nullable: true },
+              outcome: { $ref: "#/components/schemas/AuditOutcome" },
+              denial_reason: {
+                oneOf: [
+                  { $ref: "#/components/schemas/AuditDenialReason" },
+                  { type: "null" },
+                ],
+              },
+              details: { type: "object", nullable: true },
+            },
+            required: ["client_event_id", "occurred_at", "action_type"],
+          },
+
+          AuditOfflineIngestRequest: {
+            type: "object",
+            properties: {
+              events: {
+                type: "array",
+                maxItems: 100,
+                items: { $ref: "#/components/schemas/AuditOfflineIngestEvent" },
+              },
+            },
+            required: ["events"],
+          },
+
+          AuditOfflineIngestResponse: {
+            type: "object",
+            properties: {
+              ingested: { type: "integer", example: 5 },
+              deduped: { type: "integer", example: 2 },
+            },
+            required: ["ingested", "deduped"],
+          },
+
           Employee: {
             type: "object",
             properties: {

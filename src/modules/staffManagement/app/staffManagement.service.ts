@@ -4,6 +4,7 @@ import type {
   InviteAcceptanceResult,
   InvitePreview,
 } from "../../../shared/ports/staff-management.js";
+import type { AuditWriterPort } from "../../../shared/ports/audit.js";
 import type {
   CreateInviteRequest,
   Employee,
@@ -16,8 +17,17 @@ import { StaffManagementRepository } from "../infra/repository.js";
 export class StaffManagementService {
   constructor(
     private repo: StaffManagementRepository,
+    private auditWriter: AuditWriterPort,
     private defaultInviteExpiryHours: number = 72
   ) {}
+
+  private async tryWriteAudit(
+    entry: Parameters<AuditWriterPort["write"]>[0]
+  ): Promise<void> {
+    try {
+      await this.auditWriter.write(entry);
+    } catch {}
+  }
 
   async createInvite(
     tenantId: string,
@@ -76,13 +86,15 @@ export class StaffManagementService {
       expires_at: expiresAt,
     });
 
-    await this.repo.createActivityLog({
-      tenant_id: tenantId,
-      branch_id: request.branch_id,
-      employee_id: adminEmployeeId,
-      action_type: "AUTH_INVITE_CREATED",
-      resource_type: "INVITE",
-      resource_id: invite.id,
+    await this.tryWriteAudit({
+      tenantId,
+      branchId: request.branch_id,
+      employeeId: adminEmployeeId,
+      actorRole: "ADMIN",
+      actionType: "STAFF_INVITED",
+      resourceType: "INVITE",
+      resourceId: invite.id,
+      outcome: "SUCCESS",
       details: { role: request.role, phone: request.phone },
     });
 
@@ -96,12 +108,15 @@ export class StaffManagementService {
   ): Promise<Invite> {
     const invite = await this.repo.revokeInvite(inviteId);
 
-    await this.repo.createActivityLog({
-      tenant_id: tenantId,
-      employee_id: adminEmployeeId,
-      action_type: "AUTH_INVITE_REVOKED",
-      resource_type: "INVITE",
-      resource_id: invite.id,
+    await this.tryWriteAudit({
+      tenantId,
+      branchId: invite.branch_id,
+      employeeId: adminEmployeeId,
+      actorRole: "ADMIN",
+      actionType: "STAFF_INVITE_REVOKED",
+      resourceType: "INVITE",
+      resourceId: invite.id,
+      outcome: "SUCCESS",
     });
 
     return invite;
@@ -137,12 +152,15 @@ export class StaffManagementService {
       expiresAt
     );
 
-    await this.repo.createActivityLog({
-      tenant_id: tenantId,
-      employee_id: adminEmployeeId,
-      action_type: "AUTH_INVITE_REISSUED",
-      resource_type: "INVITE",
-      resource_id: inviteId,
+    await this.tryWriteAudit({
+      tenantId,
+      branchId: existingInvite.branch_id,
+      employeeId: adminEmployeeId,
+      actorRole: "ADMIN",
+      actionType: "STAFF_INVITE_REISSUED",
+      resourceType: "INVITE",
+      resourceId: inviteId,
+      outcome: "SUCCESS",
       details: { phone: existingInvite.phone },
     });
 
@@ -181,13 +199,15 @@ export class StaffManagementService {
       active: true,
     });
 
-    await this.repo.createActivityLog({
-      tenant_id: tenantId,
-      branch_id: branchId,
-      employee_id: adminEmployeeId,
-      action_type: "AUTH_BRANCH_TRANSFERRED",
-      resource_type: "EMPLOYEE",
-      resource_id: employeeId,
+    await this.tryWriteAudit({
+      tenantId,
+      branchId,
+      employeeId: adminEmployeeId,
+      actorRole: "ADMIN",
+      actionType: "STAFF_BRANCH_CHANGED",
+      resourceType: "EMPLOYEE",
+      resourceId: employeeId,
+      outcome: "SUCCESS",
       details: { branch_id: branchId, role },
     });
 
@@ -211,20 +231,30 @@ export class StaffManagementService {
       throw new Error("Branch not found or does not belong to tenant");
     }
 
+    const previousAssignment = await this.repo.findEmployeeBranchAssignment(
+      employeeId,
+      branchId
+    );
     const updatedAssignment = await this.repo.updateEmployeeBranchAssignmentRole(
       employeeId,
       branchId,
       newRole
     );
 
-    await this.repo.createActivityLog({
-      tenant_id: tenantId,
-      branch_id: branchId,
-      employee_id: adminEmployeeId,
-      action_type: "AUTH_ROLE_CHANGED",
-      resource_type: "EMPLOYEE",
-      resource_id: employeeId,
-      details: { new_role: newRole, branch_id: branchId },
+    await this.tryWriteAudit({
+      tenantId,
+      branchId,
+      employeeId: adminEmployeeId,
+      actorRole: "ADMIN",
+      actionType: "STAFF_ROLE_CHANGED",
+      resourceType: "EMPLOYEE",
+      resourceId: employeeId,
+      outcome: "SUCCESS",
+      details: {
+        branch_id: branchId,
+        previous_role: previousAssignment?.role ?? null,
+        new_role: newRole,
+      },
     });
 
     return updatedAssignment;
@@ -254,12 +284,15 @@ export class StaffManagementService {
     );
     await this.repo.deactivateAllEmployeeBranchAssignments(employeeId);
 
-    await this.repo.createActivityLog({
-      tenant_id: tenantId,
-      employee_id: adminEmployeeId,
-      action_type: "AUTH_EMPLOYEE_DISABLED",
-      resource_type: "EMPLOYEE",
-      resource_id: employeeId,
+    await this.tryWriteAudit({
+      tenantId,
+      employeeId: adminEmployeeId,
+      actorRole: "ADMIN",
+      actionType: "STAFF_DISABLED",
+      resourceType: "EMPLOYEE",
+      resourceId: employeeId,
+      outcome: "SUCCESS",
+      details: { previous_status: employee.status },
     });
 
     return updatedEmployee;
@@ -303,12 +336,15 @@ export class StaffManagementService {
     );
     await this.repo.activateAllEmployeeBranchAssignments(employeeId);
 
-    await this.repo.createActivityLog({
-      tenant_id: tenantId,
-      employee_id: adminEmployeeId,
-      action_type: "AUTH_EMPLOYEE_REACTIVATED",
-      resource_type: "EMPLOYEE",
-      resource_id: employeeId,
+    await this.tryWriteAudit({
+      tenantId,
+      employeeId: adminEmployeeId,
+      actorRole: "ADMIN",
+      actionType: "STAFF_REACTIVATED",
+      resourceType: "EMPLOYEE",
+      resourceId: employeeId,
+      outcome: "SUCCESS",
+      details: { previous_status: employee.status },
     });
 
     return updatedEmployee;
@@ -341,12 +377,15 @@ export class StaffManagementService {
     );
     await this.repo.deactivateAllEmployeeBranchAssignments(employeeId);
 
-    await this.repo.createActivityLog({
-      tenant_id: tenantId,
-      employee_id: adminEmployeeId,
-      action_type: "AUTH_EMPLOYEE_ARCHIVED",
-      resource_type: "EMPLOYEE",
-      resource_id: employeeId,
+    await this.tryWriteAudit({
+      tenantId,
+      employeeId: adminEmployeeId,
+      actorRole: "ADMIN",
+      actionType: "STAFF_ARCHIVED",
+      resourceType: "EMPLOYEE",
+      resourceId: employeeId,
+      outcome: "SUCCESS",
+      details: { previous_status: employee.status },
     });
 
     return updatedEmployee;
@@ -354,7 +393,8 @@ export class StaffManagementService {
 }
 
 export function createInvitationPort(
-  repo: StaffManagementRepository
+  repo: StaffManagementRepository,
+  auditWriter: AuditWriterPort
 ): InvitationPort {
   return {
     async peekValidInvite(token: string): Promise<InvitePreview> {
@@ -455,14 +495,19 @@ export function createInvitationPort(
 
       await repo.acceptInvite(invite.id);
 
-      await repo.createActivityLog({
-        tenant_id: invite.tenant_id,
-        branch_id: invite.branch_id,
-        employee_id: employee.id,
-        action_type: "AUTH_INVITE_ACCEPTED",
-        resource_type: "INVITE",
-        resource_id: invite.id,
-      });
+      try {
+        await auditWriter.write({
+          tenantId: invite.tenant_id,
+          branchId: invite.branch_id,
+          employeeId: employee.id,
+          actorRole: invite.role,
+          actionType: "STAFF_INVITE_ACCEPTED",
+          resourceType: "INVITE",
+          resourceId: invite.id,
+          outcome: "SUCCESS",
+          details: { role: invite.role },
+        });
+      } catch {}
 
       return { employee, branchId: invite.branch_id, role: invite.role };
     },
