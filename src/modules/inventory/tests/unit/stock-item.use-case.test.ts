@@ -7,8 +7,11 @@ import type { StockItem } from "../../domain/entities.js";
 
 describe("Stock Item Use Cases", () => {
   let mockRepo: jest.Mocked<StockItemRepository>;
+  let mockTenantLimits: any;
   let mockEventBus: any;
   let mockTxManager: any;
+  let mockImageStorage: any;
+  let mockAuditWriter: any;
 
   beforeEach(() => {
     mockRepo = {
@@ -17,7 +20,15 @@ describe("Stock Item Use Cases", () => {
       findById: jest.fn(),
       findByTenant: jest.fn(),
       findByTenantAndActive: jest.fn(),
+      countByTenant: jest.fn(),
     } as any;
+
+    mockTenantLimits = {
+      getStockItemLimits: jest.fn().mockResolvedValue({
+        maxStockItemsSoft: 50,
+        maxStockItemsHard: 75,
+      }),
+    };
 
     mockEventBus = {
       publishViaOutbox: jest.fn(),
@@ -26,14 +37,26 @@ describe("Stock Item Use Cases", () => {
     mockTxManager = {
       withTransaction: jest.fn((fn: (tx: any) => any) => fn({})),
     };
+
+    mockImageStorage = {
+      uploadImage: jest.fn(),
+      isValidImageUrl: jest.fn(() => true),
+    };
+
+    mockAuditWriter = {
+      write: jest.fn(),
+    };
   });
 
   describe("CreateStockItemUseCase", () => {
     it("should create a stock item successfully", async () => {
       const useCase = new CreateStockItemUseCase(
         mockRepo,
+        mockTenantLimits,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockImageStorage,
+        mockAuditWriter
       );
 
       const mockStockItem: StockItem = {
@@ -42,7 +65,8 @@ describe("Stock Item Use Cases", () => {
         name: "Premium Flour",
         unitText: "kg",
         barcode: "FLOUR001",
-        defaultCostUsd: 5.5,
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
         createdBy: "user-1",
         createdAt: new Date(),
@@ -50,6 +74,7 @@ describe("Stock Item Use Cases", () => {
       };
 
       mockRepo.save.mockResolvedValue(mockStockItem);
+      mockRepo.countByTenant.mockResolvedValue(0);
 
       const result = await useCase.execute({
         tenantId: "tenant-1",
@@ -57,7 +82,8 @@ describe("Stock Item Use Cases", () => {
         name: "Premium Flour",
         unitText: "kg",
         barcode: "FLOUR001",
-        defaultCostUsd: 5.5,
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
       });
 
@@ -73,8 +99,11 @@ describe("Stock Item Use Cases", () => {
     it("should fail if name is empty", async () => {
       const useCase = new CreateStockItemUseCase(
         mockRepo,
+        mockTenantLimits,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockImageStorage,
+        mockAuditWriter
       );
 
       const result = await useCase.execute({
@@ -82,6 +111,8 @@ describe("Stock Item Use Cases", () => {
         userId: "user-1",
         name: "",
         unitText: "kg",
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
       });
 
@@ -95,8 +126,11 @@ describe("Stock Item Use Cases", () => {
     it("should fail if unitText is empty", async () => {
       const useCase = new CreateStockItemUseCase(
         mockRepo,
+        mockTenantLimits,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockImageStorage,
+        mockAuditWriter
       );
 
       const result = await useCase.execute({
@@ -104,6 +138,8 @@ describe("Stock Item Use Cases", () => {
         userId: "user-1",
         name: "Flour",
         unitText: "",
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
       });
 
@@ -118,8 +154,11 @@ describe("Stock Item Use Cases", () => {
     it("should update a stock item successfully", async () => {
       const useCase = new UpdateStockItemUseCase(
         mockRepo,
+        mockTenantLimits,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockImageStorage,
+        mockAuditWriter
       );
 
       const existingItem: StockItem = {
@@ -127,6 +166,8 @@ describe("Stock Item Use Cases", () => {
         tenantId: "tenant-1",
         name: "Premium Flour",
         unitText: "kg",
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
         createdBy: "user-1",
         createdAt: new Date(),
@@ -152,8 +193,11 @@ describe("Stock Item Use Cases", () => {
     it("should fail if stock item not found", async () => {
       const useCase = new UpdateStockItemUseCase(
         mockRepo,
+        mockTenantLimits,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockImageStorage,
+        mockAuditWriter
       );
 
       mockRepo.findById.mockResolvedValue(null);
@@ -179,6 +223,8 @@ describe("Stock Item Use Cases", () => {
           tenantId: "tenant-1",
           name: "Flour",
           unitText: "kg",
+          isIngredient: true,
+          isSellable: false,
           isActive: true,
           createdBy: "user-1",
           createdAt: new Date(),
@@ -189,6 +235,8 @@ describe("Stock Item Use Cases", () => {
           tenantId: "tenant-1",
           name: "Sugar",
           unitText: "kg",
+          isIngredient: true,
+          isSellable: false,
           isActive: true,
           createdBy: "user-1",
           createdAt: new Date(),

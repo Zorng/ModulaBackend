@@ -2,6 +2,8 @@ import { Ok, Err, type Result } from "../../../../shared/result.js";
 import { StockItemRepository } from "../../domain/repositories.js";
 import { StockItem } from "../../domain/entities.js";
 import type { StockItemUpdatedV1 } from "../../../../shared/events.js";
+import type { InventoryTenantLimitsPort } from "../tenant-limits.port.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export interface UpdateStockItemInput {
   name?: string;
@@ -25,7 +27,9 @@ interface ITransactionManager {
   withTransaction<T>(fn: (client: any) => Promise<T>): Promise<T>;
 }
 
-export interface IImageStoragePort {
+// IImageStoragePort is exported from create-stock-item.use-case.ts
+// to avoid duplicate export errors
+interface IImageStoragePort {
   uploadImage(
     file: Buffer,
     filename: string,
@@ -38,15 +42,18 @@ export interface IImageStoragePort {
 export class UpdateStockItemUseCase {
   constructor(
     private stockItemRepo: StockItemRepository,
+    private tenantLimits: InventoryTenantLimitsPort,
     private eventBus: IEventBus,
     private txManager: ITransactionManager,
-    private imageStorage: IImageStoragePort
+    private imageStorage: IImageStoragePort,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
     stockItemId: string,
     userId: string,
-    input: UpdateStockItemInput
+    input: UpdateStockItemInput,
+    actorRole?: string | null
   ): Promise<Result<StockItem, string>> {
     // Check if stock item exists
     const existing = await this.stockItemRepo.findById(stockItemId);
@@ -101,6 +108,24 @@ export class UpdateStockItemUseCase {
     if (finalImageUrl !== undefined) updates.imageUrl = finalImageUrl;
     if (input.isActive !== undefined) updates.isActive = input.isActive;
 
+    const isReactivating =
+      updates.isActive === true && existing.isActive === false;
+    if (isReactivating) {
+      const limits = await this.tenantLimits.getStockItemLimits(existing.tenantId);
+      if (!limits) {
+        return Err("Tenant limits not found. Please contact support.");
+      }
+
+      const activeCount = await this.stockItemRepo.countByTenant(existing.tenantId, {
+        isActive: true,
+      });
+      if (activeCount >= limits.maxStockItemsSoft) {
+        return Err(
+          `Stock item limit reached (${activeCount}/${limits.maxStockItemsSoft}). Archive items or upgrade your plan.`
+        );
+      }
+    }
+
     try {
       let updatedItem: StockItem;
 
@@ -111,6 +136,29 @@ export class UpdateStockItemUseCase {
           throw new Error("Failed to update stock item");
         }
         updatedItem = result;
+
+        const isArchiving =
+          updates.isActive === false && existing.isActive === true;
+        const auditActionType = isArchiving
+          ? "STOCK_ITEM_ARCHIVED"
+          : isReactivating
+            ? "STOCK_ITEM_RESTORED"
+            : "STOCK_ITEM_UPDATED";
+
+        await this.auditWriter.write(
+          {
+            tenantId: existing.tenantId,
+            employeeId: userId,
+            actorRole: actorRole ?? null,
+            actionType: auditActionType,
+            resourceType: "stock_item",
+            resourceId: stockItemId,
+            details: {
+              changes: updates,
+            },
+          },
+          client
+        );
 
         // Publish event via outbox
         const event: StockItemUpdatedV1 = {

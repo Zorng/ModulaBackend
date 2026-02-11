@@ -14,7 +14,6 @@ export interface BranchStockItemDTO {
   unitText: string;
   minThreshold: number;
   barcode?: string;
-  defaultCostUsd?: number;
   isActive: boolean;
 }
 
@@ -50,7 +49,6 @@ export class GetBranchStockItemsUseCase {
           unitText: item.unitText,
           minThreshold: bs.minThreshold,
           barcode: item.barcode,
-          defaultCostUsd: item.defaultCostUsd,
           isActive: item.isActive,
         },
       ];

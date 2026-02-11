@@ -161,7 +161,7 @@ touch migrations/003_add_products.sql
 -- migrations/003_add_products.sql
 
 CREATE TABLE IF NOT EXISTS products (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
     description TEXT,
     price DECIMAL(10, 2) NOT NULL,
@@ -293,7 +293,7 @@ Check:
 
 ```sql
 CREATE TABLE IF NOT EXISTS orders (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     total DECIMAL(10, 2) NOT NULL,
     status VARCHAR(50) DEFAULT 'pending',

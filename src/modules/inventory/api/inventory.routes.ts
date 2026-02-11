@@ -4,20 +4,19 @@ import {
   BranchStockController,
   InventoryJournalController,
   MenuStockMapController,
-  StorePolicyController,
   CategoryController,
 } from "./controller/index.js";
-import { AuthMiddleware } from "../../auth/api/middleware/auth.middleware.js";
+import type { AuthMiddlewarePort } from "../../../platform/security/auth.js";
 import { uploadOptionalSingleImage } from "../../../platform/http/middleware/multer.js";
+import { requireActiveBranch } from "../../../platform/http/middlewares/branch-guard.middleware.js";
 
 export function createInventoryRoutes(
   stockItemController: StockItemController,
   branchStockController: BranchStockController,
   inventoryJournalController: InventoryJournalController,
   menuStockMapController: MenuStockMapController,
-  storePolicyController: StorePolicyController,
   categoryController: CategoryController,
-  authMiddleware: AuthMiddleware
+  authMiddleware: AuthMiddlewarePort
 ): Router {
   const router = Router();
 
@@ -255,7 +254,7 @@ export function createInventoryRoutes(
    *                       type: string
    *                       format: date-time
    */
-  router.put(
+  router.patch(
     "/stock-items/:id",
     uploadOptionalSingleImage,
     (req, res, next) => {
@@ -403,7 +402,7 @@ export function createInventoryRoutes(
    *   post:
    *     tags:
    *       - Inventory
-   *     summary: Assign stock item to current branch
+   *     summary: Assign stock item to a branch
    *     security:
    *       - BearerAuth: []
    *     requestBody:
@@ -422,6 +421,10 @@ export function createInventoryRoutes(
    *               minThreshold:
    *                 type: number
    *                 minimum: 0
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Target branch ID (defaults to current user's branch if not provided)
    *     responses:
    *       201:
    *         description: Stock item assigned to branch
@@ -436,9 +439,16 @@ export function createInventoryRoutes(
    *   get:
    *     tags:
    *       - Inventory
-   *     summary: Get all stock items for current branch
+   *     summary: Get all stock items for a branch
    *     security:
    *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: branchId
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Branch ID (defaults to current user's branch if not provided)
    *     responses:
    *       200:
    *         description: List of branch stock items with details
@@ -465,9 +475,14 @@ export function createInventoryRoutes(
    *           schema:
    *             type: object
    *             required:
+   *               - branchId
    *               - stockItemId
    *               - qty
    *             properties:
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Branch where operation is performed
    *               stockItemId:
    *                 type: string
    *                 format: uuid
@@ -476,12 +491,22 @@ export function createInventoryRoutes(
    *                 minimum: 0.001
    *               note:
    *                 type: string
+   *               occurredAt:
+   *                 type: string
+   *                 format: date-time
+   *                 description: When the transaction actually occurred (defaults to now, supports backdating)
    *     responses:
    *       201:
    *         description: Stock received
    */
-  router.post("/journal/receive", async (req, res) =>
-    inventoryJournalController.receiveStock(req as any, res)
+  router.post(
+    "/journal/receive",
+    requireActiveBranch({
+      operation: "inventory.receive_stock",
+      resolveBranchId: (req) =>
+        typeof req.body?.branchId === "string" ? req.body.branchId : undefined,
+    }),
+    async (req, res) => inventoryJournalController.receiveStock(req as any, res)
   );
 
   /**
@@ -500,10 +525,15 @@ export function createInventoryRoutes(
    *           schema:
    *             type: object
    *             required:
+   *               - branchId
    *               - stockItemId
    *               - qty
    *               - note
    *             properties:
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Branch where operation is performed
    *               stockItemId:
    *                 type: string
    *                 format: uuid
@@ -513,12 +543,22 @@ export function createInventoryRoutes(
    *               note:
    *                 type: string
    *                 description: Mandatory for waste entries
+   *               occurredAt:
+   *                 type: string
+   *                 format: date-time
+   *                 description: When the transaction actually occurred (defaults to now, supports backdating)
    *     responses:
    *       201:
    *         description: Stock waste recorded
    */
-  router.post("/journal/waste", async (req, res) =>
-    inventoryJournalController.wasteStock(req as any, res)
+  router.post(
+    "/journal/waste",
+    requireActiveBranch({
+      operation: "inventory.waste_stock",
+      resolveBranchId: (req) =>
+        typeof req.body?.branchId === "string" ? req.body.branchId : undefined,
+    }),
+    async (req, res) => inventoryJournalController.wasteStock(req as any, res)
   );
 
   /**
@@ -537,10 +577,15 @@ export function createInventoryRoutes(
    *           schema:
    *             type: object
    *             required:
+   *               - branchId
    *               - stockItemId
    *               - delta
    *               - note
    *             properties:
+   *               branchId:
+   *                 type: string
+   *                 format: uuid
+   *                 description: Branch where operation is performed
    *               stockItemId:
    *                 type: string
    *                 format: uuid
@@ -550,12 +595,22 @@ export function createInventoryRoutes(
    *               note:
    *                 type: string
    *                 description: Mandatory for correction entries
+   *               occurredAt:
+   *                 type: string
+   *                 format: date-time
+   *                 description: When the transaction actually occurred (defaults to now, supports backdating)
    *     responses:
    *       201:
    *         description: Stock correction recorded
    */
-  router.post("/journal/correct", async (req, res) =>
-    inventoryJournalController.correctStock(req as any, res)
+  router.post(
+    "/journal/correct",
+    requireActiveBranch({
+      operation: "inventory.correct_stock",
+      resolveBranchId: (req) =>
+        typeof req.body?.branchId === "string" ? req.body.branchId : undefined,
+    }),
+    async (req, res) => inventoryJournalController.correctStock(req as any, res)
   );
 
   /**
@@ -598,8 +653,11 @@ export function createInventoryRoutes(
    *       201:
    *         description: Sale deductions recorded
    */
-  router.post("/_internal/journal/sale", async (req, res) =>
-    inventoryJournalController.recordSaleDeductions(req as any, res)
+  router.post(
+    "/_internal/journal/sale",
+    requireActiveBranch({ operation: "inventory.record_sale_deductions" }),
+    async (req, res) =>
+      inventoryJournalController.recordSaleDeductions(req as any, res)
   );
 
   /**
@@ -633,8 +691,10 @@ export function createInventoryRoutes(
    *       201:
    *         description: Void reversals recorded
    */
-  router.post("/_internal/journal/void", async (req, res) =>
-    inventoryJournalController.recordVoid(req as any, res)
+  router.post(
+    "/_internal/journal/void",
+    requireActiveBranch({ operation: "inventory.record_void" }),
+    async (req, res) => inventoryJournalController.recordVoid(req as any, res)
   );
 
   /**
@@ -672,8 +732,10 @@ export function createInventoryRoutes(
    *       201:
    *         description: Reopen redeductions recorded
    */
-  router.post("/_internal/journal/reopen", async (req, res) =>
-    inventoryJournalController.recordReopen(req as any, res)
+  router.post(
+    "/_internal/journal/reopen",
+    requireActiveBranch({ operation: "inventory.record_reopen" }),
+    async (req, res) => inventoryJournalController.recordReopen(req as any, res)
   );
 
   /**
@@ -682,14 +744,21 @@ export function createInventoryRoutes(
    *   get:
    *     tags:
    *       - Inventory
-   *     summary: Get on-hand quantities for current branch
+   *     summary: Get on-hand quantities for a specific branch
    *     security:
    *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: branchId
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Branch ID (defaults to authenticated user's branch)
    *     responses:
    *       200:
    *         description: On-hand quantities with low stock flags
    */
-  router.get("/journal/on-hand", async (req, res) =>
+  router.get("/branch/on-hand", async (req, res) =>
     inventoryJournalController.getOnHand(req as any, res)
   );
 
@@ -703,6 +772,12 @@ export function createInventoryRoutes(
    *     security:
    *       - BearerAuth: []
    *     parameters:
+   *       - in: query
+   *         name: branchId
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Branch ID (defaults to authenticated user's branch)
    *       - in: query
    *         name: stockItemId
    *         schema:
@@ -735,7 +810,7 @@ export function createInventoryRoutes(
    *       200:
    *         description: Journal entries with pagination
    */
-  router.get("/journal", async (req, res) =>
+  router.get("/branch/journal", async (req, res) =>
     inventoryJournalController.getInventoryJournal(req as any, res)
   );
 
@@ -748,11 +823,18 @@ export function createInventoryRoutes(
    *     summary: Get low stock alerts
    *     security:
    *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: branchId
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Branch ID (defaults to authenticated user's branch)
    *     responses:
    *       200:
    *         description: Items below minimum threshold
    */
-  router.get("/journal/alerts/low-stock", async (req, res) =>
+  router.get("/branch/alerts/low-stock", async (req, res) =>
     inventoryJournalController.getLowStockAlerts(req as any, res)
   );
 
@@ -765,6 +847,13 @@ export function createInventoryRoutes(
    *     summary: Get inventory exceptions
    *     security:
    *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: branchId
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Branch ID (defaults to authenticated user's branch)
    *     responses:
    *       200:
    *         description: Negative stock items and unmapped sales
@@ -877,58 +966,6 @@ export function createInventoryRoutes(
    */
   router.delete("/menu-stock-map/:id", async (req, res) =>
     menuStockMapController.deleteMenuStockMap(req as any, res)
-  );
-
-  // ==================== STORE POLICY ====================
-
-  /**
-   * @openapi
-   * /v1/inventory/policy:
-   *   get:
-   *     tags:
-   *       - Inventory
-   *     summary: Get store policy for inventory
-   *     security:
-   *       - BearerAuth: []
-   *     responses:
-   *       200:
-   *         description: Store policy (creates default if not exists)
-   */
-  router.get("/policy", async (req, res) =>
-    storePolicyController.getStorePolicy(req as any, res)
-  );
-
-  /**
-   * @openapi
-   * /v1/inventory/policy:
-   *   patch:
-   *     tags:
-   *       - Inventory
-   *     summary: Update store policy
-   *     security:
-   *       - BearerAuth: []
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *             properties:
-   *               inventorySubtractOnFinalize:
-   *                 type: boolean
-   *               branchOverrides:
-   *                 type: object
-   *               excludeMenuItemIds:
-   *                 type: array
-   *                 items:
-   *                   type: string
-   *                   format: uuid
-   *     responses:
-   *       200:
-   *         description: Policy updated
-   */
-  router.put("/policy", async (req, res) =>
-    storePolicyController.updateStorePolicy(req as any, res)
   );
 
   // ==================== CATEGORIES ====================

@@ -5,6 +5,7 @@ import {
 } from "../../domain/repositories.js";
 import { InventoryJournal } from "../../domain/entities.js";
 import type { StockCorrectedV1 } from "../../../../shared/events.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export interface CorrectStockInput {
   tenantId: string;
@@ -13,6 +14,8 @@ export interface CorrectStockInput {
   delta: number; // can be positive or negative
   note: string; // mandatory per spec
   actorId?: string;
+  actorRole?: string | null;
+  occurredAt?: Date; // When the transaction actually occurred (defaults to now)
 }
 
 interface IEventBus {
@@ -28,7 +31,8 @@ export class CorrectStockUseCase {
     private journalRepo: InventoryJournalRepository,
     private branchStockRepo: BranchStockRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -68,8 +72,29 @@ export class CorrectStockUseCase {
           reason: "correction",
           note: note.trim(),
           actorId,
+          occurredAt: input.occurredAt || new Date(),
           createdBy: actorId,
         });
+
+        await this.auditWriter.write(
+          {
+            tenantId,
+            branchId,
+            employeeId: actorId,
+            actorRole: input.actorRole ?? null,
+            actionType: "INVENTORY_JOURNAL_APPENDED",
+            resourceType: "inventory_journal",
+            resourceId: journal.id,
+            details: {
+              reason: "correction",
+              stockItemId,
+              delta,
+              note: note.trim(),
+              occurredAt: journal.occurredAt.toISOString(),
+            },
+          },
+          client
+        );
 
         // Publish event
         const event: StockCorrectedV1 = {

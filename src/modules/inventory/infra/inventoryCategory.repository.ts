@@ -129,7 +129,7 @@ export class InventoryCategoryRepository
 
   private toEntity(row: any): InventoryCategory {
     return {
-      id: row.id.toString(),
+      id: row.id,
       tenantId: row.tenant_id,
       name: row.name,
       displayOrder: parseInt(row.display_order, 10),

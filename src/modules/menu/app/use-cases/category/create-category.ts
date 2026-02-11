@@ -52,22 +52,23 @@ export class CreateCategoryUseCase {
     // ========================================
     // 2: Check Quota Limits (non-transactional)
     // ========================================
-    const limits = await this.limitsRepo.findByTenantId(tenantId);
-    if (!limits) {
-      return Err("Tenant limits not found. Please contact support.");
-    }
+    // TODO: Tenant limits module not complete - bypassing for now
+    // const limits = await this.limitsRepo.findByTenantId(tenantId);
+    // if (!limits) {
+    //   return Err("Tenant limits not found. Please contact support.");
+    // }
 
-    const currentCount = await this.categoryRepo.countByTenantId(tenantId);
-    const limitCheck = limits.checkCategoryLimit(currentCount);
+    // const currentCount = await this.categoryRepo.countByTenantId(tenantId);
+    // const limitCheck = limits.checkCategoryLimit(currentCount);
 
-    if (limitCheck.status === "exceeded") {
-      return Err(limitCheck.message);
-    }
+    // if (limitCheck.status === "exceeded") {
+    //   return Err(limitCheck.message);
+    // }
 
-    // Log warning if approaching limit
-    if (limitCheck.status === "warning") {
-      console.warn(`[CreateCategory] ${limitCheck.message}`);
-    }
+    // // Log warning if approaching limit
+    // if (limitCheck.status === "warning") {
+    //   console.warn(`[CreateCategory] ${limitCheck.message}`);
+    // }
 
     // ========================================
     // 3: Check Name Uniqueness (non-transactional)

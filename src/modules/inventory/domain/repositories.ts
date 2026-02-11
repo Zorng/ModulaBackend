@@ -6,7 +6,6 @@ import {
   BranchStock,
   InventoryJournal,
   MenuStockMap,
-  StorePolicyInventory,
   InventoryCategory,
 } from "./entities.js";
 
@@ -17,6 +16,10 @@ export interface StockItemRepository {
     tenantId: string,
     isActive?: boolean
   ): Promise<StockItem[]>;
+  countByTenant(
+    tenantId: string,
+    options?: { isActive?: boolean }
+  ): Promise<number>;
   save(
     item: Omit<StockItem, "id" | "createdAt" | "updatedAt">
   ): Promise<StockItem>;
@@ -81,17 +84,6 @@ export interface MenuStockMapRepository {
   ): Promise<MenuStockMap | null>;
   delete(id: string): Promise<void>;
   deleteByMenuItem(menuItemId: string): Promise<void>;
-}
-
-export interface StorePolicyInventoryRepository {
-  findByTenant(tenantId: string): Promise<StorePolicyInventory | null>;
-  save(
-    policy: Omit<StorePolicyInventory, "updatedAt">
-  ): Promise<StorePolicyInventory>;
-  update(
-    tenantId: string,
-    updates: Partial<Omit<StorePolicyInventory, "tenantId" | "updatedAt">>
-  ): Promise<StorePolicyInventory | null>;
 }
 
 export interface InventoryCategoryRepository {

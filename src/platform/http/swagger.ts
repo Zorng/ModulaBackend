@@ -112,6 +112,20 @@ export function setupSwagger(app: Express) {
               },
             },
           },
+
+          NotFoundError: {
+            description: "Resource not found",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    message: { type: "string", example: "Not Found" },
+                  },
+                },
+              },
+            },
+          },
         },
 
         schemas: {
@@ -154,6 +168,237 @@ export function setupSwagger(app: Express) {
             },
           },
 
+          TenantProfile: {
+            type: "object",
+            properties: {
+              id: { type: "string", format: "uuid" },
+              name: { type: "string", description: "Business name" },
+              business_type: { type: "string", nullable: true },
+              status: { type: "string" },
+              logo_url: { type: "string", nullable: true },
+              contact_phone: { type: "string", nullable: true },
+              contact_email: { type: "string", nullable: true },
+              contact_address: { type: "string", nullable: true },
+              created_at: { type: "string", format: "date-time" },
+              updated_at: { type: "string", format: "date-time" },
+              branch_count: { type: "number", example: 1 },
+            },
+          },
+
+          TenantProfileResponse: {
+            type: "object",
+            properties: {
+              tenant: { $ref: "#/components/schemas/TenantProfile" },
+            },
+          },
+
+          UpdateTenantProfileRequest: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Business name" },
+              contact_phone: { type: "string", nullable: true },
+              contact_email: { type: "string", nullable: true },
+              contact_address: { type: "string", nullable: true },
+            },
+          },
+
+          TenantProfileUpdateResponse: {
+            type: "object",
+            properties: {
+              tenant: { $ref: "#/components/schemas/TenantProfile" },
+            },
+          },
+
+          TenantMetadata: {
+            type: "object",
+            properties: {
+              id: { type: "string", format: "uuid" },
+              name: { type: "string" },
+              logo_url: { type: "string", nullable: true },
+              status: { type: "string" },
+            },
+          },
+
+          TenantMetadataResponse: {
+            type: "object",
+            properties: {
+              tenant: { $ref: "#/components/schemas/TenantMetadata" },
+            },
+          },
+
+          BranchStatus: {
+            type: "string",
+            enum: ["ACTIVE", "FROZEN"],
+            description:
+              "Branch lifecycle status (ACTIVE allows operational writes; FROZEN blocks operational writes).",
+          },
+
+          Branch: {
+            type: "object",
+            properties: {
+              id: { type: "string", format: "uuid" },
+              tenant_id: { type: "string", format: "uuid" },
+              name: { type: "string" },
+              address: { type: "string", nullable: true },
+              contact_phone: { type: "string", nullable: true },
+              contact_email: { type: "string", nullable: true },
+              status: { $ref: "#/components/schemas/BranchStatus" },
+              created_at: { type: "string", format: "date-time" },
+              updated_at: { type: "string", format: "date-time" },
+            },
+          },
+
+          BranchResponse: {
+            type: "object",
+            properties: {
+              branch: { $ref: "#/components/schemas/Branch" },
+            },
+          },
+
+          BranchListResponse: {
+            type: "object",
+            properties: {
+              branches: {
+                type: "array",
+                items: { $ref: "#/components/schemas/Branch" },
+              },
+            },
+          },
+
+          UpdateBranchRequest: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              address: { type: "string", nullable: true },
+              contact_phone: { type: "string", nullable: true },
+              contact_email: { type: "string", nullable: true },
+            },
+          },
+
+          AuditOutcome: {
+            type: "string",
+            enum: ["SUCCESS", "REJECTED", "FAILED"],
+            description: "Outcome of the audited action attempt",
+          },
+
+          AuditDenialReason: {
+            type: "string",
+            enum: [
+              "PERMISSION_DENIED",
+              "POLICY_BLOCKED",
+              "VALIDATION_FAILED",
+              "BRANCH_FROZEN",
+              "TENANT_FROZEN",
+              "DEPENDENCY_MISSING",
+            ],
+            description: "Standardized denial reason when outcome=REJECTED",
+          },
+
+          AuditActorType: {
+            type: "string",
+            enum: ["EMPLOYEE", "SYSTEM"],
+            description: "Who initiated the action (human vs system)",
+          },
+
+          AuditLogEntry: {
+            type: "object",
+            properties: {
+              id: { type: "string", format: "uuid" },
+              tenant_id: { type: "string", format: "uuid" },
+              branch_id: { type: "string", format: "uuid", nullable: true },
+              employee_id: { type: "string", format: "uuid", nullable: true },
+              actor_role: { type: "string", nullable: true },
+              actor_type: { $ref: "#/components/schemas/AuditActorType" },
+              action_type: { type: "string" },
+              resource_type: { type: "string", nullable: true },
+              resource_id: { type: "string", format: "uuid", nullable: true },
+              details: { type: "object", nullable: true },
+              ip_address: { type: "string", nullable: true },
+              user_agent: { type: "string", nullable: true },
+              outcome: { $ref: "#/components/schemas/AuditOutcome" },
+              denial_reason: {
+                oneOf: [
+                  { $ref: "#/components/schemas/AuditDenialReason" },
+                  { type: "null" },
+                ],
+              },
+              occurred_at: { type: "string", format: "date-time" },
+              created_at: { type: "string", format: "date-time" },
+              client_event_id: { type: "string", nullable: true },
+            },
+            required: ["id", "tenant_id", "action_type", "outcome", "occurred_at", "created_at"],
+          },
+
+          AuditLogListResponse: {
+            type: "object",
+            properties: {
+              logs: {
+                type: "array",
+                items: { $ref: "#/components/schemas/AuditLogEntry" },
+              },
+              page: { type: "integer", example: 1 },
+              limit: { type: "integer", example: 50 },
+              total: { type: "integer", example: 123 },
+            },
+            required: ["logs", "page", "limit", "total"],
+          },
+
+          AuditLogResponse: {
+            type: "object",
+            properties: {
+              log: { $ref: "#/components/schemas/AuditLogEntry" },
+            },
+            required: ["log"],
+          },
+
+          AuditOfflineIngestEvent: {
+            type: "object",
+            properties: {
+              client_event_id: {
+                type: "string",
+                description: "Client-generated unique ID for idempotency (unique per tenant)",
+              },
+              occurred_at: {
+                type: "string",
+                format: "date-time",
+                description: "Client timestamp (for audit only; backend ordering remains authoritative)",
+              },
+              action_type: { type: "string", description: "Audit action/event name" },
+              resource_type: { type: "string", nullable: true },
+              resource_id: { type: "string", format: "uuid", nullable: true },
+              outcome: { $ref: "#/components/schemas/AuditOutcome" },
+              denial_reason: {
+                oneOf: [
+                  { $ref: "#/components/schemas/AuditDenialReason" },
+                  { type: "null" },
+                ],
+              },
+              details: { type: "object", nullable: true },
+            },
+            required: ["client_event_id", "occurred_at", "action_type"],
+          },
+
+          AuditOfflineIngestRequest: {
+            type: "object",
+            properties: {
+              events: {
+                type: "array",
+                maxItems: 100,
+                items: { $ref: "#/components/schemas/AuditOfflineIngestEvent" },
+              },
+            },
+            required: ["events"],
+          },
+
+          AuditOfflineIngestResponse: {
+            type: "object",
+            properties: {
+              ingested: { type: "integer", example: 5 },
+              deduped: { type: "integer", example: 2 },
+            },
+            required: ["ingested", "deduped"],
+          },
+
           Employee: {
             type: "object",
             properties: {
@@ -183,13 +428,18 @@ export function setupSwagger(app: Express) {
           Tokens: {
             type: "object",
             properties: {
-              access_token: {
+              accessToken: {
                 type: "string",
                 description: "JWT access token for API authentication",
               },
-              refresh_token: {
+              refreshToken: {
                 type: "string",
                 description: "Refresh token for obtaining new access tokens",
+              },
+              expiresIn: {
+                type: "number",
+                description: "Access token expiry in seconds",
+                example: 43200,
               },
             },
           },
@@ -222,6 +472,11 @@ export function setupSwagger(app: Express) {
               active: {
                 type: "boolean",
                 description: "Whether this assignment is currently active",
+              },
+              assigned_at: {
+                type: "string",
+                format: "date-time",
+                description: "When this assignment was created",
               },
             },
           },
@@ -297,7 +552,7 @@ export function setupSwagger(app: Express) {
                 type: "string",
                 format: "password",
                 description: "Password for the admin account",
-                example: "SecurePass123!",
+                example: "Test123!",
               },
               business_type: {
                 type: "string",
@@ -320,7 +575,7 @@ export function setupSwagger(app: Express) {
                 type: "string",
                 format: "password",
                 description: "Employee password",
-                example: "SecurePass123!",
+                example: "Test123!",
               },
             },
           },
@@ -399,7 +654,134 @@ export function setupSwagger(app: Express) {
                 type: "string",
                 format: "password",
                 description: "Password for the new account",
-                example: "SecurePass123!",
+                example: "Test123!",
+              },
+            },
+          },
+
+          RequestOtpRequest: {
+            type: "object",
+            required: ["phone"],
+            properties: {
+              phone: {
+                type: "string",
+                description: "Phone number (E.164 recommended)",
+                example: "+1234567890",
+              },
+            },
+          },
+
+          RequestOtpResponse: {
+            type: "object",
+            properties: {
+              message: { type: "string", example: "OTP sent" },
+              debugOtp: {
+                type: "string",
+                description:
+                  "Development-only OTP echo (never returned in production)",
+                example: "123456",
+              },
+            },
+          },
+
+          ConfirmForgotPasswordRequest: {
+            type: "object",
+            required: ["phone", "otp", "new_password"],
+            properties: {
+              phone: {
+                type: "string",
+                description: "Phone number (E.164 recommended)",
+                example: "+1234567890",
+              },
+              otp: {
+                type: "string",
+                description: "OTP code received via SMS",
+                example: "123456",
+              },
+              new_password: {
+                type: "string",
+                format: "password",
+                description: "New password to set",
+                example: "NewPassword123!",
+              },
+            },
+          },
+
+          ChangePasswordRequest: {
+            type: "object",
+            required: ["current_password", "new_password"],
+            properties: {
+              current_password: {
+                type: "string",
+                format: "password",
+                description: "Current password",
+                example: "OldPassword123!",
+              },
+              new_password: {
+                type: "string",
+                format: "password",
+                description: "New password to set",
+                example: "NewPassword123!",
+              },
+            },
+          },
+
+          ChangePasswordResponse: {
+            type: "object",
+            properties: {
+              tokens: { $ref: "#/components/schemas/Tokens" },
+            },
+          },
+
+          SelectTenantRequest: {
+            type: "object",
+            required: ["selection_token", "tenant_id"],
+            properties: {
+              selection_token: {
+                type: "string",
+                description:
+                  "Short-lived token from login/forgot-password when tenant selection is required",
+              },
+              tenant_id: {
+                type: "string",
+                format: "uuid",
+                description: "Tenant ID to enter",
+              },
+              branch_id: {
+                type: "string",
+                format: "uuid",
+                description: "Optional branch ID to use for the session",
+              },
+            },
+          },
+
+          TenantSelectionRequiredResponse: {
+            type: "object",
+            required: ["requires_tenant_selection", "selection_token", "memberships"],
+            properties: {
+              requires_tenant_selection: { type: "boolean", example: true },
+              selection_token: {
+                type: "string",
+                description:
+                  "Short-lived token used to exchange a tenant selection for normal session tokens",
+              },
+              memberships: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["tenant", "employeeId"],
+                  properties: {
+                    tenant: {
+                      type: "object",
+                      required: ["id", "name"],
+                      properties: {
+                        id: { type: "string", format: "uuid" },
+                        name: { type: "string" },
+                      },
+                    },
+                    employeeId: { type: "string", format: "uuid" },
+                  },
+                },
               },
             },
           },
@@ -553,12 +935,44 @@ export function setupSwagger(app: Express) {
           description: "Employee invitation management (Admin only)",
         },
         {
+          name: "Tenant",
+          description: "Tenant business profile and metadata",
+        },
+        {
+          name: "Branch",
+          description: "Branch profile and lifecycle (freeze/unfreeze)",
+        },
+        {
+          name: "Audit",
+          description: "Admin-only audit log read API",
+        },
+        {
           name: "User Management",
           description: "Employee and branch assignment management (Admin only)",
         },
         {
           name: "Menu",
           description: "Menu management endpoints",
+        },
+        {
+          name: "Categories",
+          description: "Menu category management",
+        },
+        {
+          name: "MenuItems",
+          description: "Menu item management",
+        },
+        {
+          name: "Modifiers",
+          description: "Modifier groups/options and item attachments",
+        },
+        {
+          name: "BranchMenu",
+          description: "Branch-specific menu overrides (availability, price)",
+        },
+        {
+          name: "Query",
+          description: "Optimized read-only menu queries (snapshots)",
         },
       ],
     },

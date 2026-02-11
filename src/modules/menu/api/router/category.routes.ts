@@ -5,7 +5,7 @@ import {
   validateParams,
   validateQuery,
 } from "../../../../platform/http/middleware/index.js";
-import { authMiddleware } from "../../../auth/index.js";
+import type { AuthMiddlewarePort } from "../../../../platform/security/auth.js";
 import { CategoryController } from "../controller/index.js";
 import {
   createCategorySchema,
@@ -14,7 +14,8 @@ import {
   listCategoriesQuerySchema,
 } from "../schemas/schemas.js";
 
-const categoryRouter = Router();
+export function createCategoryRouter(authMiddleware: AuthMiddlewarePort) {
+  const categoryRouter = Router();
 
 /**
  * @openapi
@@ -308,4 +309,5 @@ categoryRouter.delete(
   CategoryController.delete
 );
 
-export { categoryRouter };
+  return categoryRouter;
+}

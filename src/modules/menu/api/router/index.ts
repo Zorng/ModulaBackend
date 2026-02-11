@@ -1,17 +1,19 @@
 import { Router } from "express";
-import { categoryRouter } from "./category.routes.js";
-import { menuItemRouter } from "./menuItem.routes.js";
-import { modifierRouter } from "./modifier.routes.js";
-import { branchMenuRouter } from "./branchMenu.routes.js";
-import { queryRouter } from "./query.routes.js";
+import type { AuthMiddlewarePort } from "../../../../platform/security/auth.js";
+import { createCategoryRouter } from "./category.routes.js";
+import { createMenuItemRouter } from "./menuItem.routes.js";
+import { createModifierRouter } from "./modifier.routes.js";
+import { createBranchMenuRouter } from "./branchMenu.routes.js";
+import { createQueryRouter } from "./query.routes.js";
 
-const menuRouter = Router();
+export function createMenuRouter(authMiddleware: AuthMiddlewarePort) {
+  const menuRouter = Router();
 
-menuRouter.use("/", categoryRouter);
-menuRouter.use("/", menuItemRouter);
-menuRouter.use("/", modifierRouter);
-menuRouter.use("/", branchMenuRouter);
-menuRouter.use("/", queryRouter);
+  menuRouter.use("/", createCategoryRouter(authMiddleware));
+  menuRouter.use("/", createMenuItemRouter(authMiddleware));
+  menuRouter.use("/", createModifierRouter(authMiddleware));
+  menuRouter.use("/", createBranchMenuRouter(authMiddleware));
+  menuRouter.use("/", createQueryRouter(authMiddleware));
 
-export { menuRouter };
-export default menuRouter;
+  return menuRouter;
+}

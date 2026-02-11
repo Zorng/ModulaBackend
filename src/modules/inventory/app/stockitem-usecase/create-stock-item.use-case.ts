@@ -2,10 +2,13 @@ import { Ok, Err, type Result } from "../../../../shared/result.js";
 import { StockItemRepository } from "../../domain/repositories.js";
 import { StockItem } from "../../domain/entities.js";
 import type { StockItemCreatedV1 } from "../../../../shared/events.js";
+import type { InventoryTenantLimitsPort } from "../tenant-limits.port.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export interface CreateStockItemInput {
   tenantId: string;
   userId: string;
+  actorRole?: string | null;
   name: string;
   unitText: string;
   barcode?: string;
@@ -40,9 +43,11 @@ export interface IImageStoragePort {
 export class CreateStockItemUseCase {
   constructor(
     private stockItemRepo: StockItemRepository,
+    private tenantLimits: InventoryTenantLimitsPort,
     private eventBus: IEventBus,
     private txManager: ITransactionManager,
-    private imageStorage: IImageStoragePort
+    private imageStorage: IImageStoragePort,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -97,6 +102,29 @@ export class CreateStockItemUseCase {
       return Err("Invalid image URL format. Use .jpg, .jpeg, .webp, or .png");
     }
 
+    if (isActive) {
+      const limits = await this.tenantLimits.getStockItemLimits(tenantId);
+      if (!limits) {
+        return Err("Tenant limits not found. Please contact support.");
+      }
+
+      const totalCount = await this.stockItemRepo.countByTenant(tenantId);
+      if (totalCount >= limits.maxStockItemsHard) {
+        return Err(
+          `Stock item hard limit reached (${totalCount}/${limits.maxStockItemsHard}).`
+        );
+      }
+
+      const activeCount = await this.stockItemRepo.countByTenant(tenantId, {
+        isActive: true,
+      });
+      if (activeCount >= limits.maxStockItemsSoft) {
+        return Err(
+          `Stock item limit reached (${activeCount}/${limits.maxStockItemsSoft}). Archive items or upgrade your plan.`
+        );
+      }
+    }
+
     try {
       let stockItem: StockItem;
 
@@ -115,6 +143,29 @@ export class CreateStockItemUseCase {
           isActive,
           createdBy: userId,
         });
+
+        await this.auditWriter.write(
+          {
+            tenantId,
+            employeeId: userId,
+            actorRole: input.actorRole ?? null,
+            actionType: "STOCK_ITEM_CREATED",
+            resourceType: "stock_item",
+            resourceId: stockItem.id,
+            details: {
+              name: stockItem.name,
+              unitText: stockItem.unitText,
+              barcode: stockItem.barcode ?? null,
+              pieceSize: stockItem.pieceSize ?? null,
+              isIngredient: stockItem.isIngredient,
+              isSellable: stockItem.isSellable,
+              categoryId: stockItem.categoryId ?? null,
+              imageUrl: stockItem.imageUrl ?? null,
+              isActive: stockItem.isActive,
+            },
+          },
+          client
+        );
 
         // Publish event via outbox
         const event: StockItemCreatedV1 = {

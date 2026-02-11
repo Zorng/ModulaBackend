@@ -6,12 +6,14 @@ import { PgSalesRepository } from './infra/repository/sales.repository.js';
 import { PolicyAdapter } from './infra/adapters/policy.adapter.js';
 import { MenuAdapter } from './infra/adapters/menu.adapter.js';
 import { TransactionManager } from '../../platform/events/index.js';
-import { AuthMiddleware } from '../auth/api/middleware/auth.middleware.js';
+import type { AuthMiddlewarePort } from "../../platform/security/auth.js";
+import type { AuditWriterPort } from "../../shared/ports/audit.js";
 
 export function bootstrapSalesModule(
   pool: Pool,
   transactionManager: TransactionManager,
-  authMiddleware: AuthMiddleware
+  authMiddleware: AuthMiddlewarePort,
+  deps: { auditWriterPort: AuditWriterPort }
 ) {
   // Initialize repository
   const salesRepo = new PgSalesRepository(pool);
@@ -25,14 +27,15 @@ export function bootstrapSalesModule(
     salesRepo,
     policyAdapter,
     menuAdapter,
-    transactionManager
+    transactionManager,
+    deps.auditWriterPort
   );
   
   // Initialize controller
   const salesController = new SalesController(salesService);
   
   // Create and return router
-  const router = createSalesRouter(salesController, authMiddleware);
+  const router = createSalesRouter(salesController, authMiddleware, pool);
   
   return {
     router,

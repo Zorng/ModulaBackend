@@ -3,7 +3,7 @@ import {
   validateBody,
   validateParams,
 } from "../../../../platform/http/middleware/index.js";
-import { authMiddleware } from "../../../auth/index.js";
+import type { AuthMiddlewarePort } from "../../../../platform/security/auth.js";
 
 import { uploadSingleImage } from "../../../../platform/http/middleware/multer.js";
 import { uploadOptionalSingleImage } from "../../../../platform/http/middleware/multer.js";
@@ -16,7 +16,8 @@ import {
   menuItemIdParamSchema,
 } from "../schemas/schemas.js";
 
-const menuItemRouter = Router();
+export function createMenuItemRouter(authMiddleware: AuthMiddlewarePort) {
+  const menuItemRouter = Router();
 
 /**
  * @openapi
@@ -37,6 +38,17 @@ const menuItemRouter = Router();
  *     responses:
  *       200:
  *         description: List of menu items for the branch
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/MenuItem'
+ *                 total:
+ *                   type: integer
  *       400:
  *         description: Invalid input
  *       401:
@@ -137,6 +149,10 @@ menuItemRouter.get(
  *     responses:
  *       201:
  *         description: Menu item created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MenuItem'
  *       400:
  *         description: Invalid input
  *       401:
@@ -256,7 +272,7 @@ menuItemRouter.get(
  *                             type: string
  *                           selectionType:
  *                             type: string
- *                             enum: [single, multiple]
+ *                             enum: [SINGLE, MULTI]
  *                           createdAt:
  *                             type: string
  *                             format: date-time
@@ -336,6 +352,10 @@ menuItemRouter.get(
  *     responses:
  *       200:
  *         description: Menu item updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MenuItem'
  *       400:
  *         description: Invalid input
  *       401:
@@ -375,8 +395,15 @@ menuItemRouter.patch(
  *           type: string
  *         description: Menu item ID
  *     responses:
- *       204:
+ *       200:
  *         description: Menu item deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
  *       401:
  *         description: Unauthorized
  *       404:
@@ -389,4 +416,5 @@ menuItemRouter.delete(
   MenuItemController.delete
 );
 
-export { menuItemRouter };
+  return menuItemRouter;
+}

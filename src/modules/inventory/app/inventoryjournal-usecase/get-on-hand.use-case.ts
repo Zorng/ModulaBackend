@@ -1,6 +1,7 @@
 import {
   InventoryJournalRepository,
   BranchStockRepository,
+  StockItemRepository,
 } from "../../domain/repositories.js";
 
 export interface GetOnHandInput {
@@ -21,7 +22,8 @@ export interface OnHandItem {
 export class GetOnHandUseCase {
   constructor(
     private journalRepo: InventoryJournalRepository,
-    private branchStockRepo: BranchStockRepository
+    private branchStockRepo: BranchStockRepository,
+    private stockItemRepo: StockItemRepository
   ) {}
 
   async execute(
@@ -47,12 +49,13 @@ export class GetOnHandUseCase {
         bs.stockItemId
       );
 
-      // Note: We don't fetch stock item details here to avoid N+1 queries
-      // The API layer should join this data if needed
+      // Fetch stock item details
+      const stockItem = await this.stockItemRepo.findById(bs.stockItemId);
+
       items.push({
         stockItemId: bs.stockItemId,
-        name: "", // To be populated by API layer or another use case
-        unitText: "", // To be populated by API layer
+        name: stockItem?.name || "",
+        unitText: stockItem?.unitText || "",
         onHand,
         minThreshold: bs.minThreshold,
         lowStock: onHand <= bs.minThreshold,

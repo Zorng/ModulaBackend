@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { AuthRequest } from '../../../../modules/auth/api/middleware/auth.middleware.js';
+import type { AuthRequest } from "../../../../platform/security/auth.js";
 import { SalesService } from '../../app/services/sales.service.js';
 import { 
   createSaleSchema, 
@@ -37,7 +37,8 @@ export class SalesController {
         ...validatedData,
         tenantId: req.user!.tenantId,
         branchId: req.user!.branchId,
-        employeeId: req.user!.employeeId
+        employeeId: req.user!.employeeId,
+        actorRole: req.user!.role
       };
 
       const sale = await this.salesService.createDraftSale(command);
@@ -63,8 +64,8 @@ export class SalesController {
           tenantId: req.user!.tenantId,
           branchId: req.user!.branchId,
           employeeId: req.user!.employeeId,
-          saleType: 'dine_in',
-          fxRateUsed: req.body.fxRateUsed || 4100
+          actorRole: req.user!.role,
+          saleType: 'dine_in'
         };
         
         sale = await this.salesService.createDraftSale(command);
@@ -86,7 +87,11 @@ export class SalesController {
         saleId: req.params.saleId
       });
 
-      const command: AddItemCommand = validatedData;
+      const command: AddItemCommand = {
+        ...validatedData,
+        actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
+      };
       const sale = await this.salesService.addItemToSale(command);
       
       res.json({
@@ -106,10 +111,19 @@ export class SalesController {
         itemId: req.params.itemId
       });
 
-      const command: UpdateItemQuantityCommand = validatedData;
+      const command: UpdateItemQuantityCommand = {
+        ...validatedData,
+        actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
+      };
       
       if (command.quantity === 0) {
-        await this.salesService.removeItemFromSale(command.saleId, command.itemId);
+        await this.salesService.removeItemFromSale({
+          saleId: command.saleId,
+          itemId: command.itemId,
+          actorId: req.user!.employeeId,
+          actorRole: req.user!.role,
+        });
       } else {
         await this.salesService.updateItemQuantity(command);
       }
@@ -129,7 +143,12 @@ export class SalesController {
     try {
       const { saleId, itemId } = req.params;
       
-      await this.salesService.removeItemFromSale(saleId, itemId);
+      await this.salesService.removeItemFromSale({
+        saleId,
+        itemId,
+        actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
+      });
       const sale = await this.salesService.getSaleById(saleId);
       
       res.json({
@@ -168,7 +187,10 @@ export class SalesController {
         actorId: req.user!.employeeId
       });
 
-      const command: FinalizeSaleCommand = validatedData;
+      const command: FinalizeSaleCommand = {
+        ...validatedData,
+        actorRole: req.user!.role,
+      };
       const sale = await this.salesService.finalizeSale(command);
       
       res.json({
@@ -189,12 +211,11 @@ export class SalesController {
         actorId: req.user!.employeeId
       });
 
-      const command: UpdateFulfillmentCommand = validatedData;
-      const sale = await this.salesService.updateFulfillment(
-        command.saleId,
-        command.status,
-        command.actorId
-      );
+      const command: UpdateFulfillmentCommand = {
+        ...validatedData,
+        actorRole: req.user!.role,
+      };
+      const sale = await this.salesService.updateFulfillment(command);
       
       res.json({
         success: true,
@@ -214,12 +235,11 @@ export class SalesController {
         actorId: req.user!.employeeId
       });
 
-      const command: VoidSaleCommand = validatedData;
-      const sale = await this.salesService.voidSale(
-        command.saleId,
-        command.actorId,
-        command.reason
-      );
+      const command: VoidSaleCommand = {
+        ...validatedData,
+        actorRole: req.user!.role,
+      };
+      const sale = await this.salesService.voidSale(command);
       
       res.json({
         success: true,
@@ -255,7 +275,10 @@ export class SalesController {
         actorId: req.user!.employeeId
       });
 
-      const command: ReopenSaleCommand = validatedData;
+      const command: ReopenSaleCommand = {
+        ...validatedData,
+        actorRole: req.user!.role,
+      };
       const sale = await this.salesService.reopenSale(command);
       
       res.json({

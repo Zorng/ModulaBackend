@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { AuthRequest } from "#modules/auth/api/middleware/auth.middleware.js";
+import type { AuthRequest } from "../../../../../platform/security/auth.js";
 import {
   ReceiveStockUseCase,
   WasteStockUseCase,
@@ -29,15 +29,17 @@ export class InventoryJournalController {
 
   async receiveStock(req: AuthRequest, res: Response) {
     try {
-      const { stockItemId, qty, note } = req.body;
+      const { branchId, stockItemId, qty, note, occurredAt } = req.body;
 
       const result = await this.receiveStockUseCase.execute({
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: branchId || req.user!.branchId,
         stockItemId,
         qty,
         note,
         actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
+        occurredAt: occurredAt ? new Date(occurredAt) : undefined,
       });
 
       if (!result.ok) {
@@ -52,15 +54,17 @@ export class InventoryJournalController {
 
   async wasteStock(req: AuthRequest, res: Response) {
     try {
-      const { stockItemId, qty, note } = req.body;
+      const { branchId, stockItemId, qty, note, occurredAt } = req.body;
 
       const result = await this.wasteStockUseCase.execute({
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: branchId || req.user!.branchId,
         stockItemId,
         qty,
         note,
         actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
+        occurredAt: occurredAt ? new Date(occurredAt) : undefined,
       });
 
       if (!result.ok) {
@@ -75,15 +79,17 @@ export class InventoryJournalController {
 
   async correctStock(req: AuthRequest, res: Response) {
     try {
-      const { stockItemId, delta, note } = req.body;
+      const { branchId, stockItemId, delta, note, occurredAt } = req.body;
 
       const result = await this.correctStockUseCase.execute({
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: branchId || req.user!.branchId,
         stockItemId,
         delta,
         note,
         actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
+        occurredAt: occurredAt ? new Date(occurredAt) : undefined,
       });
 
       if (!result.ok) {
@@ -105,6 +111,8 @@ export class InventoryJournalController {
         branchId: req.user!.branchId,
         refSaleId,
         lines,
+        actorId: req.user!.employeeId,
+        actorRole: req.user!.role,
       });
 
       if (!result.ok) {
@@ -162,9 +170,11 @@ export class InventoryJournalController {
 
   async getOnHand(req: AuthRequest, res: Response) {
     try {
+      const { branchId } = req.query;
+
       const result = await this.getOnHandUseCase.execute({
         tenantId: req.user!.tenantId,
-        branchId: req.user!.branchId,
+        branchId: (branchId as string) || req.user!.branchId,
       });
 
       res.json({ success: true, data: result });
@@ -175,11 +185,18 @@ export class InventoryJournalController {
 
   async getInventoryJournal(req: AuthRequest, res: Response) {
     try {
-      const { stockItemId, reason, fromDate, toDate, page, pageSize } =
-        req.query;
+      const {
+        branchId,
+        stockItemId,
+        reason,
+        fromDate,
+        toDate,
+        page,
+        pageSize,
+      } = req.query;
 
       const result = await this.getInventoryJournalUseCase.execute({
-        branchId: req.user!.branchId,
+        branchId: (branchId as string) || req.user!.branchId,
         stockItemId: stockItemId as string,
         reason: reason as any,
         fromDate: fromDate ? new Date(fromDate as string) : undefined,
@@ -200,8 +217,10 @@ export class InventoryJournalController {
 
   async getLowStockAlerts(req: AuthRequest, res: Response) {
     try {
+      const { branchId } = req.query;
+
       const result = await this.getLowStockAlertsUseCase.execute(
-        req.user!.branchId
+        (branchId as string) || req.user!.branchId
       );
 
       if (!result.ok) {
@@ -216,8 +235,10 @@ export class InventoryJournalController {
 
   async getInventoryExceptions(req: AuthRequest, res: Response) {
     try {
+      const { branchId } = req.query;
+
       const result = await this.getInventoryExceptionsUseCase.execute(
-        req.user!.branchId
+        (branchId as string) || req.user!.branchId
       );
 
       if (!result.ok) {

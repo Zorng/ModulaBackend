@@ -5,6 +5,7 @@ import type {
   InventoryCategoryUpdatedV1,
   InventoryCategoryDeactivatedV1,
 } from "../../../../shared/events.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 
 export interface UpdateCategoryInput {
   categoryId: string;
@@ -13,6 +14,7 @@ export interface UpdateCategoryInput {
   displayOrder?: number;
   isActive?: boolean;
   userId: string;
+  actorRole?: string | null;
 }
 
 interface IEventBus {
@@ -30,7 +32,8 @@ export class UpdateCategoryUseCase {
   constructor(
     private categoryRepo: InventoryCategoryRepository,
     private eventBus: IEventBus,
-    private txManager: ITransactionManager
+    private txManager: ITransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async execute(
@@ -75,6 +78,19 @@ export class UpdateCategoryUseCase {
           throw new Error("Category not found");
         }
         updated = result;
+
+        await this.auditWriter.write(
+          {
+            tenantId,
+            employeeId: userId,
+            actorRole: input.actorRole ?? null,
+            actionType: "STOCK_CATEGORY_UPDATED",
+            resourceType: "stock_category",
+            resourceId: categoryId,
+            details: { changes: updates },
+          },
+          client
+        );
 
         // Determine if this is a deactivation
         const isDeactivation = isActive === false && existing.isActive === true;

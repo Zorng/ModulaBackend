@@ -48,6 +48,7 @@ export interface InventoryJournal {
   actorId?: string; // Employee who performed action
   batchId?: string; // Future hook for batches/FEFO
   unitCostUsd?: number; // Future hook for COGS
+  occurredAt: Date; // When the transaction actually happened (supports backdating)
   createdBy?: string; // User who created this entry (nullable for system-generated)
   createdAt: Date;
   updatedAt: Date;
@@ -61,15 +62,6 @@ export interface MenuStockMap {
   qtyPerSale: number; // Quantity deducted per sale (positive value, will be negated on deduction)
   createdBy: string;
   createdAt: Date;
-}
-
-export interface StorePolicyInventory {
-  tenantId: string; // Primary key
-  inventorySubtractOnFinalize: boolean;
-  branchOverrides: Record<string, any>; // JSONB for branch-specific overrides
-  excludeMenuItemIds: string[]; // JSONB array of excluded menu item IDs
-  updatedBy: string;
-  updatedAt: Date;
 }
 
 export interface InventoryCategory {

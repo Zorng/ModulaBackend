@@ -15,6 +15,7 @@ describe("Inventory Journal Use Cases", () => {
   let mockBranchStockRepo: jest.Mocked<BranchStockRepository>;
   let mockEventBus: any;
   let mockTxManager: any;
+  let mockAuditWriter: any;
 
   beforeEach(() => {
     mockJournalRepo = {
@@ -38,6 +39,10 @@ describe("Inventory Journal Use Cases", () => {
     mockTxManager = {
       withTransaction: jest.fn((fn: (tx: any) => any) => fn({})),
     };
+
+    mockAuditWriter = {
+      write: jest.fn(),
+    };
   });
 
   describe("ReceiveStockUseCase", () => {
@@ -47,7 +52,8 @@ describe("Inventory Journal Use Cases", () => {
         mockStockItemRepo,
         mockBranchStockRepo,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockAuditWriter
       );
 
       mockStockItemRepo.findById.mockResolvedValue({
@@ -55,6 +61,8 @@ describe("Inventory Journal Use Cases", () => {
         tenantId: "tenant-1",
         name: "Flour",
         unitText: "kg",
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
         createdBy: "user-1",
         createdAt: new Date(),
@@ -82,6 +90,7 @@ describe("Inventory Journal Use Cases", () => {
         note: "Weekly delivery",
         refSaleId: undefined,
         actorId: "user-1",
+        occurredAt: new Date(),
         createdBy: "user-1",
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -110,7 +119,8 @@ describe("Inventory Journal Use Cases", () => {
         mockStockItemRepo,
         mockBranchStockRepo,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockAuditWriter
       );
 
       const result = await useCase.execute({
@@ -134,7 +144,8 @@ describe("Inventory Journal Use Cases", () => {
         mockStockItemRepo,
         mockBranchStockRepo,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockAuditWriter
       );
 
       mockStockItemRepo.findById.mockResolvedValue({
@@ -142,6 +153,8 @@ describe("Inventory Journal Use Cases", () => {
         tenantId: "tenant-1",
         name: "Flour",
         unitText: "kg",
+        isIngredient: true,
+        isSellable: false,
         isActive: true,
         createdBy: "user-1",
         createdAt: new Date(),
@@ -172,7 +185,8 @@ describe("Inventory Journal Use Cases", () => {
         mockJournalRepo,
         mockBranchStockRepo,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockAuditWriter
       );
 
       mockBranchStockRepo.findByBranchAndItem.mockResolvedValue({
@@ -196,6 +210,7 @@ describe("Inventory Journal Use Cases", () => {
         note: "Expired batch",
         refSaleId: undefined,
         actorId: "user-1",
+        occurredAt: new Date(),
         createdBy: "user-1",
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -222,7 +237,8 @@ describe("Inventory Journal Use Cases", () => {
         mockJournalRepo,
         mockBranchStockRepo,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockAuditWriter
       );
 
       const result = await useCase.execute({
@@ -247,7 +263,8 @@ describe("Inventory Journal Use Cases", () => {
         mockJournalRepo,
         mockBranchStockRepo,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockAuditWriter
       );
 
       mockBranchStockRepo.findByBranchAndItem.mockResolvedValue({
@@ -271,6 +288,7 @@ describe("Inventory Journal Use Cases", () => {
         note: "Physical count adjustment",
         refSaleId: undefined,
         actorId: "user-1",
+        occurredAt: new Date(),
         createdBy: "user-1",
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -297,7 +315,8 @@ describe("Inventory Journal Use Cases", () => {
         mockJournalRepo,
         mockBranchStockRepo,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockAuditWriter
       );
 
       mockBranchStockRepo.findByBranchAndItem.mockResolvedValue({
@@ -321,6 +340,7 @@ describe("Inventory Journal Use Cases", () => {
         note: "Count discrepancy",
         refSaleId: undefined,
         actorId: "user-1",
+        occurredAt: new Date(),
         createdBy: "user-1",
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -347,7 +367,8 @@ describe("Inventory Journal Use Cases", () => {
       const useCase = new RecordSaleDeductionsUseCase(
         mockJournalRepo,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockAuditWriter
       );
 
       mockJournalRepo.save.mockResolvedValue({
@@ -360,6 +381,7 @@ describe("Inventory Journal Use Cases", () => {
         note: undefined,
         refSaleId: "sale-123",
         actorId: undefined,
+        occurredAt: new Date(),
         createdBy: undefined,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -384,7 +406,8 @@ describe("Inventory Journal Use Cases", () => {
       const useCase = new RecordSaleDeductionsUseCase(
         mockJournalRepo,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockAuditWriter
       );
 
       const result = await useCase.execute({
@@ -404,7 +427,8 @@ describe("Inventory Journal Use Cases", () => {
       const useCase = new RecordSaleDeductionsUseCase(
         mockJournalRepo,
         mockEventBus,
-        mockTxManager
+        mockTxManager,
+        mockAuditWriter
       );
 
       const result = await useCase.execute({

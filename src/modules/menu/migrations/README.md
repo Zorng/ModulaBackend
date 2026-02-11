@@ -23,7 +23,7 @@ Run migrations in this exact order (numbered sequentially):
 
 ```bash
 # Using your migration runner (platform/db/migrate.ts)
-pnpm db:migrate
+pnpm migrate
 
 # Or manually with psql
 psql -U your_user -d modula_dev -f 0001_create_categories.sql
@@ -49,7 +49,7 @@ CREATE POLICY tenant_isolation ON menu_categories
 
 #### Quota Enforcement
 
-The `menu_tenant_limits` table stores default Phase 1 limits:
+Menu quotas are stored in the unified `tenant_limits` table (shared across menu + inventory + staff):
 
 - Max 8 categories (soft), 12 (hard)
 - Max 75 items (soft), 120 (hard)
@@ -57,11 +57,7 @@ The `menu_tenant_limits` table stores default Phase 1 limits:
 - Max 12 options per group
 - Max 30 total options per item
 
-Check usage with:
-
-```sql
-SELECT * FROM menu_get_tenant_usage('tenant-uuid-here');
-```
+Usage counting is implemented in application queries (no DB helper function required).
 
 #### Constraints
 
@@ -88,7 +84,7 @@ To rollback migrations (development only):
 ```sql
 DROP TABLE IF EXISTS platform_outbox CASCADE;
 DROP TABLE IF EXISTS menu_stock_map CASCADE;
-DROP TABLE IF EXISTS menu_tenant_limits CASCADE;
+DROP TABLE IF EXISTS tenant_limits CASCADE;
 DROP TABLE IF EXISTS menu_branch_items CASCADE;
 DROP TABLE IF EXISTS menu_item_modifier_groups CASCADE;
 DROP TABLE IF EXISTS menu_modifier_options CASCADE;
@@ -97,7 +93,6 @@ DROP TABLE IF EXISTS menu_items CASCADE;
 DROP TABLE IF EXISTS menu_categories CASCADE;
 DROP FUNCTION IF EXISTS update_menu_categories_timestamp CASCADE;
 DROP FUNCTION IF EXISTS check_modifier_group_limit CASCADE;
-DROP FUNCTION IF EXISTS menu_get_tenant_usage CASCADE;
 DROP FUNCTION IF EXISTS cleanup_sent_outbox_events CASCADE;
 ```
 
@@ -115,10 +110,8 @@ SELECT indexname FROM pg_indexes
 WHERE tablename LIKE 'menu_%';
 
 -- Test quota function
-INSERT INTO menu_tenant_limits (tenant_id)
+INSERT INTO tenant_limits (tenant_id)
 VALUES ('00000000-0000-0000-0000-000000000001');
-
-SELECT * FROM menu_get_tenant_usage('00000000-0000-0000-0000-000000000001');
 ```
 
 ## Phase 2 Extensions

@@ -5,12 +5,13 @@
 1. **Start the server**: `pnpm run dev`
 2. **Server URL**: `http://localhost:3000`
 3. **Ensure migrations are run**: `pnpm run migrate`
+4. *(Optional)* **Seed dev test accounts**: `pnpm seed:dev`
 
 ---
 
 ## Test Accounts Available
 
-The database has been seeded with test accounts:
+If you ran `pnpm seed:dev`, the database will include these test accounts:
 
 | Role | Phone | Email | Password |
 |------|-------|-------|----------|

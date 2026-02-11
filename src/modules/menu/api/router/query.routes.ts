@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { validateQuery } from "../../../../platform/http/middleware/index.js";
-import { authMiddleware } from "../../../auth/index.js";
+import type { AuthMiddlewarePort } from "../../../../platform/security/auth.js";
 import { QueryController } from "../controller/index.js";
 import { branchIdQuerySchema } from "../schemas/schemas.js";
 
-const queryRouter = Router();
+export function createQueryRouter(authMiddleware: AuthMiddlewarePort) {
+  const queryRouter = Router();
 
 /**
  * @openapi
@@ -28,7 +29,7 @@ const queryRouter = Router();
  *         content:
  *           application/json:
  *             schema:
- *               type: object
+ *               $ref: '#/components/schemas/MenuSnapshot'
  *       401:
  *         description: Unauthorized
  *       404:
@@ -41,4 +42,5 @@ queryRouter.get(
   QueryController.getMenuSnapshot
 );
 
-export { queryRouter };
+  return queryRouter;
+}

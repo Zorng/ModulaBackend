@@ -56,6 +56,7 @@ export class RecordReopenUseCase {
             delta: -Math.abs(line.qtyToRededuct), // Ensure negative
             reason: "reopen",
             refSaleId: newSaleId, // Link to new sale
+            occurredAt: new Date(),
             createdBy: undefined, // System-generated
           });
           journals.push(journal);

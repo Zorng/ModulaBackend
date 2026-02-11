@@ -21,8 +21,7 @@ export type FulfillmentStatus = z.infer<typeof FulfillmentStatus>;
 // Command schemas
 export const createSaleSchema = z.object({
   clientUuid: uuidSchema,
-  saleType: SaleType,
-  fxRateUsed: positiveNumber.optional().default(4100)
+  saleType: SaleType
 });
 
 export const addItemSchema = z.object({
@@ -111,8 +110,8 @@ export interface CreateSaleCommand {
   tenantId: string;
   branchId: string;
   employeeId: string;
+  actorRole?: string;
   saleType: SaleType;
-  fxRateUsed: number;
 }
 
 export interface AddItemCommand {
@@ -120,12 +119,16 @@ export interface AddItemCommand {
   menuItemId: string;
   quantity: number;
   modifiers?: any[];
+  actorId: string;
+  actorRole?: string;
 }
 
 export interface UpdateItemQuantityCommand {
   saleId: string;
   itemId: string;
   quantity: number;
+  actorId: string;
+  actorRole?: string;
 }
 
 export interface PreCheckoutCommand {
@@ -138,22 +141,26 @@ export interface PreCheckoutCommand {
 export interface FinalizeSaleCommand {
   saleId: string;
   actorId: string;
+  actorRole?: string;
 }
 
 export interface UpdateFulfillmentCommand {
   saleId: string;
   status: FulfillmentStatus;
   actorId: string;
+  actorRole?: string;
 }
 
 export interface VoidSaleCommand {
   saleId: string;
   actorId: string;
   reason: string;
+  actorRole?: string;
 }
 
 export interface ReopenSaleCommand {
   saleId: string;
   actorId: string;
   reason: string;
+  actorRole?: string;
 }

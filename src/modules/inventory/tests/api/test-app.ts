@@ -2,6 +2,8 @@ import express, { Express } from "express";
 import { Pool } from "pg";
 import { bootstrapInventoryModule } from "../../index.js";
 import { setupAuthModule } from "../../../auth/index.js";
+import type { InvitationPort } from "../../../../shared/ports/staff-management.js";
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
 import {
   errorHandler,
   notFoundHandler,
@@ -31,18 +33,42 @@ export function createTestApp(pool: Pool): Express {
   const app = express();
   app.use(express.json());
 
+  const auditWriterPort: AuditWriterPort = {
+    write: async () => {},
+  };
+
   // Setup auth module
-  const authModule = setupAuthModule(pool);
+  const invitationPort: InvitationPort = {
+    peekValidInvite: async () => {
+      throw new Error("not implemented");
+    },
+    acceptInvite: async () => {
+      throw new Error("not implemented");
+    },
+  };
+  const authModule = setupAuthModule(pool, {
+    invitationPort,
+    tenantProvisioningPort: {
+      provisionTenant: async () => {
+        throw new Error("not implemented");
+      },
+    },
+    auditWriterPort,
+  });
   const { authMiddleware } = authModule;
 
   // Setup mock image storage for tests
   app.locals.imageStorage = mockImageStorage;
+  app.locals.branchGuardPort = {
+    assertBranchActive: async () => {},
+  };
 
   // Setup inventory module
   const inventoryModule = bootstrapInventoryModule(
     pool,
     authMiddleware,
-    mockImageStorage
+    mockImageStorage,
+    { auditWriterPort }
   );
   const { router: inventoryRouter } = inventoryModule;
 

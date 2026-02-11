@@ -4,8 +4,7 @@ This directory contains event handlers that automatically process sales events f
 
 ## Handlers
 
-### 1. SaleFinalizedHandler
-
+### 1. SaleFinalizedHandle
 **Triggered by**: `sales.sale_finalized`
 
 Automatically deducts inventory when a sale is finalized.

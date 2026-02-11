@@ -25,14 +25,16 @@ import { SalesRepository, PolicyPort, MenuPort } from '../ports/sales.ports.js';
 import { TransactionManager } from '../../../../platform/events/index.js';
 import { publishToOutbox } from '../../../../platform/events/outbox.js';
 import { PoolClient } from 'pg';
+import type { AuditWriterPort } from "../../../../shared/ports/audit.js";
+import type { CashSaleRecordedV1, StockSaleDeductedV1 } from "../../../../shared/events.js";
 
 export interface CreateSaleCommand {
   clientUuid: string;
   tenantId: string;
   branchId: string;
   employeeId: string;
+  actorRole?: string;
   saleType: SaleType;
-  fxRateUsed: number;
 }
 
 export interface AddItemCommand {
@@ -40,12 +42,16 @@ export interface AddItemCommand {
   menuItemId: string;
   quantity: number;
   modifiers?: any[];
+  actorId: string;
+  actorRole?: string;
 }
 
 export interface UpdateItemQuantityCommand {
   saleId: string;
   itemId: string;
   quantity: number;
+  actorId: string;
+  actorRole?: string;
 }
 
 export interface PreCheckoutCommand {
@@ -58,24 +64,28 @@ export interface PreCheckoutCommand {
 export interface FinalizeSaleCommand {
   saleId: string;
   actorId: string;
+  actorRole?: string;
 }
 
 export interface UpdateFulfillmentCommand {
   saleId: string;
   status: FulfillmentStatus;
   actorId: string;
+  actorRole?: string;
 }
 
 export interface VoidSaleCommand {
   saleId: string;
   actorId: string;
   reason: string;
+  actorRole?: string;
 }
 
 export interface ReopenSaleCommand {
   saleId: string;
   actorId: string;
   reason: string;
+  actorRole?: string;
 }
 
 export class SalesService {
@@ -83,19 +93,49 @@ export class SalesService {
     private salesRepo: SalesRepository,
     private policyPort: PolicyPort,
     private menuPort: MenuPort,
-    private transactionManager: TransactionManager
+    private transactionManager: TransactionManager,
+    private auditWriter: AuditWriterPort
   ) {}
 
   async createDraftSale(cmd: CreateSaleCommand): Promise<Sale> {
     return await this.transactionManager.withTransaction(async (trx) => {
-      const fxRate = cmd.fxRateUsed || await this.policyPort.getCurrentFxRate(cmd.tenantId);
+      // Always fetch FX rate from tenant policy
+      const fxRate = await this.policyPort.getCurrentFxRate(
+        cmd.tenantId,
+        cmd.branchId
+      );
       
       const sale = createDraftSale({
         ...cmd,
         fxRateUsed: fxRate
       });
 
+      // Apply VAT policy from the start
+      const vatPolicy = await this.policyPort.getVatPolicy(
+        cmd.tenantId,
+        cmd.branchId
+      );
+      applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
+
       await this.salesRepo.save(sale, trx);
+
+      await this.auditWriter.write(
+        {
+          tenantId: cmd.tenantId,
+          branchId: cmd.branchId,
+          employeeId: cmd.employeeId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "CART_CREATED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            sale_type: cmd.saleType,
+            client_uuid: cmd.clientUuid,
+          },
+        },
+        trx
+      );
       
       await publishToOutbox({
         type: 'sales.draft_created',
@@ -157,14 +197,45 @@ export class SalesService {
         recalculateSaleTotals(sale);
       }
 
+      // Reapply VAT after items change
+      const vatPolicy = await this.policyPort.getVatPolicy(
+        sale.tenantId,
+        sale.branchId
+      );
+      applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
+
       await this.salesRepo.save(sale, trx);
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "CART_UPDATED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            operation: "ADD_ITEM",
+            menu_item_id: cmd.menuItemId,
+            quantity: cmd.quantity,
+          },
+        },
+        trx
+      );
       return sale;
     });
   }
 
-  async removeItemFromSale(saleId: string, itemId: string): Promise<Sale> {
+  async removeItemFromSale(params: {
+    saleId: string;
+    itemId: string;
+    actorId: string;
+    actorRole?: string;
+  }): Promise<Sale> {
     return await this.transactionManager.withTransaction(async (trx) => {
-      const sale = await this.salesRepo.findById(saleId, trx);
+      const sale = await this.salesRepo.findById(params.saleId, trx);
       if (!sale) {
         throw new Error('Sale not found');
       }
@@ -173,8 +244,34 @@ export class SalesService {
         throw new Error('Cannot remove items from non-draft sale');
       }
 
-      removeItemFromSale(sale, itemId);
+      removeItemFromSale(sale, params.itemId);
+      
+      // Reapply VAT after items change
+      const vatPolicy = await this.policyPort.getVatPolicy(
+        sale.tenantId,
+        sale.branchId
+      );
+      applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
+      
       await this.salesRepo.save(sale, trx);
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: params.actorId,
+          actorRole: params.actorRole ?? null,
+          actionType: "CART_UPDATED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            operation: "REMOVE_ITEM",
+            item_id: params.itemId,
+          },
+        },
+        trx
+      );
       return sale;
     });
   }
@@ -191,7 +288,34 @@ export class SalesService {
       }
 
       updateItemQuantity(sale, cmd.itemId, cmd.quantity);
+      
+      // Reapply VAT after items change
+      const vatPolicy = await this.policyPort.getVatPolicy(
+        sale.tenantId,
+        sale.branchId
+      );
+      applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
+      
       await this.salesRepo.save(sale, trx);
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "CART_UPDATED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            operation: "UPDATE_ITEM_QTY",
+            item_id: cmd.itemId,
+            quantity: cmd.quantity,
+          },
+        },
+        trx
+      );
       return sale;
     });
   }
@@ -208,7 +332,10 @@ export class SalesService {
       }
 
       // Get policies
-      const roundingPolicy = await this.policyPort.getRoundingPolicy(sale.tenantId);
+      const roundingPolicy = await this.policyPort.getRoundingPolicy(
+        sale.tenantId,
+        sale.branchId
+      );
       setTenderCurrency(sale, cmd.tenderCurrency, roundingPolicy);
 
       setPaymentMethod(sale, cmd.paymentMethod, cmd.cashReceived);
@@ -226,7 +353,10 @@ export class SalesService {
       }
 
       // Apply VAT
-      const vatPolicy = await this.policyPort.getVatPolicy(sale.tenantId);
+      const vatPolicy = await this.policyPort.getVatPolicy(
+        sale.tenantId,
+        sale.branchId
+      );
       applyVAT(sale, vatPolicy.rate, vatPolicy.enabled);
 
       await this.salesRepo.save(sale, trx);
@@ -242,21 +372,75 @@ export class SalesService {
       }
 
       finalizeSale(sale, cmd.actorId);
-      
-      // Write to audit log
-      await this.salesRepo.writeAuditLog({
-        tenantId: sale.tenantId,
-        branchId: sale.branchId,
-        saleId: sale.id,
-        actorId: cmd.actorId,
-        action: 'finalize',
-        oldValues: { state: 'draft' },
-        newValues: { state: 'finalized', finalizedAt: sale.finalizedAt }
-      }, trx);
+
+      const cashSession =
+        sale.paymentMethod === "cash"
+          ? await this.resolveCashSessionForCashSale({
+              trx,
+              tenantId: sale.tenantId,
+              branchId: sale.branchId,
+              actorId: cmd.actorId,
+            })
+          : null;
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "SALE_FINALIZED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            old_values: { state: "draft" },
+            new_values: { state: "finalized", finalized_at: sale.finalizedAt },
+          },
+        },
+        trx
+      );
       
       await this.salesRepo.save(sale, trx);
 
+      if (sale.paymentMethod === "cash" && cashSession) {
+        await this.recordSaleCashMovement({
+          trx,
+          sale,
+          session: cashSession,
+          actorId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+        });
+      }
+
+      await this.applyInventoryDeductions({
+        trx,
+        sale,
+        actorId: cmd.actorId,
+        actorRole: cmd.actorRole ?? null,
+      });
+
       // Publish sale finalized event
+      const tenderAmounts = this.getTenderAmountsForSale(sale);
+      const tenders =
+        sale.paymentMethod === "cash"
+          ? [
+              {
+                method: "CASH" as const,
+                amountUsd: tenderAmounts.amountUsd,
+                amountKhr: tenderAmounts.amountKhr,
+              },
+            ]
+          : sale.paymentMethod === "qr"
+            ? [
+                {
+                  method: "QR" as const,
+                  amountUsd: tenderAmounts.amountUsd,
+                  amountKhr: tenderAmounts.amountKhr,
+                },
+              ]
+            : [];
+
       await publishToOutbox({
         type: 'sales.sale_finalized',
         v: 1,
@@ -273,11 +457,7 @@ export class SalesService {
           totalKhr: sale.totalKhrExact,
           vatAmountUsd: sale.vatAmountUsd
         },
-        tenders: [{
-          method: sale.paymentMethod as 'CASH' | 'QR',
-          amountUsd: sale.totalUsdExact,
-          amountKhr: sale.totalKhrExact
-        }],
+        tenders,
         finalizedAt: sale.finalizedAt!.toISOString(),
         actorId: cmd.actorId
       }, trx);
@@ -286,33 +466,335 @@ export class SalesService {
     });
   }
 
-  async updateFulfillment(saleId: string, status: FulfillmentStatus, actorId: string): Promise<Sale> {
+  private async resolveCashSessionForCashSale(params: {
+    trx: PoolClient;
+    tenantId: string;
+    branchId: string;
+    actorId: string;
+  }): Promise<{
+    id: string;
+    registerId: string | null;
+    expectedCashUsd: number;
+    expectedCashKhr: number;
+  } | null> {
+    const required = await this.readCashRequireSessionForSales({
+      trx: params.trx,
+      tenantId: params.tenantId,
+      branchId: params.branchId,
+    });
+
+    const res = await params.trx.query(
+      `SELECT id, register_id, expected_cash_usd, expected_cash_khr
+       FROM cash_sessions
+       WHERE tenant_id = $1 AND branch_id = $2 AND opened_by = $3 AND status = 'OPEN'
+       ORDER BY opened_at DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [params.tenantId, params.branchId, params.actorId]
+    );
+
+    if (res.rows.length === 0) {
+      if (required) {
+        throw new Error("Cannot finalize cash sale without an active cash session");
+      }
+      return null;
+    }
+
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      registerId: row.register_id,
+      expectedCashUsd: parseFloat(row.expected_cash_usd),
+      expectedCashKhr: parseFloat(row.expected_cash_khr),
+    };
+  }
+
+  private async readCashRequireSessionForSales(_params: {
+    trx: PoolClient;
+    tenantId: string;
+    branchId: string;
+  }): Promise<boolean> {
+    return true;
+  }
+
+  private getTenderAmountsForSale(sale: Sale): {
+    amountUsd: number;
+    amountKhr: number;
+  } {
+    if (sale.tenderCurrency === "KHR") {
+      return {
+        amountUsd: 0,
+        amountKhr: sale.totalKhrRounded ?? sale.totalKhrExact,
+      };
+    }
+    return { amountUsd: sale.totalUsdExact, amountKhr: 0 };
+  }
+
+  private async recordSaleCashMovement(params: {
+    trx: PoolClient;
+    sale: Sale;
+    session: {
+      id: string;
+      registerId: string | null;
+      expectedCashUsd: number;
+      expectedCashKhr: number;
+    };
+    actorId: string;
+    actorRole: string | null;
+  }): Promise<void> {
+    const tenderAmounts = this.getTenderAmountsForSale(params.sale);
+    const movementRes = await params.trx.query(
+      `INSERT INTO cash_movements (
+        tenant_id,
+        branch_id,
+        register_id,
+        session_id,
+        actor_id,
+        type,
+        status,
+        amount_usd,
+        amount_khr,
+        ref_sale_id,
+        reason
+      ) VALUES ($1,$2,$3,$4,$5,'SALE_CASH','APPROVED',$6,$7,$8,$9)
+      RETURNING id`,
+      [
+        params.sale.tenantId,
+        params.sale.branchId,
+        params.session.registerId,
+        params.session.id,
+        params.actorId,
+        tenderAmounts.amountUsd,
+        tenderAmounts.amountKhr,
+        params.sale.id,
+        `Sale ${params.sale.id}`,
+      ]
+    );
+    const movementId = movementRes.rows[0].id as string;
+
+    await params.trx.query(
+      `UPDATE cash_sessions
+       SET expected_cash_usd = $1, expected_cash_khr = $2, updated_at = NOW()
+       WHERE id = $3`,
+      [
+        params.session.expectedCashUsd + tenderAmounts.amountUsd,
+        params.session.expectedCashKhr + tenderAmounts.amountKhr,
+        params.session.id,
+      ]
+    );
+
+    const cashEvent: CashSaleRecordedV1 = {
+      type: "cash.sale_cash_recorded",
+      v: 1,
+      tenantId: params.sale.tenantId,
+      branchId: params.sale.branchId,
+      sessionId: params.session.id,
+      registerId: params.session.registerId ?? undefined,
+      saleId: params.sale.id,
+      amountUsd: tenderAmounts.amountUsd,
+      amountKhr: tenderAmounts.amountKhr,
+      timestamp: new Date().toISOString(),
+    };
+    await publishToOutbox(cashEvent, params.trx);
+
+    await this.auditWriter.write(
+      {
+        tenantId: params.sale.tenantId,
+        branchId: params.sale.branchId,
+        employeeId: params.actorId,
+        actorRole: params.actorRole ?? null,
+        actionType: "CASH_TENDER_ATTACHED_TO_SALE",
+        resourceType: "sale",
+        resourceId: params.sale.id,
+        details: {
+          sessionId: params.session.id,
+          registerId: params.session.registerId ?? null,
+          movementId,
+          amountUsd: tenderAmounts.amountUsd,
+          amountKhr: tenderAmounts.amountKhr,
+          tenders: [
+            {
+              method: "CASH",
+              amountUsd: tenderAmounts.amountUsd,
+              amountKhr: tenderAmounts.amountKhr,
+            },
+          ],
+        },
+      },
+      params.trx
+    );
+  }
+
+  private async applyInventoryDeductions(params: {
+    trx: PoolClient;
+    sale: Sale;
+    actorId: string;
+    actorRole: string | null;
+  }): Promise<void> {
+    const shouldDeduct = await this.shouldSubtractInventory(params.trx, params.sale);
+    if (!shouldDeduct) {
+      return;
+    }
+
+    const menuItemIds = params.sale.items.map((item) => item.menuItemId);
+    if (menuItemIds.length === 0) {
+      return;
+    }
+
+    const mappings = await params.trx.query(
+      `SELECT menu_item_id, stock_item_id, qty_per_sale
+       FROM menu_stock_map
+       WHERE tenant_id = $1 AND menu_item_id = ANY($2::uuid[])`,
+      [params.sale.tenantId, menuItemIds]
+    );
+
+    if (mappings.rows.length === 0) {
+      return;
+    }
+
+    const qtyByStockItem = new Map<string, number>();
+    for (const line of params.sale.items) {
+      for (const mapping of mappings.rows.filter((row) => row.menu_item_id === line.menuItemId)) {
+        const stockItemId = mapping.stock_item_id as string;
+        const qtyPerSale = parseFloat(mapping.qty_per_sale);
+        const nextQty = (qtyByStockItem.get(stockItemId) ?? 0) + qtyPerSale * line.quantity;
+        qtyByStockItem.set(stockItemId, nextQty);
+      }
+    }
+
+    if (qtyByStockItem.size === 0) {
+      return;
+    }
+
+    const journals: Array<{ stockItemId: string; journalId: string; delta: number }> = [];
+    for (const [stockItemId, qtyDeducted] of qtyByStockItem.entries()) {
+      if (qtyDeducted <= 0) {
+        continue;
+      }
+      const res = await params.trx.query(
+        `INSERT INTO inventory_journal (
+          tenant_id,
+          branch_id,
+          stock_item_id,
+          delta,
+          reason,
+          ref_sale_id,
+          note,
+          actor_id,
+          occurred_at,
+          created_by
+        ) VALUES ($1,$2,$3,$4,'sale',$5,NULL,$6,NOW(),$6)
+        RETURNING id, delta`,
+        [
+          params.sale.tenantId,
+          params.sale.branchId,
+          stockItemId,
+          -Math.abs(qtyDeducted),
+          params.sale.id,
+          params.actorId,
+        ]
+      );
+      journals.push({
+        stockItemId,
+        journalId: res.rows[0].id,
+        delta: parseFloat(res.rows[0].delta),
+      });
+    }
+
+    if (journals.length === 0) {
+      return;
+    }
+
+    const inventoryEvent: StockSaleDeductedV1 = {
+      type: "inventory.stock_sale_deducted",
+      v: 1,
+      tenantId: params.sale.tenantId,
+      branchId: params.sale.branchId,
+      refSaleId: params.sale.id,
+      deductions: journals.map((j) => ({
+        stockItemId: j.stockItemId,
+        journalId: j.journalId,
+        delta: j.delta,
+      })),
+      createdAt: new Date().toISOString(),
+    };
+    await publishToOutbox(inventoryEvent, params.trx);
+
+    await this.auditWriter.write(
+      {
+        tenantId: params.sale.tenantId,
+        branchId: params.sale.branchId,
+        employeeId: params.actorId,
+        actorRole: params.actorRole ?? null,
+        actionType: "INVENTORY_DEDUCTION_APPLIED",
+        resourceType: "sale",
+        resourceId: params.sale.id,
+        details: {
+          deductionsCount: journals.length,
+          stockItemIds: Array.from(new Set(journals.map((j) => j.stockItemId))),
+        },
+      },
+      params.trx
+    );
+  }
+
+  private async shouldSubtractInventory(trx: PoolClient, sale: Sale): Promise<boolean> {
+    const res = await trx.query(
+      `SELECT auto_subtract_on_sale, exclude_menu_item_ids
+       FROM branch_inventory_policies
+       WHERE tenant_id = $1 AND branch_id = $2`,
+      [sale.tenantId, sale.branchId]
+    );
+
+    if (res.rows.length === 0) {
+      return true;
+    }
+
+    const row = res.rows[0];
+    const excludeMenuItemIds: string[] = Array.isArray(row.exclude_menu_item_ids)
+      ? row.exclude_menu_item_ids
+      : row.exclude_menu_item_ids
+        ? JSON.parse(row.exclude_menu_item_ids)
+        : [];
+    if (excludeMenuItemIds.length > 0) {
+      const hasExcluded = sale.items.some((item) =>
+        excludeMenuItemIds.includes(item.menuItemId)
+      );
+      if (hasExcluded) {
+        return false;
+      }
+    }
+
+    return Boolean(row.auto_subtract_on_sale);
+  }
+
+  async updateFulfillment(cmd: UpdateFulfillmentCommand): Promise<Sale> {
     return await this.transactionManager.withTransaction(async (trx) => {
-      const sale = await this.salesRepo.findById(saleId, trx);
+      const sale = await this.salesRepo.findById(cmd.saleId, trx);
       if (!sale) {
         throw new Error('Sale not found');
       }
 
       const oldStatus = sale.fulfillmentStatus;
-      updateFulfillment(sale, status, actorId);
-      
-      // Write to audit log
-      const actionMap: Record<string, string> = {
-        'ready': 'set_ready',
-        'delivered': 'set_delivered',
-        'cancelled': 'revert_fulfillment',
-        'in_prep': 'revert_fulfillment'
-      };
-      
-      await this.salesRepo.writeAuditLog({
-        tenantId: sale.tenantId,
-        branchId: sale.branchId,
-        saleId: sale.id,
-        actorId: actorId,
-        action: actionMap[status] || 'fulfillment_updated',
-        oldValues: { fulfillmentStatus: oldStatus },
-        newValues: { fulfillmentStatus: status }
-      }, trx);
+      updateFulfillment(sale, cmd.status, cmd.actorId);
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "ORDER_STATUS_UPDATED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            old_values: { fulfillment_status: oldStatus },
+            new_values: { fulfillment_status: cmd.status },
+          },
+        },
+        trx
+      );
       
       await this.salesRepo.save(sale, trx);
 
@@ -322,8 +804,8 @@ export class SalesService {
         tenantId: sale.tenantId,
         branchId: sale.branchId,
         saleId: sale.id,
-        actorId: actorId,
-        fulfillmentStatus: status,
+        actorId: cmd.actorId,
+        fulfillmentStatus: cmd.status,
         timestamp: new Date().toISOString()
       }, trx);
 
@@ -331,9 +813,9 @@ export class SalesService {
     });
   }
 
-  async voidSale(saleId: string, actorId: string, reason: string): Promise<Sale> {
+  async voidSale(cmd: VoidSaleCommand): Promise<Sale> {
     return await this.transactionManager.withTransaction(async (trx) => {
-      const sale = await this.salesRepo.findById(saleId, trx);
+      const sale = await this.salesRepo.findById(cmd.saleId, trx);
       if (!sale) {
         throw new Error('Sale not found');
       }
@@ -353,19 +835,26 @@ export class SalesService {
         throw new Error('Only same-day sales can be voided. This sale was finalized on a different day.');
       }
 
-      voidSale(sale, actorId, reason);
-      
-      // Write to audit log
-      await this.salesRepo.writeAuditLog({
-        tenantId: sale.tenantId,
-        branchId: sale.branchId,
-        saleId: sale.id,
-        actorId: actorId,
-        action: 'void',
-        reason: reason,
-        oldValues: { state: 'finalized', fulfillmentStatus: sale.fulfillmentStatus },
-        newValues: { state: 'voided', fulfillmentStatus: 'cancelled' }
-      }, trx);
+      voidSale(sale, cmd.actorId, cmd.reason);
+
+      await this.auditWriter.write(
+        {
+          tenantId: sale.tenantId,
+          branchId: sale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "VOID_APPROVED",
+          resourceType: "SALE",
+          resourceId: sale.id,
+          outcome: "SUCCESS",
+          details: {
+            reason: cmd.reason,
+            old_values: { state: "finalized", fulfillment_status: sale.fulfillmentStatus },
+            new_values: { state: "voided", fulfillment_status: "cancelled" },
+          },
+        },
+        trx
+      );
       
       await this.salesRepo.save(sale, trx);
 
@@ -380,8 +869,8 @@ export class SalesService {
           menuItemId: item.menuItemId,
           qty: item.quantity
         })),
-        actorId: actorId,
-        reason: reason,
+        actorId: cmd.actorId,
+        reason: cmd.reason,
         timestamp: new Date().toISOString()
       }, trx);
 
@@ -445,28 +934,42 @@ export class SalesService {
       await this.salesRepo.save(originalSale, trx);
       await this.salesRepo.save(reopenedSale, trx);
       
-      // Write audit log for original sale
-      await this.salesRepo.writeAuditLog({
-        tenantId: originalSale.tenantId,
-        branchId: originalSale.branchId,
-        saleId: originalSale.id,
-        actorId: cmd.actorId,
-        action: 'reopen',
-        reason: cmd.reason,
-        oldValues: { state: 'finalized' },
-        newValues: { state: 'reopened', newSaleId: reopenedSale.id }
-      }, trx);
+      await this.auditWriter.write(
+        {
+          tenantId: originalSale.tenantId,
+          branchId: originalSale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "SALE_REOPENED",
+          resourceType: "SALE",
+          resourceId: originalSale.id,
+          outcome: "SUCCESS",
+          details: {
+            reason: cmd.reason,
+            old_values: { state: "finalized" },
+            new_values: { state: "reopened", new_sale_id: reopenedSale.id },
+          },
+        },
+        trx
+      );
       
-      // Write audit log for new sale
-      await this.salesRepo.writeAuditLog({
-        tenantId: reopenedSale.tenantId,
-        branchId: reopenedSale.branchId,
-        saleId: reopenedSale.id,
-        actorId: cmd.actorId,
-        action: 'create_draft',
-        reason: `Reopened from sale ${originalSale.id}: ${cmd.reason}`,
-        newValues: { state: 'draft', refPreviousSaleId: originalSale.id }
-      }, trx);
+      await this.auditWriter.write(
+        {
+          tenantId: reopenedSale.tenantId,
+          branchId: reopenedSale.branchId,
+          employeeId: cmd.actorId,
+          actorRole: cmd.actorRole ?? null,
+          actionType: "CART_CREATED",
+          resourceType: "SALE",
+          resourceId: reopenedSale.id,
+          outcome: "SUCCESS",
+          details: {
+            reason: `Reopened from sale ${originalSale.id}: ${cmd.reason}`,
+            new_values: { state: "draft", ref_previous_sale_id: originalSale.id },
+          },
+        },
+        trx
+      );
 
       await publishToOutbox({
         type: 'sales.sale_reopened',

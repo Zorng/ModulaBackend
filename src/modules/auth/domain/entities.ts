@@ -1,39 +1,36 @@
-export type EmployeeStatus = 'ACTIVE' | 'INVITED' | 'DISABLED';
+export type EmployeeStatus = 'ACTIVE' | 'INVITED' | 'DISABLED' | 'ARCHIVED';
 export type EmployeeRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'CLERK';
-export type AuthActionType = 
-  | 'AUTH_INVITE_CREATED'
-  | 'AUTH_INVITE_ACCEPTED'
-  | 'AUTH_INVITE_REISSUED'
-  | 'AUTH_INVITE_REVOKED'
-  | 'AUTH_ROLE_CHANGED'
-  | 'AUTH_BRANCH_TRANSFERRED'
-  | 'AUTH_EMPLOYEE_DISABLED'
-  | 'AUTH_NAME_EDITED_BY_ADMIN';
+export type AccountStatus = 'ACTIVE' | 'DISABLED';
 
 export interface Tenant {
   id: string;
   name: string;
-  business_type?: string;
+  business_type?: string | null;
   status: string;
   created_at: Date;
   updated_at: Date;
 }
 
-export interface Branch {
+export interface Account {
   id: string;
-  tenant_id: string;
-  name: string;
-  address?: string;
+  phone: string;
+  email?: string | null;
+  password_hash: string;
+  status: AccountStatus;
+  phone_verified_at?: Date;
   created_at: Date;
   updated_at: Date;
 }
 
 export interface Employee {
   id: string;
+  account_id: string;
   tenant_id: string;
   phone: string;
   email?: string;
   password_hash: string;
+  default_branch_id?: string;
+  last_branch_id?: string;
   first_name: string;
   last_name: string;
   status: EmployeeStatus;
@@ -76,6 +73,20 @@ export interface Session {
   expires_at: Date;
 }
 
+export type PhoneOtpPurpose = "REGISTER_TENANT" | "FORGOT_PASSWORD";
+
+export interface PhoneOtp {
+  id: string;
+  phone: string;
+  purpose: PhoneOtpPurpose;
+  code_hash: string;
+  attempts: number;
+  max_attempts: number;
+  created_at: Date;
+  expires_at: Date;
+  consumed_at?: Date;
+}
+
 export interface AuthPolicy {
   id: string;
   tenant_id: string;
@@ -84,20 +95,6 @@ export interface AuthPolicy {
   data: Record<string, any>;
   version: number;
   effective_from: Date;
-  created_at: Date;
-}
-
-export interface ActivityLog {
-  id: string;
-  tenant_id: string;
-  branch_id?: string;
-  employee_id?: string;
-  action_type: AuthActionType;
-  resource_type?: string;
-  resource_id?: string;
-  details?: Record<string, any>;
-  ip_address?: string;
-  user_agent?: string;
   created_at: Date;
 }
 

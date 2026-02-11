@@ -2,6 +2,15 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { AuthService } from '../app/auth.service.js';
 import { AuthRepository } from '../infra/repository.js';
 import { TokenService } from '../app/token.service.js';
+import type { InvitationPort } from '../../../shared/ports/staff-management.js';
+import { createMembershipProvisioningPort } from "../index.js";
+import { TenantRepository } from "../../tenant/infra/repository.js";
+import {
+  createTenantProvisioningPort,
+  TenantProvisioningService,
+} from "../../tenant/app/tenant-provisioning.service.js";
+import { bootstrapAuditModule } from "#modules/audit/index.js";
+import { bootstrapBranchModule } from "#modules/branch/index.js";
 import { Pool } from 'pg';
 
 describe('Auth Integration Tests', () => {
@@ -23,7 +32,40 @@ describe('Auth Integration Tests', () => {
       '1h',
       '7d'
     );
-    authService = new AuthService(authRepo, tokenService, 72);
+    const invitationPort: InvitationPort = {
+      peekValidInvite: async () => {
+        throw new Error('not implemented');
+      },
+      acceptInvite: async () => {
+        throw new Error('not implemented');
+      },
+    };
+    const tenantRepo = new TenantRepository(pool);
+    const membershipProvisioningPort = createMembershipProvisioningPort();
+    const auditModule = bootstrapAuditModule(pool);
+    const branchModule = bootstrapBranchModule(pool, {
+      auditWriterPort: auditModule.auditWriterPort,
+    });
+    const tenantProvisioningPort = createTenantProvisioningPort(
+      new TenantProvisioningService(
+        pool,
+        tenantRepo,
+        auditModule.auditWriterPort,
+        membershipProvisioningPort,
+        branchModule.branchProvisioningPort,
+        {
+          ensureDefaultPolicies: async () => {},
+        }
+      )
+    );
+
+    authService = new AuthService(
+      authRepo,
+      tokenService,
+      invitationPort,
+      tenantProvisioningPort,
+      auditModule.auditWriterPort
+    );
   });
 
   afterAll(async () => {
@@ -45,7 +87,7 @@ describe('Auth Integration Tests', () => {
       });
 
       expect(registrationResult.tenant).toBeDefined();
-      expect(registrationResult.user).toBeDefined();
+      expect(registrationResult.employee).toBeDefined();
       expect(registrationResult.tokens).toBeDefined();
 
       // Login with the created user
@@ -54,10 +96,14 @@ describe('Auth Integration Tests', () => {
         password: 'SecurePass123!'
       });
 
-      expect(loginResult.user.id).toBe(registrationResult.user.id);
+      expect(loginResult.kind).toBe("single");
+      if (loginResult.kind !== "single") {
+        throw new Error("Expected single-tenant login result");
+      }
+
+      expect(loginResult.employee.id).toBe(registrationResult.employee.id);
       expect(loginResult.tokens).toBeDefined();
       expect(loginResult.branchAssignments.length).toBeGreaterThan(0);
     });
   });
 });
-

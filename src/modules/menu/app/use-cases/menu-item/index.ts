@@ -12,4 +12,5 @@ export {
 export { ListMenuItemsUseCase } from "./list-menu-items.js";
 export { UpdateMenuItemUseCase } from "./update-menu-item.js";
 export { DeleteMenuItemUseCase } from "./delete-menu-item.js";
+export { RestoreMenuItemUseCase } from "./restore-menu-item.js";
 export { GetMenuItemsByBranchUseCase } from "./get-menu-items-by-branch.js";

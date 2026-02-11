@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { SalesController } from '../controllers/sales.controller.js';
 import { salesMiddleware } from '../middlewares/sales.middleware.js';
-import { AuthRequest, AuthMiddleware } from '../../../../modules/auth/api/middleware/auth.middleware.js';
+import type { AuthRequest, AuthMiddlewarePort } from "../../../../platform/security/auth.js";
 import { validateRequest } from '../../../../platform/http/middlewares/validation.middleware.js';
+import { requireActiveBranch } from "../../../../platform/http/middlewares/branch-guard.middleware.js";
+import type { Pool } from "pg";
+import { createRequireCashSessionForSalesMiddleware } from "../middlewares/cash-session-policy.middleware.js";
 import { 
   createSaleSchema, 
   addItemSchema, 
@@ -28,7 +31,11 @@ import {
  * All routes are protected by authentication and sales-specific middleware.
  */
 
-export function createSalesRoutes(controller: SalesController, authMiddleware: AuthMiddleware): Router {
+export function createSalesRoutes(
+  controller: SalesController,
+  authMiddleware: AuthMiddlewarePort,
+  pool: Pool
+): Router {
   const router = Router();
 
   // ==================== MIDDLEWARE ====================
@@ -39,6 +46,12 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
   // Apply sales-specific middleware (branch permissions, etc.)
   router.use(salesMiddleware);
 
+  const requireCashSessionForCart = createRequireCashSessionForSalesMiddleware(pool);
+  const requireCashSessionForDraftGetOrCreate =
+    createRequireCashSessionForSalesMiddleware(pool, {
+      mode: "only_if_creating_draft",
+    });
+
   // ==================== DRAFT & CART MANAGEMENT ====================
 
   /**
@@ -48,7 +61,10 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    *     tags:
    *       - Sales
    *     summary: Create a new draft sale
-   *     description: Initialize a new sale in draft state for cart operations
+   *     description: |
+   *       Initialize a new sale in draft state for cart operations.
+   *       
+   *       **Note:** The FX rate is automatically fetched from tenant policy settings.
    *     security:
    *       - BearerAuth: []
    *     requestBody:
@@ -68,9 +84,6 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    *               saleType:
    *                 type: string
    *                 enum: [dine_in, take_away, delivery]
-   *               fxRateUsed:
-   *                 type: number
-   *                 description: Exchange rate (defaults to current rate)
    *     responses:
    *       201:
    *         description: Draft sale created successfully
@@ -81,6 +94,8 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/drafts', 
+    requireActiveBranch({ operation: "sales.create_draft" }),
+    requireCashSessionForCart,
     validateRequest(createSaleSchema),
     async (req, res) => await controller.createDraftSale(req as AuthRequest, res)
   );
@@ -110,6 +125,8 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.get(
     '/drafts/:clientUuid',
+    requireActiveBranch({ operation: "sales.get_or_create_draft" }),
+    requireCashSessionForDraftGetOrCreate,
     async (req, res) => await controller.getOrCreateDraft(req as unknown as AuthRequest, res)
   );  // ==================== CART ITEM OPERATIONS ====================
 
@@ -163,6 +180,8 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/:saleId/items',
+    requireActiveBranch({ operation: "sales.add_item" }),
+    requireCashSessionForCart,
     validateRequest(addItemSchema),
     async (req, res) => await controller.addItem(req as AuthRequest, res)
   );
@@ -209,6 +228,8 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.patch(
     '/:saleId/items/:itemId/quantity',
+    requireActiveBranch({ operation: "sales.update_item_quantity" }),
+    requireCashSessionForCart,
     validateRequest(updateItemQuantitySchema),
     async (req, res) => await controller.updateItemQuantity(req as AuthRequest, res)
   );
@@ -243,6 +264,8 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.delete(
     '/:saleId/items/:itemId',
+    requireActiveBranch({ operation: "sales.remove_item" }),
+    requireCashSessionForCart,
     async (req, res) => await controller.removeItem(req as unknown as AuthRequest, res)
   );
 
@@ -296,6 +319,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/:saleId/pre-checkout',
+    requireActiveBranch({ operation: "sales.pre_checkout" }),
     validateRequest(preCheckoutSchema),
     async (req, res) => await controller.preCheckout(req as AuthRequest, res)
   );
@@ -331,6 +355,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/:saleId/finalize',
+    requireActiveBranch({ operation: "sales.finalize" }),
     async (req, res) => await controller.finalizeSale(req as AuthRequest, res)
   );
 
@@ -373,6 +398,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.patch(
     '/:saleId/fulfillment',
+    requireActiveBranch({ operation: "sales.update_fulfillment" }),
     validateRequest(updateFulfillmentBodySchema),
     async (req, res) => await controller.updateFulfillment(req as AuthRequest, res)
   );
@@ -416,6 +442,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/:saleId/void',
+    requireActiveBranch({ operation: "sales.void" }),
     validateRequest(voidSaleBodySchema),
     async (req, res) => await controller.voidSale(req as AuthRequest, res)
   );
@@ -449,6 +476,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.delete(
     '/:saleId',
+    requireActiveBranch({ operation: "sales.delete_draft" }),
     async (req, res) => await controller.deleteSale(req as unknown as AuthRequest, res)
   );
 
@@ -489,6 +517,7 @@ export function createSalesRoutes(controller: SalesController, authMiddleware: A
    */
   router.post(
     '/:saleId/reopen',
+    requireActiveBranch({ operation: "sales.reopen" }),
     validateRequest(reopenSaleBodySchema),
     async (req, res) => await controller.reopenSale(req as AuthRequest, res)
   );

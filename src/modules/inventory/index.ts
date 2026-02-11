@@ -1,16 +1,20 @@
 import { Pool } from "pg";
 import { createInventoryRouter } from "./api/router.js";
-import { AuthMiddleware } from "../auth/api/middleware/auth.middleware.js";
+import type { AuthMiddlewarePort } from "../../platform/security/auth.js";
 import { TransactionManager } from "../../platform/db/transactionManager.js";
 import { publishToOutbox } from "../../platform/events/outbox.js";
+import type { AuditWriterPort } from "../../shared/ports/audit.js";
 
 // Repositories
 import { StockItemRepository } from "./infra/stockItem.repository.js";
 import { BranchStockRepository } from "./infra/branchStock.repository.js";
 import { InventoryJournalRepository } from "./infra/InventoryJournal.repository.js";
 import { MenuStockMapRepository } from "./infra/MenuStockMap.repository.js";
-import { StorePolicyInventoryRepository } from "./infra/storePolicyInventory.repository.js";
 import { InventoryCategoryRepository } from "./infra/inventoryCategory.repository.js";
+import { PgInventoryTenantLimitsRepository } from "./infra/tenantLimits.repository.js";
+
+// Adapters
+import { InventoryPolicyAdapter } from "./infra/adapters/policy.adapter.js";
 
 // Controllers
 import {
@@ -18,7 +22,6 @@ import {
   BranchStockController,
   InventoryJournalController,
   MenuStockMapController,
-  StorePolicyController,
   CategoryController,
 } from "./api/controller/index.js";
 
@@ -48,10 +51,6 @@ import { SetMenuStockMapUseCase } from "./app/menustockmap-usecase/set-menu-stoc
 import { GetMenuStockMapUseCase } from "./app/menustockmap-usecase/get-menu-stock-map.use-case.js";
 import { DeleteMenuStockMapUseCase } from "./app/menustockmap-usecase/delete-menu-stock-map.use-case.js";
 
-// Use Cases - Store Policy
-import { GetStorePolicyInventoryUseCase } from "./app/storepolicyinventory-usecase/get-store-policy-inventory.use-case.js";
-import { UpdateStorePolicyInventoryUseCase } from "./app/storepolicyinventory-usecase/update-store-policy-inventory.use-case.js";
-
 // Use Cases - Category
 import {
   CreateCategoryUseCase,
@@ -69,8 +68,9 @@ import {
 
 export function bootstrapInventoryModule(
   pool: Pool,
-  authMiddleware: AuthMiddleware,
-  imageStorage: any // IImageStoragePort from menu module
+  authMiddleware: AuthMiddlewarePort,
+  imageStorage: any, // IImageStoragePort from menu module
+  deps: { auditWriterPort: AuditWriterPort }
 ) {
   const txManager = new TransactionManager();
 
@@ -81,24 +81,28 @@ export function bootstrapInventoryModule(
 
   // Initialize repositories
   const stockItemRepo = new StockItemRepository(pool);
+  const tenantLimitsRepo = new PgInventoryTenantLimitsRepository(pool);
   const branchStockRepo = new BranchStockRepository(pool);
   const journalRepo = new InventoryJournalRepository(pool);
   const menuStockMapRepo = new MenuStockMapRepository(pool);
-  const storePolicyRepo = new StorePolicyInventoryRepository(pool);
   const categoryRepo = new InventoryCategoryRepository(pool);
 
   // Initialize use cases - Stock Item
   const createStockItemUseCase = new CreateStockItemUseCase(
     stockItemRepo,
+    tenantLimitsRepo,
     eventPublisher,
     txManager,
-    imageStorage
+    imageStorage,
+    deps.auditWriterPort
   );
   const updateStockItemUseCase = new UpdateStockItemUseCase(
     stockItemRepo,
+    tenantLimitsRepo,
     eventPublisher,
     txManager,
-    imageStorage
+    imageStorage,
+    deps.auditWriterPort
   );
   const getStockItemsUseCase = new GetStockItemsUseCase(stockItemRepo);
 
@@ -118,24 +122,28 @@ export function bootstrapInventoryModule(
     stockItemRepo,
     branchStockRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const wasteStockUseCase = new WasteStockUseCase(
     journalRepo,
     branchStockRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const correctStockUseCase = new CorrectStockUseCase(
     journalRepo,
     branchStockRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const recordSaleDeductionsUseCase = new RecordSaleDeductionsUseCase(
     journalRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const recordVoidUseCase = new RecordVoidUseCase(
     journalRepo,
@@ -147,7 +155,11 @@ export function bootstrapInventoryModule(
     eventPublisher,
     txManager
   );
-  const getOnHandUseCase = new GetOnHandUseCase(journalRepo, branchStockRepo);
+  const getOnHandUseCase = new GetOnHandUseCase(
+    journalRepo,
+    branchStockRepo,
+    stockItemRepo
+  );
   const getInventoryJournalUseCase = new GetInventoryJournalUseCase(
     journalRepo
   );
@@ -173,28 +185,19 @@ export function bootstrapInventoryModule(
     menuStockMapRepo
   );
 
-  // Initialize use cases - Store Policy
-  const getStorePolicyInventoryUseCase = new GetStorePolicyInventoryUseCase(
-    storePolicyRepo
-  );
-  const updateStorePolicyInventoryUseCase =
-    new UpdateStorePolicyInventoryUseCase(
-      storePolicyRepo,
-      eventPublisher,
-      txManager
-    );
-
   // Initialize use cases - Category
   const createCategoryUseCase = new CreateCategoryUseCase(
     categoryRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const getCategoriesUseCase = new GetCategoriesUseCase(categoryRepo);
   const updateCategoryUseCase = new UpdateCategoryUseCase(
     categoryRepo,
     eventPublisher,
-    txManager
+    txManager,
+    deps.auditWriterPort
   );
   const deleteCategoryUseCase = new DeleteCategoryUseCase(
     categoryRepo,
@@ -234,11 +237,6 @@ export function bootstrapInventoryModule(
     deleteMenuStockMapUseCase
   );
 
-  const storePolicyController = new StorePolicyController(
-    getStorePolicyInventoryUseCase,
-    updateStorePolicyInventoryUseCase
-  );
-
   const categoryController = new CategoryController(
     createCategoryUseCase,
     getCategoriesUseCase,
@@ -246,11 +244,15 @@ export function bootstrapInventoryModule(
     deleteCategoryUseCase
   );
 
+  // Initialize policy adapter (connects to policy module)
+  const policyAdapter = new InventoryPolicyAdapter(pool);
+
   // Initialize event handlers
   const saleFinalizedHandler = new SaleFinalizedHandler(
-    getStorePolicyInventoryUseCase,
+    policyAdapter,
     getMenuStockMapUseCase,
-    recordSaleDeductionsUseCase
+    recordSaleDeductionsUseCase,
+    pool
   );
 
   const saleVoidedHandler = new SaleVoidedHandler(
@@ -259,7 +261,7 @@ export function bootstrapInventoryModule(
   );
 
   const saleReopenedHandler = new SaleReopenedHandler(
-    getStorePolicyInventoryUseCase,
+    policyAdapter,
     getMenuStockMapUseCase,
     recordReopenUseCase,
     pool
@@ -271,7 +273,6 @@ export function bootstrapInventoryModule(
     branchStockController,
     inventoryJournalController,
     menuStockMapController,
-    storePolicyController,
     categoryController,
     authMiddleware
   );

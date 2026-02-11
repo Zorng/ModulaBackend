@@ -147,17 +147,13 @@ Update an existing stock item's details.
 
 **Examples**:
 
-````
+```http
 GET /v1/inventory/stock-items
 GET /v1/inventory/stock-items?q=flour
 GET /v1/inventory/stock-items?isActive=true
 GET /v1/inventory/stock-items?isIngredient=true&isSellable=false
 GET /v1/inventory/stock-items?q=sugar&page=2&pageSize=10
-``` /v1/inventory/stock-items
-GET /v1/inventory/stock-items?q=flour
-GET /v1/inventory/stock-items?isActive=true
-GET /v1/inventory/stock-items?q=sugar&page=2&pageSize=10
-````
+```
 
 **Response** (200 OK):
 
@@ -165,6 +161,10 @@ GET /v1/inventory/stock-items?q=sugar&page=2&pageSize=10
 {
   "success": true,
   "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "tenantId": "uuid",
         "name": "Premium Flour",
         "unitText": "kg",
         "barcode": "FLOUR001",
@@ -174,13 +174,9 @@ GET /v1/inventory/stock-items?q=sugar&page=2&pageSize=10
         "isActive": true,
         "createdAt": "2025-01-15T10:00:00Z",
         "updatedAt": "2025-01-15T10:00:00Z"
-        "defaultCostUsd": 5.5,
-        "isActive": true,
-        "createdAt": "2025-01-15T10:00:00Z",
-        "updatedAt": "2025-01-15T10:00:00Z"
       }
     ],
-    "nextPage": 2 // Only present if more pages exist
+    "nextPage": 2
   }
 }
 ```
@@ -488,7 +484,7 @@ Query transaction history with filtering.
 
 **Examples**:
 
-```
+```http
 GET /v1/inventory/journal
 GET /v1/inventory/journal?stockItemId=uuid
 GET /v1/inventory/journal?reason=WASTE
@@ -881,7 +877,7 @@ The inventory module uses an **event-driven architecture** for automatic invento
 
 **Primary Flow (Event-Driven):**
 
-```
+```text
 1. Sale Finalized (Sales Module)
    → Publishes: sales.sale_finalized event to outbox table
 
@@ -1148,7 +1144,7 @@ When a sale is finalized, the policy is checked in this order:
 
 ### Example Configurations
 
-**Scenario 1: Most branches auto-deduct, one manual**
+#### Scenario 1: Most branches auto-deduct, one manual
 
 ```json
 {
@@ -1162,7 +1158,7 @@ When a sale is finalized, the policy is checked in this order:
 }
 ```
 
-**Scenario 2: Exclude non-inventory items**
+#### Scenario 2: Exclude non-inventory items
 
 ```json
 {
@@ -1176,7 +1172,7 @@ When a sale is finalized, the policy is checked in this order:
 }
 ```
 
-**Scenario 3: All branches manual inventory**
+#### Scenario 3: All branches manual inventory
 
 ```json
 {
@@ -1238,7 +1234,7 @@ Other modules can subscribe to these events for cross-module workflows.
 
 Before recording transactions, assign stock items to branches:
 
-```
+```text
 1. Create stock item
 2. Assign to branch with minThreshold
 3. Now can receive/waste/correct
@@ -1260,7 +1256,7 @@ For waste and corrections, always provide clear notes:
 
 Set up recipes before enabling auto-deduction:
 
-```
+```text
 1. Create stock items (flour, cheese, sauce)
 2. Create menu item (Pizza)
 3. Map menu item to stock items with qtyPerSale
@@ -1309,7 +1305,7 @@ eventBus.subscribe("sales.sale_reopened", saleReopenedHandler);
 
 **Event Flow:**
 
-1. **Sale Finalized:**
+#### 1. Sale Finalized
 
 ```typescript
 // Sales module publishes event
@@ -1329,7 +1325,7 @@ await publishToOutbox({
 // 4. Logs reason if skipped
 ```
 
-2. **Sale Voided:**
+#### 2. Sale Voided
 
 ```typescript
 // Sales module publishes event
@@ -1349,7 +1345,7 @@ await publishToOutbox({
 // 3. Restores inventory
 ```
 
-3. **Sale Reopened:**
+#### 3. Sale Reopened
 
 ```typescript
 // Sales module publishes event

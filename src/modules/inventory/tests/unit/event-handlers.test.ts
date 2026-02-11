@@ -7,14 +7,14 @@ import type {
 } from "../../../../shared/events.js";
 
 describe("Inventory Event Handlers", () => {
-  let mockGetPolicyUseCase: any;
+  let mockPolicyAdapter: any;
   let mockGetMenuStockMapUseCase: any;
   let mockRecordSaleDeductionsUseCase: any;
   let mockRecordVoidUseCase: any;
 
   beforeEach(() => {
-    mockGetPolicyUseCase = {
-      executeWithDefault: jest.fn(),
+    mockPolicyAdapter = {
+      shouldSubtractOnSale: jest.fn(),
     };
 
     mockGetMenuStockMapUseCase = {
@@ -33,20 +33,13 @@ describe("Inventory Event Handlers", () => {
   describe("SaleFinalizedHandler", () => {
     it("should deduct inventory when policy allows", async () => {
       const handler = new SaleFinalizedHandler(
-        mockGetPolicyUseCase,
+        mockPolicyAdapter,
         mockGetMenuStockMapUseCase,
         mockRecordSaleDeductionsUseCase
       );
 
       // Mock policy that allows deduction
-      mockGetPolicyUseCase.executeWithDefault.mockResolvedValue({
-        ok: true,
-        value: {
-          inventorySubtractOnFinalize: true,
-          branchOverrides: {},
-          excludeMenuItemIds: [],
-        },
-      });
+      mockPolicyAdapter.shouldSubtractOnSale.mockResolvedValue(true);
 
       // Mock menu stock mapping
       mockGetMenuStockMapUseCase.execute.mockResolvedValue({
@@ -103,9 +96,10 @@ describe("Inventory Event Handlers", () => {
 
       await handler.handle(event);
 
-      expect(mockGetPolicyUseCase.executeWithDefault).toHaveBeenCalledWith(
+      expect(mockPolicyAdapter.shouldSubtractOnSale).toHaveBeenCalledWith(
         "tenant-1",
-        "system"
+        "branch-1",
+        ["menu-pizza"]
       );
       expect(mockGetMenuStockMapUseCase.execute).toHaveBeenCalledWith(
         "menu-pizza"
@@ -120,20 +114,13 @@ describe("Inventory Event Handlers", () => {
 
     it("should skip deduction when policy blocks", async () => {
       const handler = new SaleFinalizedHandler(
-        mockGetPolicyUseCase,
+        mockPolicyAdapter,
         mockGetMenuStockMapUseCase,
         mockRecordSaleDeductionsUseCase
       );
 
       // Mock policy that blocks deduction
-      mockGetPolicyUseCase.executeWithDefault.mockResolvedValue({
-        ok: true,
-        value: {
-          inventorySubtractOnFinalize: false,
-          branchOverrides: {},
-          excludeMenuItemIds: [],
-        },
-      });
+      mockPolicyAdapter.shouldSubtractOnSale.mockResolvedValue(false);
 
       const event: SaleFinalizedV1 = {
         type: "sales.sale_finalized",
@@ -155,27 +142,20 @@ describe("Inventory Event Handlers", () => {
 
       await handler.handle(event);
 
-      expect(mockGetPolicyUseCase.executeWithDefault).toHaveBeenCalled();
+      expect(mockPolicyAdapter.shouldSubtractOnSale).toHaveBeenCalled();
       expect(mockGetMenuStockMapUseCase.execute).not.toHaveBeenCalled();
       expect(mockRecordSaleDeductionsUseCase.execute).not.toHaveBeenCalled();
     });
 
     it("should skip excluded menu items", async () => {
       const handler = new SaleFinalizedHandler(
-        mockGetPolicyUseCase,
+        mockPolicyAdapter,
         mockGetMenuStockMapUseCase,
         mockRecordSaleDeductionsUseCase
       );
 
-      // Mock policy with excluded items
-      mockGetPolicyUseCase.executeWithDefault.mockResolvedValue({
-        ok: true,
-        value: {
-          inventorySubtractOnFinalize: true,
-          branchOverrides: {},
-          excludeMenuItemIds: ["menu-service-fee"],
-        },
-      });
+      // Mock policy with excluded items (adapter handles this internally)
+      mockPolicyAdapter.shouldSubtractOnSale.mockResolvedValue(false);
 
       const event: SaleFinalizedV1 = {
         type: "sales.sale_finalized",
@@ -203,22 +183,13 @@ describe("Inventory Event Handlers", () => {
 
     it("should use branch override when configured", async () => {
       const handler = new SaleFinalizedHandler(
-        mockGetPolicyUseCase,
+        mockPolicyAdapter,
         mockGetMenuStockMapUseCase,
         mockRecordSaleDeductionsUseCase
       );
 
-      // Mock policy with branch override
-      mockGetPolicyUseCase.executeWithDefault.mockResolvedValue({
-        ok: true,
-        value: {
-          inventorySubtractOnFinalize: true, // Default is true
-          branchOverrides: {
-            "branch-1": { inventorySubtractOnFinalize: false }, // Override for this branch
-          },
-          excludeMenuItemIds: [],
-        },
-      });
+      // Mock policy with branch override (adapter handles this internally)
+      mockPolicyAdapter.shouldSubtractOnSale.mockResolvedValue(false);
 
       const event: SaleFinalizedV1 = {
         type: "sales.sale_finalized",
@@ -246,19 +217,12 @@ describe("Inventory Event Handlers", () => {
 
     it("should handle missing stock mappings gracefully", async () => {
       const handler = new SaleFinalizedHandler(
-        mockGetPolicyUseCase,
+        mockPolicyAdapter,
         mockGetMenuStockMapUseCase,
         mockRecordSaleDeductionsUseCase
       );
 
-      mockGetPolicyUseCase.executeWithDefault.mockResolvedValue({
-        ok: true,
-        value: {
-          inventorySubtractOnFinalize: true,
-          branchOverrides: {},
-          excludeMenuItemIds: [],
-        },
-      });
+      mockPolicyAdapter.shouldSubtractOnSale.mockResolvedValue(true);
 
       // Mock no stock mappings found
       mockGetMenuStockMapUseCase.execute.mockResolvedValue({

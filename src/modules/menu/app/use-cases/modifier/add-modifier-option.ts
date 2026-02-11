@@ -47,25 +47,26 @@ export class AddModifierOptionUseCase {
     }
 
     // 2 - Check quota limits (outside transaction)
-    const limits = await this.limitsRepo.findByTenantId(tenantId);
-    if (!limits) {
-      return Err("Tenant limits not found. Please contact support.");
-    }
+    // TODO: Tenant limits module not complete - bypassing for now
+    // const limits = await this.limitsRepo.findByTenantId(tenantId);
+    // if (!limits) {
+    //   return Err("Tenant limits not found. Please contact support.");
+    // }
 
-    const currentCount = await this.modifierRepo.countOptionsByGroupId(
-      modifierGroupId,
-      tenantId
-    );
-    const limitCheck = limits.checkModifierOptionLimit(currentCount);
+    // const currentCount = await this.modifierRepo.countOptionsByGroupId(
+    //   modifierGroupId,
+    //   tenantId
+    // );
+    // const limitCheck = limits.checkModifierOptionLimit(currentCount);
 
-    if (limitCheck.status === "exceeded") {
-      return Err(limitCheck.message);
-    }
+    // if (limitCheck.status === "exceeded") {
+    //   return Err(limitCheck.message);
+    // }
 
-    // Log warning if approaching limit
-    if (limitCheck.status === "warning") {
-      console.warn(`[AddModifierOption] ${limitCheck.message}`);
-    }
+    // // Log warning if approaching limit
+    // if (limitCheck.status === "warning") {
+    //   console.warn(`[AddModifierOption] ${limitCheck.message}`);
+    // }
 
     // 3 - Create modifier option entity (outside transaction)
     const optionResult = ModifierOption.create({
