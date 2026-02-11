@@ -2,6 +2,12 @@
 
 A modular, clean architecture backend built with Express, TypeScript, and PostgreSQL.
 
+## Onboarding (Team)
+
+Start here: `onboard/README.md`
+
+Design / business behavior source of truth: `knowledge_base/README.md`
+
 ## 🚀 Quick Setup (For Everyone!)
 
 ```bash
@@ -70,6 +76,11 @@ pnpm test:watch    # Run tests in watch mode
 ## 🏗️ Project Structure
 
 ```text
+onboard/               # Team onboarding + parallel dev workflow
+knowledge_base/        # Product intent + business logic (authoritative)
+_implementation_decisions/ # ADR-style implementation decisions (why/how)
+contract/              # API contracts for frontend integration
+migrations/            # SQL migrations + dev seed data
 src/
 ├── modules/           # Feature modules (auth, sales, inventory, etc.)
 │   └── [module]/
@@ -93,8 +104,9 @@ src/
 
 ## 📖 Additional Documentation
 
+- `onboard/README.md` - Team onboarding and workflow (start here)
+- `knowledge_base/README.md` - Design memory (business logic layering + guidance)
 - [GETTING_STARTED.md](./GETTING_STARTED.md) - **Complete setup & migration guide**
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - Architecture overview
 - [API Documentation](./src/modules/auth/API_DOCUMENTATION.md) - **Full API documentation with examples**
 - [Swagger Quick Start](./src/modules/auth/SWAGGER_QUICK_START.md) - **Quick API testing guide**
 - [POSTMAN_TESTING.md](./POSTMAN_TESTING.md) - API testing guide
