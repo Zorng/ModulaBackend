@@ -176,7 +176,9 @@ export class V0AuthService {
       throw new V0AuthError(403, "phone is not verified");
     }
 
-    const activeMembershipsCount = await this.repo.countActiveMemberships(account.id);
+    // Phase 1 starts from a clean auth-only baseline.
+    // Membership model is introduced in later phases.
+    const activeMembershipsCount = 0;
 
     const context = { tenantId: null, branchId: null };
     return this.issueSessionResponse(account, context, activeMembershipsCount);

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
-import { cleanupSeededTenant, seedTenantSingleBranch } from "../test-utils/seed.js";
+import crypto from "crypto";
 
 type ScopedRow = { id: string; tenant_id: string; name: string };
 
@@ -48,44 +48,47 @@ describe("Cross-tenant safety harness", () => {
   });
 
   it("denies ID-guessing reads and writes when tenant guard is applied", async () => {
-    const tenantA = await seedTenantSingleBranch(pool, {
-      tenant: { name: "Isolation Harness A" },
-      branch: { name: "A Branch" },
-    });
-    const tenantB = await seedTenantSingleBranch(pool, {
-      tenant: { name: "Isolation Harness B" },
-      branch: { name: "B Branch" },
-    });
+    const tenantAId = crypto.randomUUID();
+    const tenantBId = crypto.randomUUID();
+    const branchAId = crypto.randomUUID();
+    const branchBId = crypto.randomUUID();
 
-    const ownRead = await findBranchWithinTenant(
-      pool,
-      tenantA.tenantId,
-      tenantA.branchId
+    await pool.query(
+      `INSERT INTO tenants (id, name, status) VALUES
+       ($1, 'Isolation Harness A', 'ACTIVE'),
+       ($2, 'Isolation Harness B', 'ACTIVE')`,
+      [tenantAId, tenantBId]
     );
-    expect(ownRead?.id).toBe(tenantA.branchId);
+    await pool.query(
+      `INSERT INTO branches (id, tenant_id, name, status) VALUES
+       ($1, $2, 'A Branch', 'ACTIVE'),
+       ($3, $4, 'B Branch', 'ACTIVE')`,
+      [branchAId, tenantAId, branchBId, tenantBId]
+    );
 
-    const guessedRead = await findBranchWithinTenant(
-      pool,
-      tenantA.tenantId,
-      tenantB.branchId
-    );
+    const ownRead = await findBranchWithinTenant(pool, tenantAId, branchAId);
+    expect(ownRead?.id).toBe(branchAId);
+
+    const guessedRead = await findBranchWithinTenant(pool, tenantAId, branchBId);
     expect(guessedRead).toBeNull();
 
     const crossTenantWriteCount = await renameBranchWithinTenant(
       pool,
-      tenantA.tenantId,
-      tenantB.branchId,
+      tenantAId,
+      branchBId,
       "Compromised"
     );
     expect(crossTenantWriteCount).toBe(0);
 
     const stillOriginal = await pool.query<{ name: string }>(
       `SELECT name FROM branches WHERE id = $1`,
-      [tenantB.branchId]
+      [branchBId]
     );
     expect(stillOriginal.rows[0]?.name).toBe("B Branch");
 
-    await cleanupSeededTenant(pool, tenantA);
-    await cleanupSeededTenant(pool, tenantB);
+    await pool.query(`DELETE FROM tenants WHERE id IN ($1, $2)`, [
+      tenantAId,
+      tenantBId,
+    ]);
   });
 });

@@ -1,5 +1,5 @@
--- Phase 1 (/v0 auth): account-level session table for self-registered users.
--- This is separate from legacy `sessions` (employee-bound).
+-- v0 restart baseline
+-- Account-level auth sessions with optional working context.
 
 CREATE TABLE IF NOT EXISTS v0_auth_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

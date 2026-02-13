@@ -288,3 +288,4 @@ Acceptance:
 | 2026-02-13 | Phase 0 started: migration tracking added via `schema_migrations` checksum guard, `/v0/health` added, and `/v0` access-control middleware hook wired as a no-op placeholder. |
 | 2026-02-13 | Phase 0 safety harness added: integration test for tenant-guarded reads/writes (`tenant-isolation-harness.int.test.ts`). |
 | 2026-02-13 | Phase 1 started: added `/v0/auth` scaffold (register, OTP send/verify, login, refresh, logout) with fixed OTP support in non-production and account-level sessions. |
+| 2026-02-13 | Locked fresh DB restart decision: active migration chain reset to v0 baseline; legacy SQL moved to `_archived`; auth phase decoupled from legacy `employees` table until membership phase lands. |

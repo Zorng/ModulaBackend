@@ -189,17 +189,6 @@ export class V0AuthRepository {
     );
   }
 
-  async countActiveMemberships(accountId: string): Promise<number> {
-    const result = await this.db.query<{ count: string }>(
-      `SELECT COUNT(*)::TEXT AS count
-       FROM employees
-       WHERE account_id = $1
-         AND status = 'ACTIVE'`,
-      [accountId]
-    );
-    return Number(result.rows[0]?.count ?? "0");
-  }
-
   async createSession(input: {
     accountId: string;
     refreshTokenHash: string;
