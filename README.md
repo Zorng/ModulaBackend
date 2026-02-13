@@ -79,7 +79,8 @@ pnpm test:watch    # Run tests in watch mode
 onboard/               # Team onboarding + parallel dev workflow
 knowledge_base/        # Product intent + business logic (authoritative)
 _implementation_decisions/ # ADR-style implementation decisions (why/how)
-contract/              # API contracts for frontend integration
+api_contract/          # API contracts for frontend integration
+api_contract/_archived/ # Legacy/prototype API contracts (kept for reference only)
 migrations/            # SQL migrations + dev seed data
 src/
 ├── modules/           # Feature modules (auth, sales, inventory, etc.)

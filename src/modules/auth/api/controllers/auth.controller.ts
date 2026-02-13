@@ -156,6 +156,103 @@ export class AuthController {
         }
     };
 
+    listMemberships = async (req: AuthRequest, res: Response) => {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ error: "Authentication required" });
+            }
+
+            const result = await this.authService.listMemberships({
+                employeeId: req.user.employeeId,
+            });
+
+            return res.json({
+                success: true,
+                data: {
+                    account_id: result.accountId,
+                    memberships: result.memberships.map((m) => ({
+                        tenant: m.tenant,
+                        employee: m.employee,
+                        branch_assignments: m.branchAssignments,
+                    })),
+                },
+            });
+        } catch (error) {
+            return res.status(400).json({
+                error: (error as Error).message,
+            });
+        }
+    };
+
+    switchTenant = async (req: AuthRequest, res: Response) => {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ error: "Authentication required" });
+            }
+
+            const { tenant_id, branch_id } = req.body ?? {};
+            if (!tenant_id || typeof tenant_id !== "string") {
+                return res.status(422).json({ error: "tenant_id is required" });
+            }
+
+            const result = await this.authService.switchTenant({
+                requesterEmployeeId: req.user.employeeId,
+                tenantId: tenant_id,
+                branchId: typeof branch_id === "string" ? branch_id : undefined,
+            });
+
+            return res.json({
+                employee: {
+                    id: result.employee.id,
+                    first_name: result.employee.first_name,
+                    last_name: result.employee.last_name,
+                    phone: result.employee.phone,
+                    status: result.employee.status,
+                },
+                tokens: result.tokens,
+                branch_assignments: result.branchAssignments,
+            });
+        } catch (error) {
+            return res.status(400).json({
+                error: (error as Error).message,
+            });
+        }
+    };
+
+    switchBranch = async (req: AuthRequest, res: Response) => {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ error: "Authentication required" });
+            }
+
+            const { branch_id } = req.body ?? {};
+            if (!branch_id || typeof branch_id !== "string") {
+                return res.status(422).json({ error: "branch_id is required" });
+            }
+
+            const result = await this.authService.switchBranch({
+                employeeId: req.user.employeeId,
+                branchId: branch_id,
+            });
+
+            return res.json({
+                employee: {
+                    id: result.employee.id,
+                    first_name: result.employee.first_name,
+                    last_name: result.employee.last_name,
+                    phone: result.employee.phone,
+                    status: result.employee.status,
+                },
+                tokens: result.tokens,
+                branch_assignments: result.branchAssignments,
+            });
+        } catch (error) {
+            return res.status(400).json({
+                error: (error as Error).message,
+            });
+        }
+    };
+
     changePassword = async (req: AuthRequest, res: Response) => {
         try {
         if (!req.user) {

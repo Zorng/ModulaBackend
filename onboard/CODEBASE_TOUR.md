@@ -24,6 +24,6 @@ Cross-cutting infrastructure:
 
 ## Frontend Integration
 
-- `contract/` contains the HTTP contracts we expect the frontend to follow
+- `api_contract/` contains the HTTP contracts we expect the frontend to follow
+  - `api_contract/_archived/` contains legacy/prototype contracts (kept for reference only)
 - Swagger is available when the server runs (see `README.md`)
-

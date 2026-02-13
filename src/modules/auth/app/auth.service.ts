@@ -526,6 +526,148 @@ export class AuthService {
     return { employee: accepted.employee, tokens };
   }
 
+  async listMemberships(params: {
+    employeeId: string;
+  }): Promise<{
+    accountId: string;
+    memberships: Array<{
+      tenant: { id: string; name: string };
+      employee: Pick<Employee, "id" | "tenant_id" | "first_name" | "last_name" | "status">;
+      branchAssignments: EmployeeBranchAssignment[];
+    }>;
+  }> {
+    const requester = await this.authRepo.findEmployeeById(params.employeeId);
+    if (!requester || requester.status !== "ACTIVE") {
+      throw new Error("Employee not found or inactive");
+    }
+
+    const account = await this.authRepo.findAccountById(requester.account_id);
+    if (!account || account.status !== "ACTIVE") {
+      throw new Error("Account not found or inactive");
+    }
+
+    const memberships = await this.authRepo.listActiveMembershipTenants(
+      account.id
+    );
+
+    const enriched = await Promise.all(
+      memberships.map(async (m) => {
+        const branchAssignments = await this.authRepo.findEmployeeBranchAssignments(
+          m.employee.id
+        );
+        return {
+          tenant: m.tenant,
+          employee: {
+            id: m.employee.id,
+            tenant_id: m.employee.tenant_id,
+            first_name: m.employee.first_name,
+            last_name: m.employee.last_name,
+            status: m.employee.status,
+          },
+          branchAssignments,
+        };
+      })
+    );
+
+    return { accountId: account.id, memberships: enriched };
+  }
+
+  async switchTenant(params: {
+    requesterEmployeeId: string;
+    tenantId: string;
+    branchId?: string;
+  }): Promise<{ employee: Employee; tokens: AuthTokens; branchAssignments: EmployeeBranchAssignment[] }> {
+    const requester = await this.authRepo.findEmployeeById(params.requesterEmployeeId);
+    if (!requester || requester.status !== "ACTIVE") {
+      throw new Error("Employee not found or inactive");
+    }
+
+    const employee = await this.authRepo.findEmployeeByAccountAndTenant(
+      requester.account_id,
+      params.tenantId
+    );
+    if (!employee || employee.status !== "ACTIVE") {
+      throw new Error("Membership not found");
+    }
+
+    const branchAssignments = await this.authRepo.findEmployeeBranchAssignments(
+      employee.id
+    );
+    if (branchAssignments.length === 0) {
+      throw new Error("No branch assignments found");
+    }
+
+    const chosenAssignment = this.resolveBranchAssignment({
+      employee,
+      branchAssignments,
+      requestedBranchId: params.branchId,
+    });
+
+    const tokens = await this.generateEmployeeTokens(
+      employee,
+      chosenAssignment.branch_id,
+      chosenAssignment.role
+    );
+
+    // Best-effort audit signal (not a login, but a context change).
+    await this.auditWriter.write({
+      tenantId: employee.tenant_id,
+      branchId: chosenAssignment.branch_id,
+      employeeId: employee.id,
+      actorRole: chosenAssignment.role,
+      actionType: "CONTEXT_SWITCH_TENANT",
+      resourceType: "EMPLOYEE",
+      resourceId: employee.id,
+      outcome: "SUCCESS",
+      details: { fromTenantId: requester.tenant_id, toTenantId: employee.tenant_id },
+    });
+
+    return { employee, tokens, branchAssignments };
+  }
+
+  async switchBranch(params: {
+    employeeId: string;
+    branchId: string;
+  }): Promise<{ employee: Employee; tokens: AuthTokens; branchAssignments: EmployeeBranchAssignment[] }> {
+    const employee = await this.authRepo.findEmployeeById(params.employeeId);
+    if (!employee || employee.status !== "ACTIVE") {
+      throw new Error("Employee not found or inactive");
+    }
+
+    const branchAssignments = await this.authRepo.findEmployeeBranchAssignments(
+      employee.id
+    );
+    if (branchAssignments.length === 0) {
+      throw new Error("No branch assignments found");
+    }
+
+    const chosenAssignment = this.resolveBranchAssignment({
+      employee,
+      branchAssignments,
+      requestedBranchId: params.branchId,
+    });
+
+    const tokens = await this.generateEmployeeTokens(
+      employee,
+      chosenAssignment.branch_id,
+      chosenAssignment.role
+    );
+
+    await this.auditWriter.write({
+      tenantId: employee.tenant_id,
+      branchId: chosenAssignment.branch_id,
+      employeeId: employee.id,
+      actorRole: chosenAssignment.role,
+      actionType: "CONTEXT_SWITCH_BRANCH",
+      resourceType: "EMPLOYEE",
+      resourceId: employee.id,
+      outcome: "SUCCESS",
+      details: { toBranchId: chosenAssignment.branch_id },
+    });
+
+    return { employee, tokens, branchAssignments };
+  }
+
   async refreshTokens(refreshToken: string): Promise<AuthTokens> {
     const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
     const session = await this.authRepo.findSessionByRefreshToken(refreshTokenHash);

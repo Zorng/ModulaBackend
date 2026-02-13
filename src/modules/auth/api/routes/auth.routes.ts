@@ -284,6 +284,91 @@ export function createAuthRoutes(
 
     /**
      * @openapi
+     * /v1/auth/memberships:
+     *   get:
+     *     tags:
+     *       - Authentication
+     *     summary: List active tenant memberships for the current identity
+     *     description: |
+     *       Returns the list of ACTIVE tenant memberships (tenants) the current account can operate in,
+     *       including branch assignments per membership.
+     *     security:
+     *       - BearerAuth: []
+     *     responses:
+     *       200:
+     *         description: Membership list
+     *       401:
+     *         description: Authentication required
+     */
+    router.get("/memberships", authController.listMemberships);
+
+    /**
+     * @openapi
+     * /v1/auth/switch-tenant:
+     *   post:
+     *     tags:
+     *       - Authentication
+     *     summary: Switch tenant context (issue new tokens)
+     *     description: |
+     *       Issues new tokens scoped to the chosen tenant membership and branch context.
+     *       This allows multi-tenant accounts to switch businesses without re-entering credentials.
+     *     security:
+     *       - BearerAuth: []
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - tenant_id
+     *             properties:
+     *               tenant_id:
+     *                 type: string
+     *               branch_id:
+     *                 type: string
+     *     responses:
+     *       200:
+     *         description: Tokens issued
+     *       401:
+     *         description: Authentication required
+     *       422:
+     *         description: Missing tenant_id
+     */
+    router.post("/switch-tenant", authController.switchTenant);
+
+    /**
+     * @openapi
+     * /v1/auth/switch-branch:
+     *   post:
+     *     tags:
+     *       - Authentication
+     *     summary: Switch branch context within the current tenant (issue new tokens)
+     *     security:
+     *       - BearerAuth: []
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - branch_id
+     *             properties:
+     *               branch_id:
+     *                 type: string
+     *     responses:
+     *       200:
+     *         description: Tokens issued
+     *       401:
+     *         description: Authentication required
+     *       422:
+     *         description: Missing branch_id
+     */
+    router.post("/switch-branch", authController.switchBranch);
+
+    /**
+     * @openapi
      * /v1/auth/password/change:
      *   post:
      *     tags:

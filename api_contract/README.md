@@ -1,0 +1,19 @@
+# API Contracts (Frontend Integration)
+
+This folder contains the **frontend-facing HTTP API contracts** for this backend repo.
+
+## Folder Structure
+
+- `api_contract/_archived/`
+  - Legacy/prototype contracts (pre-restart).
+  - These are kept for reference only and are expected to be broken as we restart the API under `/v0`.
+- `api_contract/` (this folder)
+  - The **current** API contracts for the restart.
+  - New contracts should be written here (not under `_archived/`).
+
+## Notes
+
+- The authoritative business behavior lives in `knowledge_base/`.
+- API contracts are the backend<->frontend agreement for HTTP payloads, status codes, and reason codes.
+- During capstone we version the HTTP surface under `/v0/*`, so the contracts here should describe `/v0` endpoints.
+

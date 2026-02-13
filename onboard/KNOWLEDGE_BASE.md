@@ -11,6 +11,12 @@ Primary entry points:
 
 - Stories → Domain → Contract → Process → ModSpec
 
+## Conflict Rule (Contract vs Process)
+
+If KB `Contract` and `Process` disagree:
+- treat **Process** as the behavior source of truth
+- update Contract to match (so frontend/backend/QA share the same edge-case rules)
+
 ## What Each Layer Is For
 
 - Stories (`knowledge_base/BusinessLogic/1_stories/`)
@@ -38,4 +44,3 @@ Implementation contract. UC-* responsibilities and acceptance criteria.
 If the team is not confident it is stable product truth yet, capture it in an ADR:
 
 - `_implementation_decisions/`
-
