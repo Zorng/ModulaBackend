@@ -3,7 +3,6 @@ import path from "path";
 import crypto from "crypto";
 import { Pool } from "pg";
 import type { SeedTenantResult } from "./seed.js";
-import { seedTenantSingleBranch } from "./seed.js";
 
 type AppliedMigration = {
   filename: string;
@@ -112,5 +111,6 @@ export async function truncateAll(
 }
 
 export async function seedBase(pool: Pool): Promise<SeedTenantResult> {
+  const { seedTenantSingleBranch } = await import("./seed.js");
   return seedTenantSingleBranch(pool);
 }

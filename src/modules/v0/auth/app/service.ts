@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import jwt, { SignOptions } from "jsonwebtoken";
-import { PasswordService } from "../../../auth/app/password.service.js";
+import { V0PasswordService } from "./password.service.js";
 import { V0AuthRepository, type V0AccountRow } from "../infra/repository.js";
 
 type V0TokenClaims = {
@@ -60,7 +60,7 @@ export class V0AuthService {
       throw new V0AuthError(422, "phone is required");
     }
 
-    if (!PasswordService.validatePasswordStrength(input.password)) {
+    if (!V0PasswordService.validatePasswordStrength(input.password)) {
       throw new V0AuthError(422, "password must be at least 8 characters");
     }
 
@@ -83,7 +83,7 @@ export class V0AuthService {
         throw new V0AuthError(409, "account already exists");
       }
 
-      const passwordHash = await PasswordService.hashPassword(input.password);
+      const passwordHash = await V0PasswordService.hashPassword(input.password);
       const account = await this.repo.updateAccountRegistration({
         accountId: existing.id,
         passwordHash,
@@ -106,7 +106,7 @@ export class V0AuthService {
       };
     }
 
-    const passwordHash = await PasswordService.hashPassword(input.password);
+    const passwordHash = await V0PasswordService.hashPassword(input.password);
     const account = await this.repo.createAccount({
       phone,
       passwordHash,
@@ -314,7 +314,7 @@ export class V0AuthService {
       throw new V0AuthError(401, "invalid credentials");
     }
 
-    const isValidPassword = await PasswordService.verifyPassword(
+    const isValidPassword = await V0PasswordService.verifyPassword(
       password,
       account.password_hash
     );
@@ -477,7 +477,7 @@ export class V0AuthService {
     let account = await this.repo.findAccountByPhone(phone);
     if (!account) {
       const randomPassword = crypto.randomBytes(32).toString("hex");
-      const passwordHash = await PasswordService.hashPassword(randomPassword);
+      const passwordHash = await V0PasswordService.hashPassword(randomPassword);
       account = await this.repo.createInvitedAccount({
         phone,
         passwordHash,

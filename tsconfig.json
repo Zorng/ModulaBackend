@@ -12,5 +12,9 @@
     "forceConsistentCasingInFileNames": true,
     "typeRoots": ["./node_modules/@types", "./types"]
   },
-  "include": ["src", "scripts"]
+  "include": ["src", "scripts"],
+  "exclude": [
+    "src/modules/_archived",
+    "src/integration-tests/_archived"
+  ]
 }
