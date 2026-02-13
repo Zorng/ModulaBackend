@@ -1,17 +1,17 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Pool, PoolClient } from "pg";
-import { bootstrapAuditModule } from "../modules/audit/index.js";
-import { OnSaleFinalizedHandler } from "../modules/cash/app/eventhandler.js";
+import { bootstrapAuditModule } from "../../modules/audit/index.js";
+import { OnSaleFinalizedHandler } from "../../modules/cash/app/eventhandler.js";
 import {
   CashMovementRepository,
   CashSessionRepository,
-} from "../modules/cash/infra/repository.js";
-import { MenuAdapter } from "../modules/sales/infra/adapters/menu.adapter.js";
-import { PolicyAdapter } from "../modules/sales/infra/adapters/policy.adapter.js";
-import { SalesService } from "../modules/sales/app/services/sales.service.js";
-import { PgSalesRepository } from "../modules/sales/infra/repository/sales.repository.js";
-import { createTestPool } from "../test-utils/db.js";
-import { cleanupSeededTenant, seedTenantSingleBranch } from "../test-utils/seed.js";
+} from "../../modules/cash/infra/repository.js";
+import { MenuAdapter } from "../../modules/sales/infra/adapters/menu.adapter.js";
+import { PolicyAdapter } from "../../modules/sales/infra/adapters/policy.adapter.js";
+import { SalesService } from "../../modules/sales/app/services/sales.service.js";
+import { PgSalesRepository } from "../../modules/sales/infra/repository/sales.repository.js";
+import { createTestPool } from "../../test-utils/db.js";
+import { cleanupSeededTenant, seedTenantSingleBranch } from "../../test-utils/seed.js";
 
 function createTxManager(pool: Pool) {
   return {

@@ -113,6 +113,61 @@ describe("v0 auth (phase 1 scaffold)", () => {
     });
     expect(refreshAfterLogout.status).toBe(401);
 
+    const auditRows = await pool.query<{ event_key: string; outcome: string }>(
+      `SELECT event_key, outcome
+       FROM v0_auth_audit_events
+       WHERE phone = $1`,
+      [phone]
+    );
+    const eventKeys = auditRows.rows.map((r) => r.event_key);
+    expect(eventKeys).toEqual(
+      expect.arrayContaining([
+        "AUTH_REGISTER",
+        "AUTH_OTP_SEND",
+        "AUTH_OTP_VERIFY",
+        "AUTH_LOGIN",
+        "AUTH_REFRESH",
+        "AUTH_LOGOUT",
+      ])
+    );
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [phone]);
+  });
+
+  it("enforces OTP resend cooldown and records rate-limit audit", async () => {
+    const phone = uniquePhone();
+
+    const registerRes = await request(app).post("/v0/auth/register").send({
+      phone,
+      password: "Test123!",
+      firstName: "Cooldown",
+      lastName: "Case",
+    });
+    expect(registerRes.status).toBe(201);
+
+    const firstSend = await request(app).post("/v0/auth/otp/send").send({
+      phone,
+    });
+    expect(firstSend.status).toBe(200);
+
+    const immediateResend = await request(app).post("/v0/auth/otp/send").send({
+      phone,
+    });
+    expect(immediateResend.status).toBe(429);
+    expect(String(immediateResend.body.error)).toContain("otp recently sent");
+
+    const failedOtpSendAudit = await pool.query<{ reason_code: string }>(
+      `SELECT reason_code
+       FROM v0_auth_audit_events
+       WHERE phone = $1
+         AND event_key = 'AUTH_OTP_SEND'
+         AND outcome = 'FAILED'`,
+      [phone]
+    );
+    expect(failedOtpSendAudit.rows.map((r) => r.reason_code)).toContain(
+      "OTP_COOLDOWN"
+    );
+
     await pool.query(`DELETE FROM accounts WHERE phone = $1`, [phone]);
   });
 });

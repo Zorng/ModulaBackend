@@ -2,16 +2,16 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Pool } from "pg";
 import express from "express";
 import request from "supertest";
-import { bootstrapAuditModule } from "../modules/audit/index.js";
-import { setupAuthModule } from "../modules/auth/index.js";
-import { bootstrapStaffManagementModule } from "../modules/staffManagement/index.js";
-import { PasswordService } from "../modules/auth/app/password.service.js";
-import { createTestPool } from "../test-utils/db.js";
+import { bootstrapAuditModule } from "../../modules/audit/index.js";
+import { setupAuthModule } from "../../modules/auth/index.js";
+import { bootstrapStaffManagementModule } from "../../modules/staffManagement/index.js";
+import { PasswordService } from "../../modules/auth/app/password.service.js";
+import { createTestPool } from "../../test-utils/db.js";
 import {
   cleanupSeededTenant,
   seedTenantMultiBranch,
   seedTenantSingleBranch,
-} from "../test-utils/seed.js";
+} from "../../test-utils/seed.js";
 
 function uniquePhone(): string {
   const now = Date.now().toString().slice(-9);

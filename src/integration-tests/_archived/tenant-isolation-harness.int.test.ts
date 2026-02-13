@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Pool } from "pg";
-import { createTestPool } from "../test-utils/db.js";
+import { createTestPool } from "../../test-utils/db.js";
 import crypto from "crypto";
 
 type ScopedRow = { id: string; tenant_id: string; name: string };

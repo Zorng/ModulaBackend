@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Pool } from "pg";
-import { bootstrapAuditModule } from "../modules/audit/index.js";
-import { createTestPool } from "../test-utils/db.js";
-import { cleanupSeededTenant, seedTenantSingleBranch } from "../test-utils/seed.js";
+import { bootstrapAuditModule } from "../../modules/audit/index.js";
+import { createTestPool } from "../../test-utils/db.js";
+import { cleanupSeededTenant, seedTenantSingleBranch } from "../../test-utils/seed.js";
 
 describe("Audit offline ingestion (DB-backed)", () => {
   let pool: Pool;

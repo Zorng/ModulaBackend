@@ -2,12 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Pool, PoolClient } from "pg";
 import express from "express";
 import request from "supertest";
-import { bootstrapAuditModule } from "../modules/audit/index.js";
-import { setupAuthModule } from "../modules/auth/index.js";
-import { bootstrapBranchModule } from "../modules/branch/index.js";
-import { bootstrapSalesModule } from "../modules/sales/index.js";
-import { createTestPool } from "../test-utils/db.js";
-import { cleanupSeededTenant, seedTenantSingleBranch } from "../test-utils/seed.js";
+import { bootstrapAuditModule } from "../../modules/audit/index.js";
+import { setupAuthModule } from "../../modules/auth/index.js";
+import { bootstrapBranchModule } from "../../modules/branch/index.js";
+import { bootstrapSalesModule } from "../../modules/sales/index.js";
+import { createTestPool } from "../../test-utils/db.js";
+import { cleanupSeededTenant, seedTenantSingleBranch } from "../../test-utils/seed.js";
 
 function createTxManager(pool: Pool) {
   return {

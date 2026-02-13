@@ -2,10 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Pool } from "pg";
 import express from "express";
 import request from "supertest";
-import { bootstrapAuditModule } from "../modules/audit/index.js";
-import { setupAuthModule } from "../modules/auth/index.js";
-import { createTestPool } from "../test-utils/db.js";
-import { cleanupSeededTenant, seedTenantSingleBranch } from "../test-utils/seed.js";
+import { bootstrapAuditModule } from "../../modules/audit/index.js";
+import { setupAuthModule } from "../../modules/auth/index.js";
+import { createTestPool } from "../../test-utils/db.js";
+import { cleanupSeededTenant, seedTenantSingleBranch } from "../../test-utils/seed.js";
 
 describe("Audit read API access control (DB-backed)", () => {
   let pool: Pool;

@@ -1,14 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Pool } from "pg";
-import { requireActiveBranch } from "../platform/http/middlewares/branch-guard.middleware.js";
-import { bootstrapAuditModule } from "../modules/audit/index.js";
-import { bootstrapBranchModule } from "../modules/branch/index.js";
-import { createTestPool } from "../test-utils/db.js";
+import { requireActiveBranch } from "../../platform/http/middlewares/branch-guard.middleware.js";
+import { bootstrapAuditModule } from "../../modules/audit/index.js";
+import { bootstrapBranchModule } from "../../modules/branch/index.js";
+import { createTestPool } from "../../test-utils/db.js";
 import {
   cleanupSeededTenant,
   seedTenantMultiBranch,
   setBranchStatus,
-} from "../test-utils/seed.js";
+} from "../../test-utils/seed.js";
 
 describe("Branch lifecycle + guard (DB-backed)", () => {
   let pool: Pool;

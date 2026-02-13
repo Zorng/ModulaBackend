@@ -289,3 +289,4 @@ Acceptance:
 | 2026-02-13 | Phase 0 safety harness added: integration test for tenant-guarded reads/writes (`tenant-isolation-harness.int.test.ts`). |
 | 2026-02-13 | Phase 1 started: added `/v0/auth` scaffold (register, OTP send/verify, login, refresh, logout) with fixed OTP support in non-production and account-level sessions. |
 | 2026-02-13 | Locked fresh DB restart decision: active migration chain reset to v0 baseline; legacy SQL moved to `_archived`; auth phase decoupled from legacy `employees` table until membership phase lands. |
+| 2026-02-13 | Phase 1 hardening: added OTP resend/rate controls, auth audit event table (`v0_auth_audit_events`), and `/v0` auth API contract doc (`api_contract/auth-v0.md`). |

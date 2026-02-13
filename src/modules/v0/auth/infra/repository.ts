@@ -21,6 +21,7 @@ export type V0PhoneOtpRow = {
   code_hash: string;
   attempts: number;
   max_attempts: number;
+  created_at: Date;
   expires_at: Date;
   consumed_at: Date | null;
 };
@@ -158,6 +159,7 @@ export class V0AuthRepository {
          code_hash,
          attempts,
          max_attempts,
+         created_at,
          expires_at,
          consumed_at
        FROM auth_phone_otps
@@ -169,6 +171,47 @@ export class V0AuthRepository {
       [phone, purpose]
     );
     return result.rows[0] ?? null;
+  }
+
+  async findLatestPhoneOtpByPurpose(
+    phone: string,
+    purpose: string
+  ): Promise<V0PhoneOtpRow | null> {
+    const result = await this.db.query<V0PhoneOtpRow>(
+      `SELECT
+         id,
+         phone,
+         purpose,
+         code_hash,
+         attempts,
+         max_attempts,
+         created_at,
+         expires_at,
+         consumed_at
+       FROM auth_phone_otps
+       WHERE phone = $1
+         AND purpose = $2
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [phone, purpose]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async countPhoneOtpsSince(input: {
+    phone: string;
+    purpose: string;
+    since: Date;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM auth_phone_otps
+       WHERE phone = $1
+         AND purpose = $2
+         AND created_at >= $3`,
+      [input.phone, input.purpose, input.since]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async incrementPhoneOtpAttempts(id: string): Promise<void> {
@@ -252,6 +295,34 @@ export class V0AuthRepository {
        WHERE refresh_token_hash = $1
          AND revoked_at IS NULL`,
       [refreshTokenHash]
+    );
+  }
+
+  async createAuditEvent(input: {
+    accountId?: string | null;
+    phone?: string | null;
+    eventKey: string;
+    outcome: "SUCCESS" | "FAILED";
+    reasonCode?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<void> {
+    await this.db.query(
+      `INSERT INTO v0_auth_audit_events (
+         account_id,
+         phone,
+         event_key,
+         outcome,
+         reason_code,
+         metadata
+       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      [
+        input.accountId ?? null,
+        input.phone ?? null,
+        input.eventKey,
+        input.outcome,
+        input.reasonCode ?? null,
+        JSON.stringify(input.metadata ?? {}),
+      ]
     );
   }
 }

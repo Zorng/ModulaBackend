@@ -1,24 +1,24 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Pool, PoolClient } from "pg";
-import { createTestPool } from "../test-utils/db.js";
-import { cleanupSeededTenant, seedTenantSingleBranch } from "../test-utils/seed.js";
-import { MenuItemRepository } from "../modules/menu/infra/repositories/menuItem.js";
-import { CategoryRepository } from "../modules/menu/infra/repositories/category.js";
-import { TenantLimitsRepository as MenuTenantLimitsRepository } from "../modules/menu/infra/repositories/tenantLimits.js";
-import { CreateMenuItemUseCase } from "../modules/menu/app/use-cases/menu-item/create-menu-item.js";
-import { DeleteMenuItemUseCase } from "../modules/menu/app/use-cases/menu-item/delete-menu-item.js";
-import { RestoreMenuItemUseCase } from "../modules/menu/app/use-cases/menu-item/restore-menu-item.js";
-import { StockItemRepository } from "../modules/inventory/infra/stockItem.repository.js";
-import { PgInventoryTenantLimitsRepository } from "../modules/inventory/infra/tenantLimits.repository.js";
-import { CreateStockItemUseCase } from "../modules/inventory/app/stockitem-usecase/create-stock-item.use-case.js";
-import { UpdateStockItemUseCase } from "../modules/inventory/app/stockitem-usecase/update-stock-item.use-case.js";
-import { PasswordService } from "../modules/auth/app/password.service.js";
-import { StaffManagementRepository } from "../modules/staffManagement/infra/repository.js";
+import { createTestPool } from "../../test-utils/db.js";
+import { cleanupSeededTenant, seedTenantSingleBranch } from "../../test-utils/seed.js";
+import { MenuItemRepository } from "../../modules/menu/infra/repositories/menuItem.js";
+import { CategoryRepository } from "../../modules/menu/infra/repositories/category.js";
+import { TenantLimitsRepository as MenuTenantLimitsRepository } from "../../modules/menu/infra/repositories/tenantLimits.js";
+import { CreateMenuItemUseCase } from "../../modules/menu/app/use-cases/menu-item/create-menu-item.js";
+import { DeleteMenuItemUseCase } from "../../modules/menu/app/use-cases/menu-item/delete-menu-item.js";
+import { RestoreMenuItemUseCase } from "../../modules/menu/app/use-cases/menu-item/restore-menu-item.js";
+import { StockItemRepository } from "../../modules/inventory/infra/stockItem.repository.js";
+import { PgInventoryTenantLimitsRepository } from "../../modules/inventory/infra/tenantLimits.repository.js";
+import { CreateStockItemUseCase } from "../../modules/inventory/app/stockitem-usecase/create-stock-item.use-case.js";
+import { UpdateStockItemUseCase } from "../../modules/inventory/app/stockitem-usecase/update-stock-item.use-case.js";
+import { PasswordService } from "../../modules/auth/app/password.service.js";
+import { StaffManagementRepository } from "../../modules/staffManagement/infra/repository.js";
 import {
   StaffManagementService,
   createInvitationPort,
-} from "../modules/staffManagement/app/staffManagement.service.js";
-import type { AuditWriterPort } from "../shared/ports/audit.js";
+} from "../../modules/staffManagement/app/staffManagement.service.js";
+import type { AuditWriterPort } from "../../shared/ports/audit.js";
 
 function shouldCleanupAfterTests(): boolean {
   const value = process.env.CLEANUP_AFTER_TESTS;

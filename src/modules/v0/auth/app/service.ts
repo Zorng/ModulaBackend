@@ -25,6 +25,10 @@ export class V0AuthService {
   private readonly otpPurpose = "V0_REGISTER";
   private readonly otpExpiryMinutes = Number(process.env.V0_AUTH_OTP_EXPIRY_MINUTES ?? 10);
   private readonly otpMaxAttempts = Number(process.env.V0_AUTH_OTP_MAX_ATTEMPTS ?? 5);
+  private readonly otpResendCooldownSeconds = Number(
+    process.env.V0_AUTH_OTP_RESEND_COOLDOWN_SECONDS ?? 60
+  );
+  private readonly otpMaxPerHour = Number(process.env.V0_AUTH_OTP_MAX_PER_HOUR ?? 6);
   private readonly accessTokenExpiry = process.env.V0_AUTH_ACCESS_TOKEN_TTL ?? "12h";
   private readonly refreshTokenExpiry = process.env.V0_AUTH_REFRESH_TOKEN_TTL ?? "7d";
   private readonly jwtSecret = process.env.JWT_SECRET ?? "dev-v0-jwt-secret";
@@ -56,6 +60,13 @@ export class V0AuthService {
 
     const existing = await this.repo.findAccountByPhone(phone);
     if (existing) {
+      await this.writeAuditEventBestEffort({
+        accountId: existing.id,
+        phone,
+        eventKey: "AUTH_REGISTER",
+        outcome: "FAILED",
+        reasonCode: "ACCOUNT_EXISTS",
+      });
       throw new V0AuthError(409, "account already exists");
     }
 
@@ -67,6 +78,12 @@ export class V0AuthService {
       lastName,
       gender: normalizeOptionalText(input.gender),
       dateOfBirth: normalizeOptionalText(input.dateOfBirth),
+    });
+    await this.writeAuditEventBestEffort({
+      accountId: account.id,
+      phone,
+      eventKey: "AUTH_REGISTER",
+      outcome: "SUCCESS",
     });
 
     return {
@@ -86,7 +103,55 @@ export class V0AuthService {
 
     const account = await this.repo.findAccountByPhone(phone);
     if (!account) {
+      await this.writeAuditEventBestEffort({
+        phone,
+        eventKey: "AUTH_OTP_SEND",
+        outcome: "FAILED",
+        reasonCode: "ACCOUNT_NOT_FOUND",
+      });
       throw new V0AuthError(404, "account not found");
+    }
+
+    const latestOtp = await this.repo.findLatestPhoneOtpByPurpose(
+      phone,
+      this.otpPurpose
+    );
+    if (latestOtp) {
+      const cooldownMs = this.otpResendCooldownSeconds * 1000;
+      const remainingMs = latestOtp.created_at.getTime() + cooldownMs - Date.now();
+      if (remainingMs > 0) {
+        const retryAfterSeconds = Math.ceil(remainingMs / 1000);
+        await this.writeAuditEventBestEffort({
+          accountId: account.id,
+          phone,
+          eventKey: "AUTH_OTP_SEND",
+          outcome: "FAILED",
+          reasonCode: "OTP_COOLDOWN",
+          metadata: { retryAfterSeconds },
+        });
+        throw new V0AuthError(
+          429,
+          `otp recently sent; retry in ${retryAfterSeconds} seconds`
+        );
+      }
+    }
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const sentInLastHour = await this.repo.countPhoneOtpsSince({
+      phone,
+      purpose: this.otpPurpose,
+      since: oneHourAgo,
+    });
+    if (sentInLastHour >= this.otpMaxPerHour) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_OTP_SEND",
+        outcome: "FAILED",
+        reasonCode: "OTP_RATE_LIMIT",
+        metadata: { maxPerHour: this.otpMaxPerHour },
+      });
+      throw new V0AuthError(429, "otp rate limit exceeded; try again later");
     }
 
     const otpCode = this.generateOtpCode();
@@ -99,6 +164,14 @@ export class V0AuthService {
       codeHash,
       expiresAt,
       maxAttempts: this.otpMaxAttempts,
+    });
+
+    await this.writeAuditEventBestEffort({
+      accountId: account.id,
+      phone,
+      eventKey: "AUTH_OTP_SEND",
+      outcome: "SUCCESS",
+      metadata: { expiresInMinutes: this.otpExpiryMinutes },
     });
 
     return {
@@ -117,26 +190,61 @@ export class V0AuthService {
       throw new V0AuthError(422, "phone and otp are required");
     }
 
+    const account = await this.repo.findAccountByPhone(phone);
     const latestOtp = await this.repo.findLatestActivePhoneOtp(phone, this.otpPurpose);
     if (!latestOtp) {
+      await this.writeAuditEventBestEffort({
+        accountId: account?.id ?? null,
+        phone,
+        eventKey: "AUTH_OTP_VERIFY",
+        outcome: "FAILED",
+        reasonCode: "OTP_NOT_FOUND",
+      });
       throw new V0AuthError(400, "otp not found");
     }
 
     if (latestOtp.expires_at.getTime() <= Date.now()) {
+      await this.writeAuditEventBestEffort({
+        accountId: account?.id ?? null,
+        phone,
+        eventKey: "AUTH_OTP_VERIFY",
+        outcome: "FAILED",
+        reasonCode: "OTP_EXPIRED",
+      });
       throw new V0AuthError(400, "otp expired");
     }
 
     if (latestOtp.attempts >= latestOtp.max_attempts) {
+      await this.writeAuditEventBestEffort({
+        accountId: account?.id ?? null,
+        phone,
+        eventKey: "AUTH_OTP_VERIFY",
+        outcome: "FAILED",
+        reasonCode: "OTP_ATTEMPTS_EXCEEDED",
+      });
       throw new V0AuthError(400, "otp attempts exceeded");
     }
 
     if (sha256(otp) !== latestOtp.code_hash) {
       await this.repo.incrementPhoneOtpAttempts(latestOtp.id);
+      await this.writeAuditEventBestEffort({
+        accountId: account?.id ?? null,
+        phone,
+        eventKey: "AUTH_OTP_VERIFY",
+        outcome: "FAILED",
+        reasonCode: "OTP_INVALID",
+      });
       throw new V0AuthError(400, "invalid otp");
     }
 
     await this.repo.consumePhoneOtp(latestOtp.id);
     await this.repo.markPhoneVerified(phone);
+    await this.writeAuditEventBestEffort({
+      accountId: account?.id ?? null,
+      phone,
+      eventKey: "AUTH_OTP_VERIFY",
+      outcome: "SUCCESS",
+    });
     return { verified: true };
   }
 
@@ -161,6 +269,12 @@ export class V0AuthService {
 
     const account = await this.repo.findAccountByPhone(phone);
     if (!account || account.status !== "ACTIVE") {
+      await this.writeAuditEventBestEffort({
+        phone,
+        eventKey: "AUTH_LOGIN",
+        outcome: "FAILED",
+        reasonCode: "INVALID_CREDENTIALS",
+      });
       throw new V0AuthError(401, "invalid credentials");
     }
 
@@ -169,10 +283,24 @@ export class V0AuthService {
       account.password_hash
     );
     if (!isValidPassword) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_LOGIN",
+        outcome: "FAILED",
+        reasonCode: "INVALID_CREDENTIALS",
+      });
       throw new V0AuthError(401, "invalid credentials");
     }
 
     if (!account.phone_verified_at) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_LOGIN",
+        outcome: "FAILED",
+        reasonCode: "PHONE_NOT_VERIFIED",
+      });
       throw new V0AuthError(403, "phone is not verified");
     }
 
@@ -181,6 +309,12 @@ export class V0AuthService {
     const activeMembershipsCount = 0;
 
     const context = { tenantId: null, branchId: null };
+    await this.writeAuditEventBestEffort({
+      accountId: account.id,
+      phone,
+      eventKey: "AUTH_LOGIN",
+      outcome: "SUCCESS",
+    });
     return this.issueSessionResponse(account, context, activeMembershipsCount);
   }
 
@@ -197,17 +331,34 @@ export class V0AuthService {
     const refreshTokenHash = sha256(refreshToken);
     const session = await this.repo.findActiveSessionByRefreshTokenHash(refreshTokenHash);
     if (!session) {
+      await this.writeAuditEventBestEffort({
+        eventKey: "AUTH_REFRESH",
+        outcome: "FAILED",
+        reasonCode: "INVALID_REFRESH_TOKEN",
+      });
       throw new V0AuthError(401, "invalid refresh token");
     }
 
     if (session.expires_at.getTime() <= Date.now()) {
       await this.repo.revokeSessionById(session.id);
+      await this.writeAuditEventBestEffort({
+        accountId: session.account_id,
+        eventKey: "AUTH_REFRESH",
+        outcome: "FAILED",
+        reasonCode: "REFRESH_TOKEN_EXPIRED",
+      });
       throw new V0AuthError(401, "refresh token expired");
     }
 
     const account = await this.repo.findAccountById(session.account_id);
     if (!account || account.status !== "ACTIVE") {
       await this.repo.revokeSessionById(session.id);
+      await this.writeAuditEventBestEffort({
+        accountId: session.account_id,
+        eventKey: "AUTH_REFRESH",
+        outcome: "FAILED",
+        reasonCode: "ACCOUNT_INACTIVE",
+      });
       throw new V0AuthError(401, "account is not active");
     }
 
@@ -218,6 +369,12 @@ export class V0AuthService {
       branchId: session.context_branch_id,
     };
     const issued = await this.issueSessionTokens(account.id, context);
+    await this.writeAuditEventBestEffort({
+      accountId: account.id,
+      phone: account.phone,
+      eventKey: "AUTH_REFRESH",
+      outcome: "SUCCESS",
+    });
 
     return {
       accessToken: issued.accessToken,
@@ -231,7 +388,19 @@ export class V0AuthService {
     if (!refreshToken) {
       throw new V0AuthError(422, "refreshToken is required");
     }
-    await this.repo.revokeSessionByRefreshTokenHash(sha256(refreshToken));
+    const refreshTokenHash = sha256(refreshToken);
+    const session = await this.repo.findActiveSessionByRefreshTokenHash(refreshTokenHash);
+    await this.repo.revokeSessionByRefreshTokenHash(refreshTokenHash);
+    const account =
+      session?.account_id != null
+        ? await this.repo.findAccountById(session.account_id)
+        : null;
+    await this.writeAuditEventBestEffort({
+      accountId: session?.account_id ?? null,
+      phone: account?.phone ?? null,
+      eventKey: "AUTH_LOGOUT",
+      outcome: "SUCCESS",
+    });
   }
 
   private async issueSessionResponse(
@@ -305,6 +474,21 @@ export class V0AuthService {
 
     const raw = crypto.randomInt(0, 1_000_000);
     return String(raw).padStart(6, "0");
+  }
+
+  private async writeAuditEventBestEffort(input: {
+    accountId?: string | null;
+    phone?: string | null;
+    eventKey: string;
+    outcome: "SUCCESS" | "FAILED";
+    reasonCode?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<void> {
+    try {
+      await this.repo.createAuditEvent(input);
+    } catch {
+      // Phase 1: audit is best-effort, should never block auth flow.
+    }
   }
 
 }

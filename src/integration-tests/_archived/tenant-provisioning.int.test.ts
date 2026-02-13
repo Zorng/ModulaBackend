@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Pool } from "pg";
-import { bootstrapAuditModule } from "../modules/audit/index.js";
-import { PgPolicyRepository } from "../modules/policy/infra/repository.js";
-import { bootstrapBranchModule } from "../modules/branch/index.js";
-import { bootstrapTenantModule } from "../modules/tenant/index.js";
-import { createMembershipProvisioningPort } from "../modules/auth/app/membership-provisioning.port.js";
-import { PasswordService } from "../modules/auth/app/password.service.js";
-import { createTestPool } from "../test-utils/db.js";
-import { cleanupSeededTenant } from "../test-utils/seed.js";
+import { bootstrapAuditModule } from "../../modules/audit/index.js";
+import { PgPolicyRepository } from "../../modules/policy/infra/repository.js";
+import { bootstrapBranchModule } from "../../modules/branch/index.js";
+import { bootstrapTenantModule } from "../../modules/tenant/index.js";
+import { createMembershipProvisioningPort } from "../../modules/auth/app/membership-provisioning.port.js";
+import { PasswordService } from "../../modules/auth/app/password.service.js";
+import { createTestPool } from "../../test-utils/db.js";
+import { cleanupSeededTenant } from "../../test-utils/seed.js";
 
 function shouldCleanupAfterTests(): boolean {
   const value = process.env.CLEANUP_AFTER_TESTS;

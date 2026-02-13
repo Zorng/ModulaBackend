@@ -20,3 +20,7 @@ This folder contains the **frontend-facing HTTP API contracts** for this backend
   - `/v0` uses a **working context in token** model.
   - Feature endpoints must **not** accept `tenantId` / `branchId` overrides via query/body/headers.
   - Tenant/branch selection (and switching) is done via Auth endpoints that **re-issue access tokens** with updated context.
+
+## Active Contracts
+
+- `api_contract/auth-v0.md`
