@@ -67,7 +67,9 @@ This single comprehensive guide includes:
 ```bash
 pnpm dev           # Start development server
 pnpm migrate       # Run database migrations
-pnpm test          # Run all tests
+pnpm test          # Run unit tests (fast, DB-free)
+pnpm test:integration # Run integration tests (DB-backed)
+pnpm test:all      # Run unit + integration
 pnpm test:watch    # Run tests in watch mode
 ```
 

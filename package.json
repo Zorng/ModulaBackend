@@ -17,7 +17,8 @@
     "start": "cross-env NODE_ENV=production node dist/server.js",
     "test": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
-    "test:integration": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand src/integration-tests"
+    "test:integration": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.integration.config.js --runInBand",
+    "test:all": "pnpm test && pnpm test:integration"
   },
   "keywords": [],
   "author": "",

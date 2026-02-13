@@ -51,6 +51,17 @@ For each deliverable slice (example: Authentication, Tenant Membership, Access C
 - All new endpoints are under **`/v0/*`**.
 - `/v1/*` is legacy prototype and should not be relied upon.
 
+### Context Propagation (Locked)
+
+We use a **working context in token** model for `/v0`:
+- Access tokens carry:
+  - `authAccountId` (actor)
+  - optional `tenantId`
+  - optional `branchId`
+- Tenant/branch selection (and switching) is performed via Auth endpoints that **re-issue tokens** with the new context.
+- Feature endpoints must **not** accept `tenantId` / `branchId` overrides via query/body/headers.
+  - The only exceptions are global Auth/Membership flows (example: accepting an invite) where context is inherently not yet established.
+
 ### Response Envelope (Recommended)
 - Standard success envelope:
   - `{ "success": true, "data": ... }`
@@ -73,12 +84,32 @@ Examples we will likely need early:
 
 ## Testing Strategy (Test-First)
 
-Preferred: HTTP-level integration tests covering:
-- AuthAccount registration/login/refresh/logout
-- invite/inbox/accept/reject membership flows
-- tenant + branch context resolution
-- authorization fail-closed behavior
-- cross-tenant isolation (ID guessing)
+We keep **two official tiers** to make the workflow predictable and boring:
+- unit tests (fast, DB-free)
+- integration tests (DB-backed, highest confidence)
+
+### Unit Tests (Required)
+- Must be fast and DB-free.
+- Cover pure logic:
+  - validators, mappers, error/reason-code mapping
+  - action catalog metadata (scope/effect)
+  - token claim helpers/parsing (no real JWT secrets required)
+- Command: `pnpm test`
+
+### Integration Tests (Required For Platform Flows)
+- DB-backed tests named `*.int.test.ts`.
+- Must enforce SaaS safety invariants:
+  - AuthAccount registration/login/refresh/logout
+  - invite/inbox/accept/reject membership flows
+  - tenant + branch context resolution
+  - AccessControl fail-closed behavior
+  - cross-tenant isolation (ID guessing)
+- Command: `pnpm test:integration`
+
+### Functional / Use-Case Tests (Optional)
+If we need faster feedback on complex orchestration, we may add "functional" tests:
+- use-case/service tests with faked repositories/ports
+- treated as unit-style tests (no DB), not as a third mandatory tier
 
 Notes:
 - Keep tests small and deterministic.
@@ -129,3 +160,4 @@ Minimum workflow requirements:
 | Date (YYYY-MM-DD) | Note |
 |---|---|
 | 2026-02-13 | Tracking doc created (workflow + conventions + test-first direction). |
+| 2026-02-13 | Locked `/v0` context propagation: working context is carried in access tokens; Auth endpoints re-issue tokens on tenant/branch selection/switch. |

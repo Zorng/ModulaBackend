@@ -2,10 +2,12 @@
 
 ## Test Types
 
-- **Unit tests**: `*.test.ts` under module `tests/` folders.
-- **DB-backed integration tests**: `src/integration-tests/*.int.test.ts`
-  - Do **not** start an HTTP server.
+- **Unit tests** (default): fast, DB-free tests.
+  - Run with: `pnpm test`
+- **Integration tests**: DB-backed tests named `*.int.test.ts`
+  - Run with: `pnpm test:integration`
   - Use a real Postgres database and run SQL migrations.
+  - May exercise HTTP middleware via `supertest`, but must not bind to a network port (`app.listen`).
 
 ## Integration Test Prerequisites
 
@@ -24,13 +26,17 @@ Run all DB-backed integration tests:
 pnpm test:integration
 ```
 
+Run unit + integration tests:
+```
+pnpm test:all
+```
+
 Run a single integration test file:
 ```
-pnpm test -- src/integration-tests/tenant-provisioning.int.test.ts
+pnpm test:integration -- src/integration-tests/tenant-provisioning.int.test.ts
 ```
 
 ## Safety Notes
 
-- `src/test-utils/jest.global-setup.cjs` resets the database by dropping and recreating the `public` schema, then re-running all `migrations/*.sql`.
+- Integration tests reset the database in `src/test-utils/jest.global-setup.cjs` by dropping and recreating the `public` schema, then re-running all `migrations/*.sql`.
 - As a safety guard, it refuses to run unless the database name contains `test`.
-

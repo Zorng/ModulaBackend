@@ -200,7 +200,9 @@ You'll see output like:
 ```bash
 pnpm dev           # Start development server with auto-reload
 pnpm migrate       # Run new database migrations
-pnpm test          # Run all tests
+pnpm test          # Run unit tests (fast, DB-free)
+pnpm test:integration # Run integration tests (DB-backed)
+pnpm test:all      # Run unit + integration
 pnpm test:watch    # Run tests in watch mode
 pnpm start         # Start production server
 ```

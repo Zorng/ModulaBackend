@@ -16,4 +16,7 @@ This folder contains the **frontend-facing HTTP API contracts** for this backend
 - The authoritative business behavior lives in `knowledge_base/`.
 - API contracts are the backend<->frontend agreement for HTTP payloads, status codes, and reason codes.
 - During capstone we version the HTTP surface under `/v0/*`, so the contracts here should describe `/v0` endpoints.
-
+- Context propagation (workflow rule):
+  - `/v0` uses a **working context in token** model.
+  - Feature endpoints must **not** accept `tenantId` / `branchId` overrides via query/body/headers.
+  - Tenant/branch selection (and switching) is done via Auth endpoints that **re-issue access tokens** with updated context.

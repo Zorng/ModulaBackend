@@ -3,8 +3,6 @@ export default {
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts'],
   setupFiles: ['<rootDir>/src/test-utils/jest.setup.ts'],
-  globalSetup: '<rootDir>/src/test-utils/jest.global-setup.cjs',
-  globalTeardown: '<rootDir>/src/test-utils/jest.global-teardown.cjs',
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^#db$': '<rootDir>/src/platform/db/index.ts',
@@ -22,6 +20,20 @@ export default {
   testMatch: [
     '**/__tests__/**/*.ts',
     '**/?(*.)+(spec|test).ts'
+  ],
+  // Unit tests must be fast and DB-free.
+  //
+  // DB-backed tests live in:
+  // - `src/integration-tests/**/*.int.test.ts` (preferred)
+  //
+  // Legacy integration tests (prototype-era) live in various module folders and are ignored here.
+  testPathIgnorePatterns: [
+    '/src/integration-tests/',
+    '/src/modules/.*/tests/api/',
+    '\\.api\\.test\\.ts$',
+    '\\.int\\.test\\.ts$',
+    '\\.integration\\.test\\.ts$',
+    '/src/modules/auth/tests/auth\\.test\\.ts$'
   ],
   collectCoverageFrom: [
     'src/**/*.ts',

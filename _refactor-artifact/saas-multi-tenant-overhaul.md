@@ -1,6 +1,6 @@
 # SaaS Multi-Tenant Overhaul (Restart, KB-Aligned)
 
-Status: **Planning**
+Status: **In Progress (Phase 0)**
 
 This document lives in `_refactor-artifact/` to preserve implementation context, coordinate parallel dev work, and log progress.
 
@@ -19,6 +19,10 @@ Related tracking docs:
 
 - **We will ship the restart under `/v0`** (capstone phase; unstable contract).
 - The existing `/v1` prototype contract is considered **broken/legacy** (prototype repo; no production data).
+- `/v0` context propagation uses a **working context in token** model:
+  - access tokens carry optional `tenantId` and `branchId`
+  - tenant/branch selection (and switching) re-issues tokens
+  - feature endpoints do not accept `tenantId` / `branchId` overrides via query/body/headers
 - We will **adopt KB strictly** for IdentityAccess + OrgAccount + WorkForce + AccessControl.
 - We will not mutate KB to fit the codebase.
   - Repo-level deviations and implementation choices go under `_implementation_decisions/`.
@@ -98,7 +102,7 @@ From `10_identity_activation_recovery_orchestration.md`:
   - register, OTP verify, login
   - sessions (issue/refresh/revoke)
   - password lifecycle (set/reset/change)
-  - stores selected tenant/branch context in session (or explicit “working context” output)
+  - issues access tokens that carry the “working context” (`tenantId`, `branchId`) when selected
 - Consumes:
   - tenant memberships (ACTIVE/INVITED) for context resolution
   - branch assignments for context resolution
@@ -223,7 +227,7 @@ Implement Flow C/D from `10_identity_activation_recovery_orchestration.md`:
 - List eligible branches for branch selection:
   - ACTIVE assignments + ACTIVE branches only
   - return “no branch assigned” state clearly
-- Store selected tenant/branch as session context (or issue a new access token bound to session context).
+- Issue a new access token bound to the selected tenant/branch context.
 
 Acceptance:
 - Multi-tenant identity can select/switch tenant.
@@ -269,9 +273,6 @@ Acceptance:
 
 - Do we keep any legacy `/v1/*` prototype endpoints mounted during the transition, or remove them immediately?
 - Invitation rejection semantics: `REJECTED` vs `ARCHIVED` vs separate field.
-- Session model details:
-  - access token content vs server-side session context
-  - whether “switch tenant/branch” re-issues tokens or updates session only
 - Do owners always get a StaffProfile + branch assignments by default?
 - Minimum audit event set for membership and context selection (for later reconciliation).
 
@@ -283,3 +284,7 @@ Acceptance:
 |---|---|
 | 2026-02-11 | Prototype-era work: added `/v1/auth/*` context-switch endpoints. This will likely be discarded in the restart. |
 | 2026-02-13 | Plan rewritten to align with KB update: self-registration + explicit invite/accept + invitation inbox + zero-membership flows. |
+| 2026-02-13 | Locked `/v0` context propagation: working context is carried in access tokens; Auth selection/switch endpoints re-issue tokens. |
+| 2026-02-13 | Phase 0 started: migration tracking added via `schema_migrations` checksum guard, `/v0/health` added, and `/v0` access-control middleware hook wired as a no-op placeholder. |
+| 2026-02-13 | Phase 0 safety harness added: integration test for tenant-guarded reads/writes (`tenant-isolation-harness.int.test.ts`). |
+| 2026-02-13 | Phase 1 started: added `/v0/auth` scaffold (register, OTP send/verify, login, refresh, logout) with fixed OTP support in non-production and account-level sessions. |

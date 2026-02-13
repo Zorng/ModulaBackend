@@ -13,6 +13,7 @@ import {
   errorHandler,
   notFoundHandler,
 } from "./platform/http/middleware/error-handler.js";
+import { accessControlHook } from "./platform/http/middleware/access-control-hook.js";
 import { setupSwagger } from "./platform/http/swagger.js";
 import { createImageStorageAdapter } from "#modules/menu/infra/repositories/imageAdapter.js";
 import { eventBus } from "./platform/events/index.js";
@@ -32,6 +33,7 @@ import { bootstrapAccountSettingsModule } from "./modules/accountSettings/index.
 import { bootstrapStaffManagementModule } from "./modules/staffManagement/index.js";
 import { bootstrapReportingModule } from "./modules/reporting/index.js";
 import { bootstrapAttendanceModule } from "./modules/attendance/index.js";
+import { v0Router } from "./platform/http/routes/v0.js";
 
 const app = express();
 // Enable CORS for all origins (customize as needed for production)
@@ -223,20 +225,12 @@ log.info("✓ Cash event handlers registered");
 
 // ==================== Register Routes ====================
 
-app.get("/health", async (_req, res) => {
-  const now = await ping();
-  res.json({ status: "ok", time: now });
-});
-
 app.locals.imageStorage = imageStorage;
 app.locals.tenantMetadataPort = tenantModule.tenantMetadataPort;
 app.locals.branchGuardPort = branchModule.branchGuardPort;
 app.locals.branchQueryPort = branchModule.branchQueryPort;
 app.locals.auditWriterPort = auditModule.auditWriterPort;
 app.locals.auditQueryPort = auditModule.auditQueryPort;
-
-// Swagger UI setup - must be before routes
-setupSwagger(app);
 
 /**
  * @openapi
@@ -314,6 +308,7 @@ app.get("/health", async (_req, res) => {
 });
 
 // Mount module routers
+app.use("/v0", accessControlHook, v0Router);
 app.use("/v1/tenants", tenantRouter);
 app.use("/v1/branches", branchRouter);
 app.use("/v1/audit", auditRouter);
