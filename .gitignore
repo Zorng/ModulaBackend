@@ -86,3 +86,5 @@ temp/
 refactorPlans/
 modSpec/
 knowledge_base/
+
+src/modules/_archived/

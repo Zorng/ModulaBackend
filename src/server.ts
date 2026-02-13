@@ -29,7 +29,7 @@ import {
   setupAuthModule,
 } from "./modules/auth/index.js";
 import { imageProxyRouter } from "./platform/http/routes/image-proxy.js";
-import { bootstrapAccountSettingsModule } from "./modules/accountSettings/index.js";
+import { bootstrapAccountSettingsModule } from "./modules/_archived/accountSettings/index.js";
 import { bootstrapStaffManagementModule } from "./modules/staffManagement/index.js";
 import { bootstrapReportingModule } from "./modules/reporting/index.js";
 import { bootstrapAttendanceModule } from "./modules/attendance/index.js";

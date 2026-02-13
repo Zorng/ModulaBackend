@@ -22,6 +22,7 @@ export default {
   // Integration tests are DB-backed and may exercise HTTP middleware using supertest,
   // but should not bind to a network port.
   testMatch: ["**/*.int.test.ts"],
+  testPathIgnorePatterns: ["/src/integration-tests/_archived/"],
   collectCoverageFrom: [
     "src/**/*.ts",
     "!src/**/*.test.ts",
@@ -29,4 +30,3 @@ export default {
     "!src/server.ts",
   ],
 };
-

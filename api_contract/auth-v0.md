@@ -2,8 +2,7 @@
 
 This document describes the current `/v0/auth` HTTP contract.
 
-Base path: `/v0/auth`  
-Auth: public for all endpoints in this phase
+Base path: `/v0/auth`
 
 ## Conventions
 
@@ -39,10 +38,14 @@ Success `201`:
   "data": {
     "accountId": "uuid",
     "phone": "+10000000001",
-    "phoneVerified": false
+    "phoneVerified": false,
+    "completedExistingInviteAccount": false
   }
 }
 ```
+
+Note:
+- If the phone already exists as an invited shell account (not phone-verified yet), this endpoint completes that account and returns `completedExistingInviteAccount: true`.
 
 Errors:
 - `409` account already exists
@@ -139,7 +142,7 @@ Success `200`:
       "tenantId": null,
       "branchId": null
     },
-    "activeMembershipsCount": 0
+    "activeMembershipsCount": 1
   }
 }
 ```
@@ -203,6 +206,160 @@ Success `200`:
 
 Errors:
 - `422` missing refreshToken
+
+### 7) Invite member to tenant (OWNER/ADMIN)
+
+`POST /v0/auth/memberships/invite`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "tenantId": "uuid",
+  "phone": "+10000000002",
+  "roleKey": "CASHIER"
+}
+```
+
+Success `201`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "membershipId": "uuid",
+    "tenantId": "uuid",
+    "accountId": "uuid",
+    "phone": "+10000000002",
+    "roleKey": "CASHIER",
+    "status": "INVITED"
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` requester has no permission in tenant
+- `409` membership already active
+- `422` invalid payload
+
+### 8) Invitation inbox (for current account)
+
+`GET /v0/auth/memberships/invitations`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "invitations": [
+      {
+        "membershipId": "uuid",
+        "tenantId": "uuid",
+        "tenantName": "Phase 2 Tenant",
+        "roleKey": "CASHIER",
+        "invitedAt": "2026-02-13T10:00:00.000Z",
+        "invitedByMembershipId": "uuid"
+      }
+    ]
+  }
+}
+```
+
+### 9) Accept invitation
+
+`POST /v0/auth/memberships/invitations/:membershipId/accept`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "membershipId": "uuid",
+    "tenantId": "uuid",
+    "status": "ACTIVE"
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` invitation belongs to another account
+- `404` invitation not found
+- `409` invitation is not pending
+
+### 10) Reject invitation
+
+`POST /v0/auth/memberships/invitations/:membershipId/reject`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "membershipId": "uuid",
+    "tenantId": "uuid",
+    "status": "REJECTED"
+  }
+}
+```
+
+### 11) Change membership role (OWNER/ADMIN)
+
+`POST /v0/auth/memberships/:membershipId/role`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "roleKey": "MANAGER"
+}
+```
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "membershipId": "uuid",
+    "tenantId": "uuid",
+    "roleKey": "MANAGER"
+  }
+}
+```
+
+### 12) Revoke membership (OWNER/ADMIN)
+
+`POST /v0/auth/memberships/:membershipId/revoke`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "membershipId": "uuid",
+    "tenantId": "uuid",
+    "status": "DISABLED"
+  }
+}
+```
 
 ## Security Notes (Phase 1)
 

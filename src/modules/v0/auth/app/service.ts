@@ -32,6 +32,13 @@ export class V0AuthService {
   private readonly accessTokenExpiry = process.env.V0_AUTH_ACCESS_TOKEN_TTL ?? "12h";
   private readonly refreshTokenExpiry = process.env.V0_AUTH_REFRESH_TOKEN_TTL ?? "7d";
   private readonly jwtSecret = process.env.JWT_SECRET ?? "dev-v0-jwt-secret";
+  private readonly privilegedRoles = new Set(["OWNER", "ADMIN"]);
+  private readonly assignableRoles = new Set([
+    "ADMIN",
+    "MANAGER",
+    "CASHIER",
+    "CLERK",
+  ]);
 
   constructor(private readonly repo: V0AuthRepository) {}
 
@@ -42,7 +49,12 @@ export class V0AuthService {
     lastName: string;
     gender?: string;
     dateOfBirth?: string;
-  }): Promise<{ accountId: string; phone: string; phoneVerified: boolean }> {
+  }): Promise<{
+    accountId: string;
+    phone: string;
+    phoneVerified: boolean;
+    completedExistingInviteAccount?: boolean;
+  }> {
     const phone = normalizePhone(input.phone);
     if (!phone) {
       throw new V0AuthError(422, "phone is required");
@@ -60,14 +72,38 @@ export class V0AuthService {
 
     const existing = await this.repo.findAccountByPhone(phone);
     if (existing) {
-      await this.writeAuditEventBestEffort({
+      if (existing.phone_verified_at) {
+        await this.writeAuditEventBestEffort({
+          accountId: existing.id,
+          phone,
+          eventKey: "AUTH_REGISTER",
+          outcome: "FAILED",
+          reasonCode: "ACCOUNT_EXISTS",
+        });
+        throw new V0AuthError(409, "account already exists");
+      }
+
+      const passwordHash = await PasswordService.hashPassword(input.password);
+      const account = await this.repo.updateAccountRegistration({
         accountId: existing.id,
-        phone,
-        eventKey: "AUTH_REGISTER",
-        outcome: "FAILED",
-        reasonCode: "ACCOUNT_EXISTS",
+        passwordHash,
+        firstName,
+        lastName,
+        gender: normalizeOptionalText(input.gender),
+        dateOfBirth: normalizeOptionalText(input.dateOfBirth),
       });
-      throw new V0AuthError(409, "account already exists");
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_REGISTER_COMPLETE_EXISTING",
+        outcome: "SUCCESS",
+      });
+      return {
+        accountId: account.id,
+        phone: account.phone,
+        phoneVerified: account.phone_verified_at !== null,
+        completedExistingInviteAccount: true,
+      };
     }
 
     const passwordHash = await PasswordService.hashPassword(input.password);
@@ -304,9 +340,9 @@ export class V0AuthService {
       throw new V0AuthError(403, "phone is not verified");
     }
 
-    // Phase 1 starts from a clean auth-only baseline.
-    // Membership model is introduced in later phases.
-    const activeMembershipsCount = 0;
+    const activeMembershipsCount = await this.repo.countActiveMemberships(
+      account.id
+    );
 
     const context = { tenantId: null, branchId: null };
     await this.writeAuditEventBestEffort({
@@ -401,6 +437,308 @@ export class V0AuthService {
       eventKey: "AUTH_LOGOUT",
       outcome: "SUCCESS",
     });
+  }
+
+  async inviteMembership(input: {
+    requesterAccountId: string;
+    tenantId: string;
+    phone: string;
+    roleKey: string;
+  }): Promise<{
+    membershipId: string;
+    tenantId: string;
+    accountId: string;
+    phone: string;
+    roleKey: string;
+    status: string;
+  }> {
+    const tenantId = String(input.tenantId ?? "").trim();
+    const phone = normalizePhone(input.phone);
+    const roleKey = normalizeRoleKey(input.roleKey);
+
+    if (!tenantId || !phone || !roleKey) {
+      throw new V0AuthError(422, "tenantId, phone, and roleKey are required");
+    }
+    if (!this.assignableRoles.has(roleKey)) {
+      throw new V0AuthError(422, "invalid roleKey");
+    }
+
+    const requesterMembership = await this.repo.findActiveMembership(
+      input.requesterAccountId,
+      tenantId
+    );
+    if (!requesterMembership) {
+      throw new V0AuthError(403, "requester has no active membership for tenant");
+    }
+    if (!this.privilegedRoles.has(requesterMembership.role_key)) {
+      throw new V0AuthError(403, "requester role cannot invite members");
+    }
+
+    let account = await this.repo.findAccountByPhone(phone);
+    if (!account) {
+      const randomPassword = crypto.randomBytes(32).toString("hex");
+      const passwordHash = await PasswordService.hashPassword(randomPassword);
+      account = await this.repo.createInvitedAccount({
+        phone,
+        passwordHash,
+      });
+    }
+
+    const existingMembership = await this.repo.findMembershipByTenantAndAccount(
+      tenantId,
+      account.id
+    );
+    if (existingMembership?.status === "ACTIVE") {
+      throw new V0AuthError(409, "membership already active");
+    }
+
+    const membership = await this.repo.upsertInvitedMembership({
+      tenantId,
+      accountId: account.id,
+      roleKey,
+      invitedByMembershipId: requesterMembership.id,
+    });
+
+    await this.writeAuditEventBestEffort({
+      accountId: input.requesterAccountId,
+      phone,
+      eventKey: "AUTH_MEMBERSHIP_INVITE",
+      outcome: "SUCCESS",
+      metadata: {
+        tenantId,
+        targetAccountId: account.id,
+        roleKey,
+        membershipId: membership.id,
+      },
+    });
+
+    return {
+      membershipId: membership.id,
+      tenantId: membership.tenant_id,
+      accountId: membership.account_id,
+      phone: account.phone,
+      roleKey: membership.role_key,
+      status: membership.status,
+    };
+  }
+
+  async listInvitationInbox(input: { requesterAccountId: string }): Promise<{
+    invitations: Array<{
+      membershipId: string;
+      tenantId: string;
+      tenantName: string;
+      roleKey: string;
+      invitedAt: string;
+      invitedByMembershipId: string | null;
+    }>;
+  }> {
+    const rows = await this.repo.listInvitationInbox(input.requesterAccountId);
+    return {
+      invitations: rows.map((row) => ({
+        membershipId: row.membership_id,
+        tenantId: row.tenant_id,
+        tenantName: row.tenant_name,
+        roleKey: row.role_key,
+        invitedAt: row.invited_at.toISOString(),
+        invitedByMembershipId: row.invited_by_membership_id,
+      })),
+    };
+  }
+
+  async acceptInvitation(input: {
+    requesterAccountId: string;
+    membershipId: string;
+  }): Promise<{ membershipId: string; tenantId: string; status: string }> {
+    const membershipId = String(input.membershipId ?? "").trim();
+    if (!membershipId) {
+      throw new V0AuthError(422, "membershipId is required");
+    }
+
+    const existing = await this.repo.findMembershipById(membershipId);
+    if (!existing) {
+      throw new V0AuthError(404, "invitation not found");
+    }
+    if (existing.account_id !== input.requesterAccountId) {
+      throw new V0AuthError(403, "cannot accept invitation for another account");
+    }
+    if (existing.status !== "INVITED") {
+      throw new V0AuthError(409, "invitation is not pending");
+    }
+
+    const updated = await this.repo.acceptInvitation({
+      membershipId,
+      accountId: input.requesterAccountId,
+    });
+    if (!updated) {
+      throw new V0AuthError(409, "invitation is not pending");
+    }
+
+    await this.writeAuditEventBestEffort({
+      accountId: input.requesterAccountId,
+      eventKey: "AUTH_MEMBERSHIP_ACCEPT",
+      outcome: "SUCCESS",
+      metadata: {
+        membershipId: updated.id,
+        tenantId: updated.tenant_id,
+      },
+    });
+
+    return {
+      membershipId: updated.id,
+      tenantId: updated.tenant_id,
+      status: updated.status,
+    };
+  }
+
+  async rejectInvitation(input: {
+    requesterAccountId: string;
+    membershipId: string;
+  }): Promise<{ membershipId: string; tenantId: string; status: string }> {
+    const membershipId = String(input.membershipId ?? "").trim();
+    if (!membershipId) {
+      throw new V0AuthError(422, "membershipId is required");
+    }
+
+    const existing = await this.repo.findMembershipById(membershipId);
+    if (!existing) {
+      throw new V0AuthError(404, "invitation not found");
+    }
+    if (existing.account_id !== input.requesterAccountId) {
+      throw new V0AuthError(403, "cannot reject invitation for another account");
+    }
+    if (existing.status !== "INVITED") {
+      throw new V0AuthError(409, "invitation is not pending");
+    }
+
+    const updated = await this.repo.rejectInvitation({
+      membershipId,
+      accountId: input.requesterAccountId,
+    });
+    if (!updated) {
+      throw new V0AuthError(409, "invitation is not pending");
+    }
+
+    await this.writeAuditEventBestEffort({
+      accountId: input.requesterAccountId,
+      eventKey: "AUTH_MEMBERSHIP_REJECT",
+      outcome: "SUCCESS",
+      metadata: {
+        membershipId: updated.id,
+        tenantId: updated.tenant_id,
+      },
+    });
+
+    return {
+      membershipId: updated.id,
+      tenantId: updated.tenant_id,
+      status: updated.status,
+    };
+  }
+
+  async changeMembershipRole(input: {
+    requesterAccountId: string;
+    membershipId: string;
+    roleKey: string;
+  }): Promise<{ membershipId: string; tenantId: string; roleKey: string }> {
+    const membershipId = String(input.membershipId ?? "").trim();
+    const roleKey = normalizeRoleKey(input.roleKey);
+    if (!membershipId || !roleKey) {
+      throw new V0AuthError(422, "membershipId and roleKey are required");
+    }
+    if (!this.assignableRoles.has(roleKey)) {
+      throw new V0AuthError(422, "invalid roleKey");
+    }
+
+    const target = await this.repo.findMembershipById(membershipId);
+    if (!target) {
+      throw new V0AuthError(404, "membership not found");
+    }
+    if (target.role_key === "OWNER") {
+      throw new V0AuthError(409, "owner role cannot be changed");
+    }
+
+    const requesterMembership = await this.repo.findActiveMembership(
+      input.requesterAccountId,
+      target.tenant_id
+    );
+    if (!requesterMembership || !this.privilegedRoles.has(requesterMembership.role_key)) {
+      throw new V0AuthError(403, "requester role cannot change membership role");
+    }
+
+    const updated = await this.repo.updateMembershipRole({
+      membershipId,
+      roleKey,
+    });
+    if (!updated) {
+      throw new V0AuthError(404, "membership not found");
+    }
+
+    await this.writeAuditEventBestEffort({
+      accountId: input.requesterAccountId,
+      eventKey: "AUTH_MEMBERSHIP_ROLE_CHANGE",
+      outcome: "SUCCESS",
+      metadata: {
+        membershipId: updated.id,
+        tenantId: updated.tenant_id,
+        roleKey: updated.role_key,
+      },
+    });
+
+    return {
+      membershipId: updated.id,
+      tenantId: updated.tenant_id,
+      roleKey: updated.role_key,
+    };
+  }
+
+  async revokeMembership(input: {
+    requesterAccountId: string;
+    membershipId: string;
+  }): Promise<{ membershipId: string; tenantId: string; status: string }> {
+    const membershipId = String(input.membershipId ?? "").trim();
+    if (!membershipId) {
+      throw new V0AuthError(422, "membershipId is required");
+    }
+
+    const target = await this.repo.findMembershipById(membershipId);
+    if (!target) {
+      throw new V0AuthError(404, "membership not found");
+    }
+    if (target.role_key === "OWNER") {
+      throw new V0AuthError(409, "owner membership cannot be revoked");
+    }
+
+    const requesterMembership = await this.repo.findActiveMembership(
+      input.requesterAccountId,
+      target.tenant_id
+    );
+    if (!requesterMembership || !this.privilegedRoles.has(requesterMembership.role_key)) {
+      throw new V0AuthError(403, "requester role cannot revoke membership");
+    }
+    if (requesterMembership.id === target.id) {
+      throw new V0AuthError(409, "cannot revoke own membership");
+    }
+
+    const updated = await this.repo.revokeMembership(membershipId);
+    if (!updated) {
+      throw new V0AuthError(404, "membership not found");
+    }
+
+    await this.writeAuditEventBestEffort({
+      accountId: input.requesterAccountId,
+      eventKey: "AUTH_MEMBERSHIP_REVOKE",
+      outcome: "SUCCESS",
+      metadata: {
+        membershipId: updated.id,
+        tenantId: updated.tenant_id,
+      },
+    });
+
+    return {
+      membershipId: updated.id,
+      tenantId: updated.tenant_id,
+      status: updated.status,
+    };
   }
 
   private async issueSessionResponse(
@@ -500,6 +838,10 @@ function normalizePhone(phone: string): string {
 function normalizeOptionalText(input: string | undefined): string | null {
   const value = String(input ?? "").trim();
   return value.length > 0 ? value : null;
+}
+
+function normalizeRoleKey(input: string | undefined): string {
+  return String(input ?? "").trim().toUpperCase();
 }
 
 function sha256(value: string): string {
