@@ -60,6 +60,24 @@ export type V0InvitationInboxItem = {
   invited_by_membership_id: string | null;
 };
 
+export type V0TenantProvisioningRow = {
+  tenant_id: string;
+  tenant_name: string;
+  tenant_status: string;
+  membership_id: string;
+  membership_role_key: string;
+  membership_status: string;
+  branch_id: string;
+  branch_name: string;
+  branch_status: string;
+};
+
+export type V0BranchRow = {
+  id: string;
+  tenant_id: string;
+  status: string;
+};
+
 export class V0AuthRepository {
   constructor(private readonly db: Queryable) {}
 
@@ -563,6 +581,194 @@ export class V0AuthRepository {
       [membershipId]
     );
     return result.rows[0] ?? null;
+  }
+
+  async createTenantWithOwnerAndFirstBranch(input: {
+    accountId: string;
+    tenantName: string;
+    firstBranchName: string;
+  }): Promise<V0TenantProvisioningRow> {
+    const result = await this.db.query<V0TenantProvisioningRow>(
+      `WITH inserted_tenant AS (
+         INSERT INTO tenants (name, status)
+         VALUES ($2, 'ACTIVE')
+         RETURNING id, name, status
+       ),
+       inserted_membership AS (
+         INSERT INTO v0_tenant_memberships (
+           tenant_id,
+           account_id,
+           role_key,
+           status,
+           invited_at,
+           accepted_at
+         )
+         SELECT id, $1, 'OWNER', 'ACTIVE', NOW(), NOW()
+         FROM inserted_tenant
+         RETURNING id, role_key, status
+       ),
+       inserted_branch AS (
+         INSERT INTO branches (tenant_id, name, status)
+         SELECT id, $3, 'ACTIVE'
+         FROM inserted_tenant
+         RETURNING id, name, status
+       )
+       SELECT
+         t.id AS tenant_id,
+         t.name AS tenant_name,
+         t.status AS tenant_status,
+         m.id AS membership_id,
+         m.role_key AS membership_role_key,
+         m.status AS membership_status,
+         b.id AS branch_id,
+         b.name AS branch_name,
+         b.status AS branch_status
+       FROM inserted_tenant t
+       CROSS JOIN inserted_membership m
+       CROSS JOIN inserted_branch b`,
+      [input.accountId, input.tenantName, input.firstBranchName]
+    );
+    return result.rows[0];
+  }
+
+  async findActiveBranchesByIds(
+    tenantId: string,
+    branchIds: string[]
+  ): Promise<V0BranchRow[]> {
+    if (branchIds.length === 0) {
+      return [];
+    }
+
+    const result = await this.db.query<V0BranchRow>(
+      `SELECT id, tenant_id, status
+       FROM branches
+       WHERE tenant_id = $1
+         AND status = 'ACTIVE'
+         AND id = ANY($2::uuid[])`,
+      [tenantId, branchIds]
+    );
+    return result.rows;
+  }
+
+  async replacePendingBranchAssignments(input: {
+    membershipId: string;
+    tenantId: string;
+    branchIds: string[];
+  }): Promise<void> {
+    await this.db.query(
+      `DELETE FROM v0_membership_pending_branch_assignments
+       WHERE tenant_membership_id = $1`,
+      [input.membershipId]
+    );
+
+    if (input.branchIds.length === 0) {
+      return;
+    }
+
+    await this.db.query(
+      `INSERT INTO v0_membership_pending_branch_assignments (
+         tenant_membership_id,
+         tenant_id,
+         branch_id
+       )
+       SELECT $1, $2, branch_id
+       FROM UNNEST($3::uuid[]) AS branch_id
+       ON CONFLICT (tenant_membership_id, branch_id) DO NOTHING`,
+      [input.membershipId, input.tenantId, input.branchIds]
+    );
+  }
+
+  async listPendingBranchIdsForMembership(membershipId: string): Promise<string[]> {
+    const result = await this.db.query<{ branch_id: string }>(
+      `SELECT branch_id
+       FROM v0_membership_pending_branch_assignments
+       WHERE tenant_membership_id = $1
+       ORDER BY branch_id ASC`,
+      [membershipId]
+    );
+    return result.rows.map((row) => row.branch_id);
+  }
+
+  async clearPendingBranchAssignments(membershipId: string): Promise<void> {
+    await this.db.query(
+      `DELETE FROM v0_membership_pending_branch_assignments
+       WHERE tenant_membership_id = $1`,
+      [membershipId]
+    );
+  }
+
+  async ensureStaffProfileForMembership(membershipId: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO v0_staff_profiles (
+         tenant_id,
+         account_id,
+         membership_id,
+         first_name,
+         last_name,
+         status
+       )
+       SELECT
+         m.tenant_id,
+         m.account_id,
+         m.id,
+         a.first_name,
+         a.last_name,
+         'ACTIVE'
+       FROM v0_tenant_memberships m
+       JOIN accounts a ON a.id = m.account_id
+       WHERE m.id = $1
+       ON CONFLICT (tenant_id, account_id)
+       DO UPDATE SET
+         membership_id = EXCLUDED.membership_id,
+         first_name = EXCLUDED.first_name,
+         last_name = EXCLUDED.last_name,
+         status = 'ACTIVE',
+         updated_at = NOW()`,
+      [membershipId]
+    );
+  }
+
+  async upsertActiveBranchAssignmentsForMembership(input: {
+    membershipId: string;
+    tenantId: string;
+    accountId: string;
+    branchIds: string[];
+  }): Promise<void> {
+    if (input.branchIds.length === 0) {
+      return;
+    }
+
+    await this.db.query(
+      `INSERT INTO v0_branch_assignments (
+         tenant_id,
+         branch_id,
+         account_id,
+         membership_id,
+         status,
+         assigned_at
+       )
+       SELECT $1, branch_id, $2, $3, 'ACTIVE', NOW()
+       FROM UNNEST($4::uuid[]) AS branch_id
+       ON CONFLICT (tenant_id, branch_id, account_id)
+       DO UPDATE SET
+         membership_id = EXCLUDED.membership_id,
+         status = 'ACTIVE',
+         revoked_at = NULL,
+         updated_at = NOW()`,
+      [input.tenantId, input.accountId, input.membershipId, input.branchIds]
+    );
+  }
+
+  async listActiveBranchIdsForMembership(membershipId: string): Promise<string[]> {
+    const result = await this.db.query<{ branch_id: string }>(
+      `SELECT branch_id
+       FROM v0_branch_assignments
+       WHERE membership_id = $1
+         AND status = 'ACTIVE'
+       ORDER BY branch_id ASC`,
+      [membershipId]
+    );
+    return result.rows.map((row) => row.branch_id);
   }
 
   async createAuditEvent(input: {

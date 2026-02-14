@@ -1,6 +1,6 @@
 # SaaS Multi-Tenant Overhaul (Restart, KB-Aligned)
 
-Status: **In Progress (Phase 0)**
+Status: **In Progress (Phase 3)**
 
 This document lives in `_refactor-artifact/` to preserve implementation context, coordinate parallel dev work, and log progress.
 
@@ -291,3 +291,5 @@ Acceptance:
 | 2026-02-13 | Locked fresh DB restart decision: active migration chain reset to v0 baseline; legacy SQL moved to `_archived`; auth phase decoupled from legacy `employees` table until membership phase lands. |
 | 2026-02-13 | Phase 1 hardening: added OTP resend/rate controls, auth audit event table (`v0_auth_audit_events`), and `/v0` auth API contract doc (`api_contract/auth-v0.md`). |
 | 2026-02-13 | Phase 2 commenced: added `v0_tenant_memberships`, invite/inbox/accept/reject/role-change/revoke endpoints, and JWT auth middleware for protected `/v0/auth/memberships/*` routes. |
+| 2026-02-13 | Phase 3 commenced: added `/v0/auth/tenants` to provision tenant + owner membership + first branch in one operation, with integration coverage for zero-membership -> owner flow. |
+| 2026-02-13 | Phase 4 commenced: added workforce projection tables (`v0_staff_profiles`, pending/active branch assignments), invite-accept hydration into staff/branch assignment, and explicit owner/admin branch assignment endpoint. |

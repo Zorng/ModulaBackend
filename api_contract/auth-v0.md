@@ -285,7 +285,8 @@ Success `200`:
   "data": {
     "membershipId": "uuid",
     "tenantId": "uuid",
-    "status": "ACTIVE"
+    "status": "ACTIVE",
+    "activeBranchIds": ["uuid"]
   }
 }
 ```
@@ -360,6 +361,101 @@ Success `200`:
   }
 }
 ```
+
+### 13) Assign membership branches (OWNER/ADMIN)
+
+`POST /v0/auth/memberships/:membershipId/branches`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "branchIds": ["uuid-1", "uuid-2"]
+}
+```
+
+Success `200` (target membership is `INVITED`):
+
+```json
+{
+  "success": true,
+  "data": {
+    "membershipId": "uuid",
+    "tenantId": "uuid",
+    "membershipStatus": "INVITED",
+    "pendingBranchIds": ["uuid-1", "uuid-2"],
+    "activeBranchIds": []
+  }
+}
+```
+
+Success `200` (target membership is `ACTIVE`):
+
+```json
+{
+  "success": true,
+  "data": {
+    "membershipId": "uuid",
+    "tenantId": "uuid",
+    "membershipStatus": "ACTIVE",
+    "pendingBranchIds": [],
+    "activeBranchIds": ["uuid-1", "uuid-2"]
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` requester has no permission in tenant
+- `404` membership not found
+- `409` membership is not `INVITED` or `ACTIVE`
+- `422` invalid/inactive branch IDs
+
+### 14) Create tenant with first branch (authenticated account)
+
+`POST /v0/auth/tenants`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "tenantName": "X Cafe",
+  "firstBranchName": "Main Branch"
+}
+```
+
+Success `201`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "tenant": {
+      "id": "uuid",
+      "name": "X Cafe",
+      "status": "ACTIVE"
+    },
+    "ownerMembership": {
+      "id": "uuid",
+      "roleKey": "OWNER",
+      "status": "ACTIVE"
+    },
+    "branch": {
+      "id": "uuid",
+      "name": "Main Branch",
+      "status": "ACTIVE"
+    }
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token or inactive account
+- `422` missing `tenantName` or `firstBranchName`
 
 ## Security Notes (Phase 1)
 

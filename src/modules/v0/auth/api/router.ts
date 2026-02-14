@@ -210,6 +210,52 @@ export function createV0AuthRouter(service: V0AuthService): Router {
     }
   );
 
+  router.post(
+    "/memberships/:membershipId/branches",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const requesterAccountId = req.v0Auth?.accountId;
+        if (!requesterAccountId) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+
+        const data = await service.assignMembershipBranches({
+          requesterAccountId,
+          membershipId: req.params.membershipId,
+          branchIds: req.body?.branchIds,
+        });
+        res.status(200).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
+      }
+    }
+  );
+
+  router.post(
+    "/tenants",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const requesterAccountId = req.v0Auth?.accountId;
+        if (!requesterAccountId) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+
+        const data = await service.createTenantWithFirstBranch({
+          requesterAccountId,
+          tenantName: req.body?.tenantName,
+          firstBranchName: req.body?.firstBranchName,
+        });
+        res.status(201).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
+      }
+    }
+  );
+
   return router;
 }
 
