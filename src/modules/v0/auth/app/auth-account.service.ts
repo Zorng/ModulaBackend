@@ -6,9 +6,436 @@ import {
   normalizePhone,
   sha256,
 } from "./common.js";
+import {
+  SupabaseAuthClient,
+  SupabaseAuthError,
+} from "../infra/supabase-auth.client.js";
 
 export class V0AuthAccountService extends V0AuthBaseService {
+  private readonly authProvider = process.env.V0_AUTH_PROVIDER ?? "supabase";
+  private readonly supabase = SupabaseAuthClient.fromEnv();
+
   async register(input: {
+    phone: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    gender?: string;
+    dateOfBirth?: string;
+  }): Promise<{
+    accountId: string;
+    phone: string;
+    phoneVerified: boolean;
+    completedExistingInviteAccount?: boolean;
+  }> {
+    return this.isSupabaseEnabled()
+      ? this.registerWithSupabase(input)
+      : this.registerWithLocalAuth(input);
+  }
+
+  async sendRegistrationOtp(input: {
+    phone: string;
+  }): Promise<{ expiresInMinutes: number; debugOtp?: string }> {
+    return this.isSupabaseEnabled()
+      ? this.sendRegistrationOtpWithSupabase(input)
+      : this.sendRegistrationOtpWithLocalAuth(input);
+  }
+
+  async verifyRegistrationOtp(input: {
+    phone: string;
+    otp: string;
+  }): Promise<{ verified: true }> {
+    return this.isSupabaseEnabled()
+      ? this.verifyRegistrationOtpWithSupabase(input)
+      : this.verifyRegistrationOtpWithLocalAuth(input);
+  }
+
+  async login(input: { phone: string; password: string }): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    account: {
+      id: string;
+      phone: string;
+      firstName: string | null;
+      lastName: string | null;
+      phoneVerifiedAt: string | null;
+    };
+    context: { tenantId: string | null; branchId: string | null };
+    activeMembershipsCount: number;
+  }> {
+    return this.isSupabaseEnabled()
+      ? this.loginWithSupabase(input)
+      : this.loginWithLocalAuth(input);
+  }
+
+  async refresh(input: { refreshToken: string }): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    context: { tenantId: string | null; branchId: string | null };
+  }> {
+    const refreshToken = String(input.refreshToken ?? "").trim();
+    if (!refreshToken) {
+      throw new V0AuthError(422, "refreshToken is required");
+    }
+
+    const refreshTokenHash = sha256(refreshToken);
+    const session = await this.repo.findActiveSessionByRefreshTokenHash(refreshTokenHash);
+    if (!session) {
+      await this.writeAuditEventBestEffort({
+        eventKey: "AUTH_REFRESH",
+        outcome: "FAILED",
+        reasonCode: "INVALID_REFRESH_TOKEN",
+      });
+      throw new V0AuthError(401, "invalid refresh token");
+    }
+
+    if (session.expires_at.getTime() <= Date.now()) {
+      await this.repo.revokeSessionById(session.id);
+      await this.writeAuditEventBestEffort({
+        accountId: session.account_id,
+        eventKey: "AUTH_REFRESH",
+        outcome: "FAILED",
+        reasonCode: "REFRESH_TOKEN_EXPIRED",
+      });
+      throw new V0AuthError(401, "refresh token expired");
+    }
+
+    const account = await this.repo.findAccountById(session.account_id);
+    if (!account || account.status !== "ACTIVE") {
+      await this.repo.revokeSessionById(session.id);
+      await this.writeAuditEventBestEffort({
+        accountId: session.account_id,
+        eventKey: "AUTH_REFRESH",
+        outcome: "FAILED",
+        reasonCode: "ACCOUNT_INACTIVE",
+      });
+      throw new V0AuthError(401, "account is not active");
+    }
+
+    await this.repo.revokeSessionById(session.id);
+
+    const context = {
+      tenantId: session.context_tenant_id,
+      branchId: session.context_branch_id,
+    };
+    const issued = await this.issueSessionTokens(account.id, context);
+    await this.writeAuditEventBestEffort({
+      accountId: account.id,
+      phone: account.phone,
+      eventKey: "AUTH_REFRESH",
+      outcome: "SUCCESS",
+    });
+
+    return {
+      accessToken: issued.accessToken,
+      refreshToken: issued.refreshToken,
+      context,
+    };
+  }
+
+  async logout(input: { refreshToken: string }): Promise<void> {
+    const refreshToken = String(input.refreshToken ?? "").trim();
+    if (!refreshToken) {
+      throw new V0AuthError(422, "refreshToken is required");
+    }
+
+    const refreshTokenHash = sha256(refreshToken);
+    const session = await this.repo.findActiveSessionByRefreshTokenHash(refreshTokenHash);
+    await this.repo.revokeSessionByRefreshTokenHash(refreshTokenHash);
+    const account =
+      session?.account_id != null ? await this.repo.findAccountById(session.account_id) : null;
+    await this.writeAuditEventBestEffort({
+      accountId: session?.account_id ?? null,
+      phone: account?.phone ?? null,
+      eventKey: "AUTH_LOGOUT",
+      outcome: "SUCCESS",
+    });
+  }
+
+  private isSupabaseEnabled(): boolean {
+    return this.authProvider === "supabase";
+  }
+
+  private requireSupabase(): SupabaseAuthClient {
+    if (!this.supabase) {
+      throw new V0AuthError(
+        500,
+        "supabase auth provider is enabled but SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing"
+      );
+    }
+    return this.supabase;
+  }
+
+  private async registerWithSupabase(input: {
+    phone: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    gender?: string;
+    dateOfBirth?: string;
+  }): Promise<{
+    accountId: string;
+    phone: string;
+    phoneVerified: boolean;
+    completedExistingInviteAccount?: boolean;
+  }> {
+    const phone = normalizePhone(input.phone);
+    if (!phone) {
+      throw new V0AuthError(422, "phone is required");
+    }
+    if (!V0PasswordService.validatePasswordStrength(input.password)) {
+      throw new V0AuthError(422, "password must be at least 8 characters");
+    }
+
+    const firstName = String(input.firstName ?? "").trim();
+    const lastName = String(input.lastName ?? "").trim();
+    if (!firstName || !lastName) {
+      throw new V0AuthError(422, "firstName and lastName are required");
+    }
+
+    const supabase = this.requireSupabase();
+    const existing = await this.repo.findAccountByPhone(phone);
+
+    try {
+      if (existing?.phone_verified_at) {
+        await this.writeAuditEventBestEffort({
+          accountId: existing.id,
+          phone,
+          eventKey: "AUTH_REGISTER",
+          outcome: "FAILED",
+          reasonCode: "ACCOUNT_EXISTS",
+        });
+        throw new V0AuthError(409, "account already exists");
+      }
+
+      let supabaseUserId = existing?.supabase_user_id ?? null;
+      if (supabaseUserId) {
+        await supabase.updateUser(supabaseUserId, {
+          phone,
+          password: input.password,
+          firstName,
+          lastName,
+          gender: normalizeOptionalText(input.gender),
+          dateOfBirth: normalizeOptionalText(input.dateOfBirth),
+        });
+      } else {
+        const created = await supabase.createUser({
+          phone,
+          password: input.password,
+          firstName,
+          lastName,
+          gender: normalizeOptionalText(input.gender),
+          dateOfBirth: normalizeOptionalText(input.dateOfBirth),
+        });
+        supabaseUserId = created.userId;
+      }
+
+      let account;
+      if (existing) {
+        account = await this.repo.updateAccountRegistration({
+          accountId: existing.id,
+          supabaseUserId,
+          phone,
+          firstName,
+          lastName,
+          gender: normalizeOptionalText(input.gender),
+          dateOfBirth: normalizeOptionalText(input.dateOfBirth),
+        });
+      } else {
+        account = await this.repo.createAccount({
+          supabaseUserId,
+          phone,
+          firstName,
+          lastName,
+          gender: normalizeOptionalText(input.gender),
+          dateOfBirth: normalizeOptionalText(input.dateOfBirth),
+        });
+      }
+
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: existing ? "AUTH_REGISTER_COMPLETE_EXISTING" : "AUTH_REGISTER",
+        outcome: "SUCCESS",
+      });
+      return {
+        accountId: account.id,
+        phone: account.phone,
+        phoneVerified: account.phone_verified_at !== null,
+        ...(existing ? { completedExistingInviteAccount: true } : {}),
+      };
+    } catch (error) {
+      throw this.translateSupabaseError(error);
+    }
+  }
+
+  private async sendRegistrationOtpWithSupabase(input: {
+    phone: string;
+  }): Promise<{ expiresInMinutes: number }> {
+    const phone = normalizePhone(input.phone);
+    if (!phone) {
+      throw new V0AuthError(422, "phone is required");
+    }
+
+    const account = await this.repo.findAccountByPhone(phone);
+    if (!account || !account.supabase_user_id) {
+      await this.writeAuditEventBestEffort({
+        phone,
+        eventKey: "AUTH_OTP_SEND",
+        outcome: "FAILED",
+        reasonCode: "ACCOUNT_NOT_FOUND",
+      });
+      throw new V0AuthError(404, "account not found");
+    }
+
+    try {
+      const supabase = this.requireSupabase();
+      await supabase.sendOtp(phone);
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_OTP_SEND",
+        outcome: "SUCCESS",
+      });
+      return { expiresInMinutes: this.otpExpiryMinutes };
+    } catch (error) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_OTP_SEND",
+        outcome: "FAILED",
+        reasonCode: "SUPABASE_OTP_SEND_FAILED",
+      });
+      throw this.translateSupabaseError(error);
+    }
+  }
+
+  private async verifyRegistrationOtpWithSupabase(input: {
+    phone: string;
+    otp: string;
+  }): Promise<{ verified: true }> {
+    const phone = normalizePhone(input.phone);
+    const otp = String(input.otp ?? "").trim();
+    if (!phone || !otp) {
+      throw new V0AuthError(422, "phone and otp are required");
+    }
+
+    try {
+      const supabase = this.requireSupabase();
+      const verified = await supabase.verifyOtp({ phone, otp });
+
+      let account =
+        (verified.userId
+          ? await this.repo.findAccountBySupabaseUserId(verified.userId)
+          : null) ?? (await this.repo.findAccountByPhone(phone));
+      if (!account) {
+        throw new V0AuthError(404, "account not found");
+      }
+
+      if (!account.supabase_user_id) {
+        await this.repo.attachSupabaseUserId({
+          accountId: account.id,
+          supabaseUserId: verified.userId,
+        });
+      }
+      await this.repo.markPhoneVerifiedByAccountId(account.id);
+
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_OTP_VERIFY",
+        outcome: "SUCCESS",
+      });
+      return { verified: true };
+    } catch (error) {
+      const account = await this.repo.findAccountByPhone(phone);
+      await this.writeAuditEventBestEffort({
+        accountId: account?.id ?? null,
+        phone,
+        eventKey: "AUTH_OTP_VERIFY",
+        outcome: "FAILED",
+        reasonCode: "SUPABASE_OTP_VERIFY_FAILED",
+      });
+      throw this.translateSupabaseError(error);
+    }
+  }
+
+  private async loginWithSupabase(input: {
+    phone: string;
+    password: string;
+  }): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    account: {
+      id: string;
+      phone: string;
+      firstName: string | null;
+      lastName: string | null;
+      phoneVerifiedAt: string | null;
+    };
+    context: { tenantId: string | null; branchId: string | null };
+    activeMembershipsCount: number;
+  }> {
+    const phone = normalizePhone(input.phone);
+    const password = String(input.password ?? "");
+    if (!phone || !password) {
+      throw new V0AuthError(422, "phone and password are required");
+    }
+
+    try {
+      const supabase = this.requireSupabase();
+      const session = await supabase.signInWithPassword({ phone, password });
+
+      let account =
+        (session.userId
+          ? await this.repo.findAccountBySupabaseUserId(session.userId)
+          : null) ?? (await this.repo.findAccountByPhone(phone));
+      if (!account || account.status !== "ACTIVE") {
+        throw new V0AuthError(401, "invalid credentials");
+      }
+
+      if (!account.supabase_user_id) {
+        await this.repo.attachSupabaseUserId({
+          accountId: account.id,
+          supabaseUserId: session.userId,
+        });
+        account = (await this.repo.findAccountById(account.id)) ?? account;
+      }
+
+      if (session.phoneConfirmedAt && !account.phone_verified_at) {
+        await this.repo.markPhoneVerifiedByAccountId(account.id);
+        account = (await this.repo.findAccountById(account.id)) ?? account;
+      }
+
+      if (!account.phone_verified_at) {
+        throw new V0AuthError(403, "phone is not verified");
+      }
+
+      const activeMembershipsCount = await this.repo.countActiveMemberships(account.id);
+      const context = { tenantId: null, branchId: null };
+
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_LOGIN",
+        outcome: "SUCCESS",
+      });
+      return this.issueSessionResponse(account, context, activeMembershipsCount);
+    } catch (error) {
+      if (error instanceof V0AuthError) {
+        throw error;
+      }
+      await this.writeAuditEventBestEffort({
+        phone,
+        eventKey: "AUTH_LOGIN",
+        outcome: "FAILED",
+        reasonCode: "INVALID_CREDENTIALS",
+      });
+      throw this.translateSupabaseError(error, 401, "invalid credentials");
+    }
+  }
+
+  private async registerWithLocalAuth(input: {
     phone: string;
     password: string;
     firstName: string;
@@ -95,7 +522,7 @@ export class V0AuthAccountService extends V0AuthBaseService {
     };
   }
 
-  async sendRegistrationOtp(input: {
+  private async sendRegistrationOtpWithLocalAuth(input: {
     phone: string;
   }): Promise<{ expiresInMinutes: number; debugOtp?: string }> {
     const phone = normalizePhone(input.phone);
@@ -179,7 +606,7 @@ export class V0AuthAccountService extends V0AuthBaseService {
     };
   }
 
-  async verifyRegistrationOtp(input: {
+  private async verifyRegistrationOtpWithLocalAuth(input: {
     phone: string;
     otp: string;
   }): Promise<{ verified: true }> {
@@ -247,7 +674,7 @@ export class V0AuthAccountService extends V0AuthBaseService {
     return { verified: true };
   }
 
-  async login(input: { phone: string; password: string }): Promise<{
+  private async loginWithLocalAuth(input: { phone: string; password: string }): Promise<{
     accessToken: string;
     refreshToken: string;
     account: {
@@ -279,7 +706,7 @@ export class V0AuthAccountService extends V0AuthBaseService {
 
     const isValidPassword = await V0PasswordService.verifyPassword(
       password,
-      account.password_hash
+      account.password_hash ?? ""
     );
     if (!isValidPassword) {
       await this.writeAuditEventBestEffort({
@@ -315,87 +742,29 @@ export class V0AuthAccountService extends V0AuthBaseService {
     return this.issueSessionResponse(account, context, activeMembershipsCount);
   }
 
-  async refresh(input: { refreshToken: string }): Promise<{
-    accessToken: string;
-    refreshToken: string;
-    context: { tenantId: string | null; branchId: string | null };
-  }> {
-    const refreshToken = String(input.refreshToken ?? "").trim();
-    if (!refreshToken) {
-      throw new V0AuthError(422, "refreshToken is required");
+  private translateSupabaseError(
+    error: unknown,
+    fallbackStatusCode = 400,
+    fallbackMessage = "supabase auth request failed"
+  ): V0AuthError {
+    if (error instanceof V0AuthError) {
+      return error;
     }
-
-    const refreshTokenHash = sha256(refreshToken);
-    const session = await this.repo.findActiveSessionByRefreshTokenHash(refreshTokenHash);
-    if (!session) {
-      await this.writeAuditEventBestEffort({
-        eventKey: "AUTH_REFRESH",
-        outcome: "FAILED",
-        reasonCode: "INVALID_REFRESH_TOKEN",
-      });
-      throw new V0AuthError(401, "invalid refresh token");
+    if (error instanceof SupabaseAuthError) {
+      if (error.statusCode === 400) {
+        return new V0AuthError(400, error.message);
+      }
+      if (error.statusCode === 401) {
+        return new V0AuthError(401, error.message);
+      }
+      if (error.statusCode === 422) {
+        return new V0AuthError(422, error.message);
+      }
+      if (error.statusCode === 429) {
+        return new V0AuthError(429, error.message);
+      }
+      return new V0AuthError(502, error.message);
     }
-
-    if (session.expires_at.getTime() <= Date.now()) {
-      await this.repo.revokeSessionById(session.id);
-      await this.writeAuditEventBestEffort({
-        accountId: session.account_id,
-        eventKey: "AUTH_REFRESH",
-        outcome: "FAILED",
-        reasonCode: "REFRESH_TOKEN_EXPIRED",
-      });
-      throw new V0AuthError(401, "refresh token expired");
-    }
-
-    const account = await this.repo.findAccountById(session.account_id);
-    if (!account || account.status !== "ACTIVE") {
-      await this.repo.revokeSessionById(session.id);
-      await this.writeAuditEventBestEffort({
-        accountId: session.account_id,
-        eventKey: "AUTH_REFRESH",
-        outcome: "FAILED",
-        reasonCode: "ACCOUNT_INACTIVE",
-      });
-      throw new V0AuthError(401, "account is not active");
-    }
-
-    await this.repo.revokeSessionById(session.id);
-
-    const context = {
-      tenantId: session.context_tenant_id,
-      branchId: session.context_branch_id,
-    };
-    const issued = await this.issueSessionTokens(account.id, context);
-    await this.writeAuditEventBestEffort({
-      accountId: account.id,
-      phone: account.phone,
-      eventKey: "AUTH_REFRESH",
-      outcome: "SUCCESS",
-    });
-
-    return {
-      accessToken: issued.accessToken,
-      refreshToken: issued.refreshToken,
-      context,
-    };
-  }
-
-  async logout(input: { refreshToken: string }): Promise<void> {
-    const refreshToken = String(input.refreshToken ?? "").trim();
-    if (!refreshToken) {
-      throw new V0AuthError(422, "refreshToken is required");
-    }
-
-    const refreshTokenHash = sha256(refreshToken);
-    const session = await this.repo.findActiveSessionByRefreshTokenHash(refreshTokenHash);
-    await this.repo.revokeSessionByRefreshTokenHash(refreshTokenHash);
-    const account =
-      session?.account_id != null ? await this.repo.findAccountById(session.account_id) : null;
-    await this.writeAuditEventBestEffort({
-      accountId: session?.account_id ?? null,
-      phone: account?.phone ?? null,
-      eventKey: "AUTH_LOGOUT",
-      outcome: "SUCCESS",
-    });
+    return new V0AuthError(fallbackStatusCode, fallbackMessage);
   }
 }

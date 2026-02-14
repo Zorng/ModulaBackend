@@ -1,5 +1,6 @@
 import type { V0AuthRepository } from "../infra/repository.js";
 import { V0AuthAccountService } from "./auth-account.service.js";
+import { V0AuthContextSelectionService } from "./context-selection.service.js";
 import { V0AuthMembershipService } from "./membership.service.js";
 import { V0AuthTenantProvisioningService } from "./tenant-provisioning.service.js";
 
@@ -7,11 +8,13 @@ export { V0AuthError } from "./common.js";
 
 export class V0AuthService {
   private readonly accountService: V0AuthAccountService;
+  private readonly contextSelectionService: V0AuthContextSelectionService;
   private readonly membershipService: V0AuthMembershipService;
   private readonly tenantProvisioningService: V0AuthTenantProvisioningService;
 
   constructor(repo: V0AuthRepository) {
     this.accountService = new V0AuthAccountService(repo);
+    this.contextSelectionService = new V0AuthContextSelectionService(repo);
     this.membershipService = new V0AuthMembershipService(repo);
     this.tenantProvisioningService = new V0AuthTenantProvisioningService(repo);
   }
@@ -38,6 +41,22 @@ export class V0AuthService {
 
   logout(...args: Parameters<V0AuthAccountService["logout"]>) {
     return this.accountService.logout(...args);
+  }
+
+  listTenantContext(...args: Parameters<V0AuthContextSelectionService["listTenantContext"]>) {
+    return this.contextSelectionService.listTenantContext(...args);
+  }
+
+  selectTenantContext(...args: Parameters<V0AuthContextSelectionService["selectTenantContext"]>) {
+    return this.contextSelectionService.selectTenantContext(...args);
+  }
+
+  listBranchContext(...args: Parameters<V0AuthContextSelectionService["listBranchContext"]>) {
+    return this.contextSelectionService.listBranchContext(...args);
+  }
+
+  selectBranchContext(...args: Parameters<V0AuthContextSelectionService["selectBranchContext"]>) {
+    return this.contextSelectionService.selectBranchContext(...args);
   }
 
   inviteMembership(...args: Parameters<V0AuthMembershipService["inviteMembership"]>) {

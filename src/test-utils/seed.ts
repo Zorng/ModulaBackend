@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { PasswordService } from "../modules/auth/app/password.service.js";
+import { V0PasswordService as PasswordService } from "../modules/v0/auth/app/password.service.js";
 import type { AuthContext } from "../platform/security/auth.js";
 
 function shouldCleanupAfterTests(): boolean {

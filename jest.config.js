@@ -28,12 +28,15 @@ export default {
   //
   // Legacy integration tests (prototype-era) live in various module folders and are ignored here.
   testPathIgnorePatterns: [
+    '/src/modules/_archived/',
+    '/src/modules/prototype1/_archived/',
+    '/src/integration-tests/_archived/',
     '/src/integration-tests/',
-    '/src/modules/.*/tests/api/',
     '\\.api\\.test\\.ts$',
     '\\.int\\.test\\.ts$',
     '\\.integration\\.test\\.ts$',
-    '/src/modules/auth/tests/auth\\.test\\.ts$'
+    '/src/modules/auth/tests/auth\\.test\\.ts$',
+    '/src/platform/events/tests/outbox\\.test\\.ts$'
   ],
   collectCoverageFrom: [
     'src/**/*.ts',

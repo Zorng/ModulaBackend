@@ -78,6 +78,96 @@ export function createV0AuthRouter(service: V0AuthService): Router {
     }
   });
 
+  router.get(
+    "/context/tenants",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const requesterAccountId = req.v0Auth?.accountId;
+        if (!requesterAccountId) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+
+        const data = await service.listTenantContext({
+          requesterAccountId,
+          currentTenantId: req.v0Auth?.tenantId ?? null,
+        });
+        res.status(200).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
+      }
+    }
+  );
+
+  router.post(
+    "/context/tenant/select",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const requesterAccountId = req.v0Auth?.accountId;
+        if (!requesterAccountId) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+
+        const data = await service.selectTenantContext({
+          requesterAccountId,
+          tenantId: req.body?.tenantId,
+        });
+        res.status(200).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
+      }
+    }
+  );
+
+  router.get(
+    "/context/branches",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const requesterAccountId = req.v0Auth?.accountId;
+        if (!requesterAccountId) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+
+        const data = await service.listBranchContext({
+          requesterAccountId,
+          currentTenantId: req.v0Auth?.tenantId ?? null,
+          currentBranchId: req.v0Auth?.branchId ?? null,
+        });
+        res.status(200).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
+      }
+    }
+  );
+
+  router.post(
+    "/context/branch/select",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const requesterAccountId = req.v0Auth?.accountId;
+        if (!requesterAccountId) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+
+        const data = await service.selectBranchContext({
+          requesterAccountId,
+          tenantId: req.v0Auth?.tenantId ?? null,
+          branchId: req.body?.branchId,
+        });
+        res.status(200).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
+      }
+    }
+  );
+
   router.post(
     "/memberships/invite",
     requireV0Auth,

@@ -10,6 +10,9 @@ Base path: `/v0/auth`
 - Envelope:
   - success: `{ "success": true, "data": ... }`
   - failure: `{ "success": false, "error": "..." }`
+- Auth provider:
+  - production target: Supabase Auth (`V0_AUTH_PROVIDER=supabase`)
+  - local/integration fallback: internal provider (`V0_AUTH_PROVIDER=local`)
 
 ## Endpoints
 
@@ -69,15 +72,14 @@ Success `200`:
 {
   "success": true,
   "data": {
-    "expiresInMinutes": 10,
-    "debugOtp": "123456"
+    "expiresInMinutes": 10
   }
 }
 ```
 
 Notes:
-- `debugOtp` is non-production behavior only.
-- Fixed OTP in non-production is controlled by `AUTH_FIXED_OTP` (default `123456`).
+- In Supabase mode, OTP delivery is delegated to Supabase SMS provider.
+- In local mode, fixed OTP behavior remains available via `AUTH_FIXED_OTP` (default `123456`).
 
 Errors:
 - `404` account not found
@@ -207,7 +209,142 @@ Success `200`:
 Errors:
 - `422` missing refreshToken
 
-### 7) Invite member to tenant (OWNER/ADMIN)
+### 7) List tenant context options
+
+`GET /v0/auth/context/tenants`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "state": "TENANT_SELECTION_REQUIRED",
+    "selectedTenantId": null,
+    "memberships": [
+      {
+        "membershipId": "uuid",
+        "tenantId": "uuid",
+        "tenantName": "X Cafe",
+        "roleKey": "OWNER"
+      }
+    ]
+  }
+}
+```
+
+`state` values:
+- `NO_ACTIVE_MEMBERSHIPS`
+- `TENANT_AUTO_SELECTED`
+- `TENANT_SELECTION_REQUIRED`
+- `TENANT_SELECTED`
+
+### 8) Select tenant context
+
+`POST /v0/auth/context/tenant/select`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "tenantId": "uuid"
+}
+```
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "jwt",
+    "refreshToken": "opaque",
+    "context": {
+      "tenantId": "uuid",
+      "branchId": null
+    }
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token or inactive account
+- `403` no active membership for tenant
+- `422` missing tenantId
+
+### 9) List branch context options
+
+`GET /v0/auth/context/branches`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "state": "BRANCH_SELECTION_REQUIRED",
+    "tenantId": "uuid",
+    "selectedBranchId": null,
+    "branches": [
+      {
+        "branchId": "uuid",
+        "branchName": "Olympic"
+      }
+    ]
+  }
+}
+```
+
+`state` values:
+- `TENANT_CONTEXT_REQUIRED`
+- `NO_BRANCH_ASSIGNED`
+- `BRANCH_AUTO_SELECTED`
+- `BRANCH_SELECTION_REQUIRED`
+- `BRANCH_SELECTED`
+
+### 10) Select branch context
+
+`POST /v0/auth/context/branch/select`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "branchId": "uuid"
+}
+```
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "jwt",
+    "refreshToken": "opaque",
+    "context": {
+      "tenantId": "uuid",
+      "branchId": "uuid"
+    }
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token or inactive account
+- `403` no active branch assignment for branch
+- `409` tenant context is required
+- `422` missing branchId
+
+### 11) Invite member to tenant (OWNER/ADMIN)
 
 `POST /v0/auth/memberships/invite`
 
@@ -245,7 +382,7 @@ Errors:
 - `409` membership already active
 - `422` invalid payload
 
-### 8) Invitation inbox (for current account)
+### 12) Invitation inbox (for current account)
 
 `GET /v0/auth/memberships/invitations`
 
@@ -271,7 +408,7 @@ Success `200`:
 }
 ```
 
-### 9) Accept invitation
+### 13) Accept invitation
 
 `POST /v0/auth/memberships/invitations/:membershipId/accept`
 
@@ -297,7 +434,7 @@ Errors:
 - `404` invitation not found
 - `409` invitation is not pending
 
-### 10) Reject invitation
+### 14) Reject invitation
 
 `POST /v0/auth/memberships/invitations/:membershipId/reject`
 
@@ -316,7 +453,7 @@ Success `200`:
 }
 ```
 
-### 11) Change membership role (OWNER/ADMIN)
+### 15) Change membership role (OWNER/ADMIN)
 
 `POST /v0/auth/memberships/:membershipId/role`
 
@@ -343,7 +480,7 @@ Success `200`:
 }
 ```
 
-### 12) Revoke membership (OWNER/ADMIN)
+### 16) Revoke membership (OWNER/ADMIN)
 
 `POST /v0/auth/memberships/:membershipId/revoke`
 
@@ -362,7 +499,7 @@ Success `200`:
 }
 ```
 
-### 13) Assign membership branches (OWNER/ADMIN)
+### 17) Assign membership branches (OWNER/ADMIN)
 
 `POST /v0/auth/memberships/:membershipId/branches`
 
@@ -413,7 +550,7 @@ Errors:
 - `409` membership is not `INVITED` or `ACTIVE`
 - `422` invalid/inactive branch IDs
 
-### 14) Create tenant with first branch (authenticated account)
+### 18) Create tenant with first branch (authenticated account)
 
 `POST /v0/auth/tenants`
 

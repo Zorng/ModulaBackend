@@ -1,5 +1,3 @@
-import crypto from "crypto";
-import { V0PasswordService } from "./password.service.js";
 import { V0AuthBaseService } from "./base.service.js";
 import {
   V0AuthError,
@@ -46,11 +44,8 @@ export class V0AuthMembershipService extends V0AuthBaseService {
 
     let account = await this.repo.findAccountByPhone(phone);
     if (!account) {
-      const randomPassword = crypto.randomBytes(32).toString("hex");
-      const passwordHash = await V0PasswordService.hashPassword(randomPassword);
       account = await this.repo.createInvitedAccount({
         phone,
-        passwordHash,
       });
     }
 

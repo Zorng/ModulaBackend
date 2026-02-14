@@ -4,8 +4,9 @@ type Queryable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
 
 export type V0AccountRow = {
   id: string;
+  supabase_user_id: string | null;
   phone: string;
-  password_hash: string;
+  password_hash: string | null;
   status: string;
   phone_verified_at: Date | null;
   first_name: string | null;
@@ -78,6 +79,18 @@ export type V0BranchRow = {
   status: string;
 };
 
+export type V0ActiveMembershipTenantRow = {
+  membership_id: string;
+  tenant_id: string;
+  tenant_name: string;
+  role_key: string;
+};
+
+export type V0EligibleBranchRow = {
+  branch_id: string;
+  branch_name: string;
+};
+
 export class V0AuthRepository {
   constructor(private readonly db: Queryable) {}
 
@@ -85,6 +98,7 @@ export class V0AuthRepository {
     const result = await this.db.query<V0AccountRow>(
       `SELECT
          id,
+         supabase_user_id,
          phone,
          password_hash,
          status,
@@ -104,6 +118,7 @@ export class V0AuthRepository {
     const result = await this.db.query<V0AccountRow>(
       `SELECT
          id,
+         supabase_user_id,
          phone,
          password_hash,
          status,
@@ -119,9 +134,30 @@ export class V0AuthRepository {
     return result.rows[0] ?? null;
   }
 
+  async findAccountBySupabaseUserId(supabaseUserId: string): Promise<V0AccountRow | null> {
+    const result = await this.db.query<V0AccountRow>(
+      `SELECT
+         id,
+         supabase_user_id,
+         phone,
+         password_hash,
+         status,
+         phone_verified_at,
+         first_name,
+         last_name,
+         gender,
+         date_of_birth
+       FROM accounts
+       WHERE supabase_user_id = $1`,
+      [supabaseUserId]
+    );
+    return result.rows[0] ?? null;
+  }
+
   async createAccount(input: {
+    supabaseUserId?: string | null;
     phone: string;
-    passwordHash: string;
+    passwordHash?: string | null;
     firstName: string;
     lastName: string;
     gender?: string | null;
@@ -129,6 +165,7 @@ export class V0AuthRepository {
   }): Promise<V0AccountRow> {
     const result = await this.db.query<V0AccountRow>(
       `INSERT INTO accounts (
+         supabase_user_id,
          phone,
          password_hash,
          status,
@@ -136,9 +173,10 @@ export class V0AuthRepository {
          last_name,
          gender,
          date_of_birth
-       ) VALUES ($1,$2,'ACTIVE',$3,$4,$5,$6)
+       ) VALUES ($1,$2,$3,'ACTIVE',$4,$5,$6,$7)
        RETURNING
          id,
+         supabase_user_id,
          phone,
          password_hash,
          status,
@@ -148,8 +186,9 @@ export class V0AuthRepository {
          gender,
          date_of_birth`,
       [
+        input.supabaseUserId ?? null,
         input.phone,
-        input.passwordHash,
+        input.passwordHash ?? null,
         input.firstName,
         input.lastName,
         input.gender ?? null,
@@ -161,7 +200,9 @@ export class V0AuthRepository {
 
   async updateAccountRegistration(input: {
     accountId: string;
-    passwordHash: string;
+    supabaseUserId?: string | null;
+    phone?: string | null;
+    passwordHash?: string | null;
     firstName: string;
     lastName: string;
     gender?: string | null;
@@ -170,15 +211,18 @@ export class V0AuthRepository {
     const result = await this.db.query<V0AccountRow>(
       `UPDATE accounts
        SET
-         password_hash = $2,
-         first_name = $3,
-         last_name = $4,
-         gender = $5,
-         date_of_birth = $6,
+         supabase_user_id = COALESCE($2, supabase_user_id),
+         phone = COALESCE($3, phone),
+         password_hash = COALESCE($4, password_hash),
+         first_name = $5,
+         last_name = $6,
+         gender = $7,
+         date_of_birth = $8,
          updated_at = NOW()
        WHERE id = $1
        RETURNING
          id,
+         supabase_user_id,
          phone,
          password_hash,
          status,
@@ -189,7 +233,9 @@ export class V0AuthRepository {
          date_of_birth`,
       [
         input.accountId,
-        input.passwordHash,
+        input.supabaseUserId ?? null,
+        input.phone ?? null,
+        input.passwordHash ?? null,
         input.firstName,
         input.lastName,
         input.gender ?? null,
@@ -201,13 +247,13 @@ export class V0AuthRepository {
 
   async createInvitedAccount(input: {
     phone: string;
-    passwordHash: string;
   }): Promise<V0AccountRow> {
     const result = await this.db.query<V0AccountRow>(
-      `INSERT INTO accounts (phone, password_hash, status)
-       VALUES ($1,$2,'ACTIVE')
+      `INSERT INTO accounts (phone, status)
+       VALUES ($1,'ACTIVE')
        RETURNING
          id,
+         supabase_user_id,
          phone,
          password_hash,
          status,
@@ -216,9 +262,22 @@ export class V0AuthRepository {
          last_name,
          gender,
          date_of_birth`,
-      [input.phone, input.passwordHash]
+      [input.phone]
     );
     return result.rows[0];
+  }
+
+  async attachSupabaseUserId(input: {
+    accountId: string;
+    supabaseUserId: string;
+  }): Promise<void> {
+    await this.db.query(
+      `UPDATE accounts
+       SET supabase_user_id = $2,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [input.accountId, input.supabaseUserId]
+    );
   }
 
   async markPhoneVerified(phone: string): Promise<void> {
@@ -228,6 +287,16 @@ export class V0AuthRepository {
            updated_at = NOW()
        WHERE phone = $1`,
       [phone]
+    );
+  }
+
+  async markPhoneVerifiedByAccountId(accountId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE accounts
+       SET phone_verified_at = COALESCE(phone_verified_at, NOW()),
+           updated_at = NOW()
+       WHERE id = $1`,
+      [accountId]
     );
   }
 
@@ -769,6 +838,50 @@ export class V0AuthRepository {
       [membershipId]
     );
     return result.rows.map((row) => row.branch_id);
+  }
+
+  async listActiveMembershipTenants(
+    accountId: string
+  ): Promise<V0ActiveMembershipTenantRow[]> {
+    const result = await this.db.query<V0ActiveMembershipTenantRow>(
+      `SELECT
+         m.id AS membership_id,
+         m.tenant_id,
+         t.name AS tenant_name,
+         m.role_key
+       FROM v0_tenant_memberships m
+       JOIN tenants t ON t.id = m.tenant_id
+       WHERE m.account_id = $1
+         AND m.status = 'ACTIVE'
+       ORDER BY t.name ASC`,
+      [accountId]
+    );
+    return result.rows;
+  }
+
+  async listEligibleBranchesForAccountInTenant(input: {
+    accountId: string;
+    tenantId: string;
+  }): Promise<V0EligibleBranchRow[]> {
+    const result = await this.db.query<V0EligibleBranchRow>(
+      `SELECT DISTINCT
+         b.id AS branch_id,
+         b.name AS branch_name
+       FROM v0_branch_assignments ba
+       JOIN v0_tenant_memberships m ON m.id = ba.membership_id
+       JOIN branches b ON b.id = ba.branch_id
+       WHERE ba.account_id = $1
+         AND ba.tenant_id = $2
+         AND ba.status = 'ACTIVE'
+         AND m.account_id = $1
+         AND m.tenant_id = $2
+         AND m.status = 'ACTIVE'
+         AND b.tenant_id = $2
+         AND b.status = 'ACTIVE'
+       ORDER BY b.name ASC`,
+      [input.accountId, input.tenantId]
+    );
+    return result.rows;
   }
 
   async createAuditEvent(input: {

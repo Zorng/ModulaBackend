@@ -14,7 +14,7 @@
   },
   "include": ["src", "scripts"],
   "exclude": [
-    "src/modules/_archived",
+    "src/modules/prototype1/_archived",
     "src/integration-tests/_archived"
   ]
 }

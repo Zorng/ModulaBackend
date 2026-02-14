@@ -90,6 +90,8 @@ We keep **two official tiers** to make the workflow predictable and boring:
 
 ### Unit Tests (Required)
 - Must be fast and DB-free.
+- Kept local to module by default:
+  - `src/modules/<module>/tests/unit/**/*.test.ts`
 - Cover pure logic:
   - validators, mappers, error/reason-code mapping
   - action catalog metadata (scope/effect)

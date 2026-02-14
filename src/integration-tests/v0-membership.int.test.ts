@@ -19,6 +19,7 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
   let app: express.Express;
 
   beforeAll(() => {
+    process.env.V0_AUTH_PROVIDER = "local";
     process.env.AUTH_FIXED_OTP = "123456";
     process.env.JWT_SECRET = process.env.JWT_SECRET ?? "test-jwt-secret";
 

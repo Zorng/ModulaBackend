@@ -4,6 +4,7 @@
 
 - **Unit tests** (default): fast, DB-free tests.
   - Run with: `pnpm test`
+  - Module-local convention: `src/modules/<module>/tests/unit/**/*.test.ts`
 - **Integration tests**: DB-backed tests named `*.int.test.ts`
   - Run with: `pnpm test:integration`
   - Use a real Postgres database and run SQL migrations.
@@ -17,6 +18,7 @@
 Example `.env.test.local`:
 ```
 DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/modula_test
+V0_AUTH_PROVIDER=local
 ```
 
 ## Running Integration Tests
@@ -24,6 +26,11 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/modula_test
 Run all DB-backed integration tests:
 ```
 pnpm test:integration
+```
+
+Run only one module's unit tests:
+```
+pnpm test -- src/modules/v0/auth/tests/unit
 ```
 
 Run unit + integration tests:

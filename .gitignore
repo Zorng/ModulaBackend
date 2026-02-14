@@ -87,4 +87,4 @@ refactorPlans/
 modSpec/
 knowledge_base/
 
-src/modules/_archived/
+src/modules/**/_archived/

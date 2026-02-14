@@ -1,6 +1,6 @@
 # SaaS Multi-Tenant Overhaul (Restart, KB-Aligned)
 
-Status: **In Progress (Phase 3)**
+Status: **In Progress (Phase 5)**
 
 This document lives in `_refactor-artifact/` to preserve implementation context, coordinate parallel dev work, and log progress.
 
@@ -293,3 +293,5 @@ Acceptance:
 | 2026-02-13 | Phase 2 commenced: added `v0_tenant_memberships`, invite/inbox/accept/reject/role-change/revoke endpoints, and JWT auth middleware for protected `/v0/auth/memberships/*` routes. |
 | 2026-02-13 | Phase 3 commenced: added `/v0/auth/tenants` to provision tenant + owner membership + first branch in one operation, with integration coverage for zero-membership -> owner flow. |
 | 2026-02-13 | Phase 4 commenced: added workforce projection tables (`v0_staff_profiles`, pending/active branch assignments), invite-accept hydration into staff/branch assignment, and explicit owner/admin branch assignment endpoint. |
+| 2026-02-13 | Phase 5 commenced: added tenant/branch context resolution endpoints and token re-issue flows (`/v0/auth/context/*`) with integration coverage for 0/1/many membership and branch-selection states. |
+| 2026-02-13 | Auth provider pivot: `/v0/auth` account/otp/login flows now support Supabase Auth as primary provider (`V0_AUTH_PROVIDER=supabase`) with local provider fallback for integration tests. |
