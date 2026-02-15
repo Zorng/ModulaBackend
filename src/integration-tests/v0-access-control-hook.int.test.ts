@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 import { createTestPool } from "../test-utils/db.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
+import { bootstrapV0AttendanceModule } from "../modules/v0/attendance/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 
 function uniquePhone(): string {
@@ -19,6 +20,25 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
   let pool: Pool;
   let app: express.Express;
 
+  async function registerAndLogin(phone: string): Promise<string> {
+    await request(app).post("/v0/auth/register").send({
+      phone,
+      password: "Test123!",
+      firstName: "Access",
+      lastName: "Control",
+    });
+    await request(app).post("/v0/auth/otp/send").send({ phone });
+    await request(app).post("/v0/auth/otp/verify").send({
+      phone,
+      otp: "123456",
+    });
+    const login = await request(app).post("/v0/auth/login").send({
+      phone,
+      password: "Test123!",
+    });
+    return login.body.data.accessToken as string;
+  }
+
   beforeAll(() => {
     process.env.V0_AUTH_PROVIDER = "local";
     process.env.AUTH_FIXED_OTP = "123456";
@@ -28,8 +48,10 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
     app = express();
     app.use(express.json());
     const v0AuthModule = bootstrapV0AuthModule(pool);
+    const v0AttendanceModule = bootstrapV0AttendanceModule(pool);
     app.use("/v0", createAccessControlHook({ db: pool, jwtSecret: process.env.JWT_SECRET }));
     app.use("/v0/auth", v0AuthModule.router);
+    app.use("/v0/attendance", v0AttendanceModule.router);
   });
 
   afterAll(async () => {
@@ -77,6 +99,12 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
 
     await pool.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
     await pool.query(`DELETE FROM accounts WHERE phone = $1`, [phone]);
+  });
+
+  it("fails closed for unregistered /v0 routes", async () => {
+    const unknownRoute = await request(app).get("/v0/not-registered-anywhere");
+    expect(unknownRoute.status).toBe(403);
+    expect(unknownRoute.body.code).toBe("ACCESS_CONTROL_ROUTE_NOT_REGISTERED");
   });
 
   it("denies branch-scoped route when tenant member has no active branch assignment", async () => {
@@ -159,6 +187,156 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
     await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [
       ownerPhone,
       memberPhone,
+    ]);
+  });
+
+  it("denies tenant-scoped write when tenant is frozen", async () => {
+    const ownerPhone = uniquePhone();
+    const ownerToken = await registerAndLogin(ownerPhone);
+
+    const createdTenant = await request(app)
+      .post("/v0/auth/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantName: `Frozen Tenant ${Date.now()}`,
+        firstBranchName: "Main Branch",
+      });
+    const tenantId = createdTenant.body.data.tenant.id as string;
+
+    await pool.query(`UPDATE tenants SET status = 'FROZEN' WHERE id = $1`, [tenantId]);
+
+    const inviteAttempt = await request(app)
+      .post("/v0/auth/memberships/invite")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantId,
+        phone: uniquePhone(),
+        roleKey: "CASHIER",
+      });
+
+    expect(inviteAttempt.status).toBe(403);
+    expect(inviteAttempt.body.code).toBe("TENANT_NOT_ACTIVE");
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+  });
+
+  it("denies branch-scoped write when branch is frozen", async () => {
+    const ownerPhone = uniquePhone();
+    const cashierPhone = uniquePhone();
+
+    const ownerToken = await registerAndLogin(ownerPhone);
+    const createdTenant = await request(app)
+      .post("/v0/auth/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantName: `Frozen Branch ${Date.now()}`,
+        firstBranchName: "Main Branch",
+      });
+    const tenantId = createdTenant.body.data.tenant.id as string;
+    const branchId = createdTenant.body.data.branch.id as string;
+
+    const invite = await request(app)
+      .post("/v0/auth/memberships/invite")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantId,
+        phone: cashierPhone,
+        roleKey: "CASHIER",
+      });
+    const membershipId = invite.body.data.membershipId as string;
+
+    await request(app)
+      .post(`/v0/auth/memberships/${membershipId}/branches`)
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ branchIds: [branchId] });
+
+    const cashierToken = await registerAndLogin(cashierPhone);
+    await request(app)
+      .post(`/v0/auth/memberships/invitations/${membershipId}/accept`)
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({});
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({ tenantId });
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const branchSelected = await request(app)
+      .post("/v0/auth/context/branch/select")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ branchId });
+    const branchToken = branchSelected.body.data.accessToken as string;
+
+    await pool.query(`UPDATE branches SET status = 'FROZEN' WHERE id = $1`, [branchId]);
+
+    const checkIn = await request(app)
+      .post("/v0/attendance/check-in")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .send({});
+
+    expect(checkIn.status).toBe(403);
+    expect(checkIn.body.code).toBe("BRANCH_FROZEN");
+
+    await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [
+      ownerPhone,
+      cashierPhone,
+    ]);
+  });
+
+  it("denies privileged tenant write for role without permission", async () => {
+    const ownerPhone = uniquePhone();
+    const cashierPhone = uniquePhone();
+    const outsiderPhone = uniquePhone();
+
+    const ownerToken = await registerAndLogin(ownerPhone);
+    const createdTenant = await request(app)
+      .post("/v0/auth/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantName: `Role Deny ${Date.now()}`,
+        firstBranchName: "Main Branch",
+      });
+    const tenantId = createdTenant.body.data.tenant.id as string;
+
+    const invited = await request(app)
+      .post("/v0/auth/memberships/invite")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantId,
+        phone: cashierPhone,
+        roleKey: "CASHIER",
+      });
+    const membershipId = invited.body.data.membershipId as string;
+
+    const cashierToken = await registerAndLogin(cashierPhone);
+    await request(app)
+      .post(`/v0/auth/memberships/invitations/${membershipId}/accept`)
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({});
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({ tenantId });
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const inviteByCashier = await request(app)
+      .post("/v0/auth/memberships/invite")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({
+        tenantId,
+        phone: outsiderPhone,
+        roleKey: "CASHIER",
+      });
+
+    expect(inviteByCashier.status).toBe(403);
+    expect(inviteByCashier.body.code).toBe("PERMISSION_DENIED");
+
+    await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2, $3)`, [
+      ownerPhone,
+      cashierPhone,
+      outsiderPhone,
     ]);
   });
 });

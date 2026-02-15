@@ -1,6 +1,6 @@
 # Platform Foundation Rollout (Post Auth SaaS Overhaul)
 
-Status: **In Progress (F1)**
+Status: **In Progress (F2 Readiness)**
 
 Owner: backend
 Started: 2026-02-15
@@ -156,8 +156,8 @@ Exit criteria:
 
 | Phase | Status | Notes |
 |---|---|---|
-| F1 OrgAccount Core | In progress | Added `/v0/org` read endpoints + profile columns migration; validating contract and test coverage. |
-| F2 Access Control Completion | Not started |  |
+| F1 OrgAccount Core | Completed | `/v0/org` read endpoints shipped with contracts + integration coverage (profile reads, assignment-scoped visibility, frozen branch reads). |
+| F2 Access Control Completion | In progress | Action metadata catalog wired; status gates, role policy gate, and branch read/write semantics enforced in centralized hook. |
 | F3 Entitlement Foundation | Not started |  |
 | F4 Idempotency Gate | Not started |  |
 | F5 Audit Logging Core | Not started |  |
@@ -185,3 +185,25 @@ Branch profile:
 - `branchName`
 - `branchAddress?`
 - `contactNumber?`
+
+## F1 Completion Notes
+
+- F1 includes optional `tenantAddress` in profile payload.
+- This is an additive implementation decision to fill a practical data gap and does not conflict with existing KB invariants.
+- Decision is tracked in `_implementation_decisions/ADR-20260215-v0-orgaccount-tenant-address-extension.md` and should be promoted into KB when the OrgAccount docs are patched.
+
+## F2 Progress Notes
+
+- Centralized access control now uses action metadata (`scope`, `effect`, optional `allowedRoles`) instead of per-route ad-hoc role checks.
+- Access control implementation has been decomposed into focused files under `src/platform/access-control/` to avoid hook-file sprawl as modules grow.
+- Branch status behavior now matches KB direction:
+  - `WRITE` on frozen branch -> denied (`BRANCH_FROZEN`)
+  - `READ` on frozen branch -> allowed if membership + assignment checks pass.
+- `/v0` now fails closed for unregistered routes:
+  - unknown `/v0/*` path -> `403 ACCESS_CONTROL_ROUTE_NOT_REGISTERED`
+- Route/action catalog artifact added:
+  - `_refactor-artifact/access-control-action-catalog-v0.md`
+- New integration scenarios added:
+  - tenant frozen write denial
+  - branch frozen write denial
+  - role policy denial for privileged tenant actions
