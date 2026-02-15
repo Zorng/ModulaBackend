@@ -1,6 +1,6 @@
 # Platform Foundation Rollout (Post Auth SaaS Overhaul)
 
-Status: **In Progress (F6 Ready)**
+Status: **In Progress (F7 Deferred)**
 
 Owner: backend
 Started: 2026-02-15
@@ -131,7 +131,7 @@ Deliverables:
 Exit criteria:
 - Platform foundation is stable enough to begin next POSOperation vertical slices.
 
-### Phase F7 — Full Billing Engine (Later PlatformSystems Phase)
+### Phase F7 — Full Billing Engine (Deferred Until Full POS Readiness)
 Scope:
 - Implement billing operations beyond F3 entitlement foundation:
   - invoice lifecycle
@@ -139,6 +139,10 @@ Scope:
   - scheduler-driven grace/freeze/recovery
   - upgrade/downgrade orchestration
 - Maintain compatibility with F3 enforcement contracts (no breaking rewires).
+
+Deferral decision:
+- F7 implementation is intentionally deferred until core POS modules are fully built and stabilized.
+- Entitlement seams from F3 remain the active guardrail in the meantime.
 
 Deliverables:
 - `api_contract` for billing workflows (invoice/payment/subscription management).
@@ -161,15 +165,30 @@ Exit criteria:
 | F3 Entitlement Foundation | Completed | Schema + read endpoints + live access-control enforcement shipped, with catalog mapping artifact and integration coverage. |
 | F4 Idempotency Gate | Completed | Shared idempotency storage/gate shipped and integrated on attendance writes with APPLY/DUPLICATE/CONFLICT coverage. |
 | F5 Audit Logging Core | Completed | Immutable tenant-scoped audit events shipped with `/v0/audit/events` (owner/admin only) and attendance success/rejection ingestion with idempotency-safe dedupe keys. |
-| F6 Foundation Integration Pass | Not started |  |
-| F7 Full Billing Engine | Not started |  |
+| F6 Foundation Integration Pass | Completed | Platform seams are now integrated across active `/v0` slices (OrgAccount+AccessControl+Entitlements+Idempotency+Audit), contracts were reconciled, and frontend rollout notes were finalized. |
+| F7 Full Billing Engine | Deferred | Deferred until full POS readiness; keep F3 entitlement enforcement active as interim control. |
 
 ---
 
 ## Open Items (Do Not Block Start)
 
 - Audit event catalog v0 baseline for platform and OrgAccount actions.
-- Billing implementation preference for F7: manual-first vs webhook-first confirmation.
+- F7 is deferred until full POS readiness; revisit billing implementation preference (manual-first vs webhook-first) at restart.
+- Pre-F7 atomic command contract rollout (ADR locked):
+  - `_implementation_decisions/ADR-20260215-v0-command-audit-outbox-atomicity.md`
+- Next execution tracker:
+  - `_refactor-artifact/orgaccount-overhaul-pos-readiness.md`
+
+## Flagged Deviation (OrgAccount Overhaul)
+
+- Current behavior deviation:
+  - `POST /v0/auth/tenants` provisions tenant + first branch in one flow.
+- Target behavior:
+  - tenant provisioning is decoupled from branch provisioning (tenant may exist with zero branches).
+- Fair-use gap to close with OrgAccount overhaul:
+  - add tenant-specific safety caps/rate limits (`tenant_count_per_account`, `tenant.provision` rate guard).
+- Tracking rule:
+  - do not patch this ad hoc in platform foundation; resolve as part of the planned OrgAccount overhaul slice.
 
 ## Locked Profile Shapes (F1 Input)
 
@@ -272,3 +291,56 @@ Branch profile:
 - Added contract + coverage:
   - `api_contract/audit-v0.md`
   - integration tests in `v0-audit.int.test.ts` for write-on-success, rejection logging, and role-based read restriction
+
+## F6 Progress Notes
+
+- Expanded platform audit integration beyond attendance into existing Auth tenant-scoped writes:
+  - `POST /v0/auth/tenants`
+  - `POST /v0/auth/memberships/invite`
+  - `POST /v0/auth/memberships/invitations/:membershipId/accept`
+  - `POST /v0/auth/memberships/invitations/:membershipId/reject`
+  - `POST /v0/auth/memberships/:membershipId/role`
+  - `POST /v0/auth/memberships/:membershipId/revoke`
+  - `POST /v0/auth/memberships/:membershipId/branches`
+- Audit writes remain non-blocking (best effort), preserving existing endpoint behavior while improving governance evidence.
+- Added integration assertions:
+  - membership lifecycle now verifies corresponding platform audit events
+  - tenant provisioning now verifies `tenant.provision` audit event
+- Contract drift cleanup:
+  - `api_contract/auth-v0.md` now references platform audit behavior.
+  - `api_contract/audit-v0.md` write-coverage list updated to include auth flows.
+
+## F6 Frontend Rollout Notes (Locked)
+
+- Token/context workflow:
+  - Always replace stored access token after `/v0/auth/context/tenant/select` and `/v0/auth/context/branch/select`.
+  - Treat token as source-of-truth for tenant/branch context.
+- Context hydration:
+  - After tenant selection, call `GET /v0/org/tenant/current`.
+  - After branch selection, call `GET /v0/org/branch/current`.
+- Access control handling:
+  - Use `api_contract/access-control-v0.md` reason codes for deterministic UX states.
+  - Unknown `/v0/*` routes are intentionally fail-closed with `ACCESS_CONTROL_ROUTE_NOT_REGISTERED`.
+- Idempotency:
+  - Required on attendance writes (`Idempotency-Key`).
+  - Duplicate success replay is signaled by `Idempotency-Replayed: true`.
+  - Optional on auth tenant-scoped writes; if sent, it is used for audit dedupe.
+- Audit:
+  - `GET /v0/audit/events` is tenant-scoped and restricted to owner/admin.
+  - Attendance + auth tenant-scoped writes now emit immutable audit events.
+- Entitlement/subscription gating:
+  - Respect `SUBSCRIPTION_FROZEN`, `ENTITLEMENT_BLOCKED`, and `ENTITLEMENT_READ_ONLY` error codes in write/read UX flows.
+
+## F7 Entry Gate (Locked)
+
+Before active F7 implementation starts, finish command-path hardening under:
+
+- `_implementation_decisions/ADR-20260215-v0-command-audit-outbox-atomicity.md`
+
+Required minimum:
+- shared event envelope + outbox row contract in code
+- transactional persistence for:
+  - `tenant.provision`
+  - auth membership writes
+  - attendance writes
+- integration coverage for rollback + dedupe/replay safety

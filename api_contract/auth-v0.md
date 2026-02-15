@@ -15,6 +15,8 @@ Base path: `/v0/auth`
   - local/integration fallback: internal provider (`V0_AUTH_PROVIDER=local`)
 - Access-control reason codes for protected endpoints:
   - see `api_contract/access-control-v0.md`
+- Audit:
+  - tenant-scoped state-changing endpoints emit immutable platform audit events (see `api_contract/audit-v0.md`).
 
 ## Endpoints
 

@@ -159,6 +159,7 @@ describe("v0 audit (phase f5)", () => {
       `SELECT action_key, outcome, reason_code, dedupe_key
        FROM v0_audit_events
        WHERE tenant_id = $1
+         AND action_key = 'attendance.checkIn'
        ORDER BY created_at ASC`,
       [tenantId]
     );

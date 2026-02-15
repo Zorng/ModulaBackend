@@ -31,3 +31,16 @@ This folder contains the **frontend-facing HTTP API contracts** for this backend
 - `api_contract/subscription-v0.md`
 - `api_contract/idempotency-v0.md`
 - `api_contract/audit-v0.md`
+
+## Frontend Integration Sequence (`/v0`)
+
+1. Authenticate (`auth-v0`) and store returned token pair.
+2. Resolve context:
+   - list/select tenant
+   - list/select branch
+   - replace access token after each selection response.
+3. Hydrate selected profiles from OrgAccount:
+   - `GET /v0/org/tenant/current`
+   - `GET /v0/org/branch/current`
+4. Call feature endpoints with current token context (no `tenantId`/`branchId` overrides).
+5. Handle access-control + entitlement reason codes as first-class UX states.

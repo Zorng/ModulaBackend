@@ -150,6 +150,30 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
     expect(revokeRes.status).toBe(200);
     expect(revokeRes.body.data.status).toBe("DISABLED");
 
+    const auditRows = await pool.query<{
+      action_key: string;
+      outcome: string;
+      entity_type: string | null;
+      entity_id: string | null;
+    }>(
+      `SELECT action_key, outcome, entity_type, entity_id
+       FROM v0_audit_events
+       WHERE tenant_id = $1
+       ORDER BY created_at ASC`,
+      [tenantId]
+    );
+    expect(auditRows.rows.map((row) => row.action_key)).toEqual([
+      "auth.membership.invite",
+      "auth.membership.invitation.accept",
+      "auth.membership.role.change",
+      "auth.membership.revoke",
+    ]);
+    for (const row of auditRows.rows) {
+      expect(row.outcome).toBe("SUCCESS");
+      expect(row.entity_type).toBe("membership");
+      expect(row.entity_id).toBeTruthy();
+    }
+
     const inviteeLoginAfterRevoke = await request(app).post("/v0/auth/login").send({
       phone: inviteePhone,
       password: "Test123!",

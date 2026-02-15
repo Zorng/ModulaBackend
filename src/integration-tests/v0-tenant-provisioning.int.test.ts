@@ -94,6 +94,27 @@ describe("v0 tenant provisioning (phase 3 scaffold)", () => {
     );
     expect(Number(branchCount.rows[0]?.count ?? "0")).toBe(1);
 
+    const tenantAudit = await pool.query<{
+      action_key: string;
+      outcome: string;
+      entity_type: string | null;
+      entity_id: string | null;
+      branch_id: string | null;
+    }>(
+      `SELECT action_key, outcome, entity_type, entity_id, branch_id
+       FROM v0_audit_events
+       WHERE tenant_id = $1
+         AND action_key = 'tenant.provision'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [tenantId]
+    );
+    expect(tenantAudit.rows).toHaveLength(1);
+    expect(tenantAudit.rows[0].outcome).toBe("SUCCESS");
+    expect(tenantAudit.rows[0].entity_type).toBe("tenant");
+    expect(tenantAudit.rows[0].entity_id).toBe(tenantId);
+    expect(tenantAudit.rows[0].branch_id).toBe(createTenantRes.body.data.branch.id);
+
     const loginAfterProvisioning = await request(app).post("/v0/auth/login").send({
       phone,
       password: "Test123!",
