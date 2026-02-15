@@ -271,6 +271,10 @@ Success `200`:
 }
 ```
 
+Transitional note:
+- Current response is minimal (token + context IDs).
+- Backend source-of-truth profile can be fetched immediately after selection via `GET /v0/org/tenant/current`.
+
 Errors:
 - `401` missing/invalid access token or inactive account
 - `403` no active membership for tenant
@@ -337,6 +341,10 @@ Success `200`:
   }
 }
 ```
+
+Transitional note:
+- Current response is minimal (token + context IDs).
+- Backend source-of-truth profile can be fetched immediately after selection via `GET /v0/org/branch/current`.
 
 Errors:
 - `401` missing/invalid access token or inactive account

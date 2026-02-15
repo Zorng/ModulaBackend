@@ -134,6 +134,24 @@ const PROTECTED_ROUTES: AccessControlRoute[] = [
     tenantSource: "token",
     branchSource: "token",
   },
+  {
+    method: "GET",
+    pattern: /^\/org\/tenant\/current$/,
+    scope: "TENANT",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/org\/branches\/accessible$/,
+    scope: "TENANT",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/org\/branch\/current$/,
+    scope: "TENANT",
+    tenantSource: "token",
+  },
 ];
 
 export function createAccessControlHook(deps: HookDeps = {}) {
