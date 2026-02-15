@@ -1,6 +1,6 @@
 # SaaS Multi-Tenant Overhaul (Restart, KB-Aligned)
 
-Status: **In Progress (Phase 5)**
+Status: **In Progress (Phase 8)**
 
 This document lives in `_refactor-artifact/` to preserve implementation context, coordinate parallel dev work, and log progress.
 
@@ -260,6 +260,9 @@ Pick one branch-scoped workflow to validate the platform end-to-end:
 - cash session open/close, or
 - attendance check-in/out
 
+Selected for this pass:
+- attendance check-in/out
+
 Acceptance:
 - The workflow works only when:
   - authenticated
@@ -294,4 +297,7 @@ Acceptance:
 | 2026-02-13 | Phase 3 commenced: added `/v0/auth/tenants` to provision tenant + owner membership + first branch in one operation, with integration coverage for zero-membership -> owner flow. |
 | 2026-02-13 | Phase 4 commenced: added workforce projection tables (`v0_staff_profiles`, pending/active branch assignments), invite-accept hydration into staff/branch assignment, and explicit owner/admin branch assignment endpoint. |
 | 2026-02-13 | Phase 5 commenced: added tenant/branch context resolution endpoints and token re-issue flows (`/v0/auth/context/*`) with integration coverage for 0/1/many membership and branch-selection states. |
+| 2026-02-13 | Phase 6 commenced: replaced `/v0` access-control no-op with centralized gate enforcing ACTIVE tenant membership and branch assignment using route metadata + role policy, with dedicated integration coverage. |
+| 2026-02-13 | Phase 7 commenced: hardened privileged membership mutations with requester-tenant-guarded repository lookup (`findMembershipForRequesterAction`) and added cross-tenant ID-guessing integration coverage (`v0-tenant-isolation.int.test.ts`). |
 | 2026-02-13 | Auth provider pivot: `/v0/auth` account/otp/login flows now support Supabase Auth as primary provider (`V0_AUTH_PROVIDER=supabase`) with local provider fallback for integration tests. |
+| 2026-02-15 | Phase 8 commenced with Attendance vertical slice: added `/v0/attendance` (check-in/check-out/me), `v0_attendance_records` migration, access-control route metadata for branch-scoped attendance actions, integration coverage (`v0-attendance.int.test.ts`), and API contract (`api_contract/attendance-v0.md`). |

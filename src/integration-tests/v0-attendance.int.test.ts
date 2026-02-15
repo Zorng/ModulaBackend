@@ -1,0 +1,219 @@
+import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import express from "express";
+import request from "supertest";
+import type { Pool } from "pg";
+import { createTestPool } from "../test-utils/db.js";
+import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
+import { bootstrapV0AttendanceModule } from "../modules/v0/attendance/index.js";
+import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
+
+function uniquePhone(): string {
+  const now = Date.now().toString().slice(-9);
+  const rand = Math.floor(Math.random() * 1_000)
+    .toString()
+    .padStart(3, "0");
+  return `+1${now}${rand}`;
+}
+
+async function registerAndLogin(app: express.Express, phone: string): Promise<string> {
+  const register = await request(app).post("/v0/auth/register").send({
+    phone,
+    password: "Test123!",
+    firstName: "User",
+    lastName: "Attendance",
+  });
+  expect(register.status).toBe(201);
+
+  await request(app).post("/v0/auth/otp/send").send({ phone });
+  await request(app).post("/v0/auth/otp/verify").send({
+    phone,
+    otp: "123456",
+  });
+
+  const login = await request(app).post("/v0/auth/login").send({
+    phone,
+    password: "Test123!",
+  });
+  expect(login.status).toBe(200);
+  return login.body.data.accessToken as string;
+}
+
+describe("v0 attendance (phase 8 vertical slice)", () => {
+  let pool: Pool;
+  let app: express.Express;
+
+  beforeAll(() => {
+    process.env.V0_AUTH_PROVIDER = "local";
+    process.env.AUTH_FIXED_OTP = "123456";
+    process.env.JWT_SECRET = process.env.JWT_SECRET ?? "test-jwt-secret";
+
+    pool = createTestPool();
+    app = express();
+    app.use(express.json());
+
+    const v0AuthModule = bootstrapV0AuthModule(pool);
+    const v0AttendanceModule = bootstrapV0AttendanceModule(pool);
+    app.use("/v0", createAccessControlHook({ db: pool, jwtSecret: process.env.JWT_SECRET }));
+    app.use("/v0/auth", v0AuthModule.router);
+    app.use("/v0/attendance", v0AttendanceModule.router);
+  });
+
+  afterAll(async () => {
+    await pool.end();
+  });
+
+  it("records check-in/check-out and lists own attendance in branch context", async () => {
+    const ownerPhone = uniquePhone();
+    const cashierPhone = uniquePhone();
+
+    const ownerToken = await registerAndLogin(app, ownerPhone);
+    const createdTenant = await request(app)
+      .post("/v0/auth/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantName: `Attendance Tenant ${Date.now()}`,
+        firstBranchName: "Main Branch",
+      });
+    expect(createdTenant.status).toBe(201);
+
+    const tenantId = createdTenant.body.data.tenant.id as string;
+    const branchId = createdTenant.body.data.branch.id as string;
+
+    const invited = await request(app)
+      .post("/v0/auth/memberships/invite")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantId,
+        phone: cashierPhone,
+        roleKey: "CASHIER",
+      });
+    expect(invited.status).toBe(201);
+    const membershipId = invited.body.data.membershipId as string;
+
+    const assigned = await request(app)
+      .post(`/v0/auth/memberships/${membershipId}/branches`)
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ branchIds: [branchId] });
+    expect(assigned.status).toBe(200);
+
+    const cashierToken = await registerAndLogin(app, cashierPhone);
+    const accepted = await request(app)
+      .post(`/v0/auth/memberships/invitations/${membershipId}/accept`)
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({});
+    expect(accepted.status).toBe(200);
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({ tenantId });
+    expect(tenantSelected.status).toBe(200);
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const branchSelected = await request(app)
+      .post("/v0/auth/context/branch/select")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ branchId });
+    expect(branchSelected.status).toBe(200);
+    const branchToken = branchSelected.body.data.accessToken as string;
+
+    const checkIn = await request(app)
+      .post("/v0/attendance/check-in")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .send({ occurredAt: "2026-02-13T08:00:00.000Z" });
+    expect(checkIn.status).toBe(201);
+    expect(checkIn.body.data.type).toBe("CHECK_IN");
+
+    const duplicateCheckIn = await request(app)
+      .post("/v0/attendance/check-in")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .send({ occurredAt: "2026-02-13T09:00:00.000Z" });
+    expect(duplicateCheckIn.status).toBe(409);
+    expect(duplicateCheckIn.body.error).toBe("already checked in");
+
+    const checkOut = await request(app)
+      .post("/v0/attendance/check-out")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .send({ occurredAt: "2026-02-13T17:00:00.000Z" });
+    expect(checkOut.status).toBe(201);
+    expect(checkOut.body.data.type).toBe("CHECK_OUT");
+
+    const duplicateCheckOut = await request(app)
+      .post("/v0/attendance/check-out")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .send({ occurredAt: "2026-02-13T17:30:00.000Z" });
+    expect(duplicateCheckOut.status).toBe(409);
+    expect(duplicateCheckOut.body.error).toBe("no active check-in");
+
+    const listMine = await request(app)
+      .get("/v0/attendance/me?limit=10")
+      .set("Authorization", `Bearer ${branchToken}`);
+    expect(listMine.status).toBe(200);
+    expect(Array.isArray(listMine.body.data)).toBe(true);
+    expect(listMine.body.data).toHaveLength(2);
+    expect(listMine.body.data[0].type).toBe("CHECK_OUT");
+    expect(listMine.body.data[1].type).toBe("CHECK_IN");
+
+    await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [
+      ownerPhone,
+      cashierPhone,
+    ]);
+  });
+
+  it("denies attendance actions when branch context is missing", async () => {
+    const ownerPhone = uniquePhone();
+    const cashierPhone = uniquePhone();
+
+    const ownerToken = await registerAndLogin(app, ownerPhone);
+    const createdTenant = await request(app)
+      .post("/v0/auth/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantName: `Attendance Guard ${Date.now()}`,
+        firstBranchName: "Guard Branch",
+      });
+    expect(createdTenant.status).toBe(201);
+
+    const tenantId = createdTenant.body.data.tenant.id as string;
+    const branchId = createdTenant.body.data.branch.id as string;
+
+    const invited = await request(app)
+      .post("/v0/auth/memberships/invite")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantId,
+        phone: cashierPhone,
+        roleKey: "CASHIER",
+      });
+    const membershipId = invited.body.data.membershipId as string;
+    await request(app)
+      .post(`/v0/auth/memberships/${membershipId}/branches`)
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ branchIds: [branchId] });
+
+    const cashierToken = await registerAndLogin(app, cashierPhone);
+    await request(app)
+      .post(`/v0/auth/memberships/invitations/${membershipId}/accept`)
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({});
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({ tenantId });
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const noBranchContext = await request(app)
+      .post("/v0/attendance/check-in")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ occurredAt: "2026-02-13T08:00:00.000Z" });
+
+    expect(noBranchContext.status).toBe(403);
+    expect(noBranchContext.body.code).toBe("BRANCH_CONTEXT_REQUIRED");
+
+    await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [
+      ownerPhone,
+      cashierPhone,
+    ]);
+  });
+});

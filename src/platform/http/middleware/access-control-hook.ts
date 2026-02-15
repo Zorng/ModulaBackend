@@ -113,6 +113,27 @@ const PROTECTED_ROUTES: AccessControlRoute[] = [
     pattern: /^\/auth\/tenants$/,
     scope: "GLOBAL",
   },
+  {
+    method: "POST",
+    pattern: /^\/attendance\/check-in$/,
+    scope: "BRANCH",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/attendance\/check-out$/,
+    scope: "BRANCH",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/attendance\/me$/,
+    scope: "BRANCH",
+    tenantSource: "token",
+    branchSource: "token",
+  },
 ];
 
 export function createAccessControlHook(deps: HookDeps = {}) {

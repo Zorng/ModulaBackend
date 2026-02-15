@@ -234,20 +234,15 @@ export class V0AuthMembershipService extends V0AuthBaseService {
       throw new V0AuthError(422, "invalid roleKey");
     }
 
-    const target = await this.repo.findMembershipById(membershipId);
-    if (!target) {
-      throw new V0AuthError(404, "membership not found");
-    }
-    if (target.role_key === "OWNER") {
-      throw new V0AuthError(409, "owner role cannot be changed");
-    }
-
-    const requesterMembership = await this.repo.findActiveMembership(
-      input.requesterAccountId,
-      target.tenant_id
-    );
-    if (!requesterMembership || !this.privilegedRoles.has(requesterMembership.role_key)) {
+    const access = await this.repo.findMembershipForRequesterAction({
+      requesterAccountId: input.requesterAccountId,
+      targetMembershipId: membershipId,
+    });
+    if (!access || !this.privilegedRoles.has(access.requester_role_key)) {
       throw new V0AuthError(403, "requester role cannot change membership role");
+    }
+    if (access.target_role_key === "OWNER") {
+      throw new V0AuthError(409, "owner role cannot be changed");
     }
 
     const updated = await this.repo.updateMembershipRole({
@@ -285,22 +280,17 @@ export class V0AuthMembershipService extends V0AuthBaseService {
       throw new V0AuthError(422, "membershipId is required");
     }
 
-    const target = await this.repo.findMembershipById(membershipId);
-    if (!target) {
-      throw new V0AuthError(404, "membership not found");
-    }
-    if (target.role_key === "OWNER") {
-      throw new V0AuthError(409, "owner membership cannot be revoked");
-    }
-
-    const requesterMembership = await this.repo.findActiveMembership(
-      input.requesterAccountId,
-      target.tenant_id
-    );
-    if (!requesterMembership || !this.privilegedRoles.has(requesterMembership.role_key)) {
+    const access = await this.repo.findMembershipForRequesterAction({
+      requesterAccountId: input.requesterAccountId,
+      targetMembershipId: membershipId,
+    });
+    if (!access || !this.privilegedRoles.has(access.requester_role_key)) {
       throw new V0AuthError(403, "requester role cannot revoke membership");
     }
-    if (requesterMembership.id === target.id) {
+    if (access.target_role_key === "OWNER") {
+      throw new V0AuthError(409, "owner membership cannot be revoked");
+    }
+    if (access.requester_membership_id === access.target_membership_id) {
       throw new V0AuthError(409, "cannot revoke own membership");
     }
 
@@ -343,75 +333,77 @@ export class V0AuthMembershipService extends V0AuthBaseService {
     }
     const branchIds = normalizeUniqueBranchIds(input.branchIds);
 
-    const target = await this.repo.findMembershipById(membershipId);
-    if (!target) {
-      throw new V0AuthError(404, "membership not found");
-    }
-
-    const requesterMembership = await this.repo.findActiveMembership(
-      input.requesterAccountId,
-      target.tenant_id
-    );
-    if (!requesterMembership || !this.privilegedRoles.has(requesterMembership.role_key)) {
+    const access = await this.repo.findMembershipForRequesterAction({
+      requesterAccountId: input.requesterAccountId,
+      targetMembershipId: membershipId,
+    });
+    if (!access || !this.privilegedRoles.has(access.requester_role_key)) {
       throw new V0AuthError(403, "requester role cannot assign branches");
     }
 
-    const validBranches = await this.repo.findActiveBranchesByIds(target.tenant_id, branchIds);
+    const validBranches = await this.repo.findActiveBranchesByIds(
+      access.target_tenant_id,
+      branchIds
+    );
     if (validBranches.length !== branchIds.length) {
       throw new V0AuthError(422, "branchIds contain invalid or inactive branches");
     }
 
-    if (target.status === "INVITED") {
+    if (access.target_status === "INVITED") {
       await this.repo.replacePendingBranchAssignments({
-        membershipId: target.id,
-        tenantId: target.tenant_id,
+        membershipId: access.target_membership_id,
+        tenantId: access.target_tenant_id,
         branchIds,
       });
-      const pendingBranchIds = await this.repo.listPendingBranchIdsForMembership(target.id);
+      const pendingBranchIds = await this.repo.listPendingBranchIdsForMembership(
+        access.target_membership_id
+      );
       await this.writeAuditEventBestEffort({
         accountId: input.requesterAccountId,
         eventKey: "AUTH_MEMBERSHIP_BRANCH_ASSIGN",
         outcome: "SUCCESS",
         metadata: {
-          membershipId: target.id,
-          tenantId: target.tenant_id,
+          membershipId: access.target_membership_id,
+          tenantId: access.target_tenant_id,
           mode: "PENDING_INVITE",
           branchCount: pendingBranchIds.length,
         },
       });
       return {
-        membershipId: target.id,
-        tenantId: target.tenant_id,
-        membershipStatus: target.status,
+        membershipId: access.target_membership_id,
+        tenantId: access.target_tenant_id,
+        membershipStatus: access.target_status,
         pendingBranchIds,
         activeBranchIds: [],
       };
     }
 
-    if (target.status === "ACTIVE") {
-      await this.repo.ensureStaffProfileForMembership(target.id);
+    if (access.target_status === "ACTIVE") {
+      await this.repo.ensureStaffProfileForMembership(access.target_membership_id);
       await this.repo.upsertActiveBranchAssignmentsForMembership({
-        membershipId: target.id,
-        tenantId: target.tenant_id,
-        accountId: target.account_id,
+        membershipId: access.target_membership_id,
+        tenantId: access.target_tenant_id,
+        accountId: access.target_account_id,
         branchIds,
       });
-      const activeBranchIds = await this.repo.listActiveBranchIdsForMembership(target.id);
+      const activeBranchIds = await this.repo.listActiveBranchIdsForMembership(
+        access.target_membership_id
+      );
       await this.writeAuditEventBestEffort({
         accountId: input.requesterAccountId,
         eventKey: "AUTH_MEMBERSHIP_BRANCH_ASSIGN",
         outcome: "SUCCESS",
         metadata: {
-          membershipId: target.id,
-          tenantId: target.tenant_id,
+          membershipId: access.target_membership_id,
+          tenantId: access.target_tenant_id,
           mode: "ACTIVE_MEMBERSHIP",
           branchCount: activeBranchIds.length,
         },
       });
       return {
-        membershipId: target.id,
-        tenantId: target.tenant_id,
-        membershipStatus: target.status,
+        membershipId: access.target_membership_id,
+        tenantId: access.target_tenant_id,
+        membershipStatus: access.target_status,
         pendingBranchIds: [],
         activeBranchIds,
       };

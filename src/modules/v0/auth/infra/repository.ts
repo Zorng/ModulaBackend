@@ -91,6 +91,16 @@ export type V0EligibleBranchRow = {
   branch_name: string;
 };
 
+export type V0MembershipForRequesterActionRow = {
+  target_membership_id: string;
+  target_tenant_id: string;
+  target_account_id: string;
+  target_role_key: string;
+  target_status: string;
+  requester_membership_id: string;
+  requester_role_key: string;
+};
+
 export class V0AuthRepository {
   constructor(private readonly db: Queryable) {}
 
@@ -506,6 +516,31 @@ export class V0AuthRepository {
        FROM v0_tenant_memberships
        WHERE id = $1`,
       [membershipId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async findMembershipForRequesterAction(input: {
+    requesterAccountId: string;
+    targetMembershipId: string;
+  }): Promise<V0MembershipForRequesterActionRow | null> {
+    const result = await this.db.query<V0MembershipForRequesterActionRow>(
+      `SELECT
+         target.id AS target_membership_id,
+         target.tenant_id AS target_tenant_id,
+         target.account_id AS target_account_id,
+         target.role_key AS target_role_key,
+         target.status AS target_status,
+         requester.id AS requester_membership_id,
+         requester.role_key AS requester_role_key
+       FROM v0_tenant_memberships target
+       JOIN v0_tenant_memberships requester
+         ON requester.tenant_id = target.tenant_id
+       WHERE requester.account_id = $1
+         AND requester.status = 'ACTIVE'
+         AND target.id = $2
+       LIMIT 1`,
+      [input.requesterAccountId, input.targetMembershipId]
     );
     return result.rows[0] ?? null;
   }
