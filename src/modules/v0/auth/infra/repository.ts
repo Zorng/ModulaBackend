@@ -711,11 +711,38 @@ export class V0AuthRepository {
          FROM inserted_tenant
          RETURNING id, role_key, status
        ),
-       inserted_branch AS (
+      inserted_branch AS (
          INSERT INTO branches (tenant_id, name, status)
          SELECT id, $3, 'ACTIVE'
          FROM inserted_tenant
          RETURNING id, name, status
+       ),
+       inserted_subscription AS (
+         INSERT INTO v0_tenant_subscription_states (tenant_id, state)
+         SELECT id, 'ACTIVE'
+         FROM inserted_tenant
+       ),
+       inserted_branch_entitlements AS (
+         INSERT INTO v0_branch_entitlements (
+           tenant_id,
+           branch_id,
+           entitlement_key,
+           enforcement
+         )
+         SELECT
+           t.id,
+           b.id,
+           seed.entitlement_key,
+           seed.enforcement
+         FROM inserted_tenant t
+         CROSS JOIN inserted_branch b
+         CROSS JOIN (
+           VALUES
+             ('core.pos', 'ENABLED'),
+             ('module.workforce', 'ENABLED'),
+             ('module.inventory', 'ENABLED'),
+             ('addon.workforce.gps_verification', 'DISABLED_VISIBLE')
+         ) AS seed(entitlement_key, enforcement)
        )
        SELECT
          t.id AS tenant_id,

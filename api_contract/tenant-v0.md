@@ -14,6 +14,8 @@ Base path: `/v0/org`
 - Context model:
   - Request uses tenant context from token.
   - No `tenantId` override accepted in query/body.
+- Access-control reason codes:
+  - see `api_contract/access-control-v0.md`
 
 ## Types
 
@@ -55,4 +57,5 @@ Success `200`:
 Errors:
 - `401` missing/invalid access token
 - `403` `TENANT_CONTEXT_REQUIRED` or `NO_MEMBERSHIP` (from centralized access control)
+- `403` `ACCESS_CONTROL_ROUTE_NOT_REGISTERED` if route is not registered (fail-closed)
 - `404` tenant not found

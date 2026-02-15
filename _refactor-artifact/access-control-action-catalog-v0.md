@@ -1,6 +1,6 @@
 # v0 Access Control Action Catalog (F2)
 
-Status: Draft (F2 in progress)
+Status: In use (F2 completed, F3 in progress)
 Date: 2026-02-15
 
 This artifact defines route-to-action mapping and action metadata used by the centralized access-control hook.
@@ -26,12 +26,14 @@ Legend:
 | `auth.membership.revoke` | TENANT | WRITE | OWNER, ADMIN | - |
 | `auth.membership.branches.assign` | TENANT | WRITE | OWNER, ADMIN | - |
 | `tenant.provision` | GLOBAL | WRITE | - | - |
-| `attendance.checkIn` | BRANCH | WRITE | - | `attendance` |
-| `attendance.checkOut` | BRANCH | WRITE | - | `attendance` |
-| `attendance.listMine` | BRANCH | READ | - | `attendance` |
+| `attendance.checkIn` | BRANCH | WRITE | - | `module.workforce` |
+| `attendance.checkOut` | BRANCH | WRITE | - | `module.workforce` |
+| `attendance.listMine` | BRANCH | READ | - | `module.workforce` |
 | `org.tenant.current.read` | TENANT | READ | - | - |
 | `org.branches.accessible.read` | TENANT | READ | - | - |
 | `org.branch.current.read` | BRANCH | READ | - | - |
+| `subscription.state.current.read` | TENANT | READ | - | - |
+| `subscription.entitlements.currentBranch.read` | BRANCH | READ | - | - |
 
 ## Route Mapping
 
@@ -55,12 +57,20 @@ Legend:
 | GET | `/org/tenant/current` | `org.tenant.current.read` | `token` | - |
 | GET | `/org/branches/accessible` | `org.branches.accessible.read` | `token` | - |
 | GET | `/org/branch/current` | `org.branch.current.read` | `token` | `token` |
+| GET | `/subscription/state/current` | `subscription.state.current.read` | `token` | - |
+| GET | `/subscription/entitlements/current-branch` | `subscription.entitlements.currentBranch.read` | `token` | `token` |
 
 ## Notes
 
 - `/v0` now fails closed for unregistered routes:
   - request to an unknown `/v0/*` path is denied with `ACCESS_CONTROL_ROUTE_NOT_REGISTERED`.
-- Entitlement checks are currently a wired seam and return allow; enforcement is planned for F3.
+- Canonical entitlement key set and planned action expansion are tracked in:
+  - `_refactor-artifact/entitlement-catalog-v0.md`
+- Entitlement checks are now wired to `v0_branch_entitlements` for actions with `entitlementKey`.
+  - `DISABLED_VISIBLE` => `ENTITLEMENT_BLOCKED`
+  - `READ_ONLY` + write action => `ENTITLEMENT_READ_ONLY`
+- Subscription state gate behavior:
+  - `WRITE` when subscription is `FROZEN` => deny `SUBSCRIPTION_FROZEN`
 - Branch status gate behavior:
   - `WRITE` on frozen branch => deny `BRANCH_FROZEN`
   - `READ` on frozen branch => allowed if assignment/membership gates pass.

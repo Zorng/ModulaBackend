@@ -1,6 +1,6 @@
 # Platform Foundation Rollout (Post Auth SaaS Overhaul)
 
-Status: **In Progress (F2 Readiness)**
+Status: **In Progress (F4 Readiness)**
 
 Owner: backend
 Started: 2026-02-15
@@ -157,8 +157,8 @@ Exit criteria:
 | Phase | Status | Notes |
 |---|---|---|
 | F1 OrgAccount Core | Completed | `/v0/org` read endpoints shipped with contracts + integration coverage (profile reads, assignment-scoped visibility, frozen branch reads). |
-| F2 Access Control Completion | In progress | Action metadata catalog wired; status gates, role policy gate, and branch read/write semantics enforced in centralized hook. |
-| F3 Entitlement Foundation | Not started |  |
+| F2 Access Control Completion | Completed | Access-control pipeline refactored into `src/platform/access-control/*`, fail-closed unknown `/v0` routes, and reason-code contract documented for frontend. |
+| F3 Entitlement Foundation | Completed | Schema + read endpoints + live access-control enforcement shipped, with catalog mapping artifact and integration coverage. |
 | F4 Idempotency Gate | Not started |  |
 | F5 Audit Logging Core | Not started |  |
 | F6 Foundation Integration Pass | Not started |  |
@@ -170,7 +170,6 @@ Exit criteria:
 
 - Exact first set of endpoints to be idempotency-enforced in F4.
 - Audit event catalog v0 baseline for platform and OrgAccount actions.
-- Entitlement catalog seed: which POS actions map to which entitlement keys in F3.
 - Billing implementation preference for F7: manual-first vs webhook-first confirmation.
 
 ## Locked Profile Shapes (F1 Input)
@@ -192,7 +191,7 @@ Branch profile:
 - This is an additive implementation decision to fill a practical data gap and does not conflict with existing KB invariants.
 - Decision is tracked in `_implementation_decisions/ADR-20260215-v0-orgaccount-tenant-address-extension.md` and should be promoted into KB when the OrgAccount docs are patched.
 
-## F2 Progress Notes
+## F2 Completion Notes
 
 - Centralized access control now uses action metadata (`scope`, `effect`, optional `allowedRoles`) instead of per-route ad-hoc role checks.
 - Access control implementation has been decomposed into focused files under `src/platform/access-control/` to avoid hook-file sprawl as modules grow.
@@ -203,7 +202,35 @@ Branch profile:
   - unknown `/v0/*` path -> `403 ACCESS_CONTROL_ROUTE_NOT_REGISTERED`
 - Route/action catalog artifact added:
   - `_refactor-artifact/access-control-action-catalog-v0.md`
+- Reason-code contract added:
+  - `api_contract/access-control-v0.md`
 - New integration scenarios added:
   - tenant frozen write denial
   - branch frozen write denial
   - role policy denial for privileged tenant actions
+  - unregistered route denial (`ACCESS_CONTROL_ROUTE_NOT_REGISTERED`)
+
+## F3 Progress Notes
+
+- Added entitlement foundation schema:
+  - `v0_tenant_subscription_states` (`ACTIVE | PAST_DUE | FROZEN`)
+  - `v0_branch_entitlements` (`ENABLED | READ_ONLY | DISABLED_VISIBLE`)
+- Tenant provisioning now initializes:
+  - subscription state = `ACTIVE`
+  - branch entitlement seed:
+    - `core.pos = ENABLED`
+    - `module.workforce = ENABLED`
+    - `module.inventory = ENABLED`
+    - `addon.workforce.gps_verification = DISABLED_VISIBLE`
+- Added subscription module scaffolding + read endpoints:
+  - `GET /v0/subscription/state/current`
+  - `GET /v0/subscription/entitlements/current-branch`
+- Access-control now enforces:
+  - `SUBSCRIPTION_FROZEN` on writes when subscription state is frozen
+  - `ENTITLEMENT_BLOCKED` for disabled-visible actions
+  - `ENTITLEMENT_READ_ONLY` for write attempts under read-only enforcement
+- Entitlement catalog + action mapping artifact added:
+  - `_refactor-artifact/entitlement-catalog-v0.md`
+- Added integration coverage:
+  - `v0-access-control-hook.int.test.ts` (new entitlement + subscription scenarios)
+  - `v0-subscription.int.test.ts`

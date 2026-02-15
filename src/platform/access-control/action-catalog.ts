@@ -32,19 +32,24 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
   "attendance.checkIn": {
     scope: "BRANCH",
     effect: "WRITE",
-    entitlementKey: "attendance",
+    entitlementKey: "module.workforce",
   },
   "attendance.checkOut": {
     scope: "BRANCH",
     effect: "WRITE",
-    entitlementKey: "attendance",
+    entitlementKey: "module.workforce",
   },
   "attendance.listMine": {
     scope: "BRANCH",
     effect: "READ",
-    entitlementKey: "attendance",
+    entitlementKey: "module.workforce",
   },
   "org.tenant.current.read": { scope: "TENANT", effect: "READ" },
   "org.branches.accessible.read": { scope: "TENANT", effect: "READ" },
   "org.branch.current.read": { scope: "BRANCH", effect: "READ" },
+  "subscription.state.current.read": { scope: "TENANT", effect: "READ" },
+  "subscription.entitlements.currentBranch.read": {
+    scope: "BRANCH",
+    effect: "READ",
+  },
 };

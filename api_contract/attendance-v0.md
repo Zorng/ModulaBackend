@@ -15,6 +15,8 @@ Base path: `/v0/attendance`
   - Attendance is branch-scoped.
   - `tenantId` and `branchId` must come from the access token context.
   - These endpoints do not accept `tenantId`/`branchId` overrides.
+- Access-control reason codes:
+  - see `api_contract/access-control-v0.md`
 
 ## Types
 
@@ -69,6 +71,7 @@ Errors:
 - `401` missing/invalid access token
 - `403` `TENANT_CONTEXT_REQUIRED` or `BRANCH_CONTEXT_REQUIRED` (token context missing)
 - `403` `NO_MEMBERSHIP` or `NO_BRANCH_ACCESS` (access control deny)
+- `403` `TENANT_NOT_ACTIVE` or `SUBSCRIPTION_FROZEN` or `BRANCH_FROZEN` (status gates for writes)
 - `409` already checked in
 - `422` invalid `occurredAt`
 
@@ -107,6 +110,7 @@ Errors:
 - `401` missing/invalid access token
 - `403` `TENANT_CONTEXT_REQUIRED` or `BRANCH_CONTEXT_REQUIRED`
 - `403` `NO_MEMBERSHIP` or `NO_BRANCH_ACCESS`
+- `403` `TENANT_NOT_ACTIVE` or `SUBSCRIPTION_FROZEN` or `BRANCH_FROZEN`
 - `409` no active check-in
 - `422` invalid `occurredAt`
 

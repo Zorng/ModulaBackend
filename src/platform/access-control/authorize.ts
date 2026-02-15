@@ -4,6 +4,7 @@ import { resolveBranchId, resolveTenantId } from "./context-resolvers.js";
 import {
   getActiveMembership,
   getBranchStatus,
+  getSubscriptionState,
   getTenantStatus,
   hasActiveBranchAccess,
 } from "./data-access.js";
@@ -39,6 +40,11 @@ export async function authorizeRoute(input: {
 
   if (!tenantId) {
     return deny(403, "TENANT_CONTEXT_REQUIRED");
+  }
+
+  const subscriptionState = await getSubscriptionState(input.db, tenantId);
+  if (action.effect === "WRITE" && subscriptionState === "FROZEN") {
+    return deny(403, "SUBSCRIPTION_FROZEN");
   }
 
   const tenantStatus = await getTenantStatus(input.db, tenantId);
@@ -93,7 +99,8 @@ export async function authorizeRoute(input: {
       return deny(403, "NO_BRANCH_ACCESS");
     }
 
-    const entitlement = evaluateEntitlement({
+    const entitlement = await evaluateEntitlement({
+      db: input.db,
       action,
       tenantId,
       branchId,
@@ -108,7 +115,8 @@ export async function authorizeRoute(input: {
     return { allow: true };
   }
 
-  const tenantEntitlement = evaluateEntitlement({
+  const tenantEntitlement = await evaluateEntitlement({
+    db: input.db,
     action,
     tenantId,
     branchId: null,

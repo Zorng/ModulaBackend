@@ -220,6 +220,41 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
     await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
   });
 
+  it("denies tenant-scoped write when subscription state is frozen", async () => {
+    const ownerPhone = uniquePhone();
+    const ownerToken = await registerAndLogin(ownerPhone);
+
+    const createdTenant = await request(app)
+      .post("/v0/auth/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantName: `Subscription Frozen ${Date.now()}`,
+        firstBranchName: "Main Branch",
+      });
+    const tenantId = createdTenant.body.data.tenant.id as string;
+
+    await pool.query(
+      `UPDATE v0_tenant_subscription_states
+       SET state = 'FROZEN', updated_at = NOW()
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+
+    const inviteAttempt = await request(app)
+      .post("/v0/auth/memberships/invite")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantId,
+        phone: uniquePhone(),
+        roleKey: "CASHIER",
+      });
+
+    expect(inviteAttempt.status).toBe(403);
+    expect(inviteAttempt.body.code).toBe("SUBSCRIPTION_FROZEN");
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+  });
+
   it("denies branch-scoped write when branch is frozen", async () => {
     const ownerPhone = uniquePhone();
     const cashierPhone = uniquePhone();
@@ -337,6 +372,91 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
       ownerPhone,
       cashierPhone,
       outsiderPhone,
+    ]);
+  });
+
+  it("denies branch write as entitlement read-only and blocks read when disabled", async () => {
+    const ownerPhone = uniquePhone();
+    const cashierPhone = uniquePhone();
+
+    const ownerToken = await registerAndLogin(ownerPhone);
+    const createdTenant = await request(app)
+      .post("/v0/auth/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantName: `Entitlement Tenant ${Date.now()}`,
+        firstBranchName: "Main Branch",
+      });
+    const tenantId = createdTenant.body.data.tenant.id as string;
+    const branchId = createdTenant.body.data.branch.id as string;
+
+    const invite = await request(app)
+      .post("/v0/auth/memberships/invite")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantId,
+        phone: cashierPhone,
+        roleKey: "CASHIER",
+      });
+    const membershipId = invite.body.data.membershipId as string;
+
+    await request(app)
+      .post(`/v0/auth/memberships/${membershipId}/branches`)
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ branchIds: [branchId] });
+
+    const cashierToken = await registerAndLogin(cashierPhone);
+    await request(app)
+      .post(`/v0/auth/memberships/invitations/${membershipId}/accept`)
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({});
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({ tenantId });
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const branchSelected = await request(app)
+      .post("/v0/auth/context/branch/select")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ branchId });
+    const branchToken = branchSelected.body.data.accessToken as string;
+
+    await pool.query(
+      `UPDATE v0_branch_entitlements
+       SET enforcement = 'READ_ONLY', updated_at = NOW()
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND entitlement_key = 'module.workforce'`,
+      [tenantId, branchId]
+    );
+
+    const readOnlyWrite = await request(app)
+      .post("/v0/attendance/check-in")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .send({});
+    expect(readOnlyWrite.status).toBe(403);
+    expect(readOnlyWrite.body.code).toBe("ENTITLEMENT_READ_ONLY");
+
+    await pool.query(
+      `UPDATE v0_branch_entitlements
+       SET enforcement = 'DISABLED_VISIBLE', updated_at = NOW()
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND entitlement_key = 'module.workforce'`,
+      [tenantId, branchId]
+    );
+
+    const blockedRead = await request(app)
+      .get("/v0/attendance/me")
+      .set("Authorization", `Bearer ${branchToken}`);
+    expect(blockedRead.status).toBe(403);
+    expect(blockedRead.body.code).toBe("ENTITLEMENT_BLOCKED");
+
+    await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [
+      ownerPhone,
+      cashierPhone,
     ]);
   });
 });

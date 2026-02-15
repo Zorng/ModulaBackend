@@ -13,6 +13,19 @@ export async function getTenantStatus(
   return result.rows[0]?.status ?? null;
 }
 
+export async function getSubscriptionState(
+  db: Queryable,
+  tenantId: string
+): Promise<"ACTIVE" | "PAST_DUE" | "FROZEN"> {
+  const result = await db.query<{ state: "ACTIVE" | "PAST_DUE" | "FROZEN" }>(
+    `SELECT state
+     FROM v0_tenant_subscription_states
+     WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  return result.rows[0]?.state ?? "ACTIVE";
+}
+
 export async function getActiveMembership(
   db: Queryable,
   accountId: string,
@@ -69,4 +82,23 @@ export async function hasActiveBranchAccess(input: {
     [input.accountId, input.tenantId, input.branchId]
   );
   return result.rows[0]?.exists === true;
+}
+
+export async function getBranchEntitlementEnforcement(input: {
+  db: Queryable;
+  tenantId: string;
+  branchId: string;
+  entitlementKey: string;
+}): Promise<"ENABLED" | "READ_ONLY" | "DISABLED_VISIBLE"> {
+  const result = await input.db.query<{
+    enforcement: "ENABLED" | "READ_ONLY" | "DISABLED_VISIBLE";
+  }>(
+    `SELECT enforcement
+     FROM v0_branch_entitlements
+     WHERE tenant_id = $1
+       AND branch_id = $2
+       AND entitlement_key = $3`,
+    [input.tenantId, input.branchId, input.entitlementKey]
+  );
+  return result.rows[0]?.enforcement ?? "ENABLED";
 }

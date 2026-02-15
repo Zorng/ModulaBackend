@@ -13,6 +13,8 @@ Base path: `/v0/auth`
 - Auth provider:
   - production target: Supabase Auth (`V0_AUTH_PROVIDER=supabase`)
   - local/integration fallback: internal provider (`V0_AUTH_PROVIDER=local`)
+- Access-control reason codes for protected endpoints:
+  - see `api_contract/access-control-v0.md`
 
 ## Endpoints
 

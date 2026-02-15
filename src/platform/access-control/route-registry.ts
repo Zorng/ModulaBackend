@@ -109,6 +109,19 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     tenantSource: "token",
     branchSource: "token",
   },
+  {
+    method: "GET",
+    pattern: /^\/subscription\/state\/current$/,
+    actionKey: "subscription.state.current.read",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/subscription\/entitlements\/current-branch$/,
+    actionKey: "subscription.entitlements.currentBranch.read",
+    tenantSource: "token",
+    branchSource: "token",
+  },
 ];
 
 export function matchProtectedRoute(
