@@ -29,3 +29,5 @@ This folder contains the **frontend-facing HTTP API contracts** for this backend
 - `api_contract/branch-v0.md`
 - `api_contract/access-control-v0.md`
 - `api_contract/subscription-v0.md`
+- `api_contract/idempotency-v0.md`
+- `api_contract/audit-v0.md`

@@ -34,6 +34,7 @@ Legend:
 | `org.branch.current.read` | BRANCH | READ | - | - |
 | `subscription.state.current.read` | TENANT | READ | - | - |
 | `subscription.entitlements.currentBranch.read` | BRANCH | READ | - | - |
+| `audit.view` | TENANT | READ | OWNER, ADMIN | - |
 
 ## Route Mapping
 
@@ -59,6 +60,7 @@ Legend:
 | GET | `/org/branch/current` | `org.branch.current.read` | `token` | `token` |
 | GET | `/subscription/state/current` | `subscription.state.current.read` | `token` | - |
 | GET | `/subscription/entitlements/current-branch` | `subscription.entitlements.currentBranch.read` | `token` | `token` |
+| GET | `/audit/events` | `audit.view` | `token` | - |
 
 ## Notes
 

@@ -122,6 +122,12 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     tenantSource: "token",
     branchSource: "token",
   },
+  {
+    method: "GET",
+    pattern: /^\/audit\/events$/,
+    actionKey: "audit.view",
+    tenantSource: "token",
+  },
 ];
 
 export function matchProtectedRoute(

@@ -52,4 +52,9 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     scope: "BRANCH",
     effect: "READ",
   },
+  "audit.view": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN"],
+  },
 };

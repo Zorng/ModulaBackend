@@ -62,7 +62,7 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
     await pool.end();
   });
 
-  it("records check-in/check-out and lists own attendance in branch context", async () => {
+  it("records check-in/check-out and handles idempotent replay for branch writes", async () => {
     const ownerPhone = uniquePhone();
     const cashierPhone = uniquePhone();
 
@@ -120,30 +120,52 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
     const checkIn = await request(app)
       .post("/v0/attendance/check-in")
       .set("Authorization", `Bearer ${branchToken}`)
+      .set("Idempotency-Key", "att-check-in-1")
       .send({ occurredAt: "2026-02-13T08:00:00.000Z" });
     expect(checkIn.status).toBe(201);
     expect(checkIn.body.data.type).toBe("CHECK_IN");
 
-    const duplicateCheckIn = await request(app)
+    const replayedCheckIn = await request(app)
       .post("/v0/attendance/check-in")
       .set("Authorization", `Bearer ${branchToken}`)
+      .set("Idempotency-Key", "att-check-in-1")
+      .send({ occurredAt: "2026-02-13T08:00:00.000Z" });
+    expect(replayedCheckIn.status).toBe(201);
+    expect(replayedCheckIn.body.data.type).toBe("CHECK_IN");
+    expect(replayedCheckIn.headers["idempotency-replayed"]).toBe("true");
+
+    const duplicateCheckInBusiness = await request(app)
+      .post("/v0/attendance/check-in")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .set("Idempotency-Key", "att-check-in-2")
       .send({ occurredAt: "2026-02-13T09:00:00.000Z" });
-    expect(duplicateCheckIn.status).toBe(409);
-    expect(duplicateCheckIn.body.error).toBe("already checked in");
+    expect(duplicateCheckInBusiness.status).toBe(409);
+    expect(duplicateCheckInBusiness.body.error).toBe("already checked in");
 
     const checkOut = await request(app)
       .post("/v0/attendance/check-out")
       .set("Authorization", `Bearer ${branchToken}`)
+      .set("Idempotency-Key", "att-check-out-1")
       .send({ occurredAt: "2026-02-13T17:00:00.000Z" });
     expect(checkOut.status).toBe(201);
     expect(checkOut.body.data.type).toBe("CHECK_OUT");
 
-    const duplicateCheckOut = await request(app)
+    const replayedCheckOut = await request(app)
       .post("/v0/attendance/check-out")
       .set("Authorization", `Bearer ${branchToken}`)
+      .set("Idempotency-Key", "att-check-out-1")
+      .send({ occurredAt: "2026-02-13T17:00:00.000Z" });
+    expect(replayedCheckOut.status).toBe(201);
+    expect(replayedCheckOut.body.data.type).toBe("CHECK_OUT");
+    expect(replayedCheckOut.headers["idempotency-replayed"]).toBe("true");
+
+    const duplicateCheckOutBusiness = await request(app)
+      .post("/v0/attendance/check-out")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .set("Idempotency-Key", "att-check-out-2")
       .send({ occurredAt: "2026-02-13T17:30:00.000Z" });
-    expect(duplicateCheckOut.status).toBe(409);
-    expect(duplicateCheckOut.body.error).toBe("no active check-in");
+    expect(duplicateCheckOutBusiness.status).toBe(409);
+    expect(duplicateCheckOutBusiness.body.error).toBe("no active check-in");
 
     const listMine = await request(app)
       .get("/v0/attendance/me?limit=10")
@@ -153,6 +175,84 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
     expect(listMine.body.data).toHaveLength(2);
     expect(listMine.body.data[0].type).toBe("CHECK_OUT");
     expect(listMine.body.data[1].type).toBe("CHECK_IN");
+
+    await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [
+      ownerPhone,
+      cashierPhone,
+    ]);
+  });
+
+  it("returns idempotency conflict for same key with different payload and requires idempotency key", async () => {
+    const ownerPhone = uniquePhone();
+    const cashierPhone = uniquePhone();
+
+    const ownerToken = await registerAndLogin(app, ownerPhone);
+    const createdTenant = await request(app)
+      .post("/v0/auth/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantName: `Attendance Idempotency ${Date.now()}`,
+        firstBranchName: "Main Branch",
+      });
+    expect(createdTenant.status).toBe(201);
+
+    const tenantId = createdTenant.body.data.tenant.id as string;
+    const branchId = createdTenant.body.data.branch.id as string;
+
+    const invited = await request(app)
+      .post("/v0/auth/memberships/invite")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantId,
+        phone: cashierPhone,
+        roleKey: "CASHIER",
+      });
+    const membershipId = invited.body.data.membershipId as string;
+
+    await request(app)
+      .post(`/v0/auth/memberships/${membershipId}/branches`)
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ branchIds: [branchId] });
+
+    const cashierToken = await registerAndLogin(app, cashierPhone);
+    await request(app)
+      .post(`/v0/auth/memberships/invitations/${membershipId}/accept`)
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({});
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${cashierToken}`)
+      .send({ tenantId });
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const branchSelected = await request(app)
+      .post("/v0/auth/context/branch/select")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ branchId });
+    const branchToken = branchSelected.body.data.accessToken as string;
+
+    const first = await request(app)
+      .post("/v0/attendance/check-in")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .set("Idempotency-Key", "att-conflict-1")
+      .send({ occurredAt: "2026-02-14T08:00:00.000Z" });
+    expect(first.status).toBe(201);
+
+    const conflict = await request(app)
+      .post("/v0/attendance/check-in")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .set("Idempotency-Key", "att-conflict-1")
+      .send({ occurredAt: "2026-02-14T08:30:00.000Z" });
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.code).toBe("IDEMPOTENCY_CONFLICT");
+
+    const missingKey = await request(app)
+      .post("/v0/attendance/check-out")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .send({ occurredAt: "2026-02-14T17:00:00.000Z" });
+    expect(missingKey.status).toBe(422);
+    expect(missingKey.body.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
 
     await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [
       ownerPhone,
@@ -206,6 +306,7 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
     const noBranchContext = await request(app)
       .post("/v0/attendance/check-in")
       .set("Authorization", `Bearer ${tenantToken}`)
+      .set("Idempotency-Key", "att-no-branch-1")
       .send({ occurredAt: "2026-02-13T08:00:00.000Z" });
 
     expect(noBranchContext.status).toBe(403);

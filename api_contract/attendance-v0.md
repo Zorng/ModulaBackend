@@ -15,6 +15,11 @@ Base path: `/v0/attendance`
   - Attendance is branch-scoped.
   - `tenantId` and `branchId` must come from the access token context.
   - These endpoints do not accept `tenantId`/`branchId` overrides.
+- Idempotency:
+  - Critical writes require `Idempotency-Key` header.
+  - Duplicate replay with same key + same payload returns stored response and header `Idempotency-Replayed: true`.
+- Audit:
+  - state-changing attendance writes emit immutable audit events (see `api_contract/audit-v0.md`).
 - Access-control reason codes:
   - see `api_contract/access-control-v0.md`
 
@@ -39,6 +44,9 @@ type AttendanceRecord = {
 ### 1) Check in
 
 `POST /v0/attendance/check-in`
+
+Headers:
+- `Idempotency-Key: <client generated key>`
 
 Body:
 
@@ -72,12 +80,18 @@ Errors:
 - `403` `TENANT_CONTEXT_REQUIRED` or `BRANCH_CONTEXT_REQUIRED` (token context missing)
 - `403` `NO_MEMBERSHIP` or `NO_BRANCH_ACCESS` (access control deny)
 - `403` `TENANT_NOT_ACTIVE` or `SUBSCRIPTION_FROZEN` or `BRANCH_FROZEN` (status gates for writes)
+- `422` `IDEMPOTENCY_KEY_REQUIRED`
+- `409` `IDEMPOTENCY_CONFLICT` (same key with different payload)
+- `409` `IDEMPOTENCY_IN_PROGRESS` (same key currently being processed)
 - `409` already checked in
 - `422` invalid `occurredAt`
 
 ### 2) Check out
 
 `POST /v0/attendance/check-out`
+
+Headers:
+- `Idempotency-Key: <client generated key>`
 
 Body:
 
@@ -111,6 +125,9 @@ Errors:
 - `403` `TENANT_CONTEXT_REQUIRED` or `BRANCH_CONTEXT_REQUIRED`
 - `403` `NO_MEMBERSHIP` or `NO_BRANCH_ACCESS`
 - `403` `TENANT_NOT_ACTIVE` or `SUBSCRIPTION_FROZEN` or `BRANCH_FROZEN`
+- `422` `IDEMPOTENCY_KEY_REQUIRED`
+- `409` `IDEMPOTENCY_CONFLICT`
+- `409` `IDEMPOTENCY_IN_PROGRESS`
 - `409` no active check-in
 - `422` invalid `occurredAt`
 

@@ -1,6 +1,6 @@
 # Platform Foundation Rollout (Post Auth SaaS Overhaul)
 
-Status: **In Progress (F4 Readiness)**
+Status: **In Progress (F6 Ready)**
 
 Owner: backend
 Started: 2026-02-15
@@ -159,8 +159,8 @@ Exit criteria:
 | F1 OrgAccount Core | Completed | `/v0/org` read endpoints shipped with contracts + integration coverage (profile reads, assignment-scoped visibility, frozen branch reads). |
 | F2 Access Control Completion | Completed | Access-control pipeline refactored into `src/platform/access-control/*`, fail-closed unknown `/v0` routes, and reason-code contract documented for frontend. |
 | F3 Entitlement Foundation | Completed | Schema + read endpoints + live access-control enforcement shipped, with catalog mapping artifact and integration coverage. |
-| F4 Idempotency Gate | Not started |  |
-| F5 Audit Logging Core | Not started |  |
+| F4 Idempotency Gate | Completed | Shared idempotency storage/gate shipped and integrated on attendance writes with APPLY/DUPLICATE/CONFLICT coverage. |
+| F5 Audit Logging Core | Completed | Immutable tenant-scoped audit events shipped with `/v0/audit/events` (owner/admin only) and attendance success/rejection ingestion with idempotency-safe dedupe keys. |
 | F6 Foundation Integration Pass | Not started |  |
 | F7 Full Billing Engine | Not started |  |
 
@@ -168,7 +168,6 @@ Exit criteria:
 
 ## Open Items (Do Not Block Start)
 
-- Exact first set of endpoints to be idempotency-enforced in F4.
 - Audit event catalog v0 baseline for platform and OrgAccount actions.
 - Billing implementation preference for F7: manual-first vs webhook-first confirmation.
 
@@ -234,3 +233,42 @@ Branch profile:
 - Added integration coverage:
   - `v0-access-control-hook.int.test.ts` (new entitlement + subscription scenarios)
   - `v0-subscription.int.test.ts`
+
+## F4 Completion Notes
+
+- Added shared idempotency persistence:
+  - `v0_idempotency_records` (migration `013_create_v0_idempotency_records.sql`)
+- Idempotency service/repository added under:
+  - `src/platform/idempotency/*`
+- First critical write adapter integrated:
+  - `POST /v0/attendance/check-in`
+  - `POST /v0/attendance/check-out`
+- Implemented idempotency outcomes:
+  - `APPLY` (first execution)
+  - `DUPLICATE` (same key + same payload => stored response replayed)
+  - `CONFLICT` (same key + different payload => `IDEMPOTENCY_CONFLICT`)
+- Added idempotency contract notes:
+  - `api_contract/idempotency-v0.md`
+- Integration coverage added in `v0-attendance.int.test.ts`:
+  - replayed duplicate behavior
+  - conflict behavior
+  - required key behavior
+
+## F5 Completion Notes
+
+- Added immutable platform audit storage:
+  - `v0_audit_events` (migration `014_create_v0_audit_events.sql`)
+- Added audit module + tenant-scoped read endpoint:
+  - `GET /v0/audit/events`
+  - access policy: owner/admin only (`audit.view`)
+- Added audit-aware access-control catalog entries:
+  - `audit.view` action metadata
+  - `/audit/events` route registration (fail-closed model preserved)
+- Attendance write integration:
+  - `POST /v0/attendance/check-in`
+  - `POST /v0/attendance/check-out`
+  - emits `SUCCESS` and `REJECTED`/`FAILED` outcomes with reason codes
+  - uses outcome-specific dedupe keys tied to idempotency keys to avoid replay duplication
+- Added contract + coverage:
+  - `api_contract/audit-v0.md`
+  - integration tests in `v0-audit.int.test.ts` for write-on-success, rejection logging, and role-based read restriction
