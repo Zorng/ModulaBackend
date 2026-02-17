@@ -63,8 +63,7 @@ Exit criteria:
 
 | Phase | Status | Notes |
 |---|---|---|
-| O1 OrgAccount Model Correction | Not started |  |
-| O2 Fair-Use Extension | Not started |  |
+| O1 OrgAccount Model Correction | Completed | `POST /v0/auth/tenants` now supports tenant-only provisioning (zero-branch) with optional `firstBranchName` for transitional compatibility; contracts + integration coverage updated. |
+| O2 Fair-Use Extension | Completed | Tenant provisioning now enforces `tenant_count_per_account` hard cap and request-frequency rate limiting with stable denial codes (`FAIRUSE_HARD_LIMIT_EXCEEDED`, `FAIRUSE_RATE_LIMITED`). |
 | O3 Atomic Command Contract | Not started | ADR: `_implementation_decisions/ADR-20260215-v0-command-audit-outbox-atomicity.md` |
 | O4 POS Core Readiness Slices | Not started |  |
-

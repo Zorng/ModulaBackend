@@ -18,6 +18,18 @@ export abstract class V0AuthBaseService {
   protected readonly jwtSecret = process.env.JWT_SECRET ?? "dev-v0-jwt-secret";
   protected readonly privilegedRoles = new Set(["OWNER", "ADMIN"]);
   protected readonly assignableRoles = new Set(["ADMIN", "MANAGER", "CASHIER", "CLERK"]);
+  protected readonly tenantCountPerAccountHard = this.readPositiveInt(
+    process.env.V0_FAIRUSE_TENANT_COUNT_PER_ACCOUNT_HARD,
+    20
+  );
+  protected readonly tenantProvisionRateLimit = this.readPositiveInt(
+    process.env.V0_FAIRUSE_TENANT_PROVISION_RATE_LIMIT,
+    10
+  );
+  protected readonly tenantProvisionRateWindowSeconds = this.readPositiveInt(
+    process.env.V0_FAIRUSE_TENANT_PROVISION_WINDOW_SECONDS,
+    3600
+  );
 
   constructor(protected readonly repo: V0AuthRepository) {}
 
@@ -107,5 +119,13 @@ export abstract class V0AuthBaseService {
     } catch {
       // audit is best-effort, should never block auth flow.
     }
+  }
+
+  private readPositiveInt(input: string | undefined, fallback: number): number {
+    const parsed = Number(input);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return fallback;
+    }
+    return Math.floor(parsed);
   }
 }

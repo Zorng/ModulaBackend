@@ -68,9 +68,9 @@ export type V0TenantProvisioningRow = {
   membership_id: string;
   membership_role_key: string;
   membership_status: string;
-  branch_id: string;
-  branch_name: string;
-  branch_status: string;
+  branch_id: string | null;
+  branch_name: string | null;
+  branch_status: string | null;
 };
 
 export type V0BranchRow = {
@@ -687,10 +687,10 @@ export class V0AuthRepository {
     return result.rows[0] ?? null;
   }
 
-  async createTenantWithOwnerAndFirstBranch(input: {
+  async createTenantWithOwnerAndOptionalFirstBranch(input: {
     accountId: string;
     tenantName: string;
-    firstBranchName: string;
+    firstBranchName: string | null;
   }): Promise<V0TenantProvisioningRow> {
     const result = await this.db.query<V0TenantProvisioningRow>(
       `WITH inserted_tenant AS (
@@ -713,8 +713,9 @@ export class V0AuthRepository {
        ),
       inserted_branch AS (
          INSERT INTO branches (tenant_id, name, status)
-         SELECT id, $3, 'ACTIVE'
+         SELECT id, NULLIF($3::text, ''), 'ACTIVE'
          FROM inserted_tenant
+         WHERE NULLIF($3::text, '') IS NOT NULL
          RETURNING id, name, status
        ),
        inserted_subscription AS (
@@ -735,7 +736,7 @@ export class V0AuthRepository {
            seed.entitlement_key,
            seed.enforcement
          FROM inserted_tenant t
-         CROSS JOIN inserted_branch b
+         JOIN inserted_branch b ON TRUE
          CROSS JOIN (
            VALUES
              ('core.pos', 'ENABLED'),
@@ -756,10 +757,52 @@ export class V0AuthRepository {
          b.status AS branch_status
        FROM inserted_tenant t
        CROSS JOIN inserted_membership m
-       CROSS JOIN inserted_branch b`,
+       LEFT JOIN inserted_branch b ON TRUE`,
       [input.accountId, input.tenantName, input.firstBranchName]
     );
     return result.rows[0];
+  }
+
+  async countOwnerTenantMembershipsForAccount(accountId: string): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_tenant_memberships
+       WHERE account_id = $1
+         AND role_key = 'OWNER'`,
+      [accountId]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
+  async recordFairUseEventAndCountRecent(input: {
+    accountId: string;
+    actionKey: string;
+    windowSeconds: number;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `WITH inserted AS (
+         INSERT INTO v0_fair_use_events (
+           account_id,
+           action_key
+         )
+         VALUES ($1, $2)
+         RETURNING created_at
+       ),
+       recent AS (
+         SELECT created_at
+         FROM v0_fair_use_events
+         WHERE account_id = $1
+           AND action_key = $2
+           AND created_at >= NOW() - ($3::TEXT || ' seconds')::INTERVAL
+         UNION ALL
+         SELECT created_at
+         FROM inserted
+       )
+       SELECT COUNT(*)::TEXT AS count
+       FROM recent`,
+      [input.accountId, input.actionKey, input.windowSeconds]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async findActiveBranchesByIds(

@@ -89,9 +89,9 @@ export class V0AuthService {
     return this.membershipService.assignMembershipBranches(...args);
   }
 
-  createTenantWithFirstBranch(
-    ...args: Parameters<V0AuthTenantProvisioningService["createTenantWithFirstBranch"]>
+  createTenant(
+    ...args: Parameters<V0AuthTenantProvisioningService["createTenant"]>
   ) {
-    return this.tenantProvisioningService.createTenantWithFirstBranch(...args);
+    return this.tenantProvisioningService.createTenant(...args);
   }
 }

@@ -562,13 +562,21 @@ Errors:
 - `409` membership is not `INVITED` or `ACTIVE`
 - `422` invalid/inactive branch IDs
 
-### 18) Create tenant with first branch (authenticated account)
+### 18) Create tenant (authenticated account, optional first branch)
 
 `POST /v0/auth/tenants`
 
 Auth: `Authorization: Bearer <accessToken>`
 
 Body:
+
+```json
+{
+  "tenantName": "X Cafe"
+}
+```
+
+Optional:
 
 ```json
 {
@@ -593,18 +601,36 @@ Success `201`:
       "roleKey": "OWNER",
       "status": "ACTIVE"
     },
-    "branch": {
-      "id": "uuid",
-      "name": "Main Branch",
-      "status": "ACTIVE"
-    }
+    "branch": null
   }
+}
+```
+
+If `firstBranchName` is provided and valid, `branch` is returned with:
+
+```json
+{
+  "id": "uuid",
+  "name": "Main Branch",
+  "status": "ACTIVE"
 }
 ```
 
 Errors:
 - `401` missing/invalid access token or inactive account
-- `422` missing `tenantName` or `firstBranchName`
+- `422` missing `tenantName`
+- `409` tenant hard limit reached (`code = FAIRUSE_HARD_LIMIT_EXCEEDED`)
+- `429` tenant provisioning rate-limited (`code = FAIRUSE_RATE_LIMITED`)
+
+Fair-use denial envelope:
+
+```json
+{
+  "success": false,
+  "error": "tenant provisioning is rate-limited; try again later",
+  "code": "FAIRUSE_RATE_LIMITED"
+}
+```
 
 ## Security Notes (Phase 1)
 

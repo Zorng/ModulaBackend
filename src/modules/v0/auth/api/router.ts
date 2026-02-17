@@ -536,14 +536,15 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await service.createTenantWithFirstBranch({
+        const data = await service.createTenant({
           requesterAccountId,
           tenantName: req.body?.tenantName,
           firstBranchName: req.body?.firstBranchName,
         });
+        const branchId = data.branch?.id ?? null;
         await writeTenantAuditBestEffort(auditService, {
           tenantId: data.tenant.id,
-          branchId: data.branch.id,
+          branchId,
           actorAccountId: requesterAccountId,
           actionKey,
           outcome: "SUCCESS",
@@ -552,7 +553,7 @@ export function createV0AuthRouter(
           dedupeKey: buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS"),
           metadata: {
             endpoint: "/v0/auth/tenants",
-            branchId: data.branch.id,
+            branchId,
             ownerMembershipId: data.ownerMembership.id,
           },
         });
@@ -652,6 +653,9 @@ function classifyAuditOutcome(error: unknown): AuditOutcome {
 
 function classifyAuditReasonCode(error: unknown): string {
   if (error instanceof V0AuthError) {
+    if (error.code) {
+      return error.code;
+    }
     return normalizeReasonCode(error.message);
   }
   return "AUTH_FLOW_FAILED";
@@ -689,6 +693,7 @@ function handleError(res: Response, error: unknown): void {
     res.status(error.statusCode).json({
       success: false,
       error: error.message,
+      code: error.code ?? undefined,
     });
     return;
   }
