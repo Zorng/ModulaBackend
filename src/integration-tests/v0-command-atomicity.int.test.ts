@@ -183,7 +183,7 @@ describe("v0 atomic command contract", () => {
     await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
   });
 
-  it("rolls back auth.membership.invite when outbox insert fails", async () => {
+  it("rolls back org.membership.invite when outbox insert fails (via auth alias)", async () => {
     const ownerPhone = uniquePhone();
     const cashierPhone = uniquePhone();
     const ownerToken = await registerAndLogin(app, ownerPhone);
@@ -198,7 +198,7 @@ describe("v0 atomic command contract", () => {
     expect(createdTenant.status).toBe(201);
 
     const tenantId = createdTenant.body.data.tenant.id as string;
-    process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "auth.membership.invite";
+    process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "org.membership.invite";
 
     const invited = await request(app)
       .post("/v0/auth/memberships/invite")
@@ -226,7 +226,7 @@ describe("v0 atomic command contract", () => {
       `SELECT COUNT(*)::TEXT AS count
        FROM v0_audit_events
        WHERE tenant_id = $1
-         AND action_key = 'auth.membership.invite'`,
+         AND action_key = 'org.membership.invite'`,
       [tenantId]
     );
     expect(Number(auditCount.rows[0]?.count ?? "0")).toBe(0);
@@ -235,7 +235,7 @@ describe("v0 atomic command contract", () => {
       `SELECT COUNT(*)::TEXT AS count
        FROM v0_command_outbox
        WHERE tenant_id = $1
-         AND action_key = 'auth.membership.invite'`,
+         AND action_key = 'org.membership.invite'`,
       [tenantId]
     );
     expect(Number(outboxCount.rows[0]?.count ?? "0")).toBe(0);

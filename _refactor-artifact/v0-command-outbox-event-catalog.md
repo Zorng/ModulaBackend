@@ -36,27 +36,7 @@ type V0CommandOutboxEvent = {
   - canonical endpoint metadata: `/v0/org/tenants`
   - compatibility alias (temporary): `/v0/auth/tenants`
 
-### Auth / Membership
-- `AUTH_MEMBERSHIP_INVITED`
-  - actionKey: `auth.membership.invite`
-  - outcome: `SUCCESS`
-  - entityType: `membership`
-- `AUTH_MEMBERSHIP_INVITATION_ACCEPTED`
-  - actionKey: `auth.membership.invitation.accept`
-  - outcome: `SUCCESS`
-  - entityType: `membership`
-- `AUTH_MEMBERSHIP_INVITATION_REJECTED`
-  - actionKey: `auth.membership.invitation.reject`
-  - outcome: `SUCCESS`
-  - entityType: `membership`
-- `AUTH_MEMBERSHIP_ROLE_CHANGED`
-  - actionKey: `auth.membership.role.change`
-  - outcome: `SUCCESS`
-  - entityType: `membership`
-- `AUTH_MEMBERSHIP_REVOKED`
-  - actionKey: `auth.membership.revoke`
-  - outcome: `SUCCESS`
-  - entityType: `membership`
+### Auth / Membership (remaining in Auth until B3)
 - `AUTH_MEMBERSHIP_BRANCHES_ASSIGNED`
   - actionKey: `auth.membership.branches.assign`
   - outcome: `SUCCESS`
@@ -83,6 +63,9 @@ type V0CommandOutboxEvent = {
   - actionKey: `org.membership.revoke`
   - outcome: `SUCCESS`
   - entityType: `membership`
+
+Compatibility note:
+- Legacy auth alias routes (`/v0/auth/memberships/*` except `.../branches`) now emit canonical OrgAccount action keys/events.
 
 ### Attendance
 - `ATTENDANCE_CHECKED_IN`

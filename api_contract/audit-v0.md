@@ -90,12 +90,12 @@ Audit events are written internally by state-changing modules.
 Current F5 baseline:
 - `POST /v0/attendance/check-in`
 - `POST /v0/attendance/check-out`
-- `POST /v0/auth/tenants`
-- `POST /v0/auth/memberships/invite`
-- `POST /v0/auth/memberships/invitations/:membershipId/accept`
-- `POST /v0/auth/memberships/invitations/:membershipId/reject`
-- `POST /v0/auth/memberships/:membershipId/role`
-- `POST /v0/auth/memberships/:membershipId/revoke`
+- `POST /v0/org/tenants` (alias: `/v0/auth/tenants`)
+- `POST /v0/org/memberships/invite` (alias: `/v0/auth/memberships/invite`)
+- `POST /v0/org/memberships/invitations/:membershipId/accept` (alias: `/v0/auth/memberships/invitations/:membershipId/accept`)
+- `POST /v0/org/memberships/invitations/:membershipId/reject` (alias: `/v0/auth/memberships/invitations/:membershipId/reject`)
+- `POST /v0/org/memberships/:membershipId/role` (alias: `/v0/auth/memberships/:membershipId/role`)
+- `POST /v0/org/memberships/:membershipId/revoke` (alias: `/v0/auth/memberships/:membershipId/revoke`)
 - `POST /v0/auth/memberships/:membershipId/branches`
 
 For idempotent attendance writes, audit ingestion is dedupe-safe using outcome-specific dedupe keys.

@@ -8,6 +8,14 @@ import { V0AuditRepository } from "../../audit/infra/repository.js";
 import { TransactionManager } from "../../../../platform/db/transactionManager.js";
 import { V0CommandOutboxRepository } from "../../../../platform/outbox/repository.js";
 import { V0OrgAccountError } from "../../orgAccount/app/service.js";
+import {
+  executeAcceptInvitationCommand,
+  executeChangeMembershipRoleCommand,
+  executeInviteMembershipCommand,
+  executeRejectInvitationCommand,
+  executeRevokeMembershipCommand,
+  queryInvitationInbox,
+} from "../../orgAccount/api/membership.command.js";
 import { executeTenantProvisioningCommand } from "../../orgAccount/api/tenant-provisioning.command.js";
 
 export function createV0AuthRouter(
@@ -185,7 +193,6 @@ export function createV0AuthRouter(
     requireV0Auth,
     async (req: V0AuthRequest, res: Response) => {
       const requesterAccountId = req.v0Auth?.accountId;
-      const actionKey = "auth.membership.invite";
       const idempotencyKey = readIdempotencyKey(req.headers);
       try {
         if (!requesterAccountId) {
@@ -193,49 +200,16 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await transactionManager.withTransaction(async (client) => {
-          const txService = new V0AuthService(new V0AuthRepository(client));
-          const txAuditService = new V0AuditService(new V0AuditRepository(client));
-          const txOutboxRepository = new V0CommandOutboxRepository(client);
-
-          const commandData = await txService.inviteMembership({
-            requesterAccountId,
-            tenantId: req.body?.tenantId,
-            phone: req.body?.phone,
-            roleKey: req.body?.roleKey,
-          });
-
-          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
-          await txAuditService.recordEvent({
-            tenantId: commandData.tenantId,
-            actorAccountId: requesterAccountId,
-            actionKey,
-            outcome: "SUCCESS",
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            dedupeKey,
-            metadata: {
-              endpoint: "/v0/auth/memberships/invite",
-              roleKey: commandData.roleKey,
-            },
-          });
-          await txOutboxRepository.insertEvent({
-            tenantId: commandData.tenantId,
-            actionKey,
-            eventType: "AUTH_MEMBERSHIP_INVITED",
-            actorType: "ACCOUNT",
-            actorId: requesterAccountId,
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            outcome: "SUCCESS",
-            dedupeKey,
-            payload: {
-              endpoint: "/v0/auth/memberships/invite",
-              roleKey: commandData.roleKey,
-              phone: commandData.phone,
-            },
-          });
-          return commandData;
+        const data = await executeInviteMembershipCommand({
+          db,
+          requesterAccountId,
+          tenantId: req.body?.tenantId,
+          phone: req.body?.phone,
+          roleKey: req.body?.roleKey,
+          idempotencyKey,
+          actionKey: "org.membership.invite",
+          eventType: "ORG_MEMBERSHIP_INVITED",
+          endpoint: "/v0/auth/memberships/invite",
         });
         res.status(201).json({ success: true, data });
       } catch (error) {
@@ -255,7 +229,7 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await service.listInvitationInbox({ requesterAccountId });
+        const data = await queryInvitationInbox({ db, requesterAccountId });
         res.status(200).json({ success: true, data });
       } catch (error) {
         handleError(res, error);
@@ -268,7 +242,6 @@ export function createV0AuthRouter(
     requireV0Auth,
     async (req: V0AuthRequest, res: Response) => {
       const requesterAccountId = req.v0Auth?.accountId;
-      const actionKey = "auth.membership.invitation.accept";
       const idempotencyKey = readIdempotencyKey(req.headers);
       try {
         if (!requesterAccountId) {
@@ -276,45 +249,14 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await transactionManager.withTransaction(async (client) => {
-          const txService = new V0AuthService(new V0AuthRepository(client));
-          const txAuditService = new V0AuditService(new V0AuditRepository(client));
-          const txOutboxRepository = new V0CommandOutboxRepository(client);
-
-          const commandData = await txService.acceptInvitation({
-            requesterAccountId,
-            membershipId: req.params.membershipId,
-          });
-
-          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
-          await txAuditService.recordEvent({
-            tenantId: commandData.tenantId,
-            actorAccountId: requesterAccountId,
-            actionKey,
-            outcome: "SUCCESS",
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            dedupeKey,
-            metadata: {
-              endpoint: "/v0/auth/memberships/invitations/:membershipId/accept",
-            },
-          });
-          await txOutboxRepository.insertEvent({
-            tenantId: commandData.tenantId,
-            actionKey,
-            eventType: "AUTH_MEMBERSHIP_INVITATION_ACCEPTED",
-            actorType: "ACCOUNT",
-            actorId: requesterAccountId,
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            outcome: "SUCCESS",
-            dedupeKey,
-            payload: {
-              endpoint: "/v0/auth/memberships/invitations/:membershipId/accept",
-              activeBranchCount: commandData.activeBranchIds.length,
-            },
-          });
-          return commandData;
+        const data = await executeAcceptInvitationCommand({
+          db,
+          requesterAccountId,
+          membershipId: req.params.membershipId,
+          idempotencyKey,
+          actionKey: "org.membership.invitation.accept",
+          eventType: "ORG_MEMBERSHIP_INVITATION_ACCEPTED",
+          endpoint: "/v0/auth/memberships/invitations/:membershipId/accept",
         });
         res.status(200).json({ success: true, data });
       } catch (error) {
@@ -328,7 +270,6 @@ export function createV0AuthRouter(
     requireV0Auth,
     async (req: V0AuthRequest, res: Response) => {
       const requesterAccountId = req.v0Auth?.accountId;
-      const actionKey = "auth.membership.invitation.reject";
       const idempotencyKey = readIdempotencyKey(req.headers);
       try {
         if (!requesterAccountId) {
@@ -336,44 +277,14 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await transactionManager.withTransaction(async (client) => {
-          const txService = new V0AuthService(new V0AuthRepository(client));
-          const txAuditService = new V0AuditService(new V0AuditRepository(client));
-          const txOutboxRepository = new V0CommandOutboxRepository(client);
-
-          const commandData = await txService.rejectInvitation({
-            requesterAccountId,
-            membershipId: req.params.membershipId,
-          });
-
-          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
-          await txAuditService.recordEvent({
-            tenantId: commandData.tenantId,
-            actorAccountId: requesterAccountId,
-            actionKey,
-            outcome: "SUCCESS",
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            dedupeKey,
-            metadata: {
-              endpoint: "/v0/auth/memberships/invitations/:membershipId/reject",
-            },
-          });
-          await txOutboxRepository.insertEvent({
-            tenantId: commandData.tenantId,
-            actionKey,
-            eventType: "AUTH_MEMBERSHIP_INVITATION_REJECTED",
-            actorType: "ACCOUNT",
-            actorId: requesterAccountId,
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            outcome: "SUCCESS",
-            dedupeKey,
-            payload: {
-              endpoint: "/v0/auth/memberships/invitations/:membershipId/reject",
-            },
-          });
-          return commandData;
+        const data = await executeRejectInvitationCommand({
+          db,
+          requesterAccountId,
+          membershipId: req.params.membershipId,
+          idempotencyKey,
+          actionKey: "org.membership.invitation.reject",
+          eventType: "ORG_MEMBERSHIP_INVITATION_REJECTED",
+          endpoint: "/v0/auth/memberships/invitations/:membershipId/reject",
         });
         res.status(200).json({ success: true, data });
       } catch (error) {
@@ -387,7 +298,6 @@ export function createV0AuthRouter(
     requireV0Auth,
     async (req: V0AuthRequest, res: Response) => {
       const requesterAccountId = req.v0Auth?.accountId;
-      const actionKey = "auth.membership.role.change";
       const idempotencyKey = readIdempotencyKey(req.headers);
       try {
         if (!requesterAccountId) {
@@ -395,47 +305,15 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await transactionManager.withTransaction(async (client) => {
-          const txService = new V0AuthService(new V0AuthRepository(client));
-          const txAuditService = new V0AuditService(new V0AuditRepository(client));
-          const txOutboxRepository = new V0CommandOutboxRepository(client);
-
-          const commandData = await txService.changeMembershipRole({
-            requesterAccountId,
-            membershipId: req.params.membershipId,
-            roleKey: req.body?.roleKey,
-          });
-
-          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
-          await txAuditService.recordEvent({
-            tenantId: commandData.tenantId,
-            actorAccountId: requesterAccountId,
-            actionKey,
-            outcome: "SUCCESS",
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            dedupeKey,
-            metadata: {
-              endpoint: "/v0/auth/memberships/:membershipId/role",
-              roleKey: commandData.roleKey,
-            },
-          });
-          await txOutboxRepository.insertEvent({
-            tenantId: commandData.tenantId,
-            actionKey,
-            eventType: "AUTH_MEMBERSHIP_ROLE_CHANGED",
-            actorType: "ACCOUNT",
-            actorId: requesterAccountId,
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            outcome: "SUCCESS",
-            dedupeKey,
-            payload: {
-              endpoint: "/v0/auth/memberships/:membershipId/role",
-              roleKey: commandData.roleKey,
-            },
-          });
-          return commandData;
+        const data = await executeChangeMembershipRoleCommand({
+          db,
+          requesterAccountId,
+          membershipId: req.params.membershipId,
+          roleKey: req.body?.roleKey,
+          idempotencyKey,
+          actionKey: "org.membership.role.change",
+          eventType: "ORG_MEMBERSHIP_ROLE_CHANGED",
+          endpoint: "/v0/auth/memberships/:membershipId/role",
         });
         res.status(200).json({ success: true, data });
       } catch (error) {
@@ -449,7 +327,6 @@ export function createV0AuthRouter(
     requireV0Auth,
     async (req: V0AuthRequest, res: Response) => {
       const requesterAccountId = req.v0Auth?.accountId;
-      const actionKey = "auth.membership.revoke";
       const idempotencyKey = readIdempotencyKey(req.headers);
       try {
         if (!requesterAccountId) {
@@ -457,44 +334,14 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await transactionManager.withTransaction(async (client) => {
-          const txService = new V0AuthService(new V0AuthRepository(client));
-          const txAuditService = new V0AuditService(new V0AuditRepository(client));
-          const txOutboxRepository = new V0CommandOutboxRepository(client);
-
-          const commandData = await txService.revokeMembership({
-            requesterAccountId,
-            membershipId: req.params.membershipId,
-          });
-
-          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
-          await txAuditService.recordEvent({
-            tenantId: commandData.tenantId,
-            actorAccountId: requesterAccountId,
-            actionKey,
-            outcome: "SUCCESS",
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            dedupeKey,
-            metadata: {
-              endpoint: "/v0/auth/memberships/:membershipId/revoke",
-            },
-          });
-          await txOutboxRepository.insertEvent({
-            tenantId: commandData.tenantId,
-            actionKey,
-            eventType: "AUTH_MEMBERSHIP_REVOKED",
-            actorType: "ACCOUNT",
-            actorId: requesterAccountId,
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            outcome: "SUCCESS",
-            dedupeKey,
-            payload: {
-              endpoint: "/v0/auth/memberships/:membershipId/revoke",
-            },
-          });
-          return commandData;
+        const data = await executeRevokeMembershipCommand({
+          db,
+          requesterAccountId,
+          membershipId: req.params.membershipId,
+          idempotencyKey,
+          actionKey: "org.membership.revoke",
+          eventType: "ORG_MEMBERSHIP_REVOKED",
+          endpoint: "/v0/auth/memberships/:membershipId/revoke",
         });
         res.status(200).json({ success: true, data });
       } catch (error) {

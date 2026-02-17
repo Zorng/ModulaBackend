@@ -18,17 +18,11 @@ Legend:
 | `auth.context.tenant.select` | TENANT | READ | - | - |
 | `auth.context.branches.list` | TENANT | READ | - | - |
 | `auth.context.branch.select` | BRANCH | READ | - | - |
-| `auth.membership.invite` | TENANT | WRITE | OWNER, ADMIN | - |
 | `org.membership.invite` | TENANT | WRITE | OWNER, ADMIN | - |
-| `auth.membership.invitations.list` | GLOBAL | READ | - | - |
 | `org.membership.invitations.list` | GLOBAL | READ | - | - |
-| `auth.membership.invitation.accept` | GLOBAL | WRITE | - | - |
 | `org.membership.invitation.accept` | GLOBAL | WRITE | - | - |
-| `auth.membership.invitation.reject` | GLOBAL | WRITE | - | - |
 | `org.membership.invitation.reject` | GLOBAL | WRITE | - | - |
-| `auth.membership.role.change` | TENANT | WRITE | OWNER, ADMIN | - |
 | `org.membership.role.change` | TENANT | WRITE | OWNER, ADMIN | - |
-| `auth.membership.revoke` | TENANT | WRITE | OWNER, ADMIN | - |
 | `org.membership.revoke` | TENANT | WRITE | OWNER, ADMIN | - |
 | `auth.membership.branches.assign` | TENANT | WRITE | OWNER, ADMIN | - |
 | `tenant.provision` | GLOBAL | WRITE | - | - |
@@ -50,20 +44,21 @@ Legend:
 | POST | `/auth/context/tenant/select` | `auth.context.tenant.select` | `body.tenantId` | - |
 | GET | `/auth/context/branches` | `auth.context.branches.list` | `token` | - |
 | POST | `/auth/context/branch/select` | `auth.context.branch.select` | `token` | `body.branchId` |
-| POST | `/auth/memberships/invite` | `auth.membership.invite` | `body.tenantId` | - |
+| POST | `/auth/memberships/invite` | `org.membership.invite` | `body.tenantId` | - |
 | POST | `/org/memberships/invite` | `org.membership.invite` | `body.tenantId` | - |
-| GET | `/auth/memberships/invitations` | `auth.membership.invitations.list` | - | - |
+| GET | `/auth/memberships/invitations` | `org.membership.invitations.list` | - | - |
 | GET | `/org/memberships/invitations` | `org.membership.invitations.list` | - | - |
-| POST | `/auth/memberships/invitations/:id/accept` | `auth.membership.invitation.accept` | - | - |
+| POST | `/auth/memberships/invitations/:id/accept` | `org.membership.invitation.accept` | - | - |
 | POST | `/org/memberships/invitations/:id/accept` | `org.membership.invitation.accept` | - | - |
-| POST | `/auth/memberships/invitations/:id/reject` | `auth.membership.invitation.reject` | - | - |
+| POST | `/auth/memberships/invitations/:id/reject` | `org.membership.invitation.reject` | - | - |
 | POST | `/org/memberships/invitations/:id/reject` | `org.membership.invitation.reject` | - | - |
-| POST | `/auth/memberships/:id/role` | `auth.membership.role.change` | `path.membershipId` | - |
+| POST | `/auth/memberships/:id/role` | `org.membership.role.change` | `path.membershipId` | - |
 | POST | `/org/memberships/:id/role` | `org.membership.role.change` | `path.membershipId` | - |
-| POST | `/auth/memberships/:id/revoke` | `auth.membership.revoke` | `path.membershipId` | - |
+| POST | `/auth/memberships/:id/revoke` | `org.membership.revoke` | `path.membershipId` | - |
 | POST | `/org/memberships/:id/revoke` | `org.membership.revoke` | `path.membershipId` | - |
 | POST | `/auth/memberships/:id/branches` | `auth.membership.branches.assign` | `path.membershipId` | - |
 | POST | `/auth/tenants` | `tenant.provision` | - | - |
+| POST | `/org/tenants` | `tenant.provision` | - | - |
 | POST | `/attendance/check-in` | `attendance.checkIn` | `token` | `token` |
 | POST | `/attendance/check-out` | `attendance.checkOut` | `token` | `token` |
 | GET | `/attendance/me` | `attendance.listMine` | `token` | `token` |
