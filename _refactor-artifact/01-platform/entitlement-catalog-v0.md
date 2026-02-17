@@ -31,6 +31,7 @@ Branch-scoped capacity (future modeling):
 | `attendance.checkOut` | `module.workforce` |
 | `attendance.listMine` | `module.workforce` |
 | `menu.items.list` | `core.pos` |
+| `menu.items.listAll` | `core.pos` |
 | `menu.items.read` | `core.pos` |
 | `menu.items.create` | `core.pos` |
 | `menu.items.update` | `core.pos` |

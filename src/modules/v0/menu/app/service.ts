@@ -92,6 +92,70 @@ export class V0MenuService {
     );
   }
 
+  async listAllItems(input: {
+    actor: ActorContext;
+    status?: string;
+    categoryId?: string;
+    search?: string;
+    branchId?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const scope = assertTenantContext(input.actor);
+    const status = normalizeStatusFilter(input.status);
+    const categoryId = normalizeOptionalString(input.categoryId);
+    const search = normalizeOptionalString(input.search)?.toLowerCase() ?? null;
+    const branchId = input.branchId ? requireUuid(input.branchId, "branchId") : null;
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+
+    const rows = await this.repo.listMenuItemsByTenant({
+      tenantId: scope.tenantId,
+      status: mapStatusFilter(status),
+    });
+
+    const mapped = await Promise.all(
+      rows.map(async (row) => {
+        const visibleBranchIds = await this.repo.listVisibleBranchIdsForMenuItem({
+          tenantId: scope.tenantId,
+          menuItemId: row.id,
+        });
+        const modifierGroupIds = await this.repo.listModifierGroupIdsForMenuItem({
+          tenantId: scope.tenantId,
+          menuItemId: row.id,
+        });
+        return {
+          id: row.id,
+          tenantId: row.tenant_id,
+          name: row.name,
+          basePrice: row.base_price,
+          categoryId: row.category_id,
+          status: row.status,
+          visibleBranchIds,
+          modifierGroupIds,
+          imageUrl: row.image_url,
+          createdAt: row.created_at.toISOString(),
+          updatedAt: row.updated_at.toISOString(),
+        };
+      })
+    );
+
+    const filtered = mapped.filter((row) => {
+      if (categoryId && row.categoryId !== categoryId) {
+        return false;
+      }
+      if (search && !row.name.toLowerCase().includes(search)) {
+        return false;
+      }
+      if (branchId && !row.visibleBranchIds.includes(branchId)) {
+        return false;
+      }
+      return true;
+    });
+
+    return filtered.slice(offset, offset + limit);
+  }
+
   async getItem(input: { actor: ActorContext; menuItemId: string }) {
     const scope = assertBranchContext(input.actor);
     const menuItemId = requireUuid(input.menuItemId, "menuItemId");

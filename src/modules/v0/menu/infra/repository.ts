@@ -381,6 +381,30 @@ export class V0MenuRepository {
     return result.rows;
   }
 
+  async listMenuItemsByTenant(input: {
+    tenantId: string;
+    status?: MenuActiveStatus | null;
+  }): Promise<MenuItemRow[]> {
+    const result = await this.db.query<MenuItemRow>(
+      `SELECT
+         id,
+         tenant_id,
+         name,
+         base_price::FLOAT8 AS base_price,
+         category_id,
+         status,
+         image_url,
+         created_at,
+         updated_at
+       FROM v0_menu_items
+       WHERE tenant_id = $1
+         AND ($2::VARCHAR IS NULL OR status = $2)
+       ORDER BY name ASC, created_at ASC`,
+      [input.tenantId, input.status ?? null]
+    );
+    return result.rows;
+  }
+
   async listVisibleBranchIdsForMenuItem(input: {
     tenantId: string;
     menuItemId: string;

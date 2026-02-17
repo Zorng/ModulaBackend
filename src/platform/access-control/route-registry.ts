@@ -207,6 +207,12 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "GET",
+    pattern: /^\/menu\/items\/all$/,
+    actionKey: "menu.items.listAll",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
     pattern: /^\/menu\/items\/[^/]+$/,
     actionKey: "menu.items.read",
     tenantSource: "token",

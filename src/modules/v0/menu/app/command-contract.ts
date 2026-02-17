@@ -7,6 +7,7 @@ export type MenuCommandOutcome = CommandOutcome;
 
 export const V0_MENU_ACTION_KEYS = {
   listItems: "menu.items.list",
+  listAllItems: "menu.items.listAll",
   readItem: "menu.items.read",
   createItem: "menu.items.create",
   updateItem: "menu.items.update",

@@ -60,6 +60,30 @@ export function createV0MenuRouter(input: {
     }
   });
 
+  router.get("/items/all", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
+    try {
+      const actor = req.v0Auth;
+      if (!actor) {
+        res.status(401).json({ success: false, error: "authentication required" });
+        return;
+      }
+
+      const data = await input.service.listAllItems({
+        actor,
+        status: asString(req.query?.status),
+        categoryId: asString(req.query?.categoryId),
+        search: asString(req.query?.search),
+        branchId: asString(req.query?.branchId),
+        limit: asNumber(req.query?.limit),
+        offset: asNumber(req.query?.offset),
+      });
+
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
+
   router.get("/items/:menuItemId", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
       const actor = req.v0Auth;

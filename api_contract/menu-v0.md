@@ -7,6 +7,7 @@ Base path: `/v0/menu`
 Implementation status (Phase 3):
 - Implemented now:
   - `GET /v0/menu/items`
+  - `GET /v0/menu/items/all`
   - `GET /v0/menu/items/:menuItemId`
   - `POST /v0/menu/items`
   - `PATCH /v0/menu/items/:menuItemId`
@@ -127,6 +128,17 @@ Notes:
 Errors:
 - `401` missing/invalid token
 - `403` context/membership/branch access denial reason
+
+### 1.1) List tenant menu items (all branches, management view)
+
+`GET /v0/menu/items/all?status=active|archived|all&categoryId=uuid&search=text&branchId=uuid&limit=50&offset=0`
+
+Action key: `menu.items.listAll`
+
+Notes:
+- Returns all tenant menu items and includes `visibleBranchIds` per item.
+- Optional `branchId` filters to items visible in that branch.
+- Intended for management screens (cross-branch catalog view).
 
 ### 2) Get menu item detail
 

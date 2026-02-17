@@ -41,6 +41,7 @@ Legend:
 | `policy.currentBranch.read` | BRANCH | READ | - | - |
 | `policy.currentBranch.update` | BRANCH | WRITE | OWNER, ADMIN | - |
 | `menu.items.list` | BRANCH | READ | - | `core.pos` |
+| `menu.items.listAll` | TENANT | READ | OWNER, ADMIN, MANAGER | `core.pos` |
 | `menu.items.read` | BRANCH | READ | - | `core.pos` |
 | `menu.items.create` | BRANCH | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
 | `menu.items.update` | BRANCH | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
@@ -99,6 +100,7 @@ Legend:
 | GET | `/policy/current-branch` | `policy.currentBranch.read` | `token` | `token` |
 | PATCH | `/policy/current-branch` | `policy.currentBranch.update` | `token` | `token` |
 | GET | `/menu/items` | `menu.items.list` | `token` | `token` |
+| GET | `/menu/items/all` | `menu.items.listAll` | `token` | - |
 | GET | `/menu/items/:id` | `menu.items.read` | `token` | `token` |
 | POST | `/menu/items` | `menu.items.create` | `token` | `token` |
 | PATCH | `/menu/items/:id` | `menu.items.update` | `token` | `token` |
