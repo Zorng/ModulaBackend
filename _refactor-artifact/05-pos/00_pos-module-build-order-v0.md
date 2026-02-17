@@ -52,22 +52,22 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 
 | Order | Module | Tracker |
 |---|---|---|
-| 1 | policy | `_refactor-artifact/05-pos/policy-rollout-v0.md` |
-| 2 | menu | `_refactor-artifact/05-pos/menu-rollout-v0.md` |
-| 3 | discount | `_refactor-artifact/05-pos/discount-rollout-v0.md` |
-| 4 | cashSession | `_refactor-artifact/05-pos/cash-session-rollout-v0.md` |
-| 5 | inventory | `_refactor-artifact/05-pos/inventory-rollout-v0.md` |
-| 6 | sale-order | `_refactor-artifact/05-pos/sale-order-rollout-v0.md` |
-| 7 | receipt | `_refactor-artifact/05-pos/receipt-rollout-v0.md` |
-| 8 | reporting | `_refactor-artifact/05-pos/reporting-rollout-v0.md` |
-| 9 | offlineSync | `_refactor-artifact/05-pos/offline-sync-rollout-v0.md` |
-| 10 | printing | `_refactor-artifact/05-pos/printing-rollout-v0.md` |
+| 1 | policy | `_refactor-artifact/05-pos/01_policy-rollout-v0.md` |
+| 2 | menu | `_refactor-artifact/05-pos/02_menu-rollout-v0.md` |
+| 3 | discount | `_refactor-artifact/05-pos/03_discount-rollout-v0.md` |
+| 4 | cashSession | `_refactor-artifact/05-pos/04_cash-session-rollout-v0.md` |
+| 5 | inventory | `_refactor-artifact/05-pos/05_inventory-rollout-v0.md` |
+| 6 | sale-order | `_refactor-artifact/05-pos/06_sale-order-rollout-v0.md` |
+| 7 | receipt | `_refactor-artifact/05-pos/07_receipt-rollout-v0.md` |
+| 8 | reporting | `_refactor-artifact/05-pos/08_reporting-rollout-v0.md` |
+| 9 | offlineSync | `_refactor-artifact/05-pos/09_offline-sync-rollout-v0.md` |
+| 10 | printing | `_refactor-artifact/05-pos/10_printing-rollout-v0.md` |
 
 ## Tracking board
 
 | Module | Status | Notes |
 |---|---|---|
-| policy | Not started | first O4 execution slice |
+| policy | In progress (Phase 1 complete) | boundary + contract lock done |
 | menu | Not started | depends on policy limits + branch context |
 | discount | Not started | depends on menu refs + branch scope |
 | cashSession | Not started | depends on access control + sale hooks |

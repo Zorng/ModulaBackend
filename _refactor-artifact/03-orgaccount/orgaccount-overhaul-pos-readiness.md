@@ -48,7 +48,7 @@ Exit criteria:
 Scope:
 - Build POS modules on top of stabilized seams using KB-backed dependency order.
 - Phase O4 sequencing is now tracked in:
-  - `_refactor-artifact/05-pos/pos-module-build-order-v0.md`
+  - `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md`
   - module trackers under `_refactor-artifact/05-pos/*-rollout-v0.md`
 
 Exit criteria:
@@ -65,7 +65,7 @@ Exit criteria:
 | O1 OrgAccount Model Correction | Completed | `POST /v0/auth/tenants` now performs tenant-only provisioning (zero-branch). Branch provisioning is separated from tenant creation; contracts + integration coverage updated. |
 | O2 Fair-Use Extension | Completed | Tenant provisioning now enforces `tenant_count_per_account` hard cap and request-frequency rate limiting with stable denial codes (`FAIRUSE_HARD_LIMIT_EXCEEDED`, `FAIRUSE_RATE_LIMITED`). |
 | O3 Atomic Command Contract | Completed | Migrated `tenant.provision`, auth membership writes, and attendance writes to transactional business+audit+outbox contract (`v0_command_outbox`), with integration coverage for rollback and replay-safe dedupe. |
-| O4 POS Core Readiness Slices | In progress (planning locked) | Build order and per-module trackers are locked in `_refactor-artifact/05-pos/pos-module-build-order-v0.md`. |
+| O4 POS Core Readiness Slices | In progress (planning locked) | Build order and per-module trackers are locked in `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md`. |
 
 ## O3 Close-Out Notes
 
