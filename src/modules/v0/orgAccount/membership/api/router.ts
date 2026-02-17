@@ -1,7 +1,6 @@
 import type { Pool } from "pg";
 import { Router, type Response } from "express";
 import { requireV0Auth, type V0AuthRequest } from "../../../auth/api/middleware.js";
-import { V0AuthError } from "../../../auth/app/service.js";
 import { V0OrgAccountError } from "../../common/error.js";
 import {
   executeAcceptInvitationCommand,
@@ -194,7 +193,7 @@ function normalizeOptionalString(input: unknown): string | null {
 }
 
 function handleError(res: Response, error: unknown): void {
-  if (error instanceof V0AuthError || error instanceof V0OrgAccountError) {
+  if (error instanceof V0OrgAccountError) {
     res.status(error.statusCode).json({
       success: false,
       error: error.message,

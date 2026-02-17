@@ -29,8 +29,8 @@ type V0CommandOutboxEvent = {
 ## Current Event Types
 
 ### Auth / Tenant
-- `TENANT_PROVISIONED`
-  - actionKey: `tenant.provision`
+- `ORG_TENANT_PROVISIONED`
+  - actionKey: `org.tenant.provision`
   - outcome: `SUCCESS`
   - entityType: `tenant`
   - canonical endpoint metadata: `/v0/org/tenants`
@@ -83,6 +83,8 @@ Compatibility note:
 - Legacy auth alias routes (`/v0/auth/memberships/*`) emit canonical ownership action keys/events:
   - OrgAccount lifecycle commands => `org.membership.*`
   - HR staff assignment command => `hr.staff.branch.assign` / `HR_STAFF_BRANCHES_ASSIGNED`
+- Dispatcher compatibility publish (temporary during B5):
+  - `ORG_TENANT_PROVISIONED` additionally publishes `TENANT_PROVISIONED` on in-process bus.
 
 ### Attendance
 - `ATTENDANCE_CHECKED_IN`

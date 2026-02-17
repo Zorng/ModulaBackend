@@ -22,7 +22,7 @@ export async function executeTenantProvisioningCommand(input: {
   branch: { id: string; name: string; status: string } | null;
 }> {
   const transactionManager = new TransactionManager(input.db);
-  const actionKey = "tenant.provision";
+  const actionKey = "org.tenant.provision";
 
   const data = await transactionManager.withTransaction(async (client) => {
     const txService = new V0TenantService(new V0TenantRepository(client));
@@ -66,7 +66,7 @@ export async function executeTenantProvisioningCommand(input: {
       tenantId: commandData.tenant.id,
       branchId,
       actionKey,
-      eventType: "TENANT_PROVISIONED",
+      eventType: "ORG_TENANT_PROVISIONED",
       actorType: "ACCOUNT",
       actorId: input.requesterAccountId,
       entityType: "tenant",

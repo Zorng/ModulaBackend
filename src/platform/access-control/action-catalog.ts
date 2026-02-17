@@ -28,7 +28,8 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
   },
-  "tenant.provision": { scope: "GLOBAL", effect: "WRITE" },
+  "org.tenant.provision": { scope: "GLOBAL", effect: "WRITE" },
+  "tenant.provision": { scope: "GLOBAL", effect: "WRITE" }, // compatibility alias
   "attendance.checkIn": {
     scope: "BRANCH",
     effect: "WRITE",

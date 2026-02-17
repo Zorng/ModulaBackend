@@ -105,7 +105,7 @@ describe("v0 tenant provisioning (phase 3 scaffold)", () => {
       `SELECT action_key, outcome, entity_type, entity_id, branch_id
        FROM v0_audit_events
        WHERE tenant_id = $1
-         AND action_key = 'tenant.provision'
+         AND action_key = 'org.tenant.provision'
        ORDER BY created_at DESC
        LIMIT 1`,
       [tenantId]
@@ -115,6 +115,25 @@ describe("v0 tenant provisioning (phase 3 scaffold)", () => {
     expect(tenantAudit.rows[0].entity_type).toBe("tenant");
     expect(tenantAudit.rows[0].entity_id).toBe(tenantId);
     expect(tenantAudit.rows[0].branch_id).toBeNull();
+
+    const tenantOutbox = await pool.query<{
+      action_key: string;
+      event_type: string;
+      entity_type: string;
+      entity_id: string;
+    }>(
+      `SELECT action_key, event_type, entity_type, entity_id
+       FROM v0_command_outbox
+       WHERE tenant_id = $1
+         AND action_key = 'org.tenant.provision'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [tenantId]
+    );
+    expect(tenantOutbox.rows).toHaveLength(1);
+    expect(tenantOutbox.rows[0].event_type).toBe("ORG_TENANT_PROVISIONED");
+    expect(tenantOutbox.rows[0].entity_type).toBe("tenant");
+    expect(tenantOutbox.rows[0].entity_id).toBe(tenantId);
 
     const loginAfterProvisioning = await request(app).post("/v0/auth/login").send({
       phone,
@@ -184,7 +203,7 @@ describe("v0 tenant provisioning (phase 3 scaffold)", () => {
       `SELECT action_key, outcome, entity_type, entity_id, branch_id
        FROM v0_audit_events
        WHERE tenant_id = $1
-         AND action_key = 'tenant.provision'
+         AND action_key = 'org.tenant.provision'
        ORDER BY created_at DESC
        LIMIT 1`,
       [tenantId]

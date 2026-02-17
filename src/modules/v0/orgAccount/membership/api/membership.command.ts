@@ -3,10 +3,10 @@ import { TransactionManager } from "../../../../../platform/db/transactionManage
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
 import { V0AuditService } from "../../../audit/app/service.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
-import { V0AuthService } from "../../../auth/app/service.js";
-import { V0AuthRepository } from "../../../auth/infra/repository.js";
 import { V0StaffManagementRepository } from "../../../hr/staffManagement/infra/repository.js";
 import { V0StaffManagementService } from "../../../hr/staffManagement/app/service.js";
+import { V0MembershipService } from "../app/service.js";
+import { V0MembershipRepository } from "../infra/repository.js";
 
 type AuditOutcome = "SUCCESS" | "REJECTED" | "FAILED";
 
@@ -32,7 +32,7 @@ export async function executeInviteMembershipCommand(
   const transactionManager = new TransactionManager(input.db);
 
   return transactionManager.withTransaction(async (client) => {
-    const txService = new V0AuthService(new V0AuthRepository(client));
+    const txService = new V0MembershipService(new V0MembershipRepository(client));
     const txAuditService = new V0AuditService(new V0AuditRepository(client));
     const txOutboxRepository = new V0CommandOutboxRepository(client);
 
@@ -91,7 +91,7 @@ export async function queryInvitationInbox(input: {
     invitedByMembershipId: string | null;
   }>;
 }> {
-  const service = new V0AuthService(new V0AuthRepository(input.db));
+  const service = new V0MembershipService(new V0MembershipRepository(input.db));
   return service.listInvitationInbox({ requesterAccountId: input.requesterAccountId });
 }
 
@@ -106,7 +106,7 @@ export async function executeAcceptInvitationCommand(
   const transactionManager = new TransactionManager(input.db);
 
   return transactionManager.withTransaction(async (client) => {
-    const txService = new V0AuthService(new V0AuthRepository(client));
+    const txService = new V0MembershipService(new V0MembershipRepository(client));
     const txStaffManagementService = new V0StaffManagementService(
       new V0StaffManagementRepository(client)
     );
@@ -168,7 +168,7 @@ export async function executeRejectInvitationCommand(
   const transactionManager = new TransactionManager(input.db);
 
   return transactionManager.withTransaction(async (client) => {
-    const txService = new V0AuthService(new V0AuthRepository(client));
+    const txService = new V0MembershipService(new V0MembershipRepository(client));
     const txAuditService = new V0AuditService(new V0AuditRepository(client));
     const txOutboxRepository = new V0CommandOutboxRepository(client);
 
@@ -213,7 +213,7 @@ export async function executeChangeMembershipRoleCommand(
   const transactionManager = new TransactionManager(input.db);
 
   return transactionManager.withTransaction(async (client) => {
-    const txService = new V0AuthService(new V0AuthRepository(client));
+    const txService = new V0MembershipService(new V0MembershipRepository(client));
     const txAuditService = new V0AuditService(new V0AuditRepository(client));
     const txOutboxRepository = new V0CommandOutboxRepository(client);
 
@@ -263,7 +263,7 @@ export async function executeRevokeMembershipCommand(
   const transactionManager = new TransactionManager(input.db);
 
   return transactionManager.withTransaction(async (client) => {
-    const txService = new V0AuthService(new V0AuthRepository(client));
+    const txService = new V0MembershipService(new V0MembershipRepository(client));
     const txAuditService = new V0AuditService(new V0AuditRepository(client));
     const txOutboxRepository = new V0CommandOutboxRepository(client);
 

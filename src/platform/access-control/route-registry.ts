@@ -106,12 +106,12 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
   {
     method: "POST",
     pattern: /^\/auth\/tenants$/,
-    actionKey: "tenant.provision",
+    actionKey: "org.tenant.provision",
   },
   {
     method: "POST",
     pattern: /^\/org\/tenants$/,
-    actionKey: "tenant.provision",
+    actionKey: "org.tenant.provision",
   },
   {
     method: "POST",

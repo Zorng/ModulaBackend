@@ -3,17 +3,20 @@ import { V0TenantRepository } from "../infra/repository.js";
 
 export class V0TenantService {
   private readonly tenantCountPerAccountHard = parsePositiveInt(
-    process.env.V0_TENANT_COUNT_PER_ACCOUNT_HARD,
+    process.env.V0_FAIRUSE_TENANT_COUNT_PER_ACCOUNT_HARD ??
+      process.env.V0_TENANT_COUNT_PER_ACCOUNT_HARD,
     10
   );
 
   private readonly tenantProvisionRateLimit = parsePositiveInt(
-    process.env.V0_TENANT_PROVISION_RATE_LIMIT,
+    process.env.V0_FAIRUSE_TENANT_PROVISION_RATE_LIMIT ??
+      process.env.V0_TENANT_PROVISION_RATE_LIMIT,
     5
   );
 
   private readonly tenantProvisionRateWindowSeconds = parsePositiveInt(
-    process.env.V0_TENANT_PROVISION_RATE_WINDOW_SECONDS,
+    process.env.V0_FAIRUSE_TENANT_PROVISION_WINDOW_SECONDS ??
+      process.env.V0_TENANT_PROVISION_RATE_WINDOW_SECONDS,
     3600
   );
 
@@ -61,7 +64,7 @@ export class V0TenantService {
 
     const tenantProvisionAttemptCount = await this.repo.recordFairUseEventAndCountRecent({
       accountId: requesterAccountId,
-      actionKey: "tenant.provision",
+      actionKey: "org.tenant.provision",
       windowSeconds: this.tenantProvisionRateWindowSeconds,
     });
     if (tenantProvisionAttemptCount > this.tenantProvisionRateLimit) {

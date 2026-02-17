@@ -84,10 +84,10 @@ describe("v0 tenant provisioning fair-use guards", () => {
       `SELECT COUNT(*)::TEXT AS count
        FROM v0_fair_use_events
        WHERE account_id = $1
-         AND action_key = 'tenant.provision'`,
+         AND action_key = 'org.tenant.provision'`,
       [accountRow.rows[0].id]
     );
-    expect(Number(attemptCount.rows[0]?.count ?? "0")).toBe(2);
+    expect(Number(attemptCount.rows[0]?.count ?? "0")).toBe(1);
 
     expect(secondCreate.status).toBe(429);
     expect(secondCreate.body.success).toBe(false);

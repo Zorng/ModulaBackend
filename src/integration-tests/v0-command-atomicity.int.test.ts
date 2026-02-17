@@ -136,12 +136,12 @@ describe("v0 atomic command contract", () => {
     await pool.end();
   });
 
-  it("rolls back tenant.provision when outbox insert fails", async () => {
+  it("rolls back org.tenant.provision when outbox insert fails", async () => {
     const ownerPhone = uniquePhone();
     const ownerToken = await registerAndLogin(app, ownerPhone);
     const tenantName = `Atomic Tenant ${Date.now()}`;
 
-    process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "tenant.provision";
+    process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "org.tenant.provision";
 
     const createdTenant = await request(app)
       .post("/v0/auth/tenants")
@@ -171,7 +171,7 @@ describe("v0 atomic command contract", () => {
     const auditCount = await pool.query<{ count: string }>(
       `SELECT COUNT(*)::TEXT AS count
        FROM v0_audit_events
-       WHERE action_key = 'tenant.provision'
+       WHERE action_key = 'org.tenant.provision'
          AND actor_account_id = $1`,
       [ownerAccountId]
     );
@@ -180,7 +180,7 @@ describe("v0 atomic command contract", () => {
     const outboxCount = await pool.query<{ count: string }>(
       `SELECT COUNT(*)::TEXT AS count
        FROM v0_command_outbox
-       WHERE action_key = 'tenant.provision'
+       WHERE action_key = 'org.tenant.provision'
          AND actor_id = $1`,
       [ownerAccountId]
     );

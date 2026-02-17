@@ -41,6 +41,15 @@ type V0CommandOutboxEvent = {
   payload: Record<string, unknown>;
 };
 
+function getCompatibilityEventTypes(eventType: string): string[] {
+  switch (eventType) {
+    case "ORG_TENANT_PROVISIONED":
+      return ["TENANT_PROVISIONED"];
+    default:
+      return [];
+  }
+}
+
 async function processBatch(input: { client: PoolClient; batchSize: number }): Promise<void> {
   const rows = await input.client.query<V0OutboxRow>(
     `SELECT
@@ -86,6 +95,9 @@ async function processBatch(input: { client: PoolClient; batchSize: number }): P
       };
 
       await eventBus.publish(event as never);
+      for (const compatibilityType of getCompatibilityEventTypes(event.type)) {
+        await eventBus.publish({ ...event, type: compatibilityType } as never);
+      }
 
       await input.client.query(
         `UPDATE v0_command_outbox
