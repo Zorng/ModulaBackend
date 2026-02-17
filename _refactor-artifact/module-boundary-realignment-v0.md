@@ -359,7 +359,7 @@ Start with **Phase B1** (tenant provisioning extraction), because it gives the h
 |---|---|---|
 | B0 Lock boundaries | Completed | Ownership split locked, including audit vs observability separation. |
 | B1 Tenant provisioning extraction | Completed | Canonical command route moved to `POST /v0/org/tenants`; `POST /v0/auth/tenants` kept as compatibility alias. |
-| B2 Membership extraction | Not started |  |
+| B2 Membership extraction | In progress | Canonical membership lifecycle routes added under `/v0/org/memberships/*` with OrgAccount-owned action keys/events; legacy `/v0/auth/memberships/*` remains for compatibility. |
 | B3 Staff assignment/profile extraction | Not started |  |
 | B4 AccessControl/contract realignment | Not started |  |
 | B5 Outbox event naming realignment | Not started |  |

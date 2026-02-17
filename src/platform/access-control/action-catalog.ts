@@ -10,15 +10,33 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
   },
+  "org.membership.invite": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+  },
   "auth.membership.invitations.list": { scope: "GLOBAL", effect: "READ" },
+  "org.membership.invitations.list": { scope: "GLOBAL", effect: "READ" },
   "auth.membership.invitation.accept": { scope: "GLOBAL", effect: "WRITE" },
+  "org.membership.invitation.accept": { scope: "GLOBAL", effect: "WRITE" },
   "auth.membership.invitation.reject": { scope: "GLOBAL", effect: "WRITE" },
+  "org.membership.invitation.reject": { scope: "GLOBAL", effect: "WRITE" },
   "auth.membership.role.change": {
     scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
   },
+  "org.membership.role.change": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+  },
   "auth.membership.revoke": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+  },
+  "org.membership.revoke": {
     scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],

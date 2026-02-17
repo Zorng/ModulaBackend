@@ -62,6 +62,28 @@ type V0CommandOutboxEvent = {
   - outcome: `SUCCESS`
   - entityType: `membership`
 
+### OrgAccount / Membership (canonical)
+- `ORG_MEMBERSHIP_INVITED`
+  - actionKey: `org.membership.invite`
+  - outcome: `SUCCESS`
+  - entityType: `membership`
+- `ORG_MEMBERSHIP_INVITATION_ACCEPTED`
+  - actionKey: `org.membership.invitation.accept`
+  - outcome: `SUCCESS`
+  - entityType: `membership`
+- `ORG_MEMBERSHIP_INVITATION_REJECTED`
+  - actionKey: `org.membership.invitation.reject`
+  - outcome: `SUCCESS`
+  - entityType: `membership`
+- `ORG_MEMBERSHIP_ROLE_CHANGED`
+  - actionKey: `org.membership.role.change`
+  - outcome: `SUCCESS`
+  - entityType: `membership`
+- `ORG_MEMBERSHIP_REVOKED`
+  - actionKey: `org.membership.revoke`
+  - outcome: `SUCCESS`
+  - entityType: `membership`
+
 ### Attendance
 - `ATTENDANCE_CHECKED_IN`
   - actionKey: `attendance.checkIn`

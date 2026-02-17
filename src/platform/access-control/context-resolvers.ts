@@ -56,11 +56,11 @@ export function resolveBranchId(input: {
 }
 
 function extractMembershipId(path: string): string | null {
-  const match = path.match(/^\/auth\/memberships\/([^/]+)/);
+  const match = path.match(/^\/(auth|org)\/memberships\/([^/]+)/);
   if (!match) {
     return null;
   }
-  return normalizeId(match[1]);
+  return normalizeId(match[2]);
 }
 
 function normalizeId(value: unknown): string | null {

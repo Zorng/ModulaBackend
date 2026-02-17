@@ -32,9 +32,20 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     tenantSource: "body.tenantId",
   },
   {
+    method: "POST",
+    pattern: /^\/org\/memberships\/invite$/,
+    actionKey: "org.membership.invite",
+    tenantSource: "body.tenantId",
+  },
+  {
     method: "GET",
     pattern: /^\/auth\/memberships\/invitations$/,
     actionKey: "auth.membership.invitations.list",
+  },
+  {
+    method: "GET",
+    pattern: /^\/org\/memberships\/invitations$/,
+    actionKey: "org.membership.invitations.list",
   },
   {
     method: "POST",
@@ -43,8 +54,18 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "POST",
+    pattern: /^\/org\/memberships\/invitations\/[^/]+\/accept$/,
+    actionKey: "org.membership.invitation.accept",
+  },
+  {
+    method: "POST",
     pattern: /^\/auth\/memberships\/invitations\/[^/]+\/reject$/,
     actionKey: "auth.membership.invitation.reject",
+  },
+  {
+    method: "POST",
+    pattern: /^\/org\/memberships\/invitations\/[^/]+\/reject$/,
+    actionKey: "org.membership.invitation.reject",
   },
   {
     method: "POST",
@@ -54,8 +75,20 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "POST",
+    pattern: /^\/org\/memberships\/[^/]+\/role$/,
+    actionKey: "org.membership.role.change",
+    tenantSource: "path.membershipId",
+  },
+  {
+    method: "POST",
     pattern: /^\/auth\/memberships\/[^/]+\/revoke$/,
     actionKey: "auth.membership.revoke",
+    tenantSource: "path.membershipId",
+  },
+  {
+    method: "POST",
+    pattern: /^\/org\/memberships\/[^/]+\/revoke$/,
+    actionKey: "org.membership.revoke",
     tenantSource: "path.membershipId",
   },
   {

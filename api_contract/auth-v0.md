@@ -356,9 +356,13 @@ Errors:
 - `409` tenant context is required
 - `422` missing branchId
 
-### 11) Invite member to tenant (OWNER/ADMIN)
+### 11) Invite member to tenant (OWNER/ADMIN, legacy alias during boundary migration)
 
-`POST /v0/auth/memberships/invite`
+Canonical endpoint:
+- `POST /v0/org/memberships/invite`
+
+Legacy alias:
+- `POST /v0/auth/memberships/invite`
 
 Auth: `Authorization: Bearer <accessToken>`
 
@@ -394,9 +398,13 @@ Errors:
 - `409` membership already active
 - `422` invalid payload
 
-### 12) Invitation inbox (for current account)
+### 12) Invitation inbox (for current account, legacy alias during boundary migration)
 
-`GET /v0/auth/memberships/invitations`
+Canonical endpoint:
+- `GET /v0/org/memberships/invitations`
+
+Legacy alias:
+- `GET /v0/auth/memberships/invitations`
 
 Auth: `Authorization: Bearer <accessToken>`
 
@@ -420,9 +428,13 @@ Success `200`:
 }
 ```
 
-### 13) Accept invitation
+### 13) Accept invitation (legacy alias during boundary migration)
 
-`POST /v0/auth/memberships/invitations/:membershipId/accept`
+Canonical endpoint:
+- `POST /v0/org/memberships/invitations/:membershipId/accept`
+
+Legacy alias:
+- `POST /v0/auth/memberships/invitations/:membershipId/accept`
 
 Auth: `Authorization: Bearer <accessToken>`
 
@@ -446,9 +458,13 @@ Errors:
 - `404` invitation not found
 - `409` invitation is not pending
 
-### 14) Reject invitation
+### 14) Reject invitation (legacy alias during boundary migration)
 
-`POST /v0/auth/memberships/invitations/:membershipId/reject`
+Canonical endpoint:
+- `POST /v0/org/memberships/invitations/:membershipId/reject`
+
+Legacy alias:
+- `POST /v0/auth/memberships/invitations/:membershipId/reject`
 
 Auth: `Authorization: Bearer <accessToken>`
 
@@ -465,9 +481,13 @@ Success `200`:
 }
 ```
 
-### 15) Change membership role (OWNER/ADMIN)
+### 15) Change membership role (OWNER/ADMIN, legacy alias during boundary migration)
 
-`POST /v0/auth/memberships/:membershipId/role`
+Canonical endpoint:
+- `POST /v0/org/memberships/:membershipId/role`
+
+Legacy alias:
+- `POST /v0/auth/memberships/:membershipId/role`
 
 Auth: `Authorization: Bearer <accessToken>`
 
@@ -492,9 +512,13 @@ Success `200`:
 }
 ```
 
-### 16) Revoke membership (OWNER/ADMIN)
+### 16) Revoke membership (OWNER/ADMIN, legacy alias during boundary migration)
 
-`POST /v0/auth/memberships/:membershipId/revoke`
+Canonical endpoint:
+- `POST /v0/org/memberships/:membershipId/revoke`
+
+Legacy alias:
+- `POST /v0/auth/memberships/:membershipId/revoke`
 
 Auth: `Authorization: Bearer <accessToken>`
 

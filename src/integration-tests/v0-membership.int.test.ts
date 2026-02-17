@@ -5,6 +5,7 @@ import crypto from "crypto";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
+import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
 
 function uniquePhone(): string {
   const now = Date.now().toString().slice(-9);
@@ -27,7 +28,9 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
     app = express();
     app.use(express.json());
     const v0AuthModule = bootstrapV0AuthModule(pool);
+    const v0OrgModule = bootstrapV0OrgAccountModule(pool);
     app.use("/v0/auth", v0AuthModule.router);
+    app.use("/v0/org", v0OrgModule.router);
   });
 
   afterAll(async () => {
@@ -79,7 +82,7 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
     );
 
     const inviteRes = await request(app)
-      .post("/v0/auth/memberships/invite")
+      .post("/v0/org/memberships/invite")
       .set("Authorization", `Bearer ${ownerAccessToken}`)
       .send({
         tenantId,
@@ -114,7 +117,7 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
     const inviteeAccessToken = inviteeLogin.body.data.accessToken as string;
 
     const inboxBefore = await request(app)
-      .get("/v0/auth/memberships/invitations")
+      .get("/v0/org/memberships/invitations")
       .set("Authorization", `Bearer ${inviteeAccessToken}`);
     expect(inboxBefore.status).toBe(200);
     expect(inboxBefore.body.data.invitations).toHaveLength(1);
@@ -123,7 +126,7 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
     );
 
     const acceptRes = await request(app)
-      .post(`/v0/auth/memberships/invitations/${inviteMembershipId}/accept`)
+      .post(`/v0/org/memberships/invitations/${inviteMembershipId}/accept`)
       .set("Authorization", `Bearer ${inviteeAccessToken}`)
       .send({});
     expect(acceptRes.status).toBe(200);
@@ -137,14 +140,14 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
     expect(inviteeLoginAfterAccept.body.data.activeMembershipsCount).toBe(1);
 
     const roleChangeRes = await request(app)
-      .post(`/v0/auth/memberships/${inviteMembershipId}/role`)
+      .post(`/v0/org/memberships/${inviteMembershipId}/role`)
       .set("Authorization", `Bearer ${ownerAccessToken}`)
       .send({ roleKey: "MANAGER" });
     expect(roleChangeRes.status).toBe(200);
     expect(roleChangeRes.body.data.roleKey).toBe("MANAGER");
 
     const revokeRes = await request(app)
-      .post(`/v0/auth/memberships/${inviteMembershipId}/revoke`)
+      .post(`/v0/org/memberships/${inviteMembershipId}/revoke`)
       .set("Authorization", `Bearer ${ownerAccessToken}`)
       .send({});
     expect(revokeRes.status).toBe(200);
@@ -163,10 +166,10 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
       [tenantId]
     );
     expect(auditRows.rows.map((row) => row.action_key)).toEqual([
-      "auth.membership.invite",
-      "auth.membership.invitation.accept",
-      "auth.membership.role.change",
-      "auth.membership.revoke",
+      "org.membership.invite",
+      "org.membership.invitation.accept",
+      "org.membership.role.change",
+      "org.membership.revoke",
     ]);
     for (const row of auditRows.rows) {
       expect(row.outcome).toBe("SUCCESS");

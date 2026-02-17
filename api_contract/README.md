@@ -24,6 +24,7 @@ This folder contains the **frontend-facing HTTP API contracts** for this backend
 ## Active Contracts
 
 - `api_contract/auth-v0.md`
+- `api_contract/membership-v0.md`
 - `api_contract/attendance-v0.md`
 - `api_contract/tenant-v0.md`
 - `api_contract/branch-v0.md`
