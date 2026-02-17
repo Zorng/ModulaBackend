@@ -5,6 +5,7 @@ import { V0AuthError } from "../../../auth/app/service.js";
 import { V0OrgAccountError } from "../../../orgAccount/common/error.js";
 import { executeAssignMembershipBranchesCommand } from "./assignment.command.js";
 import { V0StaffManagementError } from "../app/service.js";
+import { readOptionalHeaderString } from "../../../../../shared/utils/http.js";
 
 export function createV0StaffManagementRouter(db: Pool): Router {
   const router = Router();
@@ -43,16 +44,7 @@ export function createV0StaffManagementRouter(db: Pool): Router {
 }
 
 function readIdempotencyKey(headers: Record<string, string | string[] | undefined>): string | null {
-  const raw = headers["idempotency-key"];
-  if (Array.isArray(raw)) {
-    return normalizeOptionalString(raw[0]);
-  }
-  return normalizeOptionalString(raw);
-}
-
-function normalizeOptionalString(input: unknown): string | null {
-  const normalized = String(input ?? "").trim();
-  return normalized ? normalized : null;
+  return readOptionalHeaderString(headers, "idempotency-key");
 }
 
 function handleError(res: Response, error: unknown): void {

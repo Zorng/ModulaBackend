@@ -5,6 +5,7 @@ import { V0AuthError } from "../../../auth/app/service.js";
 import { V0OrgAccountError } from "../../common/error.js";
 import { V0TenantService } from "../app/service.js";
 import { executeTenantProvisioningCommand } from "./tenant-provisioning.command.js";
+import { readOptionalHeaderString } from "../../../../../shared/utils/http.js";
 
 export function createV0TenantRouter(service: V0TenantService, db: Pool): Router {
   const router = Router();
@@ -51,16 +52,7 @@ export function createV0TenantRouter(service: V0TenantService, db: Pool): Router
 }
 
 function readIdempotencyKey(headers: Record<string, string | string[] | undefined>): string | null {
-  const raw = headers["idempotency-key"];
-  if (Array.isArray(raw)) {
-    return normalizeOptionalString(raw[0]);
-  }
-  return normalizeOptionalString(raw);
-}
-
-function normalizeOptionalString(input: unknown): string | null {
-  const normalized = String(input ?? "").trim();
-  return normalized ? normalized : null;
+  return readOptionalHeaderString(headers, "idempotency-key");
 }
 
 function handleError(res: Response, error: unknown): void {

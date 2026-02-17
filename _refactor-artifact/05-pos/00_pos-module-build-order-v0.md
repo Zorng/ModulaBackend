@@ -67,7 +67,7 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 
 | Module | Status | Notes |
 |---|---|---|
-| policy | In progress (Phase 1 complete) | boundary + contract lock done |
+| policy | In progress (Phase 2 complete) | boundary/contract + data model/repository scaffold done |
 | menu | Not started | depends on policy limits + branch context |
 | discount | Not started | depends on menu refs + branch scope |
 | cashSession | Not started | depends on access control + sale hooks |

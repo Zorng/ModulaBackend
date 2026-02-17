@@ -7,8 +7,7 @@ import { V0StaffManagementService } from "../../../hr/staffManagement/app/servic
 import { V0StaffManagementRepository } from "../../../hr/staffManagement/infra/repository.js";
 import { V0TenantService } from "../app/service.js";
 import { V0TenantRepository } from "../infra/repository.js";
-
-type AuditOutcome = "SUCCESS" | "REJECTED" | "FAILED";
+import { buildCommandDedupeKey } from "../../../../../shared/utils/dedupe.js";
 
 export async function executeTenantProvisioningCommand(input: {
   db: Pool;
@@ -40,11 +39,15 @@ export async function executeTenantProvisioningCommand(input: {
       membershipId: commandData.ownerMembership.id,
       tenantId: commandData.tenant.id,
       accountId: input.requesterAccountId,
-      initialBranchIds: commandData.branch?.id ? [commandData.branch.id] : [],
+      initialBranchIds: [],
     });
 
-    const branchId = commandData.branch?.id ?? null;
-    const dedupeKey = buildAuditDedupeKey(actionKey, input.idempotencyKey, "SUCCESS");
+    const branchId = null;
+    const dedupeKey = buildCommandDedupeKey({
+      actionKey,
+      idempotencyKey: input.idempotencyKey,
+      outcome: "SUCCESS",
+    });
 
     await txAuditService.recordEvent({
       tenantId: commandData.tenant.id,
@@ -84,21 +87,4 @@ export async function executeTenantProvisioningCommand(input: {
   });
 
   return data;
-}
-
-function buildAuditDedupeKey(
-  actionKey: string,
-  idempotencyKey: string | null,
-  outcome: AuditOutcome
-): string | null {
-  const key = normalizeOptionalString(idempotencyKey);
-  if (!key) {
-    return null;
-  }
-  return `${actionKey}:${outcome}:${key}`;
-}
-
-function normalizeOptionalString(input: unknown): string | null {
-  const normalized = String(input ?? "").trim();
-  return normalized ? normalized : null;
 }

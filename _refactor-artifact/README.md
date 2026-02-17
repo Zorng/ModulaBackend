@@ -16,6 +16,7 @@ This folder tracks implementation/refactor plans and execution notes for `/v0`.
   - Auth overhaul artifacts
 - `05-pos/`
   - POS module sequencing and per-module rollout trackers
+  - files are prefixed with build-order numbers (`00_`, `01_`, ... `10_`)
 - `90-archive/`
   - superseded/closed artifacts kept for history
 

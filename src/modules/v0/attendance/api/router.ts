@@ -12,6 +12,7 @@ import { V0AuditService } from "../../audit/app/service.js";
 import { V0AuditRepository } from "../../audit/infra/repository.js";
 import { TransactionManager } from "../../../../platform/db/transactionManager.js";
 import { V0CommandOutboxRepository } from "../../../../platform/outbox/repository.js";
+import { buildCommandDedupeKey } from "../../../../shared/utils/dedupe.js";
 
 type AttendanceWriteBody =
   | {
@@ -353,11 +354,11 @@ function buildAuditDedupeKey(input: {
   idempotencyKey: string | null;
   outcome: "SUCCESS" | "REJECTED" | "FAILED";
 }): string | null {
-  const key = String(input.idempotencyKey ?? "").trim();
-  if (!key) {
-    return null;
-  }
-  return `${input.actionKey}:${input.outcome}:${key}`;
+  return buildCommandDedupeKey({
+    actionKey: input.actionKey,
+    idempotencyKey: input.idempotencyKey,
+    outcome: input.outcome,
+  });
 }
 
 function classifyReasonCode(error: unknown): string | null {

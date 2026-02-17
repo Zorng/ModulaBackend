@@ -7,8 +7,7 @@ import { V0StaffManagementRepository } from "../../../hr/staffManagement/infra/r
 import { V0StaffManagementService } from "../../../hr/staffManagement/app/service.js";
 import { V0MembershipService } from "../app/service.js";
 import { V0MembershipRepository } from "../infra/repository.js";
-
-type AuditOutcome = "SUCCESS" | "REJECTED" | "FAILED";
+import { buildCommandDedupeKey } from "../../../../../shared/utils/dedupe.js";
 
 type MembershipWriteBase = {
   db: Pool;
@@ -43,7 +42,11 @@ export async function executeInviteMembershipCommand(
       roleKey: input.roleKey as string,
     });
 
-    const dedupeKey = buildAuditDedupeKey(input.actionKey, input.idempotencyKey, "SUCCESS");
+    const dedupeKey = buildCommandDedupeKey({
+      actionKey: input.actionKey,
+      idempotencyKey: input.idempotencyKey,
+      outcome: "SUCCESS",
+    });
     await txAuditService.recordEvent({
       tenantId: commandData.tenantId,
       actorAccountId: input.requesterAccountId,
@@ -127,7 +130,11 @@ export async function executeAcceptInvitationCommand(
       activeBranchIds: projectionData.activeBranchIds,
     };
 
-    const dedupeKey = buildAuditDedupeKey(input.actionKey, input.idempotencyKey, "SUCCESS");
+    const dedupeKey = buildCommandDedupeKey({
+      actionKey: input.actionKey,
+      idempotencyKey: input.idempotencyKey,
+      outcome: "SUCCESS",
+    });
     await txAuditService.recordEvent({
       tenantId: commandData.tenantId,
       actorAccountId: input.requesterAccountId,
@@ -177,7 +184,11 @@ export async function executeRejectInvitationCommand(
       membershipId: input.membershipId as string,
     });
 
-    const dedupeKey = buildAuditDedupeKey(input.actionKey, input.idempotencyKey, "SUCCESS");
+    const dedupeKey = buildCommandDedupeKey({
+      actionKey: input.actionKey,
+      idempotencyKey: input.idempotencyKey,
+      outcome: "SUCCESS",
+    });
     await txAuditService.recordEvent({
       tenantId: commandData.tenantId,
       actorAccountId: input.requesterAccountId,
@@ -223,7 +234,11 @@ export async function executeChangeMembershipRoleCommand(
       roleKey: input.roleKey as string,
     });
 
-    const dedupeKey = buildAuditDedupeKey(input.actionKey, input.idempotencyKey, "SUCCESS");
+    const dedupeKey = buildCommandDedupeKey({
+      actionKey: input.actionKey,
+      idempotencyKey: input.idempotencyKey,
+      outcome: "SUCCESS",
+    });
     await txAuditService.recordEvent({
       tenantId: commandData.tenantId,
       actorAccountId: input.requesterAccountId,
@@ -272,7 +287,11 @@ export async function executeRevokeMembershipCommand(
       membershipId: input.membershipId as string,
     });
 
-    const dedupeKey = buildAuditDedupeKey(input.actionKey, input.idempotencyKey, "SUCCESS");
+    const dedupeKey = buildCommandDedupeKey({
+      actionKey: input.actionKey,
+      idempotencyKey: input.idempotencyKey,
+      outcome: "SUCCESS",
+    });
     await txAuditService.recordEvent({
       tenantId: commandData.tenantId,
       actorAccountId: input.requesterAccountId,
@@ -302,21 +321,4 @@ export async function executeRevokeMembershipCommand(
 
     return commandData;
   });
-}
-
-function buildAuditDedupeKey(
-  actionKey: string,
-  idempotencyKey: string | null,
-  outcome: AuditOutcome
-): string | null {
-  const key = normalizeOptionalString(idempotencyKey);
-  if (!key) {
-    return null;
-  }
-  return `${actionKey}:${outcome}:${key}`;
-}
-
-function normalizeOptionalString(input: unknown): string | null {
-  const normalized = String(input ?? "").trim();
-  return normalized ? normalized : null;
 }

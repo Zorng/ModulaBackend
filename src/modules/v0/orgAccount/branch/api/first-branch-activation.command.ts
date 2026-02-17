@@ -7,8 +7,7 @@ import { V0OrgAccountError, type OrgActorContext } from "../../common/error.js";
 import { V0BranchService } from "../app/service.js";
 import { StubFirstBranchPaymentVerifier } from "../app/payment-verifier.js";
 import { V0BranchRepository } from "../infra/repository.js";
-
-type AuditOutcome = "SUCCESS" | "REJECTED" | "FAILED";
+import { buildCommandDedupeKey } from "../../../../../shared/utils/dedupe.js";
 
 export async function executeInitiateFirstBranchActivationCommand(input: {
   db: Pool;
@@ -49,11 +48,11 @@ export async function executeInitiateFirstBranchActivationCommand(input: {
     });
 
     if (commandData.created) {
-      const dedupeKey = buildAuditDedupeKey(
-        input.actionKey,
-        input.idempotencyKey,
-        "SUCCESS"
-      );
+      const dedupeKey = buildCommandDedupeKey({
+        actionKey: input.actionKey,
+        idempotencyKey: input.idempotencyKey,
+        outcome: "SUCCESS",
+      });
       await txAuditService.recordEvent({
         tenantId: commandData.tenantId,
         branchId: null,
@@ -129,11 +128,11 @@ export async function executeConfirmFirstBranchActivationCommand(input: {
     });
 
     if (commandData.created) {
-      const dedupeKey = buildAuditDedupeKey(
-        input.actionKey,
-        input.idempotencyKey,
-        "SUCCESS"
-      );
+      const dedupeKey = buildCommandDedupeKey({
+        actionKey: input.actionKey,
+        idempotencyKey: input.idempotencyKey,
+        outcome: "SUCCESS",
+      });
       await txAuditService.recordEvent({
         tenantId: commandData.tenantId,
         branchId: commandData.branchId,
@@ -173,23 +172,6 @@ export async function executeConfirmFirstBranchActivationCommand(input: {
 
     return commandData;
   });
-}
-
-function buildAuditDedupeKey(
-  actionKey: string,
-  idempotencyKey: string | null,
-  outcome: AuditOutcome
-): string | null {
-  const key = normalizeOptionalString(idempotencyKey);
-  if (!key) {
-    return null;
-  }
-  return `${actionKey}:${outcome}:${key}`;
-}
-
-function normalizeOptionalString(input: unknown): string | null {
-  const normalized = String(input ?? "").trim();
-  return normalized ? normalized : null;
 }
 
 export function mapFirstBranchActivationError(error: unknown): never {

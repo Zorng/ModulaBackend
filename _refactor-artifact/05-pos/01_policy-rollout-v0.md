@@ -1,6 +1,6 @@
 # Policy Module Rollout (v0)
 
-Status: In progress (Phase 1 completed)
+Status: In progress (Phase 2 completed)
 Owner context: PlatformSystems (product capability)
 
 ## Goal
@@ -47,7 +47,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 | Phase | Status | Notes |
 |---|---|---|
 | 1 Boundary + Contract lock | Completed | Canonical route/action/event boundary locked in `_refactor-artifact/02-boundary/policy-boundary-v0.md`; API contract drafted at `api_contract/policy-v0.md`. |
-| 2 Data model + repositories | Not started | |
+| 2 Data model + repositories | Completed | Added `migrations/018_create_v0_branch_policies.sql`; scaffolded repository and command contract anchors under `src/modules/v0/policy/`. |
 | 3 Commands/queries + access control | Not started | |
 | 4 Integration + reliability | Not started | |
 | 5 Close-out | Not started | |

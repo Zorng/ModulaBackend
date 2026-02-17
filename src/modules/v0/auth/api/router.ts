@@ -15,6 +15,7 @@ import {
 } from "../../orgAccount/membership/api/membership.command.js";
 import { executeTenantProvisioningCommand } from "../../orgAccount/tenant/api/tenant-provisioning.command.js";
 import { executeAssignMembershipBranchesCommand } from "../../hr/staffManagement/api/assignment.command.js";
+import { readOptionalHeaderString } from "../../../../shared/utils/http.js";
 
 export function createV0AuthRouter(
   service: V0AuthService,
@@ -415,16 +416,7 @@ export function createV0AuthRouter(
 }
 
 function readIdempotencyKey(headers: Record<string, string | string[] | undefined>): string | null {
-  const raw = headers["idempotency-key"];
-  if (Array.isArray(raw)) {
-    return normalizeOptionalString(raw[0]);
-  }
-  return normalizeOptionalString(raw);
-}
-
-function normalizeOptionalString(input: unknown): string | null {
-  const normalized = String(input ?? "").trim();
-  return normalized ? normalized : null;
+  return readOptionalHeaderString(headers, "idempotency-key");
 }
 
 function handleError(res: Response, error: unknown): void {
