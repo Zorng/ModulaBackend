@@ -1,6 +1,6 @@
 import cors from "cors";
 import express from "express";
-import { ping } from "#db";
+import { ping, pool } from "#db";
 import { log } from "#logger";
 import {
   errorHandler,
@@ -8,8 +8,17 @@ import {
 } from "./platform/http/middleware/error-handler.js";
 import { accessControlHook } from "./platform/http/middleware/access-control-hook.js";
 import { v0Router } from "./platform/http/routes/v0.js";
+import { startV0CommandOutboxDispatcher } from "./platform/outbox/dispatcher.js";
 
 const app = express();
+const shouldRunOutboxDispatcher = process.env.V0_OUTBOX_DISPATCHER_ENABLED !== "false";
+const outboxDispatcher = shouldRunOutboxDispatcher
+  ? startV0CommandOutboxDispatcher({
+      db: pool,
+      pollIntervalMs: Number(process.env.V0_OUTBOX_DISPATCHER_INTERVAL_MS ?? 1000),
+      batchSize: Number(process.env.V0_OUTBOX_DISPATCHER_BATCH_SIZE ?? 100),
+    })
+  : null;
 
 app.use(
   cors({
@@ -47,4 +56,15 @@ app.use(errorHandler);
 const PORT = process.env.PORT ?? 3000;
 app.listen(PORT, () => {
   log.info(`server listening on http://localhost:${PORT}`);
+  if (shouldRunOutboxDispatcher) {
+    log.info("v0 command outbox dispatcher started");
+  }
 });
+
+function shutdown() {
+  outboxDispatcher?.stop();
+  process.exit(0);
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

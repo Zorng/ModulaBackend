@@ -562,9 +562,13 @@ Errors:
 - `409` membership is not `INVITED` or `ACTIVE`
 - `422` invalid/inactive branch IDs
 
-### 18) Create tenant (authenticated account, optional first branch)
+### 18) Create tenant (legacy alias during boundary migration)
 
-`POST /v0/auth/tenants`
+Canonical endpoint:
+- `POST /v0/org/tenants` (see `api_contract/tenant-v0.md`)
+
+Legacy alias:
+- `POST /v0/auth/tenants`
 
 Auth: `Authorization: Bearer <accessToken>`
 

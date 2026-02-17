@@ -6,6 +6,6 @@ import { V0OrgAccountRepository } from "./infra/repository.js";
 export function bootstrapV0OrgAccountModule(pool: Pool) {
   const repo = new V0OrgAccountRepository(pool);
   const service = new V0OrgAccountService(repo);
-  const router = createV0OrgAccountRouter(service);
+  const router = createV0OrgAccountRouter(service, pool);
   return { repo, service, router };
 }

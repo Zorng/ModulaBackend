@@ -71,6 +71,11 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "POST",
+    pattern: /^\/org\/tenants$/,
+    actionKey: "tenant.provision",
+  },
+  {
+    method: "POST",
     pattern: /^\/attendance\/check-in$/,
     actionKey: "attendance.checkIn",
     tenantSource: "token",

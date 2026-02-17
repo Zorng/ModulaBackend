@@ -2,7 +2,6 @@ import type { V0AuthRepository } from "../infra/repository.js";
 import { V0AuthAccountService } from "./auth-account.service.js";
 import { V0AuthContextSelectionService } from "./context-selection.service.js";
 import { V0AuthMembershipService } from "./membership.service.js";
-import { V0AuthTenantProvisioningService } from "./tenant-provisioning.service.js";
 
 export { V0AuthError } from "./common.js";
 
@@ -10,13 +9,11 @@ export class V0AuthService {
   private readonly accountService: V0AuthAccountService;
   private readonly contextSelectionService: V0AuthContextSelectionService;
   private readonly membershipService: V0AuthMembershipService;
-  private readonly tenantProvisioningService: V0AuthTenantProvisioningService;
 
   constructor(repo: V0AuthRepository) {
     this.accountService = new V0AuthAccountService(repo);
     this.contextSelectionService = new V0AuthContextSelectionService(repo);
     this.membershipService = new V0AuthMembershipService(repo);
-    this.tenantProvisioningService = new V0AuthTenantProvisioningService(repo);
   }
 
   register(...args: Parameters<V0AuthAccountService["register"]>) {
@@ -87,11 +84,5 @@ export class V0AuthService {
     ...args: Parameters<V0AuthMembershipService["assignMembershipBranches"]>
   ) {
     return this.membershipService.assignMembershipBranches(...args);
-  }
-
-  createTenant(
-    ...args: Parameters<V0AuthTenantProvisioningService["createTenant"]>
-  ) {
-    return this.tenantProvisioningService.createTenant(...args);
   }
 }

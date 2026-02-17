@@ -67,3 +67,13 @@ Exit criteria:
 | O2 Fair-Use Extension | Completed | Tenant provisioning now enforces `tenant_count_per_account` hard cap and request-frequency rate limiting with stable denial codes (`FAIRUSE_HARD_LIMIT_EXCEEDED`, `FAIRUSE_RATE_LIMITED`). |
 | O3 Atomic Command Contract | Completed | Migrated `tenant.provision`, auth membership writes, and attendance writes to transactional business+audit+outbox contract (`v0_command_outbox`), with integration coverage for rollback and replay-safe dedupe. |
 | O4 POS Core Readiness Slices | Not started |  |
+
+## O3 Close-Out Notes
+
+- Runtime dispatcher wiring added for `v0_command_outbox`:
+  - `src/platform/outbox/dispatcher.ts`
+  - `src/server.ts` startup integration (config-gated)
+- Event catalog documented:
+  - `_refactor-artifact/v0-command-outbox-event-catalog.md`
+- Dispatcher integration coverage added:
+  - `src/integration-tests/v0-command-outbox-dispatcher.int.test.ts`

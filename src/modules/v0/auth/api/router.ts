@@ -7,6 +7,8 @@ import { V0AuditService } from "../../audit/app/service.js";
 import { V0AuditRepository } from "../../audit/infra/repository.js";
 import { TransactionManager } from "../../../../platform/db/transactionManager.js";
 import { V0CommandOutboxRepository } from "../../../../platform/outbox/repository.js";
+import { V0OrgAccountError } from "../../orgAccount/app/service.js";
+import { executeTenantProvisioningCommand } from "../../orgAccount/api/tenant-provisioning.command.js";
 
 export function createV0AuthRouter(
   service: V0AuthService,
@@ -572,7 +574,6 @@ export function createV0AuthRouter(
     requireV0Auth,
     async (req: V0AuthRequest, res: Response) => {
       const requesterAccountId = req.v0Auth?.accountId;
-      const actionKey = "tenant.provision";
       const idempotencyKey = readIdempotencyKey(req.headers);
       try {
         if (!requesterAccountId) {
@@ -580,55 +581,25 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await transactionManager.withTransaction(async (client) => {
-          const txService = new V0AuthService(new V0AuthRepository(client));
-          const txAuditService = new V0AuditService(new V0AuditRepository(client));
-          const txOutboxRepository = new V0CommandOutboxRepository(client);
-
-          const commandData = await txService.createTenant({
-            requesterAccountId,
-            tenantName: req.body?.tenantName,
-            firstBranchName: req.body?.firstBranchName,
-          });
-
-          const branchId = commandData.branch?.id ?? null;
-          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
-          await txAuditService.recordEvent({
-            tenantId: commandData.tenant.id,
-            branchId,
-            actorAccountId: requesterAccountId,
-            actionKey,
-            outcome: "SUCCESS",
-            entityType: "tenant",
-            entityId: commandData.tenant.id,
-            dedupeKey,
-            metadata: {
-              endpoint: "/v0/auth/tenants",
-              branchId,
-              ownerMembershipId: commandData.ownerMembership.id,
-            },
-          });
-          await txOutboxRepository.insertEvent({
-            tenantId: commandData.tenant.id,
-            branchId,
-            actionKey,
-            eventType: "TENANT_PROVISIONED",
-            actorType: "ACCOUNT",
-            actorId: requesterAccountId,
-            entityType: "tenant",
-            entityId: commandData.tenant.id,
-            outcome: "SUCCESS",
-            dedupeKey,
-            payload: {
-              endpoint: "/v0/auth/tenants",
-              branchId,
-              ownerMembershipId: commandData.ownerMembership.id,
-            },
-          });
-          return commandData;
+        const data = await executeTenantProvisioningCommand({
+          db,
+          requesterAccountId,
+          tenantName: req.body?.tenantName,
+          firstBranchName: req.body?.firstBranchName,
+          idempotencyKey,
+          endpoint: "/v0/auth/tenants",
         });
+
         res.status(201).json({ success: true, data });
       } catch (error) {
+        if (error instanceof V0OrgAccountError) {
+          res.status(error.statusCode).json({
+            success: false,
+            error: error.message,
+            code: error.code ?? undefined,
+          });
+          return;
+        }
         handleError(res, error);
       }
     }

@@ -1,9 +1,38 @@
+import type { Pool } from "pg";
 import { Router, type Response } from "express";
 import { requireV0Auth, type V0AuthRequest } from "../../auth/api/middleware.js";
 import { V0OrgAccountError, V0OrgAccountService } from "../app/service.js";
+import { executeTenantProvisioningCommand } from "./tenant-provisioning.command.js";
 
-export function createV0OrgAccountRouter(service: V0OrgAccountService): Router {
+export function createV0OrgAccountRouter(
+  service: V0OrgAccountService,
+  db: Pool
+): Router {
   const router = Router();
+
+  router.post("/tenants", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
+    const requesterAccountId = req.v0Auth?.accountId;
+    const idempotencyKey = readIdempotencyKey(req.headers);
+    try {
+      if (!requesterAccountId) {
+        res.status(401).json({ success: false, error: "authentication required" });
+        return;
+      }
+
+      const data = await executeTenantProvisioningCommand({
+        db,
+        requesterAccountId,
+        tenantName: req.body?.tenantName,
+        firstBranchName: req.body?.firstBranchName,
+        idempotencyKey,
+        endpoint: "/v0/org/tenants",
+      });
+
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
 
   router.get("/tenant/current", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
@@ -57,11 +86,25 @@ export function createV0OrgAccountRouter(service: V0OrgAccountService): Router {
   return router;
 }
 
+function readIdempotencyKey(headers: Record<string, string | string[] | undefined>): string | null {
+  const raw = headers["idempotency-key"];
+  if (Array.isArray(raw)) {
+    return normalizeOptionalString(raw[0]);
+  }
+  return normalizeOptionalString(raw);
+}
+
+function normalizeOptionalString(input: unknown): string | null {
+  const normalized = String(input ?? "").trim();
+  return normalized ? normalized : null;
+}
+
 function handleError(res: Response, error: unknown): void {
   if (error instanceof V0OrgAccountError) {
     res.status(error.statusCode).json({
       success: false,
       error: error.message,
+      code: error.code ?? undefined,
     });
     return;
   }

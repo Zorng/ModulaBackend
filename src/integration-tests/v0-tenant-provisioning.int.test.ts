@@ -4,6 +4,7 @@ import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
+import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
 
 function uniquePhone(): string {
   const now = Date.now().toString().slice(-9);
@@ -26,7 +27,9 @@ describe("v0 tenant provisioning (phase 3 scaffold)", () => {
     app = express();
     app.use(express.json());
     const v0AuthModule = bootstrapV0AuthModule(pool);
+    const v0OrgModule = bootstrapV0OrgAccountModule(pool);
     app.use("/v0/auth", v0AuthModule.router);
+    app.use("/v0/org", v0OrgModule.router);
   });
 
   afterAll(async () => {
@@ -61,7 +64,7 @@ describe("v0 tenant provisioning (phase 3 scaffold)", () => {
     const accessToken = loginRes.body.data.accessToken as string;
 
     const createTenantRes = await request(app)
-      .post("/v0/auth/tenants")
+      .post("/v0/org/tenants")
       .set("Authorization", `Bearer ${accessToken}`)
       .send({
         tenantName,

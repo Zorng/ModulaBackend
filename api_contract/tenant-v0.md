@@ -1,6 +1,6 @@
 # Tenant Module (`/v0`) — API Contract
 
-This document describes the current tenant profile read contract for `/v0`.
+This document describes the current tenant contract for `/v0`.
 
 Base path: `/v0/org`
 
@@ -30,11 +30,82 @@ type CurrentTenantProfile = {
   logoUrl: string | null;
   status: TenantStatus;
 };
+
+type TenantProvisionResult = {
+  tenant: {
+    id: string;
+    name: string;
+    status: "ACTIVE";
+  };
+  ownerMembership: {
+    id: string;
+    roleKey: "OWNER";
+    status: "ACTIVE";
+  };
+  branch: {
+    id: string;
+    name: string;
+    status: "ACTIVE";
+  } | null;
+};
 ```
 
-## Endpoint
+## Endpoints
 
-### 1) Get current tenant profile
+### 1) Create tenant (authenticated account, optional first branch)
+
+`POST /v0/org/tenants`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "tenantName": "X Cafe"
+}
+```
+
+Optional:
+
+```json
+{
+  "tenantName": "X Cafe",
+  "firstBranchName": "Main Branch"
+}
+```
+
+Success `201`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "tenant": {
+      "id": "uuid",
+      "name": "X Cafe",
+      "status": "ACTIVE"
+    },
+    "ownerMembership": {
+      "id": "uuid",
+      "roleKey": "OWNER",
+      "status": "ACTIVE"
+    },
+    "branch": null
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token or inactive account
+- `422` missing `tenantName`
+- `409` tenant hard limit reached (`code = FAIRUSE_HARD_LIMIT_EXCEEDED`)
+- `429` tenant provisioning rate-limited (`code = FAIRUSE_RATE_LIMITED`)
+
+Compatibility note:
+- Legacy alias remains available at `POST /v0/auth/tenants` during boundary migration.
+
+### 2) Get current tenant profile
 
 `GET /v0/org/tenant/current`
 
