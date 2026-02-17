@@ -1,6 +1,6 @@
 # Observability Baseline Rollout (v0)
 
-Status: In progress (O3 completed)  
+Status: Completed baseline (O5 completed, O6 deferred)  
 Owner: backend  
 Started: 2026-02-17
 
@@ -103,8 +103,8 @@ Out of scope for baseline:
 | O1 Request Context Middleware | Completed | Added request context middleware (`src/platform/http/middleware/request-context.ts`) with request ID propagation via `X-Request-Id`, optional actor/tenant/branch enrichment from JWT claims, response header echo, and Express request typing in `src/types/express.d.ts`; access-control hook now sets `actionKey` on matched protected routes. |
 | O2 Structured Logger Foundation | Completed | Replaced console logger with structured `pino` logger and child-context support in `src/platform/logger/index.ts`; updated active request paths to use structured events (`server.started`, `http.request.failed`, validation/image-proxy failures). |
 | O3 Instrumentation Hooks | Completed | Added HTTP lifecycle telemetry middleware (`http.request.started/completed` with duration), transaction manager instrumentation (`db.transaction.*`), and outbox dispatcher instrumentation (`outbox.dispatch.*` incl. batch load/publish/failure/backlog/tick summaries). |
-| O4 Metrics + Health Baseline | Not started | |
-| O5 Dashboard + Alert Starter | Not started | |
+| O4 Metrics + Health Baseline | Completed | Added in-memory Prometheus exporter (`src/platform/observability/metrics.ts`) with `/metrics` endpoint and hooked HTTP/DB/outbox metrics; upgraded `/health` with component status (`db`, `outbox`) and outbox stale/degraded detection; threshold baseline defined in `_refactor-artifact/01-platform/observability-thresholds-v0.md`. |
+| O5 Dashboard + Alert Starter | Completed | Dashboard panel spec and alert routing starter documented in `_refactor-artifact/01-platform/observability-dashboard-alert-starter-v0.md`, bound to threshold baseline in `_refactor-artifact/01-platform/observability-thresholds-v0.md`. |
 | O6 Tracing Pilot (Deferred) | Deferred | Defer until critical POS write paths stabilize. |
 
 ## Success Criteria

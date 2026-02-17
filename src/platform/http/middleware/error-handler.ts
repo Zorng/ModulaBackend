@@ -28,6 +28,7 @@ export const errorHandler = (
 
   // Handle domain errors (business logic errors)
   if (err instanceof NotFoundError) {
+    (res.locals as Record<string, unknown>).errorCode = "NOT_FOUND";
     return res.status(404).json({
       error: err.name,
       message: err.message,
@@ -36,6 +37,7 @@ export const errorHandler = (
   }
 
   if (err instanceof ConflictError) {
+    (res.locals as Record<string, unknown>).errorCode = "CONFLICT";
     return res.status(409).json({
       error: err.name,
       message: err.message,
@@ -44,6 +46,7 @@ export const errorHandler = (
   }
 
   if (err instanceof ForbiddenError) {
+    (res.locals as Record<string, unknown>).errorCode = "FORBIDDEN";
     return res.status(403).json({
       error: err.name,
       message: err.message,
@@ -52,6 +55,7 @@ export const errorHandler = (
   }
 
   if (err instanceof ValidationError) {
+    (res.locals as Record<string, unknown>).errorCode = "VALIDATION_ERROR";
     return res.status(400).json({
       error: err.name,
       message: err.message,
@@ -61,6 +65,7 @@ export const errorHandler = (
 
   // Generic domain error
   if (err instanceof DomainError) {
+    (res.locals as Record<string, unknown>).errorCode = err.code;
     return res.status(400).json({
       error: err.name,
       code: err.code,
@@ -75,6 +80,7 @@ export const errorHandler = (
 
     // Unique constraint violation
     if (pgError.code === "23505") {
+      (res.locals as Record<string, unknown>).errorCode = "DB_UNIQUE_VIOLATION";
       return res.status(409).json({
         error: "Conflict",
         message: "A record with this value already exists",
@@ -84,6 +90,7 @@ export const errorHandler = (
 
     // Foreign key violation
     if (pgError.code === "23503") {
+      (res.locals as Record<string, unknown>).errorCode = "DB_FOREIGN_KEY_VIOLATION";
       return res.status(400).json({
         error: "Bad Request",
         message: "Referenced record does not exist",
@@ -92,6 +99,7 @@ export const errorHandler = (
     }
 
     // Other database errors
+    (res.locals as Record<string, unknown>).errorCode = "DB_ERROR";
     return res.status(500).json({
       error: "Database Error",
       message: "A database error occurred",
@@ -100,6 +108,7 @@ export const errorHandler = (
   }
 
   // Default: Internal Server Error
+  (res.locals as Record<string, unknown>).errorCode = "INTERNAL_SERVER_ERROR";
   return res.status(500).json({
     error: "Internal Server Error",
     message:

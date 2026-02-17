@@ -30,6 +30,7 @@ export const validate = (schema: {
       next();
     } catch (error) {
       if (error instanceof ZodError) {
+        (res.locals as Record<string, unknown>).errorCode = "VALIDATION_ERROR";
         return res.status(400).json({
           error: "Validation Error",
           message: "Request validation failed",
@@ -45,6 +46,7 @@ export const validate = (schema: {
         requestId: req.v0Context?.requestId,
         error: error instanceof Error ? error.message : String(error),
       });
+      (res.locals as Record<string, unknown>).errorCode = "VALIDATION_UNEXPECTED_ERROR";
       return res.status(500).json({
         error: "Internal Server Error",
         message: "Validation failed unexpectedly",

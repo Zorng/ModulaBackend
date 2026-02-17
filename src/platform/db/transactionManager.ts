@@ -1,6 +1,7 @@
 import { pool as defaultPool } from "./index.js";
 import type { Pool, PoolClient } from "pg";
 import { log } from "#logger";
+import { recordDbTransaction } from "../observability/metrics.js";
 
 type TransactionalPool = Pick<Pool, "connect">;
 type TransactionTelemetry = {
@@ -38,6 +39,11 @@ export class TransactionManager {
         branchId: telemetry?.branchId ?? undefined,
         durationMs: Date.now() - startedAtMs,
       });
+      recordDbTransaction({
+        result: "committed",
+        durationMs: Date.now() - startedAtMs,
+        actionKey: telemetry?.actionKey,
+      });
       return result;
     } catch (err) {
       await client.query("ROLLBACK");
@@ -49,6 +55,11 @@ export class TransactionManager {
         branchId: telemetry?.branchId ?? undefined,
         durationMs: Date.now() - startedAtMs,
         error: err instanceof Error ? err.message : String(err),
+      });
+      recordDbTransaction({
+        result: "rolled_back",
+        durationMs: Date.now() - startedAtMs,
+        actionKey: telemetry?.actionKey,
       });
       throw err;
     } finally {

@@ -86,6 +86,16 @@ Baseline event names:
 - Gauges:
   - `outbox_backlog_count`
 
+Metrics exposure:
+- endpoint: `GET /metrics`
+- format: Prometheus text exposition (`text/plain; version=0.0.4`)
+
+Health exposure:
+- endpoint: `GET /health`
+- includes component-level status:
+  - `db.status`
+  - `outbox.status` (`ok | degraded | disabled`)
+
 ## Redaction Rules (Hard)
 
 Never log raw values for:

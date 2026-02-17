@@ -71,6 +71,7 @@ export function createAccessControlHook(deps: HookDeps = {}) {
 export const accessControlHook = createAccessControlHook();
 
 function deny(res: Response, statusCode: number, code: string): void {
+  (res.locals as Record<string, unknown>).errorCode = code;
   res.status(statusCode).json({
     success: false,
     error: code,

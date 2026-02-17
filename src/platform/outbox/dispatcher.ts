@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { eventBus } from "../events/index.js";
 import { log } from "#logger";
+import { recordOutboxEventProcessed, setOutboxBacklogCount } from "../observability/metrics.js";
 
 type V0OutboxRow = {
   id: string;
@@ -23,6 +24,15 @@ type DispatcherInput = {
   db: Pool;
   pollIntervalMs?: number;
   batchSize?: number;
+};
+
+type DispatcherStatus = {
+  pollIntervalMs: number;
+  batchSize: number;
+  lastTickAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastError: string | null;
 };
 
 type V0CommandOutboxEvent = {
@@ -91,6 +101,7 @@ async function processBatch(input: { client: PoolClient; batchSize: number }): P
   const loadedCount = rows.rows.length;
   let publishedCount = 0;
   let failedCount = 0;
+  setOutboxBacklogCount(backlogCount);
 
   log.debug("outbox.dispatch.batch_loaded", {
     event: "outbox.dispatch.batch_loaded",
@@ -143,6 +154,11 @@ async function processBatch(input: { client: PoolClient; batchSize: number }): P
         outcome: row.outcome,
         durationMs: Date.now() - publishStartedAtMs,
       });
+      recordOutboxEventProcessed({
+        eventType: row.event_type,
+        result: "published",
+        durationMs: Date.now() - publishStartedAtMs,
+      });
     } catch (error) {
       await input.client.query(
         `UPDATE v0_command_outbox
@@ -163,6 +179,11 @@ async function processBatch(input: { client: PoolClient; batchSize: number }): P
         error: error instanceof Error ? error.message : String(error),
         durationMs: Date.now() - publishStartedAtMs,
       });
+      recordOutboxEventProcessed({
+        eventType: row.event_type,
+        result: "failed",
+        durationMs: Date.now() - publishStartedAtMs,
+      });
     }
   }
 
@@ -176,17 +197,29 @@ async function processBatch(input: { client: PoolClient; batchSize: number }): P
 
 export function startV0CommandOutboxDispatcher(input: DispatcherInput): {
   stop: () => void;
+  getStatus: () => DispatcherStatus;
 } {
   const pollIntervalMs = input.pollIntervalMs ?? 1000;
   const batchSize = input.batchSize ?? 100;
+  const status: DispatcherStatus = {
+    pollIntervalMs,
+    batchSize,
+    lastTickAt: null,
+    lastSuccessAt: null,
+    lastFailureAt: null,
+    lastError: null,
+  };
 
   const timer = setInterval(async () => {
     const tickStartedAtMs = Date.now();
+    status.lastTickAt = new Date(tickStartedAtMs).toISOString();
     const client = await input.db.connect();
     try {
       await client.query("BEGIN");
       const summary = await processBatch({ client, batchSize });
       await client.query("COMMIT");
+      status.lastSuccessAt = new Date().toISOString();
+      status.lastError = null;
       log.debug("outbox.dispatch.tick_completed", {
         event: "outbox.dispatch.tick_completed",
         loadedCount: summary.loadedCount,
@@ -197,6 +230,8 @@ export function startV0CommandOutboxDispatcher(input: DispatcherInput): {
       });
     } catch (error) {
       await client.query("ROLLBACK");
+      status.lastFailureAt = new Date().toISOString();
+      status.lastError = error instanceof Error ? error.message : String(error);
       log.error("outbox.dispatch.tick_failed", {
         event: "outbox.dispatch.tick_failed",
         error: error instanceof Error ? error.message : String(error),
@@ -209,5 +244,6 @@ export function startV0CommandOutboxDispatcher(input: DispatcherInput): {
 
   return {
     stop: () => clearInterval(timer),
+    getStatus: () => ({ ...status }),
   };
 }
