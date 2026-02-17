@@ -1,13 +1,19 @@
+import type { Pool } from "pg";
 import { Router, type Request, type Response } from "express";
 import { V0AuthError, V0AuthService } from "../app/service.js";
+import { V0AuthRepository } from "../infra/repository.js";
 import { requireV0Auth, type V0AuthRequest } from "./middleware.js";
 import { V0AuditService } from "../../audit/app/service.js";
+import { V0AuditRepository } from "../../audit/infra/repository.js";
+import { TransactionManager } from "../../../../platform/db/transactionManager.js";
+import { V0CommandOutboxRepository } from "../../../../platform/outbox/repository.js";
 
 export function createV0AuthRouter(
   service: V0AuthService,
-  auditService: V0AuditService
+  db: Pool
 ): Router {
   const router = Router();
+  const transactionManager = new TransactionManager(db);
 
   router.post("/register", async (req: Request, res: Response) => {
     try {
@@ -185,44 +191,52 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await service.inviteMembership({
-          requesterAccountId,
-          tenantId: req.body?.tenantId,
-          phone: req.body?.phone,
-          roleKey: req.body?.roleKey,
-        });
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: data.tenantId,
-          actorAccountId: requesterAccountId,
-          actionKey,
-          outcome: "SUCCESS",
-          entityType: "membership",
-          entityId: data.membershipId,
-          dedupeKey: buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS"),
-          metadata: {
-            endpoint: "/v0/auth/memberships/invite",
-            roleKey: data.roleKey,
-          },
+        const data = await transactionManager.withTransaction(async (client) => {
+          const txService = new V0AuthService(new V0AuthRepository(client));
+          const txAuditService = new V0AuditService(new V0AuditRepository(client));
+          const txOutboxRepository = new V0CommandOutboxRepository(client);
+
+          const commandData = await txService.inviteMembership({
+            requesterAccountId,
+            tenantId: req.body?.tenantId,
+            phone: req.body?.phone,
+            roleKey: req.body?.roleKey,
+          });
+
+          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
+          await txAuditService.recordEvent({
+            tenantId: commandData.tenantId,
+            actorAccountId: requesterAccountId,
+            actionKey,
+            outcome: "SUCCESS",
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            dedupeKey,
+            metadata: {
+              endpoint: "/v0/auth/memberships/invite",
+              roleKey: commandData.roleKey,
+            },
+          });
+          await txOutboxRepository.insertEvent({
+            tenantId: commandData.tenantId,
+            actionKey,
+            eventType: "AUTH_MEMBERSHIP_INVITED",
+            actorType: "ACCOUNT",
+            actorId: requesterAccountId,
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            outcome: "SUCCESS",
+            dedupeKey,
+            payload: {
+              endpoint: "/v0/auth/memberships/invite",
+              roleKey: commandData.roleKey,
+              phone: commandData.phone,
+            },
+          });
+          return commandData;
         });
         res.status(201).json({ success: true, data });
       } catch (error) {
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: normalizeOptionalString(req.body?.tenantId),
-          actorAccountId: requesterAccountId ?? null,
-          actionKey,
-          outcome: classifyAuditOutcome(error),
-          reasonCode: classifyAuditReasonCode(error),
-          entityType: "membership",
-          dedupeKey: buildAuditDedupeKey(
-            actionKey,
-            idempotencyKey,
-            classifyAuditOutcome(error)
-          ),
-          metadata: {
-            endpoint: "/v0/auth/memberships/invite",
-            error: serializeError(error),
-          },
-        });
         handleError(res, error);
       }
     }
@@ -260,42 +274,48 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await service.acceptInvitation({
-          requesterAccountId,
-          membershipId: req.params.membershipId,
-        });
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: data.tenantId,
-          actorAccountId: requesterAccountId,
-          actionKey,
-          outcome: "SUCCESS",
-          entityType: "membership",
-          entityId: data.membershipId,
-          dedupeKey: buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS"),
-          metadata: {
-            endpoint: "/v0/auth/memberships/invitations/:membershipId/accept",
-          },
+        const data = await transactionManager.withTransaction(async (client) => {
+          const txService = new V0AuthService(new V0AuthRepository(client));
+          const txAuditService = new V0AuditService(new V0AuditRepository(client));
+          const txOutboxRepository = new V0CommandOutboxRepository(client);
+
+          const commandData = await txService.acceptInvitation({
+            requesterAccountId,
+            membershipId: req.params.membershipId,
+          });
+
+          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
+          await txAuditService.recordEvent({
+            tenantId: commandData.tenantId,
+            actorAccountId: requesterAccountId,
+            actionKey,
+            outcome: "SUCCESS",
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            dedupeKey,
+            metadata: {
+              endpoint: "/v0/auth/memberships/invitations/:membershipId/accept",
+            },
+          });
+          await txOutboxRepository.insertEvent({
+            tenantId: commandData.tenantId,
+            actionKey,
+            eventType: "AUTH_MEMBERSHIP_INVITATION_ACCEPTED",
+            actorType: "ACCOUNT",
+            actorId: requesterAccountId,
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            outcome: "SUCCESS",
+            dedupeKey,
+            payload: {
+              endpoint: "/v0/auth/memberships/invitations/:membershipId/accept",
+              activeBranchCount: commandData.activeBranchIds.length,
+            },
+          });
+          return commandData;
         });
         res.status(200).json({ success: true, data });
       } catch (error) {
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: normalizeOptionalString(req.v0Auth?.tenantId),
-          actorAccountId: requesterAccountId ?? null,
-          actionKey,
-          outcome: classifyAuditOutcome(error),
-          reasonCode: classifyAuditReasonCode(error),
-          entityType: "membership",
-          entityId: normalizeOptionalString(req.params.membershipId),
-          dedupeKey: buildAuditDedupeKey(
-            actionKey,
-            idempotencyKey,
-            classifyAuditOutcome(error)
-          ),
-          metadata: {
-            endpoint: "/v0/auth/memberships/invitations/:membershipId/accept",
-            error: serializeError(error),
-          },
-        });
         handleError(res, error);
       }
     }
@@ -314,42 +334,47 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await service.rejectInvitation({
-          requesterAccountId,
-          membershipId: req.params.membershipId,
-        });
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: data.tenantId,
-          actorAccountId: requesterAccountId,
-          actionKey,
-          outcome: "SUCCESS",
-          entityType: "membership",
-          entityId: data.membershipId,
-          dedupeKey: buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS"),
-          metadata: {
-            endpoint: "/v0/auth/memberships/invitations/:membershipId/reject",
-          },
+        const data = await transactionManager.withTransaction(async (client) => {
+          const txService = new V0AuthService(new V0AuthRepository(client));
+          const txAuditService = new V0AuditService(new V0AuditRepository(client));
+          const txOutboxRepository = new V0CommandOutboxRepository(client);
+
+          const commandData = await txService.rejectInvitation({
+            requesterAccountId,
+            membershipId: req.params.membershipId,
+          });
+
+          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
+          await txAuditService.recordEvent({
+            tenantId: commandData.tenantId,
+            actorAccountId: requesterAccountId,
+            actionKey,
+            outcome: "SUCCESS",
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            dedupeKey,
+            metadata: {
+              endpoint: "/v0/auth/memberships/invitations/:membershipId/reject",
+            },
+          });
+          await txOutboxRepository.insertEvent({
+            tenantId: commandData.tenantId,
+            actionKey,
+            eventType: "AUTH_MEMBERSHIP_INVITATION_REJECTED",
+            actorType: "ACCOUNT",
+            actorId: requesterAccountId,
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            outcome: "SUCCESS",
+            dedupeKey,
+            payload: {
+              endpoint: "/v0/auth/memberships/invitations/:membershipId/reject",
+            },
+          });
+          return commandData;
         });
         res.status(200).json({ success: true, data });
       } catch (error) {
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: normalizeOptionalString(req.v0Auth?.tenantId),
-          actorAccountId: requesterAccountId ?? null,
-          actionKey,
-          outcome: classifyAuditOutcome(error),
-          reasonCode: classifyAuditReasonCode(error),
-          entityType: "membership",
-          entityId: normalizeOptionalString(req.params.membershipId),
-          dedupeKey: buildAuditDedupeKey(
-            actionKey,
-            idempotencyKey,
-            classifyAuditOutcome(error)
-          ),
-          metadata: {
-            endpoint: "/v0/auth/memberships/invitations/:membershipId/reject",
-            error: serializeError(error),
-          },
-        });
         handleError(res, error);
       }
     }
@@ -368,44 +393,50 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await service.changeMembershipRole({
-          requesterAccountId,
-          membershipId: req.params.membershipId,
-          roleKey: req.body?.roleKey,
-        });
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: data.tenantId,
-          actorAccountId: requesterAccountId,
-          actionKey,
-          outcome: "SUCCESS",
-          entityType: "membership",
-          entityId: data.membershipId,
-          dedupeKey: buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS"),
-          metadata: {
-            endpoint: "/v0/auth/memberships/:membershipId/role",
-            roleKey: data.roleKey,
-          },
+        const data = await transactionManager.withTransaction(async (client) => {
+          const txService = new V0AuthService(new V0AuthRepository(client));
+          const txAuditService = new V0AuditService(new V0AuditRepository(client));
+          const txOutboxRepository = new V0CommandOutboxRepository(client);
+
+          const commandData = await txService.changeMembershipRole({
+            requesterAccountId,
+            membershipId: req.params.membershipId,
+            roleKey: req.body?.roleKey,
+          });
+
+          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
+          await txAuditService.recordEvent({
+            tenantId: commandData.tenantId,
+            actorAccountId: requesterAccountId,
+            actionKey,
+            outcome: "SUCCESS",
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            dedupeKey,
+            metadata: {
+              endpoint: "/v0/auth/memberships/:membershipId/role",
+              roleKey: commandData.roleKey,
+            },
+          });
+          await txOutboxRepository.insertEvent({
+            tenantId: commandData.tenantId,
+            actionKey,
+            eventType: "AUTH_MEMBERSHIP_ROLE_CHANGED",
+            actorType: "ACCOUNT",
+            actorId: requesterAccountId,
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            outcome: "SUCCESS",
+            dedupeKey,
+            payload: {
+              endpoint: "/v0/auth/memberships/:membershipId/role",
+              roleKey: commandData.roleKey,
+            },
+          });
+          return commandData;
         });
         res.status(200).json({ success: true, data });
       } catch (error) {
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: normalizeOptionalString(req.v0Auth?.tenantId),
-          actorAccountId: requesterAccountId ?? null,
-          actionKey,
-          outcome: classifyAuditOutcome(error),
-          reasonCode: classifyAuditReasonCode(error),
-          entityType: "membership",
-          entityId: normalizeOptionalString(req.params.membershipId),
-          dedupeKey: buildAuditDedupeKey(
-            actionKey,
-            idempotencyKey,
-            classifyAuditOutcome(error)
-          ),
-          metadata: {
-            endpoint: "/v0/auth/memberships/:membershipId/role",
-            error: serializeError(error),
-          },
-        });
         handleError(res, error);
       }
     }
@@ -424,42 +455,47 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await service.revokeMembership({
-          requesterAccountId,
-          membershipId: req.params.membershipId,
-        });
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: data.tenantId,
-          actorAccountId: requesterAccountId,
-          actionKey,
-          outcome: "SUCCESS",
-          entityType: "membership",
-          entityId: data.membershipId,
-          dedupeKey: buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS"),
-          metadata: {
-            endpoint: "/v0/auth/memberships/:membershipId/revoke",
-          },
+        const data = await transactionManager.withTransaction(async (client) => {
+          const txService = new V0AuthService(new V0AuthRepository(client));
+          const txAuditService = new V0AuditService(new V0AuditRepository(client));
+          const txOutboxRepository = new V0CommandOutboxRepository(client);
+
+          const commandData = await txService.revokeMembership({
+            requesterAccountId,
+            membershipId: req.params.membershipId,
+          });
+
+          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
+          await txAuditService.recordEvent({
+            tenantId: commandData.tenantId,
+            actorAccountId: requesterAccountId,
+            actionKey,
+            outcome: "SUCCESS",
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            dedupeKey,
+            metadata: {
+              endpoint: "/v0/auth/memberships/:membershipId/revoke",
+            },
+          });
+          await txOutboxRepository.insertEvent({
+            tenantId: commandData.tenantId,
+            actionKey,
+            eventType: "AUTH_MEMBERSHIP_REVOKED",
+            actorType: "ACCOUNT",
+            actorId: requesterAccountId,
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            outcome: "SUCCESS",
+            dedupeKey,
+            payload: {
+              endpoint: "/v0/auth/memberships/:membershipId/revoke",
+            },
+          });
+          return commandData;
         });
         res.status(200).json({ success: true, data });
       } catch (error) {
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: normalizeOptionalString(req.v0Auth?.tenantId),
-          actorAccountId: requesterAccountId ?? null,
-          actionKey,
-          outcome: classifyAuditOutcome(error),
-          reasonCode: classifyAuditReasonCode(error),
-          entityType: "membership",
-          entityId: normalizeOptionalString(req.params.membershipId),
-          dedupeKey: buildAuditDedupeKey(
-            actionKey,
-            idempotencyKey,
-            classifyAuditOutcome(error)
-          ),
-          metadata: {
-            endpoint: "/v0/auth/memberships/:membershipId/revoke",
-            error: serializeError(error),
-          },
-        });
         handleError(res, error);
       }
     }
@@ -478,46 +514,54 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await service.assignMembershipBranches({
-          requesterAccountId,
-          membershipId: req.params.membershipId,
-          branchIds: req.body?.branchIds,
-        });
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: data.tenantId,
-          actorAccountId: requesterAccountId,
-          actionKey,
-          outcome: "SUCCESS",
-          entityType: "membership",
-          entityId: data.membershipId,
-          dedupeKey: buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS"),
-          metadata: {
-            endpoint: "/v0/auth/memberships/:membershipId/branches",
-            membershipStatus: data.membershipStatus,
-            pendingBranchCount: data.pendingBranchIds.length,
-            activeBranchCount: data.activeBranchIds.length,
-          },
+        const data = await transactionManager.withTransaction(async (client) => {
+          const txService = new V0AuthService(new V0AuthRepository(client));
+          const txAuditService = new V0AuditService(new V0AuditRepository(client));
+          const txOutboxRepository = new V0CommandOutboxRepository(client);
+
+          const commandData = await txService.assignMembershipBranches({
+            requesterAccountId,
+            membershipId: req.params.membershipId,
+            branchIds: req.body?.branchIds,
+          });
+
+          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
+          await txAuditService.recordEvent({
+            tenantId: commandData.tenantId,
+            actorAccountId: requesterAccountId,
+            actionKey,
+            outcome: "SUCCESS",
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            dedupeKey,
+            metadata: {
+              endpoint: "/v0/auth/memberships/:membershipId/branches",
+              membershipStatus: commandData.membershipStatus,
+              pendingBranchCount: commandData.pendingBranchIds.length,
+              activeBranchCount: commandData.activeBranchIds.length,
+            },
+          });
+          await txOutboxRepository.insertEvent({
+            tenantId: commandData.tenantId,
+            actionKey,
+            eventType: "AUTH_MEMBERSHIP_BRANCHES_ASSIGNED",
+            actorType: "ACCOUNT",
+            actorId: requesterAccountId,
+            entityType: "membership",
+            entityId: commandData.membershipId,
+            outcome: "SUCCESS",
+            dedupeKey,
+            payload: {
+              endpoint: "/v0/auth/memberships/:membershipId/branches",
+              membershipStatus: commandData.membershipStatus,
+              pendingBranchCount: commandData.pendingBranchIds.length,
+              activeBranchCount: commandData.activeBranchIds.length,
+            },
+          });
+          return commandData;
         });
         res.status(200).json({ success: true, data });
       } catch (error) {
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: normalizeOptionalString(req.v0Auth?.tenantId),
-          actorAccountId: requesterAccountId ?? null,
-          actionKey,
-          outcome: classifyAuditOutcome(error),
-          reasonCode: classifyAuditReasonCode(error),
-          entityType: "membership",
-          entityId: normalizeOptionalString(req.params.membershipId),
-          dedupeKey: buildAuditDedupeKey(
-            actionKey,
-            idempotencyKey,
-            classifyAuditOutcome(error)
-          ),
-          metadata: {
-            endpoint: "/v0/auth/memberships/:membershipId/branches",
-            error: serializeError(error),
-          },
-        });
         handleError(res, error);
       }
     }
@@ -536,46 +580,55 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await service.createTenant({
-          requesterAccountId,
-          tenantName: req.body?.tenantName,
-          firstBranchName: req.body?.firstBranchName,
-        });
-        const branchId = data.branch?.id ?? null;
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: data.tenant.id,
-          branchId,
-          actorAccountId: requesterAccountId,
-          actionKey,
-          outcome: "SUCCESS",
-          entityType: "tenant",
-          entityId: data.tenant.id,
-          dedupeKey: buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS"),
-          metadata: {
-            endpoint: "/v0/auth/tenants",
+        const data = await transactionManager.withTransaction(async (client) => {
+          const txService = new V0AuthService(new V0AuthRepository(client));
+          const txAuditService = new V0AuditService(new V0AuditRepository(client));
+          const txOutboxRepository = new V0CommandOutboxRepository(client);
+
+          const commandData = await txService.createTenant({
+            requesterAccountId,
+            tenantName: req.body?.tenantName,
+            firstBranchName: req.body?.firstBranchName,
+          });
+
+          const branchId = commandData.branch?.id ?? null;
+          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
+          await txAuditService.recordEvent({
+            tenantId: commandData.tenant.id,
             branchId,
-            ownerMembershipId: data.ownerMembership.id,
-          },
+            actorAccountId: requesterAccountId,
+            actionKey,
+            outcome: "SUCCESS",
+            entityType: "tenant",
+            entityId: commandData.tenant.id,
+            dedupeKey,
+            metadata: {
+              endpoint: "/v0/auth/tenants",
+              branchId,
+              ownerMembershipId: commandData.ownerMembership.id,
+            },
+          });
+          await txOutboxRepository.insertEvent({
+            tenantId: commandData.tenant.id,
+            branchId,
+            actionKey,
+            eventType: "TENANT_PROVISIONED",
+            actorType: "ACCOUNT",
+            actorId: requesterAccountId,
+            entityType: "tenant",
+            entityId: commandData.tenant.id,
+            outcome: "SUCCESS",
+            dedupeKey,
+            payload: {
+              endpoint: "/v0/auth/tenants",
+              branchId,
+              ownerMembershipId: commandData.ownerMembership.id,
+            },
+          });
+          return commandData;
         });
         res.status(201).json({ success: true, data });
       } catch (error) {
-        await writeTenantAuditBestEffort(auditService, {
-          tenantId: normalizeOptionalString(req.v0Auth?.tenantId),
-          actorAccountId: requesterAccountId ?? null,
-          actionKey,
-          outcome: classifyAuditOutcome(error),
-          reasonCode: classifyAuditReasonCode(error),
-          entityType: "tenant",
-          dedupeKey: buildAuditDedupeKey(
-            actionKey,
-            idempotencyKey,
-            classifyAuditOutcome(error)
-          ),
-          metadata: {
-            endpoint: "/v0/auth/tenants",
-            error: serializeError(error),
-          },
-        });
         handleError(res, error);
       }
     }
@@ -585,44 +638,6 @@ export function createV0AuthRouter(
 }
 
 type AuditOutcome = "SUCCESS" | "REJECTED" | "FAILED";
-
-async function writeTenantAuditBestEffort(
-  auditService: V0AuditService,
-  input: {
-    tenantId: string | null;
-    branchId?: string | null;
-    actorAccountId?: string | null;
-    actionKey: string;
-    outcome: AuditOutcome;
-    reasonCode?: string | null;
-    entityType?: string | null;
-    entityId?: string | null;
-    dedupeKey?: string | null;
-    metadata?: Record<string, unknown>;
-  }
-): Promise<void> {
-  const tenantId = normalizeOptionalString(input.tenantId);
-  if (!tenantId) {
-    return;
-  }
-
-  try {
-    await auditService.recordEvent({
-      tenantId,
-      branchId: normalizeOptionalString(input.branchId),
-      actorAccountId: normalizeOptionalString(input.actorAccountId),
-      actionKey: input.actionKey,
-      outcome: input.outcome,
-      reasonCode: normalizeOptionalString(input.reasonCode),
-      entityType: normalizeOptionalString(input.entityType),
-      entityId: normalizeOptionalString(input.entityId),
-      dedupeKey: normalizeOptionalString(input.dedupeKey),
-      metadata: input.metadata ?? null,
-    });
-  } catch {
-    // Tenant audit should not block the primary auth flow.
-  }
-}
 
 function readIdempotencyKey(headers: Record<string, string | string[] | undefined>): string | null {
   const raw = headers["idempotency-key"];
@@ -644,48 +659,9 @@ function buildAuditDedupeKey(
   return `${actionKey}:${outcome}:${key}`;
 }
 
-function classifyAuditOutcome(error: unknown): AuditOutcome {
-  if (error instanceof V0AuthError) {
-    return error.statusCode >= 500 ? "FAILED" : "REJECTED";
-  }
-  return "FAILED";
-}
-
-function classifyAuditReasonCode(error: unknown): string {
-  if (error instanceof V0AuthError) {
-    if (error.code) {
-      return error.code;
-    }
-    return normalizeReasonCode(error.message);
-  }
-  return "AUTH_FLOW_FAILED";
-}
-
-function normalizeReasonCode(input: string): string {
-  const normalized = String(input ?? "")
-    .trim()
-    .replace(/[^a-zA-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toUpperCase();
-  return normalized || "AUTH_REJECTED";
-}
-
 function normalizeOptionalString(input: unknown): string | null {
   const normalized = String(input ?? "").trim();
   return normalized ? normalized : null;
-}
-
-function serializeError(error: unknown): { name: string; message: string } {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-    };
-  }
-  return {
-    name: "UnknownError",
-    message: "unknown error",
-  };
 }
 
 function handleError(res: Response, error: unknown): void {

@@ -1,19 +1,43 @@
+import type { Pool } from "pg";
 import { Router, type Response } from "express";
 import { requireV0Auth, type V0AuthRequest } from "../../auth/api/middleware.js";
 import { V0AttendanceError, V0AttendanceService } from "../app/service.js";
+import { V0AttendanceRepository } from "../infra/repository.js";
 import {
   getIdempotencyKeyFromHeader,
   V0IdempotencyError,
   V0IdempotencyService,
 } from "../../../../platform/idempotency/service.js";
 import { V0AuditService } from "../../audit/app/service.js";
+import { V0AuditRepository } from "../../audit/infra/repository.js";
+import { TransactionManager } from "../../../../platform/db/transactionManager.js";
+import { V0CommandOutboxRepository } from "../../../../platform/outbox/repository.js";
+
+type AttendanceWriteBody =
+  | {
+      success: true;
+      data: {
+        id: string;
+        tenantId: string;
+        branchId: string;
+        accountId: string;
+        type: "CHECK_IN" | "CHECK_OUT";
+        occurredAt: string;
+        createdAt: string;
+      };
+    }
+  | {
+      success: false;
+      error: string;
+    };
 
 export function createV0AttendanceRouter(
   service: V0AttendanceService,
   idempotencyService: V0IdempotencyService,
-  auditService: V0AuditService
+  db: Pool
 ): Router {
   const router = Router();
+  const transactionManager = new TransactionManager(db);
 
   router.post("/check-in", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     const actor = req.v0Auth;
@@ -25,37 +49,128 @@ export function createV0AttendanceRouter(
         res.status(401).json({ success: false, error: "authentication required" });
         return;
       }
+      const tenantId = String(actor.tenantId ?? "").trim();
+      const branchId = String(actor.branchId ?? "").trim();
+      if (!tenantId || !branchId) {
+        res.status(403).json({ success: false, error: "branch context required" });
+        return;
+      }
 
-      const result = await idempotencyService.execute({
+      const result = await idempotencyService.execute<AttendanceWriteBody>({
         idempotencyKey,
         actionKey,
         scope: "BRANCH",
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
+        tenantId,
+        branchId,
         payload: req.body,
         handler: async () => {
-          const data = await service.checkIn({
-            actor,
-            occurredAt: req.body?.occurredAt,
+          const txResult = await transactionManager.withTransaction(async (client) => {
+            const txService = new V0AttendanceService(new V0AttendanceRepository(client));
+            const txAuditService = new V0AuditService(new V0AuditRepository(client));
+            const txOutboxRepository = new V0CommandOutboxRepository(client);
+            try {
+              const commandData = await txService.checkIn({
+                actor,
+                occurredAt: req.body?.occurredAt,
+              });
+
+              const dedupeKey = buildAuditDedupeKey({
+                actionKey,
+                idempotencyKey,
+                outcome: "SUCCESS",
+              });
+
+              await txAuditService.recordEvent({
+                tenantId,
+                branchId,
+                actorAccountId: actor.accountId,
+                actionKey,
+                outcome: "SUCCESS",
+                reasonCode: null,
+                entityType: "attendance_record",
+                entityId: commandData.id,
+                dedupeKey,
+                metadata: {
+                  replayed: false,
+                  endpoint: "/v0/attendance/check-in",
+                },
+              });
+              await txOutboxRepository.insertEvent({
+                tenantId,
+                branchId,
+                actionKey,
+                eventType: "ATTENDANCE_CHECKED_IN",
+                actorType: "ACCOUNT",
+                actorId: actor.accountId,
+                entityType: "attendance_record",
+                entityId: commandData.id,
+                outcome: "SUCCESS",
+                dedupeKey,
+                payload: {
+                  endpoint: "/v0/attendance/check-in",
+                  replayed: false,
+                },
+              });
+
+              return { status: "SUCCESS" as const, data: commandData };
+            } catch (error) {
+              if (error instanceof V0AttendanceError) {
+                const reasonCode = classifyReasonCode(error);
+                const dedupeKey = buildAuditDedupeKey({
+                  actionKey,
+                  idempotencyKey,
+                  outcome: "REJECTED",
+                });
+
+                await txAuditService.recordEvent({
+                  tenantId,
+                  branchId,
+                  actorAccountId: actor.accountId,
+                  actionKey,
+                  outcome: "REJECTED",
+                  reasonCode,
+                  entityType: "attendance_record",
+                  entityId: actor.accountId,
+                  dedupeKey,
+                  metadata: {
+                    replayed: false,
+                    endpoint: "/v0/attendance/check-in",
+                  },
+                });
+                await txOutboxRepository.insertEvent({
+                  tenantId,
+                  branchId,
+                  actionKey,
+                  eventType: "ATTENDANCE_CHECKIN_REJECTED",
+                  actorType: "ACCOUNT",
+                  actorId: actor.accountId,
+                  entityType: "attendance_record",
+                  entityId: actor.accountId,
+                  outcome: "REJECTED",
+                  reasonCode,
+                  dedupeKey,
+                  payload: {
+                    endpoint: "/v0/attendance/check-in",
+                  },
+                });
+                return { status: "REJECTED" as const, error };
+              }
+              throw error;
+            }
           });
+          if (txResult.status === "REJECTED") {
+            return {
+              statusCode: txResult.error.statusCode,
+              body: {
+                success: false,
+                error: txResult.error.message,
+              },
+            };
+          }
           return {
             statusCode: 201,
-            body: { success: true, data },
+            body: { success: true, data: txResult.data },
           };
-        },
-      });
-
-      await writeAttendanceAuditEvent(auditService, {
-        actor,
-        actionKey,
-        outcome: "SUCCESS",
-        reasonCode: null,
-        entityType: "attendance_record",
-        entityId: readEntityId(result.body),
-        idempotencyKey,
-        metadata: {
-          replayed: result.replayed,
-          endpoint: "/v0/attendance/check-in",
         },
       });
 
@@ -64,25 +179,6 @@ export function createV0AttendanceRouter(
       }
       res.status(result.statusCode).json(result.body);
     } catch (error) {
-      await writeAttendanceAuditEvent(auditService, {
-        actor,
-        actionKey,
-        outcome: classifyAuditOutcome(error),
-        reasonCode: classifyReasonCode(error),
-        entityType: "attendance_record",
-        entityId: null,
-        idempotencyKey,
-        metadata: {
-          endpoint: "/v0/attendance/check-in",
-          error:
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                }
-              : { message: "unknown error" },
-        },
-      });
       handleError(res, error);
     }
   });
@@ -97,37 +193,128 @@ export function createV0AttendanceRouter(
         res.status(401).json({ success: false, error: "authentication required" });
         return;
       }
+      const tenantId = String(actor.tenantId ?? "").trim();
+      const branchId = String(actor.branchId ?? "").trim();
+      if (!tenantId || !branchId) {
+        res.status(403).json({ success: false, error: "branch context required" });
+        return;
+      }
 
-      const result = await idempotencyService.execute({
+      const result = await idempotencyService.execute<AttendanceWriteBody>({
         idempotencyKey,
         actionKey,
         scope: "BRANCH",
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
+        tenantId,
+        branchId,
         payload: req.body,
         handler: async () => {
-          const data = await service.checkOut({
-            actor,
-            occurredAt: req.body?.occurredAt,
+          const txResult = await transactionManager.withTransaction(async (client) => {
+            const txService = new V0AttendanceService(new V0AttendanceRepository(client));
+            const txAuditService = new V0AuditService(new V0AuditRepository(client));
+            const txOutboxRepository = new V0CommandOutboxRepository(client);
+            try {
+              const commandData = await txService.checkOut({
+                actor,
+                occurredAt: req.body?.occurredAt,
+              });
+
+              const dedupeKey = buildAuditDedupeKey({
+                actionKey,
+                idempotencyKey,
+                outcome: "SUCCESS",
+              });
+
+              await txAuditService.recordEvent({
+                tenantId,
+                branchId,
+                actorAccountId: actor.accountId,
+                actionKey,
+                outcome: "SUCCESS",
+                reasonCode: null,
+                entityType: "attendance_record",
+                entityId: commandData.id,
+                dedupeKey,
+                metadata: {
+                  replayed: false,
+                  endpoint: "/v0/attendance/check-out",
+                },
+              });
+              await txOutboxRepository.insertEvent({
+                tenantId,
+                branchId,
+                actionKey,
+                eventType: "ATTENDANCE_CHECKED_OUT",
+                actorType: "ACCOUNT",
+                actorId: actor.accountId,
+                entityType: "attendance_record",
+                entityId: commandData.id,
+                outcome: "SUCCESS",
+                dedupeKey,
+                payload: {
+                  endpoint: "/v0/attendance/check-out",
+                  replayed: false,
+                },
+              });
+
+              return { status: "SUCCESS" as const, data: commandData };
+            } catch (error) {
+              if (error instanceof V0AttendanceError) {
+                const reasonCode = classifyReasonCode(error);
+                const dedupeKey = buildAuditDedupeKey({
+                  actionKey,
+                  idempotencyKey,
+                  outcome: "REJECTED",
+                });
+
+                await txAuditService.recordEvent({
+                  tenantId,
+                  branchId,
+                  actorAccountId: actor.accountId,
+                  actionKey,
+                  outcome: "REJECTED",
+                  reasonCode,
+                  entityType: "attendance_record",
+                  entityId: actor.accountId,
+                  dedupeKey,
+                  metadata: {
+                    replayed: false,
+                    endpoint: "/v0/attendance/check-out",
+                  },
+                });
+                await txOutboxRepository.insertEvent({
+                  tenantId,
+                  branchId,
+                  actionKey,
+                  eventType: "ATTENDANCE_CHECKOUT_REJECTED",
+                  actorType: "ACCOUNT",
+                  actorId: actor.accountId,
+                  entityType: "attendance_record",
+                  entityId: actor.accountId,
+                  outcome: "REJECTED",
+                  reasonCode,
+                  dedupeKey,
+                  payload: {
+                    endpoint: "/v0/attendance/check-out",
+                  },
+                });
+                return { status: "REJECTED" as const, error };
+              }
+              throw error;
+            }
           });
+          if (txResult.status === "REJECTED") {
+            return {
+              statusCode: txResult.error.statusCode,
+              body: {
+                success: false,
+                error: txResult.error.message,
+              },
+            };
+          }
           return {
             statusCode: 201,
-            body: { success: true, data },
+            body: { success: true, data: txResult.data },
           };
-        },
-      });
-
-      await writeAttendanceAuditEvent(auditService, {
-        actor,
-        actionKey,
-        outcome: "SUCCESS",
-        reasonCode: null,
-        entityType: "attendance_record",
-        entityId: readEntityId(result.body),
-        idempotencyKey,
-        metadata: {
-          replayed: result.replayed,
-          endpoint: "/v0/attendance/check-out",
         },
       });
 
@@ -136,25 +323,6 @@ export function createV0AttendanceRouter(
       }
       res.status(result.statusCode).json(result.body);
     } catch (error) {
-      await writeAttendanceAuditEvent(auditService, {
-        actor,
-        actionKey,
-        outcome: classifyAuditOutcome(error),
-        reasonCode: classifyReasonCode(error),
-        entityType: "attendance_record",
-        entityId: null,
-        idempotencyKey,
-        metadata: {
-          endpoint: "/v0/attendance/check-out",
-          error:
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                }
-              : { message: "unknown error" },
-        },
-      });
       handleError(res, error);
     }
   });
@@ -180,51 +348,6 @@ export function createV0AttendanceRouter(
   return router;
 }
 
-async function writeAttendanceAuditEvent(
-  auditService: V0AuditService,
-  input: {
-    actor: V0AuthRequest["v0Auth"] | undefined;
-    actionKey: string;
-    outcome: "SUCCESS" | "REJECTED" | "FAILED";
-    reasonCode: string | null;
-    entityType: string;
-    entityId: string | null;
-    idempotencyKey: string | null;
-    metadata: Record<string, unknown>;
-  }
-): Promise<void> {
-  const actor = input.actor;
-  if (!actor) {
-    return;
-  }
-
-  const tenantId = String(actor.tenantId ?? "").trim();
-  if (!tenantId) {
-    return;
-  }
-
-  try {
-    await auditService.recordEvent({
-      tenantId,
-      branchId: actor.branchId,
-      actorAccountId: actor.accountId,
-      actionKey: input.actionKey,
-      outcome: input.outcome,
-      reasonCode: input.reasonCode,
-      entityType: input.entityType,
-      entityId: input.entityId,
-      dedupeKey: buildAuditDedupeKey({
-        actionKey: input.actionKey,
-        idempotencyKey: input.idempotencyKey,
-        outcome: input.outcome,
-      }),
-      metadata: input.metadata,
-    });
-  } catch {
-    // Audit write failures are non-blocking for attendance writes.
-  }
-}
-
 function buildAuditDedupeKey(input: {
   actionKey: string;
   idempotencyKey: string | null;
@@ -235,31 +358,6 @@ function buildAuditDedupeKey(input: {
     return null;
   }
   return `${input.actionKey}:${input.outcome}:${key}`;
-}
-
-function readEntityId(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) {
-    return null;
-  }
-
-  const data = (body as { data?: unknown }).data;
-  if (typeof data !== "object" || data === null) {
-    return null;
-  }
-
-  const id = (data as { id?: unknown }).id;
-  return typeof id === "string" && id.trim() ? id : null;
-}
-
-function classifyAuditOutcome(error: unknown): "REJECTED" | "FAILED" {
-  if (error instanceof V0IdempotencyError || error instanceof V0AttendanceError) {
-    if (error.statusCode >= 500) {
-      return "FAILED";
-    }
-    return "REJECTED";
-  }
-
-  return "FAILED";
 }
 
 function classifyReasonCode(error: unknown): string | null {
