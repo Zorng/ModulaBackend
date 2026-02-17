@@ -177,7 +177,7 @@ Exit criteria:
 - Pre-F7 atomic command contract rollout (ADR locked):
   - `_implementation_decisions/ADR-20260215-v0-command-audit-outbox-atomicity.md`
 - Next execution tracker:
-  - `_refactor-artifact/orgaccount-overhaul-pos-readiness.md`
+  - `_refactor-artifact/03-orgaccount/orgaccount-overhaul-pos-readiness.md`
 
 ## Flagged Deviation (OrgAccount Overhaul)
 
@@ -219,7 +219,7 @@ Branch profile:
 - `/v0` now fails closed for unregistered routes:
   - unknown `/v0/*` path -> `403 ACCESS_CONTROL_ROUTE_NOT_REGISTERED`
 - Route/action catalog artifact added:
-  - `_refactor-artifact/access-control-action-catalog-v0.md`
+  - `_refactor-artifact/01-platform/access-control-action-catalog-v0.md`
 - Reason-code contract added:
   - `api_contract/access-control-v0.md`
 - New integration scenarios added:
@@ -248,7 +248,7 @@ Branch profile:
   - `ENTITLEMENT_BLOCKED` for disabled-visible actions
   - `ENTITLEMENT_READ_ONLY` for write attempts under read-only enforcement
 - Entitlement catalog + action mapping artifact added:
-  - `_refactor-artifact/entitlement-catalog-v0.md`
+  - `_refactor-artifact/01-platform/entitlement-catalog-v0.md`
 - Added integration coverage:
   - `v0-access-control-hook.int.test.ts` (new entitlement + subscription scenarios)
   - `v0-subscription.int.test.ts`

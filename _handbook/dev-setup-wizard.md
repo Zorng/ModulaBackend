@@ -4,7 +4,7 @@ Status: **Discussion / Planning**
 
 Goal: make the backend **easy for frontend developers to consume** during capstone by providing a deterministic, one-command local bootstrap that produces usable demo accounts and data.
 
-This doc is intentionally separate from `_refactor-artifact/saas-multi-tenant-overhaul.md` so we can discuss/setup the wizard without mixing it into the platform rebuild plan.
+This doc is intentionally separate from `_refactor-artifact/04-auth/saas-multi-tenant-overhaul.md` so we can discuss/setup the wizard without mixing it into the platform rebuild plan.
 
 Location: `_handbook/dev-setup-wizard.md`
 

@@ -73,7 +73,7 @@ Observed in `src/platform/access-control/route-registry.ts` and `src/platform/ac
 
 ### Event catalog mirrors drift
 
-Observed in `_refactor-artifact/v0-command-outbox-event-catalog.md`:
+Observed in `_refactor-artifact/01-platform/v0-command-outbox-event-catalog.md`:
 - membership events are `AUTH_MEMBERSHIP_*`.
 - tenant provisioning endpoint metadata references `/v0/auth/tenants`.
 
@@ -315,7 +315,7 @@ Exit criteria:
 Scope:
 - update producer event types and endpoint metadata in payload.
 - keep temporary subscriber compatibility for old event names.
-- update `_refactor-artifact/v0-command-outbox-event-catalog.md`.
+- update `_refactor-artifact/01-platform/v0-command-outbox-event-catalog.md`.
 
 Exit criteria:
 - event catalog labels are boundary-consistent.
@@ -351,7 +351,7 @@ Exit criteria:
 
 ## 10) Immediate next execution step
 
-Start with **Phase B1** (tenant provisioning extraction), because it gives the highest ownership clarity with lowest blast radius.
+Apply `_refactor-artifact/02-boundary/module-boundary-template-v0.md` to the next unimplemented module slice (recommended: POSOperation `menu`), and enforce the guard checklist before first endpoint merge.
 
 ## 11) Tracking
 
@@ -363,4 +363,4 @@ Start with **Phase B1** (tenant provisioning extraction), because it gives the h
 | B3 Staff assignment/profile extraction | Completed | Canonical staff assignment endpoint moved to `POST /v0/hr/staff/memberships/:membershipId/branches` with temporary auth alias delegation; HR projections (`v0_staff_profiles`, pending/active branch assignments) are now owned by `hr/staffManagement`. OrgAccount tenant provisioning and invitation acceptance now invoke HR projection side effects inside the same transaction boundary. |
 | B4 AccessControl/contract realignment | Completed | Tenant provisioning action key realigned to `org.tenant.provision` across route registry + command/audit/outbox/fair-use records; legacy `tenant.provision` retained as compatibility alias in action metadata only. |
 | B5 Outbox event naming realignment | Completed | Tenant provisioning outbox event renamed to canonical `ORG_TENANT_PROVISIONED`; dispatcher now emits temporary compatibility alias `TENANT_PROVISIONED` for legacy subscribers. Event catalog updated and regression coverage validated. |
-| B6 Future module template | Not started |  |
+| B6 Future module template | Completed | Boundary scaffold template added at `_refactor-artifact/02-boundary/module-boundary-template-v0.md` with required sections: owned/consumed facts, action keys, event types, API surface, and mandatory test/guard checklist. |

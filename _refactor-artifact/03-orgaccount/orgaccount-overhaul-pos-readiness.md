@@ -74,6 +74,6 @@ Exit criteria:
   - `src/platform/outbox/dispatcher.ts`
   - `src/server.ts` startup integration (config-gated)
 - Event catalog documented:
-  - `_refactor-artifact/v0-command-outbox-event-catalog.md`
+  - `_refactor-artifact/01-platform/v0-command-outbox-event-catalog.md`
 - Dispatcher integration coverage added:
   - `src/integration-tests/v0-command-outbox-dispatcher.int.test.ts`

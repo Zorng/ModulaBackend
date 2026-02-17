@@ -12,7 +12,7 @@ This plan has been rewritten to align with the updated KB authentication model:
 Related tracking docs:
 - `_handbook/backend-workflow.md` (how we work: KB -> tests -> implementation; frontend-consumable conventions)
 - `_handbook/dev-setup-wizard.md` (CLI wizard for fast demo + fixed OTP policy)
-- `_refactor-artifact/platform-foundation-rollout.md` (next sequence after auth baseline)
+- `_refactor-artifact/01-platform/platform-foundation-rollout.md` (next sequence after auth baseline)
 
 ---
 
@@ -303,4 +303,4 @@ Acceptance:
 | 2026-02-13 | Auth provider pivot: `/v0/auth` account/otp/login flows now support Supabase Auth as primary provider (`V0_AUTH_PROVIDER=supabase`) with local provider fallback for integration tests. |
 | 2026-02-15 | Phase 8 commenced with Attendance vertical slice: added `/v0/attendance` (check-in/check-out/me), `v0_attendance_records` migration, access-control route metadata for branch-scoped attendance actions, integration coverage (`v0-attendance.int.test.ts`), and API contract (`api_contract/attendance-v0.md`). |
 | 2026-02-15 | Decision locked: tenant/branch select endpoints should eventually return hydrated context profile (backend source of truth), not only IDs/tokens; tracked in `_implementation_decisions/ADR-20260215-v0-context-hydration-on-selection.md`. |
-| 2026-02-15 | This artifact is considered complete for auth/membership/context baseline; next execution plan locked in `_refactor-artifact/platform-foundation-rollout.md`. |
+| 2026-02-15 | This artifact is considered complete for auth/membership/context baseline; next execution plan locked in `_refactor-artifact/01-platform/platform-foundation-rollout.md`. |

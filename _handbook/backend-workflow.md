@@ -7,7 +7,7 @@ Goal: establish a predictable workflow that:
 - enables parallel development safely
 - makes the backend easy for frontend developers to consume (stable conventions even under `/v0`)
 
-This doc is intentionally separate from `_refactor-artifact/saas-multi-tenant-overhaul.md` so we can focus on *workflow* (how we work) rather than the feature plan itself.
+This doc is intentionally separate from `_refactor-artifact/04-auth/saas-multi-tenant-overhaul.md` so we can focus on *workflow* (how we work) rather than the feature plan itself.
 
 Location: `_handbook/backend-workflow.md`
 

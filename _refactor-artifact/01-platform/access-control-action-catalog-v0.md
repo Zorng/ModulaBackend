@@ -80,7 +80,7 @@ Legend:
 - `/v0` now fails closed for unregistered routes:
   - request to an unknown `/v0/*` path is denied with `ACCESS_CONTROL_ROUTE_NOT_REGISTERED`.
 - Canonical entitlement key set and planned action expansion are tracked in:
-  - `_refactor-artifact/entitlement-catalog-v0.md`
+  - `_refactor-artifact/01-platform/entitlement-catalog-v0.md`
 - Entitlement checks are now wired to `v0_branch_entitlements` for actions with `entitlementKey`.
   - `DISABLED_VISIBLE` => `ENTITLEMENT_BLOCKED`
   - `READ_ONLY` + write action => `ENTITLEMENT_READ_ONLY`
