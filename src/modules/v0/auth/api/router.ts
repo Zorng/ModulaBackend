@@ -3,7 +3,7 @@ import { Router, type Request, type Response } from "express";
 import { V0AuthError, V0AuthService } from "../app/service.js";
 import { V0AuthRepository } from "../infra/repository.js";
 import { requireV0Auth, type V0AuthRequest } from "./middleware.js";
-import { V0OrgAccountError } from "../../orgAccount/app/service.js";
+import { V0OrgAccountError } from "../../orgAccount/common/error.js";
 import { V0StaffManagementError } from "../../hr/staffManagement/app/service.js";
 import {
   executeAcceptInvitationCommand,
@@ -12,8 +12,8 @@ import {
   executeRejectInvitationCommand,
   executeRevokeMembershipCommand,
   queryInvitationInbox,
-} from "../../orgAccount/api/membership.command.js";
-import { executeTenantProvisioningCommand } from "../../orgAccount/api/tenant-provisioning.command.js";
+} from "../../orgAccount/membership/api/membership.command.js";
+import { executeTenantProvisioningCommand } from "../../orgAccount/tenant/api/tenant-provisioning.command.js";
 import { executeAssignMembershipBranchesCommand } from "../../hr/staffManagement/api/assignment.command.js";
 
 export function createV0AuthRouter(

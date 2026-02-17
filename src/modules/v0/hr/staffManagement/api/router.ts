@@ -2,7 +2,7 @@ import type { Pool } from "pg";
 import { Router, type Response } from "express";
 import { requireV0Auth, type V0AuthRequest } from "../../../auth/api/middleware.js";
 import { V0AuthError } from "../../../auth/app/service.js";
-import { V0OrgAccountError } from "../../../orgAccount/app/service.js";
+import { V0OrgAccountError } from "../../../orgAccount/common/error.js";
 import { executeAssignMembershipBranchesCommand } from "./assignment.command.js";
 import { V0StaffManagementError } from "../app/service.js";
 

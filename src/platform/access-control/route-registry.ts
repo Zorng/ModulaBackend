@@ -154,6 +154,18 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     branchSource: "token",
   },
   {
+    method: "POST",
+    pattern: /^\/org\/branch\/first-activation\/initiate$/,
+    actionKey: "org.branch.firstActivation.initiate",
+    tenantSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/org\/branch\/first-activation\/confirm$/,
+    actionKey: "org.branch.firstActivation.confirm",
+    tenantSource: "token",
+  },
+  {
     method: "GET",
     pattern: /^\/subscription\/state\/current$/,
     actionKey: "subscription.state.current.read",

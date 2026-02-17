@@ -359,7 +359,7 @@ Start with **Phase B1** (tenant provisioning extraction), because it gives the h
 |---|---|---|
 | B0 Lock boundaries | Completed | Ownership split locked, including audit vs observability separation. |
 | B1 Tenant provisioning extraction | Completed | Canonical command route moved to `POST /v0/org/tenants`; `POST /v0/auth/tenants` kept as compatibility alias. |
-| B2 Membership extraction | In progress | Canonical membership lifecycle routes run under `/v0/org/memberships/*`; legacy `/v0/auth/memberships/*` aliases delegate to canonical OrgAccount commands and emit canonical `org.membership.*` actions/events. Remaining cleanup: move membership write internals from Auth-owned app/repo into OrgAccount-owned app/repo. |
+| B2 Membership extraction | In progress | Canonical membership lifecycle routes run under `/v0/org/memberships/*`; legacy `/v0/auth/memberships/*` aliases delegate to canonical OrgAccount commands and emit canonical `org.membership.*` actions/events. OrgAccount internals are now folder-split by subdomain (`tenant`, `branch`, `membership`), while membership write internals still consume Auth service/repo and are pending full ownership move. |
 | B3 Staff assignment/profile extraction | Completed | Canonical staff assignment endpoint moved to `POST /v0/hr/staff/memberships/:membershipId/branches` with temporary auth alias delegation; HR projections (`v0_staff_profiles`, pending/active branch assignments) are now owned by `hr/staffManagement`. OrgAccount tenant provisioning and invitation acceptance now invoke HR projection side effects inside the same transaction boundary. |
 | B4 AccessControl/contract realignment | Not started |  |
 | B5 Outbox event naming realignment | Not started |  |

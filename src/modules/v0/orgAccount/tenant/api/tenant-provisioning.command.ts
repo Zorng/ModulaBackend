@@ -1,12 +1,12 @@
 import type { Pool } from "pg";
-import { TransactionManager } from "../../../../platform/db/transactionManager.js";
-import { V0CommandOutboxRepository } from "../../../../platform/outbox/repository.js";
-import { V0AuditService } from "../../audit/app/service.js";
-import { V0AuditRepository } from "../../audit/infra/repository.js";
-import { V0StaffManagementService } from "../../hr/staffManagement/app/service.js";
-import { V0StaffManagementRepository } from "../../hr/staffManagement/infra/repository.js";
-import { V0OrgAccountService } from "../app/service.js";
-import { V0OrgAccountRepository } from "../infra/repository.js";
+import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
+import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
+import { V0AuditService } from "../../../audit/app/service.js";
+import { V0AuditRepository } from "../../../audit/infra/repository.js";
+import { V0StaffManagementService } from "../../../hr/staffManagement/app/service.js";
+import { V0StaffManagementRepository } from "../../../hr/staffManagement/infra/repository.js";
+import { V0TenantService } from "../app/service.js";
+import { V0TenantRepository } from "../infra/repository.js";
 
 type AuditOutcome = "SUCCESS" | "REJECTED" | "FAILED";
 
@@ -25,7 +25,7 @@ export async function executeTenantProvisioningCommand(input: {
   const actionKey = "tenant.provision";
 
   const data = await transactionManager.withTransaction(async (client) => {
-    const txService = new V0OrgAccountService(new V0OrgAccountRepository(client));
+    const txService = new V0TenantService(new V0TenantRepository(client));
     const txStaffManagementService = new V0StaffManagementService(
       new V0StaffManagementRepository(client)
     );

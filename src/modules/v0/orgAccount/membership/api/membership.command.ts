@@ -1,12 +1,12 @@
 import type { Pool } from "pg";
-import { TransactionManager } from "../../../../platform/db/transactionManager.js";
-import { V0CommandOutboxRepository } from "../../../../platform/outbox/repository.js";
-import { V0AuditService } from "../../audit/app/service.js";
-import { V0AuditRepository } from "../../audit/infra/repository.js";
-import { V0AuthService } from "../../auth/app/service.js";
-import { V0AuthRepository } from "../../auth/infra/repository.js";
-import { V0StaffManagementRepository } from "../../hr/staffManagement/infra/repository.js";
-import { V0StaffManagementService } from "../../hr/staffManagement/app/service.js";
+import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
+import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
+import { V0AuditService } from "../../../audit/app/service.js";
+import { V0AuditRepository } from "../../../audit/infra/repository.js";
+import { V0AuthService } from "../../../auth/app/service.js";
+import { V0AuthRepository } from "../../../auth/infra/repository.js";
+import { V0StaffManagementRepository } from "../../../hr/staffManagement/infra/repository.js";
+import { V0StaffManagementService } from "../../../hr/staffManagement/app/service.js";
 
 type AuditOutcome = "SUCCESS" | "REJECTED" | "FAILED";
 

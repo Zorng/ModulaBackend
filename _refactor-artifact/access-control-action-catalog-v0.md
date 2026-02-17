@@ -32,6 +32,8 @@ Legend:
 | `org.tenant.current.read` | TENANT | READ | - | - |
 | `org.branches.accessible.read` | TENANT | READ | - | - |
 | `org.branch.current.read` | BRANCH | READ | - | - |
+| `org.branch.firstActivation.initiate` | TENANT | WRITE | OWNER, ADMIN | - |
+| `org.branch.firstActivation.confirm` | TENANT | WRITE | OWNER, ADMIN | - |
 | `subscription.state.current.read` | TENANT | READ | - | - |
 | `subscription.entitlements.currentBranch.read` | BRANCH | READ | - | - |
 | `audit.view` | TENANT | READ | OWNER, ADMIN | - |
@@ -66,6 +68,8 @@ Legend:
 | GET | `/org/tenant/current` | `org.tenant.current.read` | `token` | - |
 | GET | `/org/branches/accessible` | `org.branches.accessible.read` | `token` | - |
 | GET | `/org/branch/current` | `org.branch.current.read` | `token` | `token` |
+| POST | `/org/branch/first-activation/initiate` | `org.branch.firstActivation.initiate` | `token` | - |
+| POST | `/org/branch/first-activation/confirm` | `org.branch.firstActivation.confirm` | `token` | - |
 | GET | `/subscription/state/current` | `subscription.state.current.read` | `token` | - |
 | GET | `/subscription/entitlements/current-branch` | `subscription.entitlements.currentBranch.read` | `token` | `token` |
 | GET | `/audit/events` | `audit.view` | `token` | - |

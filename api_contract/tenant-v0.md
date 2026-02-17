@@ -121,3 +121,129 @@ Errors:
 - `403` `TENANT_CONTEXT_REQUIRED` or `NO_MEMBERSHIP` (from centralized access control)
 - `403` `ACCESS_CONTROL_ROUTE_NOT_REGISTERED` if route is not registered (fail-closed)
 - `404` tenant not found
+
+### 3) Initiate first branch activation draft (payment pending)
+
+`POST /v0/org/branch/first-activation/initiate`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "branchName": "Main Branch"
+}
+```
+
+Success `201` (new draft+invoice created):
+
+```json
+{
+  "success": true,
+  "data": {
+    "draftId": "uuid",
+    "tenantId": "uuid",
+    "branchName": "Main Branch",
+    "draftStatus": "PENDING_PAYMENT",
+    "invoice": {
+      "invoiceId": "uuid",
+      "status": "ISSUED",
+      "currency": "USD",
+      "totalAmountUsd": "5.00",
+      "issuedAt": "2026-02-17T10:00:00.000Z",
+      "paidAt": null
+    },
+    "created": true
+  }
+}
+```
+
+Success `200` (existing pending draft reused, idempotent):
+
+```json
+{
+  "success": true,
+  "data": {
+    "draftId": "uuid",
+    "tenantId": "uuid",
+    "branchName": "Main Branch",
+    "draftStatus": "PENDING_PAYMENT",
+    "invoice": {
+      "invoiceId": "uuid",
+      "status": "ISSUED",
+      "currency": "USD",
+      "totalAmountUsd": "5.00",
+      "issuedAt": "2026-02-17T10:00:00.000Z",
+      "paidAt": null
+    },
+    "created": false
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` tenant context missing or role not allowed
+- `409` tenant already has a branch (`code = TENANT_ALREADY_HAS_BRANCH`)
+- `422` missing `branchName`
+
+### 4) Confirm first branch activation (payment-confirmed path)
+
+`POST /v0/org/branch/first-activation/confirm`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "draftId": "uuid",
+  "paymentToken": "PAID"
+}
+```
+
+Success `201` (new activation):
+
+```json
+{
+  "success": true,
+  "data": {
+    "draftId": "uuid",
+    "branchId": "uuid",
+    "tenantId": "uuid",
+    "branchName": "Main Branch",
+    "status": "ACTIVE",
+    "invoiceId": "uuid",
+    "paymentConfirmationRef": "stub:...",
+    "created": true
+  }
+}
+```
+
+Success `200` (already activated for same draft, idempotent):
+
+```json
+{
+  "success": true,
+  "data": {
+    "draftId": "uuid",
+    "branchId": "uuid",
+    "tenantId": "uuid",
+    "branchName": "Main Branch",
+    "status": "ACTIVE",
+    "invoiceId": "uuid",
+    "paymentConfirmationRef": "stub:...",
+    "created": false
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` tenant context missing or role not allowed
+- `402` payment not confirmed (`code = PAYMENT_NOT_CONFIRMED`)
+- `409` tenant already has a branch (`code = TENANT_ALREADY_HAS_BRANCH`)
+- `409` invoice not payable (`code = INVOICE_NOT_PAYABLE`)
+- `404` activation draft not found (`code = DRAFT_NOT_FOUND`)
+- `422` missing `draftId` or `paymentToken`

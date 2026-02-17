@@ -1,23 +1,7 @@
-import { V0OrgAccountRepository } from "../infra/repository.js";
+import { V0OrgAccountError, type OrgActorContext } from "../../common/error.js";
+import { V0TenantRepository } from "../infra/repository.js";
 
-export class V0OrgAccountError extends Error {
-  constructor(
-    readonly statusCode: number,
-    message: string,
-    readonly code?: string
-  ) {
-    super(message);
-    this.name = "V0OrgAccountError";
-  }
-}
-
-type ActorContext = {
-  accountId: string;
-  tenantId: string | null;
-  branchId: string | null;
-};
-
-export class V0OrgAccountService {
+export class V0TenantService {
   private readonly tenantCountPerAccountHard = parsePositiveInt(
     process.env.V0_TENANT_COUNT_PER_ACCOUNT_HARD,
     10
@@ -33,9 +17,9 @@ export class V0OrgAccountService {
     3600
   );
 
-  constructor(private readonly repo: V0OrgAccountRepository) {}
+  constructor(private readonly repo: V0TenantRepository) {}
 
-  async getCurrentTenantProfile(input: { actor: ActorContext }) {
+  async getCurrentTenantProfile(input: { actor: OrgActorContext }) {
     const scope = assertTenantContext(input.actor);
     const tenant = await this.repo.findTenantProfileById(scope.tenantId);
     if (!tenant) {
@@ -52,59 +36,13 @@ export class V0OrgAccountService {
     };
   }
 
-  async listAccessibleBranches(input: { actor: ActorContext }) {
-    const scope = assertTenantContext(input.actor);
-    const branches = await this.repo.listAccessibleBranches({
-      accountId: scope.accountId,
-      tenantId: scope.tenantId,
-    });
-
-    return branches.map((branch) => ({
-      branchId: branch.id,
-      tenantId: branch.tenant_id,
-      branchName: branch.name,
-      branchAddress: branch.address,
-      contactNumber: branch.contact_phone,
-      status: branch.status,
-    }));
-  }
-
-  async getCurrentBranchProfile(input: { actor: ActorContext }) {
-    const scope = assertBranchContext(input.actor);
-    const hasAccess = await this.repo.hasActiveBranchAssignment({
-      accountId: scope.accountId,
-      tenantId: scope.tenantId,
-      branchId: scope.branchId,
-    });
-    if (!hasAccess) {
-      throw new V0OrgAccountError(403, "no active branch assignment for branch");
-    }
-
-    const branch = await this.repo.findBranchProfile({
-      tenantId: scope.tenantId,
-      branchId: scope.branchId,
-    });
-    if (!branch) {
-      throw new V0OrgAccountError(404, "branch not found");
-    }
-
-    return {
-      branchId: branch.id,
-      tenantId: branch.tenant_id,
-      branchName: branch.name,
-      branchAddress: branch.address,
-      contactNumber: branch.contact_phone,
-      status: branch.status,
-    };
-  }
-
   async createTenant(input: {
     requesterAccountId: string;
     tenantName: string;
   }): Promise<{
     tenant: { id: string; name: string; status: string };
     ownerMembership: { id: string; roleKey: string; status: string };
-    branch: { id: string; name: string; status: string } | null;
+    branch: null;
   }> {
     const requesterAccountId = String(input.requesterAccountId ?? "").trim();
     const tenantName = String(input.tenantName ?? "").trim();
@@ -166,7 +104,7 @@ export class V0OrgAccountService {
   }
 }
 
-function assertTenantContext(actor: ActorContext): {
+function assertTenantContext(actor: OrgActorContext): {
   accountId: string;
   tenantId: string;
 } {
@@ -179,22 +117,6 @@ function assertTenantContext(actor: ActorContext): {
     throw new V0OrgAccountError(403, "tenant context required");
   }
   return { accountId, tenantId };
-}
-
-function assertBranchContext(actor: ActorContext): {
-  accountId: string;
-  tenantId: string;
-  branchId: string;
-} {
-  const base = assertTenantContext(actor);
-  const branchId = String(actor.branchId ?? "").trim();
-  if (!branchId) {
-    throw new V0OrgAccountError(403, "branch context required");
-  }
-  return {
-    ...base,
-    branchId,
-  };
 }
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
