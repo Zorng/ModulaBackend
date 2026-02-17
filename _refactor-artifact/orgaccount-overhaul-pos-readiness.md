@@ -63,7 +63,7 @@ Exit criteria:
 
 | Phase | Status | Notes |
 |---|---|---|
-| O1 OrgAccount Model Correction | Completed | `POST /v0/auth/tenants` now supports tenant-only provisioning (zero-branch) with optional `firstBranchName` for transitional compatibility; contracts + integration coverage updated. |
+| O1 OrgAccount Model Correction | Completed | `POST /v0/auth/tenants` now performs tenant-only provisioning (zero-branch). Branch provisioning is separated from tenant creation; contracts + integration coverage updated. |
 | O2 Fair-Use Extension | Completed | Tenant provisioning now enforces `tenant_count_per_account` hard cap and request-frequency rate limiting with stable denial codes (`FAIRUSE_HARD_LIMIT_EXCEEDED`, `FAIRUSE_RATE_LIMITED`). |
 | O3 Atomic Command Contract | Completed | Migrated `tenant.provision`, auth membership writes, and attendance writes to transactional business+audit+outbox contract (`v0_command_outbox`), with integration coverage for rollback and replay-safe dedupe. |
 | O4 POS Core Readiness Slices | Not started |  |

@@ -3,6 +3,12 @@ import express from "express";
 import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
+import {
+  assignActiveBranch,
+  createActiveBranch,
+  findActiveOwnerMembershipId,
+  seedDefaultBranchEntitlements,
+} from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0SubscriptionModule } from "../modules/v0/subscription/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
@@ -66,12 +72,33 @@ describe("v0 subscription (phase F3 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Sub Tenant ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     expect(createdTenant.status).toBe(201);
 
     const tenantId = createdTenant.body.data.tenant.id as string;
-    const branchId = createdTenant.body.data.branch.id as string;
+    const ownerAccountResult = await pool.query<{ id: string }>(
+      `SELECT id FROM accounts WHERE phone = $1`,
+      [ownerPhone]
+    );
+    const ownerAccountId = ownerAccountResult.rows[0].id;
+    const ownerMembershipId = await findActiveOwnerMembershipId({
+      pool,
+      tenantId,
+      accountId: ownerAccountId,
+    });
+    const branchId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Main Branch",
+    });
+    await assignActiveBranch({
+      pool,
+      tenantId,
+      branchId,
+      accountId: ownerAccountId,
+      membershipId: ownerMembershipId,
+    });
+    await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
 
     const tenantSelected = await request(app)
       .post("/v0/auth/context/tenant/select")

@@ -33,9 +33,6 @@ export type V0TenantProvisioningRow = {
   membership_id: string;
   membership_role_key: string;
   membership_status: string;
-  branch_id: string | null;
-  branch_name: string | null;
-  branch_status: string | null;
 };
 
 export class V0OrgAccountRepository {
@@ -180,10 +177,9 @@ export class V0OrgAccountRepository {
     return Number(result.rows[0]?.count ?? "0");
   }
 
-  async createTenantWithOwnerAndOptionalFirstBranch(input: {
+  async createTenantWithOwnerMembership(input: {
     accountId: string;
     tenantName: string;
-    firstBranchName: string | null;
   }): Promise<V0TenantProvisioningRow> {
     const result = await this.db.query<V0TenantProvisioningRow>(
       `WITH inserted_tenant AS (
@@ -204,39 +200,10 @@ export class V0OrgAccountRepository {
          FROM inserted_tenant
          RETURNING id, role_key, status
        ),
-      inserted_branch AS (
-         INSERT INTO branches (tenant_id, name, status)
-         SELECT id, NULLIF($3::text, ''), 'ACTIVE'
-         FROM inserted_tenant
-         WHERE NULLIF($3::text, '') IS NOT NULL
-         RETURNING id, name, status
-       ),
        inserted_subscription AS (
          INSERT INTO v0_tenant_subscription_states (tenant_id, state)
          SELECT id, 'ACTIVE'
          FROM inserted_tenant
-       ),
-       inserted_branch_entitlements AS (
-         INSERT INTO v0_branch_entitlements (
-           tenant_id,
-           branch_id,
-           entitlement_key,
-           enforcement
-         )
-         SELECT
-           t.id,
-           b.id,
-           seed.entitlement_key,
-           seed.enforcement
-         FROM inserted_tenant t
-         JOIN inserted_branch b ON TRUE
-         CROSS JOIN (
-           VALUES
-             ('core.pos', 'ENABLED'),
-             ('module.workforce', 'ENABLED'),
-             ('module.inventory', 'ENABLED'),
-             ('addon.workforce.gps_verification', 'DISABLED_VISIBLE')
-         ) AS seed(entitlement_key, enforcement)
        )
        SELECT
          t.id AS tenant_id,
@@ -244,14 +211,10 @@ export class V0OrgAccountRepository {
          t.status AS tenant_status,
          m.id AS membership_id,
          m.role_key AS membership_role_key,
-         m.status AS membership_status,
-         b.id AS branch_id,
-         b.name AS branch_name,
-         b.status AS branch_status
+         m.status AS membership_status
        FROM inserted_tenant t
-       CROSS JOIN inserted_membership m
-       LEFT JOIN inserted_branch b ON TRUE`,
-      [input.accountId, input.tenantName, input.firstBranchName]
+       CROSS JOIN inserted_membership m`,
+      [input.accountId, input.tenantName]
     );
     return result.rows[0];
   }

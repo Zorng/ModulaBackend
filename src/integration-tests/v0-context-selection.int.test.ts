@@ -3,6 +3,11 @@ import express from "express";
 import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
+import {
+  assignActiveBranch,
+  createActiveBranch,
+  findActiveOwnerMembershipId,
+} from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 
 function uniquePhone(): string {
@@ -61,18 +66,37 @@ describe("v0 context selection (phase 5 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Context Tenant A ${Date.now()}`,
-        firstBranchName: "A-Branch",
       });
     expect(firstTenant.status).toBe(201);
     const firstTenantId = firstTenant.body.data.tenant.id as string;
-    const firstBranchId = firstTenant.body.data.branch.id as string;
+    const ownerAccountResult = await pool.query<{ id: string }>(
+      `SELECT id FROM accounts WHERE phone = $1`,
+      [ownerPhone]
+    );
+    const ownerAccountId = ownerAccountResult.rows[0].id;
+    const ownerMembershipId = await findActiveOwnerMembershipId({
+      pool,
+      tenantId: firstTenantId,
+      accountId: ownerAccountId,
+    });
+    const firstBranchId = await createActiveBranch({
+      pool,
+      tenantId: firstTenantId,
+      branchName: "A-Branch",
+    });
+    await assignActiveBranch({
+      pool,
+      tenantId: firstTenantId,
+      branchId: firstBranchId,
+      accountId: ownerAccountId,
+      membershipId: ownerMembershipId,
+    });
 
     const secondTenant = await request(app)
       .post("/v0/auth/tenants")
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Context Tenant B ${Date.now()}`,
-        firstBranchName: "B-Branch",
       });
     expect(secondTenant.status).toBe(201);
 

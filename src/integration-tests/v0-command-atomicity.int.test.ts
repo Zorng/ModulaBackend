@@ -3,6 +3,7 @@ import express from "express";
 import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
+import { createActiveBranch, seedDefaultBranchEntitlements } from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0AttendanceModule } from "../modules/v0/attendance/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
@@ -37,6 +38,7 @@ async function registerAndLogin(app: express.Express, phone: string): Promise<st
 
 async function setupCashierBranchContext(input: {
   app: express.Express;
+  pool: Pool;
   ownerPhone: string;
   cashierPhone: string;
   tenantName: string;
@@ -53,12 +55,16 @@ async function setupCashierBranchContext(input: {
     .set("Authorization", `Bearer ${ownerToken}`)
     .send({
       tenantName: input.tenantName,
-      firstBranchName: "Main Branch",
     });
   expect(createdTenant.status).toBe(201);
 
   const tenantId = createdTenant.body.data.tenant.id as string;
-  const branchId = createdTenant.body.data.branch.id as string;
+  const branchId = await createActiveBranch({
+    pool: input.pool,
+    tenantId,
+    branchName: "Main Branch",
+  });
+  await seedDefaultBranchEntitlements({ pool: input.pool, tenantId, branchId });
 
   const invited = await request(input.app)
     .post("/v0/auth/memberships/invite")
@@ -140,7 +146,7 @@ describe("v0 atomic command contract", () => {
     const createdTenant = await request(app)
       .post("/v0/auth/tenants")
       .set("Authorization", `Bearer ${ownerToken}`)
-      .send({ tenantName, firstBranchName: "Main Branch" });
+      .send({ tenantName });
 
     expect(createdTenant.status).toBe(500);
     process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "";
@@ -193,7 +199,6 @@ describe("v0 atomic command contract", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Atomic Invite Tenant ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     expect(createdTenant.status).toBe(201);
 
@@ -248,6 +253,7 @@ describe("v0 atomic command contract", () => {
     const cashierPhone = uniquePhone();
     const setup = await setupCashierBranchContext({
       app,
+      pool,
       ownerPhone,
       cashierPhone,
       tenantName: `Atomic Attendance Replay ${Date.now()}`,
@@ -303,6 +309,7 @@ describe("v0 atomic command contract", () => {
     const cashierPhone = uniquePhone();
     const setup = await setupCashierBranchContext({
       app,
+      pool,
       ownerPhone,
       cashierPhone,
       tenantName: `Atomic Attendance Rollback ${Date.now()}`,

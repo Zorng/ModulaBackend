@@ -3,6 +3,7 @@ import express from "express";
 import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
+import { createActiveBranch } from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0StaffManagementModule } from "../modules/v0/hr/staffManagement/index.js";
 
@@ -66,11 +67,14 @@ describe("v0 workforce provisioning (phase 4 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerAccessToken}`)
       .send({
         tenantName: `Phase4 Tenant ${Date.now()}`,
-        firstBranchName: "Branch A",
       });
     expect(createTenant.status).toBe(201);
     const tenantId = createTenant.body.data.tenant.id as string;
-    const firstBranchId = createTenant.body.data.branch.id as string;
+    const firstBranchId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Branch A",
+    });
 
     const secondBranchInsert = await pool.query<{ id: string }>(
       `INSERT INTO branches (tenant_id, name, status)

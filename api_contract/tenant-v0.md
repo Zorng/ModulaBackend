@@ -42,17 +42,13 @@ type TenantProvisionResult = {
     roleKey: "OWNER";
     status: "ACTIVE";
   };
-  branch: {
-    id: string;
-    name: string;
-    status: "ACTIVE";
-  } | null;
+  branch: null;
 };
 ```
 
 ## Endpoints
 
-### 1) Create tenant (authenticated account, optional first branch)
+### 1) Create tenant (authenticated account)
 
 `POST /v0/org/tenants`
 
@@ -63,15 +59,6 @@ Body:
 ```json
 {
   "tenantName": "X Cafe"
-}
-```
-
-Optional:
-
-```json
-{
-  "tenantName": "X Cafe",
-  "firstBranchName": "Main Branch"
 }
 ```
 
@@ -95,6 +82,10 @@ Success `201`:
   }
 }
 ```
+
+Notes:
+- `branch` is always `null` at tenant provisioning time.
+- First branch activation is a separate orchestration after payment confirmation.
 
 Errors:
 - `401` missing/invalid access token or inactive account

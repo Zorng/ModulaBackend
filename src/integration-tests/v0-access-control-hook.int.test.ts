@@ -4,6 +4,7 @@ import request from "supertest";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { createTestPool } from "../test-utils/db.js";
+import { createActiveBranch, seedDefaultBranchEntitlements } from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0AttendanceModule } from "../modules/v0/attendance/index.js";
 import { bootstrapV0StaffManagementModule } from "../modules/v0/hr/staffManagement/index.js";
@@ -136,10 +137,14 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `AC Hook Tenant ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     const tenantId = createdTenant.body.data.tenant.id as string;
-    const branchId = createdTenant.body.data.branch.id as string;
+    const branchId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Main Branch",
+    });
+    await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
 
     const invite = await request(app)
       .post("/v0/auth/memberships/invite")
@@ -202,7 +207,6 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Frozen Tenant ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     const tenantId = createdTenant.body.data.tenant.id as string;
 
@@ -232,7 +236,6 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Subscription Frozen ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     const tenantId = createdTenant.body.data.tenant.id as string;
 
@@ -268,10 +271,14 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Frozen Branch ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     const tenantId = createdTenant.body.data.tenant.id as string;
-    const branchId = createdTenant.body.data.branch.id as string;
+    const branchId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Main Branch",
+    });
+    await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
 
     const invite = await request(app)
       .post("/v0/auth/memberships/invite")
@@ -333,7 +340,6 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Role Deny ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     const tenantId = createdTenant.body.data.tenant.id as string;
 
@@ -388,10 +394,14 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Entitlement Tenant ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     const tenantId = createdTenant.body.data.tenant.id as string;
-    const branchId = createdTenant.body.data.branch.id as string;
+    const branchId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Main Branch",
+    });
+    await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
 
     const invite = await request(app)
       .post("/v0/auth/memberships/invite")

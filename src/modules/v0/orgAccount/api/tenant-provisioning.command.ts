@@ -14,7 +14,6 @@ export async function executeTenantProvisioningCommand(input: {
   db: Pool;
   requesterAccountId: string;
   tenantName: unknown;
-  firstBranchName: unknown;
   idempotencyKey: string | null;
   endpoint: string;
 }): Promise<{
@@ -36,7 +35,6 @@ export async function executeTenantProvisioningCommand(input: {
     const commandData = await txService.createTenant({
       requesterAccountId: input.requesterAccountId,
       tenantName: input.tenantName as string,
-      firstBranchName: input.firstBranchName as string | undefined,
     });
     await txStaffManagementService.ensureStaffProjectionForProvisionedMembership({
       membershipId: commandData.ownerMembership.id,

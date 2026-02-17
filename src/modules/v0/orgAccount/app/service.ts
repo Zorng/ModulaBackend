@@ -101,7 +101,6 @@ export class V0OrgAccountService {
   async createTenant(input: {
     requesterAccountId: string;
     tenantName: string;
-    firstBranchName?: string;
   }): Promise<{
     tenant: { id: string; name: string; status: string };
     ownerMembership: { id: string; roleKey: string; status: string };
@@ -109,8 +108,6 @@ export class V0OrgAccountService {
   }> {
     const requesterAccountId = String(input.requesterAccountId ?? "").trim();
     const tenantName = String(input.tenantName ?? "").trim();
-    const firstBranchName =
-      typeof input.firstBranchName === "string" ? input.firstBranchName.trim() : "";
 
     if (!requesterAccountId) {
       throw new V0OrgAccountError(401, "authentication required");
@@ -148,10 +145,9 @@ export class V0OrgAccountService {
       );
     }
 
-    const provisioned = await this.repo.createTenantWithOwnerAndOptionalFirstBranch({
+    const provisioned = await this.repo.createTenantWithOwnerMembership({
       accountId: requesterAccountId,
       tenantName,
-      firstBranchName: firstBranchName || null,
     });
 
     return {
@@ -165,13 +161,7 @@ export class V0OrgAccountService {
         roleKey: provisioned.membership_role_key,
         status: provisioned.membership_status,
       },
-      branch: provisioned.branch_id && provisioned.branch_name && provisioned.branch_status
-        ? {
-          id: provisioned.branch_id,
-          name: provisioned.branch_name,
-          status: provisioned.branch_status,
-        }
-        : null,
+      branch: null,
     };
   }
 }

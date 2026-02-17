@@ -3,6 +3,7 @@ import express from "express";
 import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
+import { createActiveBranch, seedDefaultBranchEntitlements } from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0AttendanceModule } from "../modules/v0/attendance/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
@@ -72,12 +73,16 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Attendance Tenant ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     expect(createdTenant.status).toBe(201);
 
     const tenantId = createdTenant.body.data.tenant.id as string;
-    const branchId = createdTenant.body.data.branch.id as string;
+    const branchId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Main Branch",
+    });
+    await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
 
     const invited = await request(app)
       .post("/v0/auth/memberships/invite")
@@ -192,12 +197,16 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Attendance Idempotency ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     expect(createdTenant.status).toBe(201);
 
     const tenantId = createdTenant.body.data.tenant.id as string;
-    const branchId = createdTenant.body.data.branch.id as string;
+    const branchId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Main Branch",
+    });
+    await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
 
     const invited = await request(app)
       .post("/v0/auth/memberships/invite")
@@ -270,12 +279,16 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Attendance Guard ${Date.now()}`,
-        firstBranchName: "Guard Branch",
       });
     expect(createdTenant.status).toBe(201);
 
     const tenantId = createdTenant.body.data.tenant.id as string;
-    const branchId = createdTenant.body.data.branch.id as string;
+    const branchId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Guard Branch",
+    });
+    await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
 
     const invited = await request(app)
       .post("/v0/auth/memberships/invite")

@@ -36,10 +36,9 @@ describe("v0 tenant provisioning (phase 3 scaffold)", () => {
     await pool.end();
   });
 
-  it("allows zero-membership account to create tenant with owner membership and first branch", async () => {
+  it("allows zero-membership account to create tenant with owner membership only", async () => {
     const phone = uniquePhone();
     const tenantName = `Tenant ${Date.now()}`;
-    const firstBranchName = "Main Branch";
 
     const registerRes = await request(app).post("/v0/auth/register").send({
       phone,
@@ -68,7 +67,6 @@ describe("v0 tenant provisioning (phase 3 scaffold)", () => {
       .set("Authorization", `Bearer ${accessToken}`)
       .send({
         tenantName,
-        firstBranchName,
       });
 
     expect(createTenantRes.status).toBe(201);
@@ -76,7 +74,7 @@ describe("v0 tenant provisioning (phase 3 scaffold)", () => {
     expect(createTenantRes.body.data.tenant.name).toBe(tenantName);
     expect(createTenantRes.body.data.ownerMembership.roleKey).toBe("OWNER");
     expect(createTenantRes.body.data.ownerMembership.status).toBe("ACTIVE");
-    expect(createTenantRes.body.data.branch.name).toBe(firstBranchName);
+    expect(createTenantRes.body.data.branch).toBeNull();
 
     const tenantId = createTenantRes.body.data.tenant.id as string;
     const membershipCount = await pool.query<{ count: string }>(
@@ -95,7 +93,7 @@ describe("v0 tenant provisioning (phase 3 scaffold)", () => {
        WHERE tenant_id = $1`,
       [tenantId]
     );
-    expect(Number(branchCount.rows[0]?.count ?? "0")).toBe(1);
+    expect(Number(branchCount.rows[0]?.count ?? "0")).toBe(0);
 
     const tenantAudit = await pool.query<{
       action_key: string;
@@ -116,7 +114,7 @@ describe("v0 tenant provisioning (phase 3 scaffold)", () => {
     expect(tenantAudit.rows[0].outcome).toBe("SUCCESS");
     expect(tenantAudit.rows[0].entity_type).toBe("tenant");
     expect(tenantAudit.rows[0].entity_id).toBe(tenantId);
-    expect(tenantAudit.rows[0].branch_id).toBe(createTenantRes.body.data.branch.id);
+    expect(tenantAudit.rows[0].branch_id).toBeNull();
 
     const loginAfterProvisioning = await request(app).post("/v0/auth/login").send({
       phone,

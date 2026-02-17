@@ -392,7 +392,6 @@ export function createV0AuthRouter(
           db,
           requesterAccountId,
           tenantName: req.body?.tenantName,
-          firstBranchName: req.body?.firstBranchName,
           idempotencyKey,
           endpoint: "/v0/auth/tenants",
         });

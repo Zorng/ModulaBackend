@@ -608,15 +608,6 @@ Body:
 }
 ```
 
-Optional:
-
-```json
-{
-  "tenantName": "X Cafe",
-  "firstBranchName": "Main Branch"
-}
-```
-
 Success `201`:
 
 ```json
@@ -638,15 +629,9 @@ Success `201`:
 }
 ```
 
-If `firstBranchName` is provided and valid, `branch` is returned with:
-
-```json
-{
-  "id": "uuid",
-  "name": "Main Branch",
-  "status": "ACTIVE"
-}
-```
+Notes:
+- `branch` is always `null` at tenant provisioning time.
+- Branch creation/activation is a separate flow.
 
 Errors:
 - `401` missing/invalid access token or inactive account

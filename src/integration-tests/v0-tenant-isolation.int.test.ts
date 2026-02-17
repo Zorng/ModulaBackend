@@ -3,6 +3,7 @@ import express from "express";
 import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
+import { createActiveBranch } from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 
@@ -67,7 +68,6 @@ describe("v0 tenant isolation (phase 7 sweep)", () => {
       .set("Authorization", `Bearer ${ownerAToken}`)
       .send({
         tenantName: `Isolation A ${Date.now()}`,
-        firstBranchName: "A-Branch",
       });
     expect(tenantA.status).toBe(201);
 
@@ -76,10 +76,13 @@ describe("v0 tenant isolation (phase 7 sweep)", () => {
       .set("Authorization", `Bearer ${ownerBToken}`)
       .send({
         tenantName: `Isolation B ${Date.now()}`,
-        firstBranchName: "B-Branch",
       });
     const tenantBId = tenantB.body.data.tenant.id as string;
-    const branchBId = tenantB.body.data.branch.id as string;
+    const branchBId = await createActiveBranch({
+      pool,
+      tenantId: tenantBId,
+      branchName: "B-Branch",
+    });
 
     const inviteInTenantB = await request(app)
       .post("/v0/auth/memberships/invite")

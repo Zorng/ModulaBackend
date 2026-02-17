@@ -28,14 +28,13 @@ export function createV0OrgAccountRouter(
         return;
       }
 
-      const data = await executeTenantProvisioningCommand({
-        db,
-        requesterAccountId,
-        tenantName: req.body?.tenantName,
-        firstBranchName: req.body?.firstBranchName,
-        idempotencyKey,
-        endpoint: "/v0/org/tenants",
-      });
+        const data = await executeTenantProvisioningCommand({
+          db,
+          requesterAccountId,
+          tenantName: req.body?.tenantName,
+          idempotencyKey,
+          endpoint: "/v0/org/tenants",
+        });
 
       res.status(201).json({ success: true, data });
     } catch (error) {

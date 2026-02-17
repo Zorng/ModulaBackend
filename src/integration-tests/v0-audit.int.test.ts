@@ -3,6 +3,7 @@ import express from "express";
 import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
+import { createActiveBranch, seedDefaultBranchEntitlements } from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0AttendanceModule } from "../modules/v0/attendance/index.js";
 import { bootstrapV0AuditModule } from "../modules/v0/audit/index.js";
@@ -89,12 +90,16 @@ describe("v0 audit (phase f5)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Audit Tenant ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     expect(createdTenant.status).toBe(201);
 
     const tenantId = createdTenant.body.data.tenant.id as string;
-    const branchId = createdTenant.body.data.branch.id as string;
+    const branchId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Main Branch",
+    });
+    await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
 
     const invited = await request(app)
       .post("/v0/auth/memberships/invite")
@@ -201,7 +206,6 @@ describe("v0 audit (phase f5)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Audit Roles ${Date.now()}`,
-        firstBranchName: "Main Branch",
       });
     expect(createdTenant.status).toBe(201);
     const tenantId = createdTenant.body.data.tenant.id as string;

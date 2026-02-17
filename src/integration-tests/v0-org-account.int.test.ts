@@ -3,6 +3,11 @@ import express from "express";
 import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
+import {
+  assignActiveBranch,
+  createActiveBranch,
+  findActiveOwnerMembershipId,
+} from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
@@ -71,12 +76,32 @@ describe("v0 org account (phase F1 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `X Cafe ${Date.now()}`,
-        firstBranchName: "Sen Sok",
       });
     expect(createdTenant.status).toBe(201);
 
     const tenantId = createdTenant.body.data.tenant.id as string;
-    const branchId = createdTenant.body.data.branch.id as string;
+    const ownerAccountResult = await pool.query<{ id: string }>(
+      `SELECT id FROM accounts WHERE phone = $1`,
+      [ownerPhone]
+    );
+    const ownerAccountId = ownerAccountResult.rows[0].id;
+    const ownerMembershipId = await findActiveOwnerMembershipId({
+      pool,
+      tenantId,
+      accountId: ownerAccountId,
+    });
+    const branchId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Sen Sok",
+    });
+    await assignActiveBranch({
+      pool,
+      tenantId,
+      branchId,
+      accountId: ownerAccountId,
+      membershipId: ownerMembershipId,
+    });
 
     await pool.query(
       `UPDATE tenants
@@ -147,19 +172,22 @@ describe("v0 org account (phase F1 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({
         tenantName: `Nodepresso ${Date.now()}`,
-        firstBranchName: "Olympic",
       });
     expect(createdTenant.status).toBe(201);
 
     const tenantId = createdTenant.body.data.tenant.id as string;
-    const branchAId = createdTenant.body.data.branch.id as string;
-    const branchBInsert = await pool.query<{ id: string }>(
-      `INSERT INTO branches (tenant_id, name, status, address, contact_phone)
-       VALUES ($1, 'Sen Sok', 'ACTIVE', 'Street 2004', '+85512000009')
-       RETURNING id`,
-      [tenantId]
-    );
-    const branchBId = branchBInsert.rows[0].id;
+    const branchAId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Olympic",
+    });
+    const branchBId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Sen Sok",
+      address: "Street 2004",
+      contactPhone: "+85512000009",
+    });
 
     const invited = await request(app)
       .post("/v0/auth/memberships/invite")
