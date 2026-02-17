@@ -1,6 +1,6 @@
 # Menu Module Rollout (v0)
 
-Status: Not started
+Status: In progress (Phase 2 completed)
 Owner context: POSOperation
 
 ## Goal
@@ -45,8 +45,8 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
-| 1 Boundary + Contract lock | Not started | |
-| 2 Data model + repositories | Not started | |
+| 1 Boundary + Contract lock | Completed | Locked module boundary in `_refactor-artifact/02-boundary/menu-boundary-v0.md`; drafted canonical API contract in `api_contract/menu-v0.md` with action/event surface and entitlement constraints for tracked composition writes. |
+| 2 Data model + repositories | Completed | Added schema migration `migrations/019_create_v0_menu_tables.sql` for menu/catalog/modifier/composition/visibility owned tables; scaffolded module repositories and idempotency/event contract anchors in `src/modules/v0/menu/infra/repository.ts` and `src/modules/v0/menu/app/command-contract.ts`. |
 | 3 Commands/queries + access control | Not started | |
 | 4 Integration + reliability | Not started | |
 | 5 Close-out | Not started | |
