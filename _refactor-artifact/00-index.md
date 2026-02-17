@@ -12,7 +12,8 @@
 | Boundary | Module Boundary Template v0 | Template | `_refactor-artifact/02-boundary/module-boundary-template-v0.md` |
 | OrgAccount | OrgAccount Overhaul + POS Readiness | In Progress | `_refactor-artifact/03-orgaccount/orgaccount-overhaul-pos-readiness.md` |
 | Auth | SaaS Multi-Tenant Overhaul | Completed | `_refactor-artifact/04-auth/saas-multi-tenant-overhaul.md` |
+| POS | POS Module Build Order v0 | Active planning | `_refactor-artifact/05-pos/pos-module-build-order-v0.md` |
 
 ## Next Recommended Artifact
 
-- Apply `_refactor-artifact/02-boundary/module-boundary-template-v0.md` to the next POS module slice before implementation.
+- Start `_refactor-artifact/05-pos/policy-rollout-v0.md` as the first implementation slice in the locked POS order.

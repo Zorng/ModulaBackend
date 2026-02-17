@@ -14,6 +14,8 @@ This folder tracks implementation/refactor plans and execution notes for `/v0`.
   - OrgAccount overhaul artifacts
 - `04-auth/`
   - Auth overhaul artifacts
+- `05-pos/`
+  - POS module sequencing and per-module rollout trackers
 - `90-archive/`
   - superseded/closed artifacts kept for history
 
