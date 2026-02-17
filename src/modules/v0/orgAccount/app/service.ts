@@ -154,16 +154,6 @@ export class V0OrgAccountService {
       firstBranchName: firstBranchName || null,
     });
 
-    await this.repo.ensureStaffProfileForMembership(provisioned.membership_id);
-    if (provisioned.branch_id) {
-      await this.repo.upsertActiveBranchAssignmentsForMembership({
-        membershipId: provisioned.membership_id,
-        tenantId: provisioned.tenant_id,
-        accountId: requesterAccountId,
-        branchIds: [provisioned.branch_id],
-      });
-    }
-
     return {
       tenant: {
         id: provisioned.tenant_id,

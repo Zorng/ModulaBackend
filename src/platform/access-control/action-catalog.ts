@@ -23,7 +23,7 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
   },
-  "auth.membership.branches.assign": {
+  "hr.staff.branch.assign": {
     scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],

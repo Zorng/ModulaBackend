@@ -5,6 +5,8 @@ import { V0AuditService } from "../../audit/app/service.js";
 import { V0AuditRepository } from "../../audit/infra/repository.js";
 import { V0AuthService } from "../../auth/app/service.js";
 import { V0AuthRepository } from "../../auth/infra/repository.js";
+import { V0StaffManagementRepository } from "../../hr/staffManagement/infra/repository.js";
+import { V0StaffManagementService } from "../../hr/staffManagement/app/service.js";
 
 type AuditOutcome = "SUCCESS" | "REJECTED" | "FAILED";
 
@@ -105,13 +107,25 @@ export async function executeAcceptInvitationCommand(
 
   return transactionManager.withTransaction(async (client) => {
     const txService = new V0AuthService(new V0AuthRepository(client));
+    const txStaffManagementService = new V0StaffManagementService(
+      new V0StaffManagementRepository(client)
+    );
     const txAuditService = new V0AuditService(new V0AuditRepository(client));
     const txOutboxRepository = new V0CommandOutboxRepository(client);
 
-    const commandData = await txService.acceptInvitation({
+    const membership = await txService.acceptInvitation({
       requesterAccountId: input.requesterAccountId,
       membershipId: input.membershipId as string,
     });
+    const projectionData = await txStaffManagementService.activateMembershipBranchAssignments({
+      membershipId: membership.membershipId,
+    });
+    const commandData = {
+      membershipId: membership.membershipId,
+      tenantId: membership.tenantId,
+      status: membership.status,
+      activeBranchIds: projectionData.activeBranchIds,
+    };
 
     const dedupeKey = buildAuditDedupeKey(input.actionKey, input.idempotencyKey, "SUCCESS");
     await txAuditService.recordEvent({

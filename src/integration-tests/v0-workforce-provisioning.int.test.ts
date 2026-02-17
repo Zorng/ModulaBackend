@@ -4,6 +4,7 @@ import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
+import { bootstrapV0StaffManagementModule } from "../modules/v0/hr/staffManagement/index.js";
 
 function uniquePhone(): string {
   const now = Date.now().toString().slice(-9);
@@ -26,7 +27,9 @@ describe("v0 workforce provisioning (phase 4 scaffold)", () => {
     app = express();
     app.use(express.json());
     const v0AuthModule = bootstrapV0AuthModule(pool);
+    const v0StaffModule = bootstrapV0StaffManagementModule(pool);
     app.use("/v0/auth", v0AuthModule.router);
+    app.use("/v0/hr", v0StaffModule.router);
   });
 
   afterAll(async () => {
@@ -89,7 +92,7 @@ describe("v0 workforce provisioning (phase 4 scaffold)", () => {
     const inviteMembershipId = inviteRes.body.data.membershipId as string;
 
     const pendingAssignRes = await request(app)
-      .post(`/v0/auth/memberships/${inviteMembershipId}/branches`)
+      .post(`/v0/hr/staff/memberships/${inviteMembershipId}/branches`)
       .set("Authorization", `Bearer ${ownerAccessToken}`)
       .send({ branchIds: [firstBranchId] });
     expect(pendingAssignRes.status).toBe(200);

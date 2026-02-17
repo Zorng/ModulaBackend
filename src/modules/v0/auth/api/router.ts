@@ -3,11 +3,8 @@ import { Router, type Request, type Response } from "express";
 import { V0AuthError, V0AuthService } from "../app/service.js";
 import { V0AuthRepository } from "../infra/repository.js";
 import { requireV0Auth, type V0AuthRequest } from "./middleware.js";
-import { V0AuditService } from "../../audit/app/service.js";
-import { V0AuditRepository } from "../../audit/infra/repository.js";
-import { TransactionManager } from "../../../../platform/db/transactionManager.js";
-import { V0CommandOutboxRepository } from "../../../../platform/outbox/repository.js";
 import { V0OrgAccountError } from "../../orgAccount/app/service.js";
+import { V0StaffManagementError } from "../../hr/staffManagement/app/service.js";
 import {
   executeAcceptInvitationCommand,
   executeChangeMembershipRoleCommand,
@@ -17,13 +14,13 @@ import {
   queryInvitationInbox,
 } from "../../orgAccount/api/membership.command.js";
 import { executeTenantProvisioningCommand } from "../../orgAccount/api/tenant-provisioning.command.js";
+import { executeAssignMembershipBranchesCommand } from "../../hr/staffManagement/api/assignment.command.js";
 
 export function createV0AuthRouter(
   service: V0AuthService,
   db: Pool
 ): Router {
   const router = Router();
-  const transactionManager = new TransactionManager(db);
 
   router.post("/register", async (req: Request, res: Response) => {
     try {
@@ -355,7 +352,6 @@ export function createV0AuthRouter(
     requireV0Auth,
     async (req: V0AuthRequest, res: Response) => {
       const requesterAccountId = req.v0Auth?.accountId;
-      const actionKey = "auth.membership.branches.assign";
       const idempotencyKey = readIdempotencyKey(req.headers);
       try {
         if (!requesterAccountId) {
@@ -363,51 +359,15 @@ export function createV0AuthRouter(
           return;
         }
 
-        const data = await transactionManager.withTransaction(async (client) => {
-          const txService = new V0AuthService(new V0AuthRepository(client));
-          const txAuditService = new V0AuditService(new V0AuditRepository(client));
-          const txOutboxRepository = new V0CommandOutboxRepository(client);
-
-          const commandData = await txService.assignMembershipBranches({
-            requesterAccountId,
-            membershipId: req.params.membershipId,
-            branchIds: req.body?.branchIds,
-          });
-
-          const dedupeKey = buildAuditDedupeKey(actionKey, idempotencyKey, "SUCCESS");
-          await txAuditService.recordEvent({
-            tenantId: commandData.tenantId,
-            actorAccountId: requesterAccountId,
-            actionKey,
-            outcome: "SUCCESS",
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            dedupeKey,
-            metadata: {
-              endpoint: "/v0/auth/memberships/:membershipId/branches",
-              membershipStatus: commandData.membershipStatus,
-              pendingBranchCount: commandData.pendingBranchIds.length,
-              activeBranchCount: commandData.activeBranchIds.length,
-            },
-          });
-          await txOutboxRepository.insertEvent({
-            tenantId: commandData.tenantId,
-            actionKey,
-            eventType: "AUTH_MEMBERSHIP_BRANCHES_ASSIGNED",
-            actorType: "ACCOUNT",
-            actorId: requesterAccountId,
-            entityType: "membership",
-            entityId: commandData.membershipId,
-            outcome: "SUCCESS",
-            dedupeKey,
-            payload: {
-              endpoint: "/v0/auth/memberships/:membershipId/branches",
-              membershipStatus: commandData.membershipStatus,
-              pendingBranchCount: commandData.pendingBranchIds.length,
-              activeBranchCount: commandData.activeBranchIds.length,
-            },
-          });
-          return commandData;
+        const data = await executeAssignMembershipBranchesCommand({
+          db,
+          requesterAccountId,
+          membershipId: req.params.membershipId,
+          branchIds: req.body?.branchIds,
+          idempotencyKey,
+          actionKey: "hr.staff.branch.assign",
+          eventType: "HR_STAFF_BRANCHES_ASSIGNED",
+          endpoint: "/v0/auth/memberships/:membershipId/branches",
         });
         res.status(200).json({ success: true, data });
       } catch (error) {
@@ -455,8 +415,6 @@ export function createV0AuthRouter(
   return router;
 }
 
-type AuditOutcome = "SUCCESS" | "REJECTED" | "FAILED";
-
 function readIdempotencyKey(headers: Record<string, string | string[] | undefined>): string | null {
   const raw = headers["idempotency-key"];
   if (Array.isArray(raw)) {
@@ -465,25 +423,17 @@ function readIdempotencyKey(headers: Record<string, string | string[] | undefine
   return normalizeOptionalString(raw);
 }
 
-function buildAuditDedupeKey(
-  actionKey: string,
-  idempotencyKey: string | null,
-  outcome: AuditOutcome
-): string | null {
-  const key = normalizeOptionalString(idempotencyKey);
-  if (!key) {
-    return null;
-  }
-  return `${actionKey}:${outcome}:${key}`;
-}
-
 function normalizeOptionalString(input: unknown): string | null {
   const normalized = String(input ?? "").trim();
   return normalized ? normalized : null;
 }
 
 function handleError(res: Response, error: unknown): void {
-  if (error instanceof V0AuthError) {
+  if (
+    error instanceof V0AuthError
+    || error instanceof V0OrgAccountError
+    || error instanceof V0StaffManagementError
+  ) {
     res.status(error.statusCode).json({
       success: false,
       error: error.message,

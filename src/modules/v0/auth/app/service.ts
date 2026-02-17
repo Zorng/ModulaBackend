@@ -79,10 +79,4 @@ export class V0AuthService {
   revokeMembership(...args: Parameters<V0AuthMembershipService["revokeMembership"]>) {
     return this.membershipService.revokeMembership(...args);
   }
-
-  assignMembershipBranches(
-    ...args: Parameters<V0AuthMembershipService["assignMembershipBranches"]>
-  ) {
-    return this.membershipService.assignMembershipBranches(...args);
-  }
 }

@@ -3,7 +3,6 @@ import {
   V0AuthError,
   normalizePhone,
   normalizeRoleKey,
-  normalizeUniqueBranchIds,
 } from "./common.js";
 
 export class V0AuthMembershipService extends V0AuthBaseService {
@@ -117,7 +116,7 @@ export class V0AuthMembershipService extends V0AuthBaseService {
     membershipId: string;
     tenantId: string;
     status: string;
-    activeBranchIds: string[];
+    accountId: string;
   }> {
     const membershipId = String(input.membershipId ?? "").trim();
     if (!membershipId) {
@@ -143,19 +142,6 @@ export class V0AuthMembershipService extends V0AuthBaseService {
       throw new V0AuthError(409, "invitation is not pending");
     }
 
-    await this.repo.ensureStaffProfileForMembership(updated.id);
-    const pendingBranchIds = await this.repo.listPendingBranchIdsForMembership(updated.id);
-    if (pendingBranchIds.length > 0) {
-      await this.repo.upsertActiveBranchAssignmentsForMembership({
-        membershipId: updated.id,
-        tenantId: updated.tenant_id,
-        accountId: updated.account_id,
-        branchIds: pendingBranchIds,
-      });
-      await this.repo.clearPendingBranchAssignments(updated.id);
-    }
-    const activeBranchIds = await this.repo.listActiveBranchIdsForMembership(updated.id);
-
     await this.writeAuditEventBestEffort({
       accountId: input.requesterAccountId,
       eventKey: "AUTH_MEMBERSHIP_ACCEPT",
@@ -163,7 +149,6 @@ export class V0AuthMembershipService extends V0AuthBaseService {
       metadata: {
         membershipId: updated.id,
         tenantId: updated.tenant_id,
-        assignedBranchCount: activeBranchIds.length,
       },
     });
 
@@ -171,7 +156,7 @@ export class V0AuthMembershipService extends V0AuthBaseService {
       membershipId: updated.id,
       tenantId: updated.tenant_id,
       status: updated.status,
-      activeBranchIds,
+      accountId: updated.account_id,
     };
   }
 
@@ -314,104 +299,5 @@ export class V0AuthMembershipService extends V0AuthBaseService {
       tenantId: updated.tenant_id,
       status: updated.status,
     };
-  }
-
-  async assignMembershipBranches(input: {
-    requesterAccountId: string;
-    membershipId: string;
-    branchIds: string[];
-  }): Promise<{
-    membershipId: string;
-    tenantId: string;
-    membershipStatus: string;
-    pendingBranchIds: string[];
-    activeBranchIds: string[];
-  }> {
-    const membershipId = String(input.membershipId ?? "").trim();
-    if (!membershipId) {
-      throw new V0AuthError(422, "membershipId is required");
-    }
-    const branchIds = normalizeUniqueBranchIds(input.branchIds);
-
-    const access = await this.repo.findMembershipForRequesterAction({
-      requesterAccountId: input.requesterAccountId,
-      targetMembershipId: membershipId,
-    });
-    if (!access || !this.privilegedRoles.has(access.requester_role_key)) {
-      throw new V0AuthError(403, "requester role cannot assign branches");
-    }
-
-    const validBranches = await this.repo.findActiveBranchesByIds(
-      access.target_tenant_id,
-      branchIds
-    );
-    if (validBranches.length !== branchIds.length) {
-      throw new V0AuthError(422, "branchIds contain invalid or inactive branches");
-    }
-
-    if (access.target_status === "INVITED") {
-      await this.repo.replacePendingBranchAssignments({
-        membershipId: access.target_membership_id,
-        tenantId: access.target_tenant_id,
-        branchIds,
-      });
-      const pendingBranchIds = await this.repo.listPendingBranchIdsForMembership(
-        access.target_membership_id
-      );
-      await this.writeAuditEventBestEffort({
-        accountId: input.requesterAccountId,
-        eventKey: "AUTH_MEMBERSHIP_BRANCH_ASSIGN",
-        outcome: "SUCCESS",
-        metadata: {
-          membershipId: access.target_membership_id,
-          tenantId: access.target_tenant_id,
-          mode: "PENDING_INVITE",
-          branchCount: pendingBranchIds.length,
-        },
-      });
-      return {
-        membershipId: access.target_membership_id,
-        tenantId: access.target_tenant_id,
-        membershipStatus: access.target_status,
-        pendingBranchIds,
-        activeBranchIds: [],
-      };
-    }
-
-    if (access.target_status === "ACTIVE") {
-      await this.repo.ensureStaffProfileForMembership(access.target_membership_id);
-      await this.repo.upsertActiveBranchAssignmentsForMembership({
-        membershipId: access.target_membership_id,
-        tenantId: access.target_tenant_id,
-        accountId: access.target_account_id,
-        branchIds,
-      });
-      const activeBranchIds = await this.repo.listActiveBranchIdsForMembership(
-        access.target_membership_id
-      );
-      await this.writeAuditEventBestEffort({
-        accountId: input.requesterAccountId,
-        eventKey: "AUTH_MEMBERSHIP_BRANCH_ASSIGN",
-        outcome: "SUCCESS",
-        metadata: {
-          membershipId: access.target_membership_id,
-          tenantId: access.target_tenant_id,
-          mode: "ACTIVE_MEMBERSHIP",
-          branchCount: activeBranchIds.length,
-        },
-      });
-      return {
-        membershipId: access.target_membership_id,
-        tenantId: access.target_tenant_id,
-        membershipStatus: access.target_status,
-        pendingBranchIds: [],
-        activeBranchIds,
-      };
-    }
-
-    throw new V0AuthError(
-      409,
-      "branch assignment allowed only for invited or active memberships"
-    );
   }
 }

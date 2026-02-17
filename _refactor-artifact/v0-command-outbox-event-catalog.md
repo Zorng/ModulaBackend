@@ -36,11 +36,13 @@ type V0CommandOutboxEvent = {
   - canonical endpoint metadata: `/v0/org/tenants`
   - compatibility alias (temporary): `/v0/auth/tenants`
 
-### Auth / Membership (remaining in Auth until B3)
-- `AUTH_MEMBERSHIP_BRANCHES_ASSIGNED`
-  - actionKey: `auth.membership.branches.assign`
+### HR / StaffManagement
+- `HR_STAFF_BRANCHES_ASSIGNED`
+  - actionKey: `hr.staff.branch.assign`
   - outcome: `SUCCESS`
   - entityType: `membership`
+  - canonical endpoint metadata: `/v0/hr/staff/memberships/:membershipId/branches`
+  - compatibility alias (temporary): `/v0/auth/memberships/:membershipId/branches`
 
 ### OrgAccount / Membership (canonical)
 - `ORG_MEMBERSHIP_INVITED`
@@ -65,7 +67,9 @@ type V0CommandOutboxEvent = {
   - entityType: `membership`
 
 Compatibility note:
-- Legacy auth alias routes (`/v0/auth/memberships/*` except `.../branches`) now emit canonical OrgAccount action keys/events.
+- Legacy auth alias routes (`/v0/auth/memberships/*`) emit canonical ownership action keys/events:
+  - OrgAccount lifecycle commands => `org.membership.*`
+  - HR staff assignment command => `hr.staff.branch.assign` / `HR_STAFF_BRANCHES_ASSIGNED`
 
 ### Attendance
 - `ATTENDANCE_CHECKED_IN`

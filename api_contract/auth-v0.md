@@ -535,9 +535,13 @@ Success `200`:
 }
 ```
 
-### 17) Assign membership branches (OWNER/ADMIN)
+### 17) Assign membership branches (OWNER/ADMIN, legacy alias during boundary migration)
 
-`POST /v0/auth/memberships/:membershipId/branches`
+Canonical endpoint:
+- `POST /v0/hr/staff/memberships/:membershipId/branches`
+
+Legacy alias:
+- `POST /v0/auth/memberships/:membershipId/branches`
 
 Auth: `Authorization: Bearer <accessToken>`
 

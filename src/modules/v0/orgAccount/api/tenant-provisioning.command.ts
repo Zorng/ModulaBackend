@@ -3,6 +3,8 @@ import { TransactionManager } from "../../../../platform/db/transactionManager.j
 import { V0CommandOutboxRepository } from "../../../../platform/outbox/repository.js";
 import { V0AuditService } from "../../audit/app/service.js";
 import { V0AuditRepository } from "../../audit/infra/repository.js";
+import { V0StaffManagementService } from "../../hr/staffManagement/app/service.js";
+import { V0StaffManagementRepository } from "../../hr/staffManagement/infra/repository.js";
 import { V0OrgAccountService } from "../app/service.js";
 import { V0OrgAccountRepository } from "../infra/repository.js";
 
@@ -25,6 +27,9 @@ export async function executeTenantProvisioningCommand(input: {
 
   const data = await transactionManager.withTransaction(async (client) => {
     const txService = new V0OrgAccountService(new V0OrgAccountRepository(client));
+    const txStaffManagementService = new V0StaffManagementService(
+      new V0StaffManagementRepository(client)
+    );
     const txAuditService = new V0AuditService(new V0AuditRepository(client));
     const txOutboxRepository = new V0CommandOutboxRepository(client);
 
@@ -32,6 +37,12 @@ export async function executeTenantProvisioningCommand(input: {
       requesterAccountId: input.requesterAccountId,
       tenantName: input.tenantName as string,
       firstBranchName: input.firstBranchName as string | undefined,
+    });
+    await txStaffManagementService.ensureStaffProjectionForProvisionedMembership({
+      membershipId: commandData.ownerMembership.id,
+      tenantId: commandData.tenant.id,
+      accountId: input.requesterAccountId,
+      initialBranchIds: commandData.branch?.id ? [commandData.branch.id] : [],
     });
 
     const branchId = commandData.branch?.id ?? null;

@@ -24,7 +24,7 @@ Legend:
 | `org.membership.invitation.reject` | GLOBAL | WRITE | - | - |
 | `org.membership.role.change` | TENANT | WRITE | OWNER, ADMIN | - |
 | `org.membership.revoke` | TENANT | WRITE | OWNER, ADMIN | - |
-| `auth.membership.branches.assign` | TENANT | WRITE | OWNER, ADMIN | - |
+| `hr.staff.branch.assign` | TENANT | WRITE | OWNER, ADMIN | - |
 | `tenant.provision` | GLOBAL | WRITE | - | - |
 | `attendance.checkIn` | BRANCH | WRITE | - | `module.workforce` |
 | `attendance.checkOut` | BRANCH | WRITE | - | `module.workforce` |
@@ -56,7 +56,8 @@ Legend:
 | POST | `/org/memberships/:id/role` | `org.membership.role.change` | `path.membershipId` | - |
 | POST | `/auth/memberships/:id/revoke` | `org.membership.revoke` | `path.membershipId` | - |
 | POST | `/org/memberships/:id/revoke` | `org.membership.revoke` | `path.membershipId` | - |
-| POST | `/auth/memberships/:id/branches` | `auth.membership.branches.assign` | `path.membershipId` | - |
+| POST | `/hr/staff/memberships/:id/branches` | `hr.staff.branch.assign` | `path.membershipId` | - |
+| POST | `/auth/memberships/:id/branches` | `hr.staff.branch.assign` | `path.membershipId` | - |
 | POST | `/auth/tenants` | `tenant.provision` | - | - |
 | POST | `/org/tenants` | `tenant.provision` | - | - |
 | POST | `/attendance/check-in` | `attendance.checkIn` | `token` | `token` |

@@ -6,6 +6,7 @@ import crypto from "crypto";
 import { createTestPool } from "../test-utils/db.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0AttendanceModule } from "../modules/v0/attendance/index.js";
+import { bootstrapV0StaffManagementModule } from "../modules/v0/hr/staffManagement/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 
 function uniquePhone(): string {
@@ -49,9 +50,11 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
     app.use(express.json());
     const v0AuthModule = bootstrapV0AuthModule(pool);
     const v0AttendanceModule = bootstrapV0AttendanceModule(pool);
+    const v0StaffManagementModule = bootstrapV0StaffManagementModule(pool);
     app.use("/v0", createAccessControlHook({ db: pool, jwtSecret: process.env.JWT_SECRET }));
     app.use("/v0/auth", v0AuthModule.router);
     app.use("/v0/attendance", v0AttendanceModule.router);
+    app.use("/v0/hr", v0StaffManagementModule.router);
   });
 
   afterAll(async () => {
@@ -281,7 +284,7 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
     const membershipId = invite.body.data.membershipId as string;
 
     await request(app)
-      .post(`/v0/auth/memberships/${membershipId}/branches`)
+      .post(`/v0/hr/staff/memberships/${membershipId}/branches`)
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({ branchIds: [branchId] });
 
@@ -401,7 +404,7 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
     const membershipId = invite.body.data.membershipId as string;
 
     await request(app)
-      .post(`/v0/auth/memberships/${membershipId}/branches`)
+      .post(`/v0/hr/staff/memberships/${membershipId}/branches`)
       .set("Authorization", `Bearer ${ownerToken}`)
       .send({ branchIds: [branchId] });
 

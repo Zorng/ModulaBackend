@@ -94,7 +94,13 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
   {
     method: "POST",
     pattern: /^\/auth\/memberships\/[^/]+\/branches$/,
-    actionKey: "auth.membership.branches.assign",
+    actionKey: "hr.staff.branch.assign",
+    tenantSource: "path.membershipId",
+  },
+  {
+    method: "POST",
+    pattern: /^\/hr\/staff\/memberships\/[^/]+\/branches$/,
+    actionKey: "hr.staff.branch.assign",
     tenantSource: "path.membershipId",
   },
   {
