@@ -1,6 +1,6 @@
 # Policy Module Boundary (v0)
 
-Status: Phase 1-3 locked  
+Status: Phase 1-5 locked  
 Owner context: `PlatformSystems` (product capability)  
 Canonical route prefix: `/v0/policy`
 

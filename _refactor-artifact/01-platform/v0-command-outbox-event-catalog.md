@@ -104,6 +104,13 @@ Compatibility note:
   - outcome: `REJECTED`
   - entityType: `attendance_record`
 
+### Policy
+- `POLICY_UPDATED`
+  - actionKey: `policy.currentBranch.update`
+  - outcome: `SUCCESS`
+  - entityType: `branch_policy`
+  - canonical endpoint metadata: `/v0/policy/current-branch`
+
 ## Notes
 
 - Dispatcher currently uses at-least-once delivery semantics.

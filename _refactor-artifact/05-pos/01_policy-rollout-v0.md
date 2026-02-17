@@ -1,6 +1,6 @@
 # Policy Module Rollout (v0)
 
-Status: In progress (Phase 3 completed)
+Status: Completed
 Owner context: PlatformSystems (product capability)
 
 ## Goal
@@ -49,5 +49,5 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 | 1 Boundary + Contract lock | Completed | Canonical route/action/event boundary locked in `_refactor-artifact/02-boundary/policy-boundary-v0.md`; API contract drafted at `api_contract/policy-v0.md`. |
 | 2 Data model + repositories | Completed | Added `migrations/018_create_v0_branch_policies.sql`; scaffolded repository and command contract anchors under `src/modules/v0/policy/`. |
 | 3 Commands/queries + access control | Completed | Implemented `/v0/policy/current-branch` query/update handlers with transactional update path and audit/outbox emission; access-control route/action mappings added. |
-| 4 Integration + reliability | Not started | |
-| 5 Close-out | Not started | |
+| 4 Integration + reliability | Completed | Added `src/integration-tests/v0-policy.int.test.ts` covering default read, update happy path, replay/conflict idempotency, cashier deny path, and atomic rollback on forced outbox failure. |
+| 5 Close-out | Completed | Tracker/index/boundary statuses updated; outbox catalog already contains `POLICY_UPDATED` (no further producer/subscriber delta); API contract notes finalized for frontend rollout. |

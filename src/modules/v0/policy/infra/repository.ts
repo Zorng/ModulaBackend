@@ -88,23 +88,23 @@ export class V0PolicyRepository {
          SELECT
            tb.tenant_id,
            tb.id,
-           COALESCE($3, $10),
-           COALESCE($4, $11),
-           COALESCE($5, $12),
-           COALESCE($6, $13),
-           COALESCE($7, $14),
-           COALESCE($8, $15),
-           COALESCE($9, $16)
+           COALESCE($3::BOOLEAN, $10::BOOLEAN),
+           COALESCE($4::NUMERIC, $11::NUMERIC),
+           COALESCE($5::NUMERIC, $12::NUMERIC),
+           COALESCE($6::BOOLEAN, $13::BOOLEAN),
+           COALESCE($7::VARCHAR, $14::VARCHAR),
+           COALESCE($8::INTEGER, $15::INTEGER),
+           COALESCE($9::BOOLEAN, $16::BOOLEAN)
          FROM target_branch tb
          ON CONFLICT (tenant_id, branch_id)
          DO UPDATE SET
-           sale_vat_enabled = COALESCE($3, v0_branch_policies.sale_vat_enabled),
-           sale_vat_rate_percent = COALESCE($4, v0_branch_policies.sale_vat_rate_percent),
-           sale_fx_rate_khr_per_usd = COALESCE($5, v0_branch_policies.sale_fx_rate_khr_per_usd),
-           sale_khr_rounding_enabled = COALESCE($6, v0_branch_policies.sale_khr_rounding_enabled),
-           sale_khr_rounding_mode = COALESCE($7, v0_branch_policies.sale_khr_rounding_mode),
-           sale_khr_rounding_granularity = COALESCE($8, v0_branch_policies.sale_khr_rounding_granularity),
-           sale_allow_pay_later = COALESCE($9, v0_branch_policies.sale_allow_pay_later),
+           sale_vat_enabled = COALESCE($3::BOOLEAN, v0_branch_policies.sale_vat_enabled),
+           sale_vat_rate_percent = COALESCE($4::NUMERIC, v0_branch_policies.sale_vat_rate_percent),
+           sale_fx_rate_khr_per_usd = COALESCE($5::NUMERIC, v0_branch_policies.sale_fx_rate_khr_per_usd),
+           sale_khr_rounding_enabled = COALESCE($6::BOOLEAN, v0_branch_policies.sale_khr_rounding_enabled),
+           sale_khr_rounding_mode = COALESCE($7::VARCHAR, v0_branch_policies.sale_khr_rounding_mode),
+           sale_khr_rounding_granularity = COALESCE($8::INTEGER, v0_branch_policies.sale_khr_rounding_granularity),
+           sale_allow_pay_later = COALESCE($9::BOOLEAN, v0_branch_policies.sale_allow_pay_later),
            updated_at = NOW()
          RETURNING
            tenant_id,
