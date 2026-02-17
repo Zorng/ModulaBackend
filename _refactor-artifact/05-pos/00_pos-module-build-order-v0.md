@@ -68,7 +68,7 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 | Module | Status | Notes |
 |---|---|---|
 | policy | Completed | Phase 1-5 completed (boundary lock, migration/repo, command/query + ACL, integration reliability, close-out). |
-| menu | In progress (Phase 2 complete) | schema + repository scaffolding completed |
+| menu | In progress (Phase 4 next) | Phase 3 completed with full endpoint surface + ACL wiring; next is menu-focused integration/reliability coverage. |
 | discount | Not started | depends on menu refs + branch scope |
 | cashSession | Not started | depends on access control + sale hooks |
 | inventory | Not started | self-contained ledger first; sale hooks later |

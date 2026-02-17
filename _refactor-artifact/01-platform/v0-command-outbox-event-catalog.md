@@ -111,6 +111,83 @@ Compatibility note:
   - entityType: `branch_policy`
   - canonical endpoint metadata: `/v0/policy/current-branch`
 
+### Menu
+- `MENU_ITEM_CREATED`
+  - actionKey: `menu.items.create`
+  - outcome: `SUCCESS`
+  - entityType: `menu_item`
+  - canonical endpoint metadata: `/v0/menu/items`
+- `MENU_ITEM_UPDATED`
+  - actionKey: `menu.items.update`
+  - outcome: `SUCCESS`
+  - entityType: `menu_item`
+  - canonical endpoint metadata: `/v0/menu/items/:menuItemId`
+- `MENU_ITEM_ARCHIVED`
+  - actionKey: `menu.items.archive`
+  - outcome: `SUCCESS`
+  - entityType: `menu_item`
+  - canonical endpoint metadata: `/v0/menu/items/:menuItemId/archive`
+- `MENU_ITEM_RESTORED`
+  - actionKey: `menu.items.restore`
+  - outcome: `SUCCESS`
+  - entityType: `menu_item`
+  - canonical endpoint metadata: `/v0/menu/items/:menuItemId/restore`
+- `MENU_ITEM_BRANCH_VISIBILITY_SET`
+  - actionKey: `menu.items.visibility.set`
+  - outcome: `SUCCESS`
+  - entityType: `menu_item`
+  - canonical endpoint metadata: `/v0/menu/items/:menuItemId/visibility`
+- `MENU_CATEGORY_CREATED`
+  - actionKey: `menu.categories.create`
+  - outcome: `SUCCESS`
+  - entityType: `menu_category`
+  - canonical endpoint metadata: `/v0/menu/categories`
+- `MENU_CATEGORY_UPDATED`
+  - actionKey: `menu.categories.update`
+  - outcome: `SUCCESS`
+  - entityType: `menu_category`
+  - canonical endpoint metadata: `/v0/menu/categories/:categoryId`
+- `MENU_CATEGORY_ARCHIVED`
+  - actionKey: `menu.categories.archive`
+  - outcome: `SUCCESS`
+  - entityType: `menu_category`
+  - canonical endpoint metadata: `/v0/menu/categories/:categoryId/archive`
+- `MODIFIER_GROUP_CREATED`
+  - actionKey: `menu.modifierGroups.create`
+  - outcome: `SUCCESS`
+  - entityType: `modifier_group`
+  - canonical endpoint metadata: `/v0/menu/modifier-groups`
+- `MODIFIER_GROUP_UPDATED`
+  - actionKey: `menu.modifierGroups.update`
+  - outcome: `SUCCESS`
+  - entityType: `modifier_group`
+  - canonical endpoint metadata: `/v0/menu/modifier-groups/:groupId`
+- `MODIFIER_GROUP_ARCHIVED`
+  - actionKey: `menu.modifierGroups.archive`
+  - outcome: `SUCCESS`
+  - entityType: `modifier_group`
+  - canonical endpoint metadata: `/v0/menu/modifier-groups/:groupId/archive`
+- `MODIFIER_OPTION_CREATED`
+  - actionKey: `menu.modifierOptions.create`
+  - outcome: `SUCCESS`
+  - entityType: `modifier_option`
+  - canonical endpoint metadata: `/v0/menu/modifier-groups/:groupId/options`
+- `MODIFIER_OPTION_UPDATED`
+  - actionKey: `menu.modifierOptions.update`
+  - outcome: `SUCCESS`
+  - entityType: `modifier_option`
+  - canonical endpoint metadata: `/v0/menu/modifier-groups/:groupId/options/:optionId`
+- `MODIFIER_OPTION_ARCHIVED`
+  - actionKey: `menu.modifierOptions.archive`
+  - outcome: `SUCCESS`
+  - entityType: `modifier_option`
+  - canonical endpoint metadata: `/v0/menu/modifier-groups/:groupId/options/:optionId/archive`
+- `MENU_ITEM_COMPOSITION_UPSERTED`
+  - actionKey: `menu.composition.upsert`
+  - outcome: `SUCCESS`
+  - entityType: `menu_item`
+  - canonical endpoint metadata: `/v0/menu/items/:menuItemId/composition`
+
 ## Notes
 
 - Dispatcher currently uses at-least-once delivery semantics.

@@ -101,6 +101,68 @@ export class V0MenuRepository {
     return result.rows;
   }
 
+  async getCategoryById(input: {
+    tenantId: string;
+    categoryId: string;
+  }): Promise<MenuCategoryRow | null> {
+    const result = await this.db.query<MenuCategoryRow>(
+      `SELECT *
+       FROM v0_menu_categories
+       WHERE tenant_id = $1
+         AND id = $2
+       LIMIT 1`,
+      [input.tenantId, input.categoryId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async updateCategoryName(input: {
+    tenantId: string;
+    categoryId: string;
+    name: string;
+  }): Promise<MenuCategoryRow | null> {
+    const result = await this.db.query<MenuCategoryRow>(
+      `UPDATE v0_menu_categories
+       SET name = $3,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND id = $2
+       RETURNING *`,
+      [input.tenantId, input.categoryId, input.name]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async archiveCategory(input: {
+    tenantId: string;
+    categoryId: string;
+  }): Promise<MenuCategoryRow | null> {
+    const result = await this.db.query<MenuCategoryRow>(
+      `UPDATE v0_menu_categories
+       SET status = 'ARCHIVED',
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND id = $2
+       RETURNING *`,
+      [input.tenantId, input.categoryId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async clearCategoryFromMenuItems(input: {
+    tenantId: string;
+    categoryId: string;
+  }): Promise<void> {
+    await this.db.query(
+      `UPDATE v0_menu_items
+       SET category_id = NULL,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND category_id = $2`,
+      [input.tenantId, input.categoryId]
+    );
+  }
+
   async createMenuItem(input: {
     tenantId: string;
     name: string;
@@ -157,6 +219,100 @@ export class V0MenuRepository {
        WHERE tenant_id = $1
          AND id = $2`,
       [input.tenantId, input.menuItemId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async updateMenuItem(input: {
+    tenantId: string;
+    menuItemId: string;
+    name: string;
+    basePrice: number;
+    categoryId: string | null;
+    imageUrl: string | null;
+  }): Promise<MenuItemRow | null> {
+    const result = await this.db.query<MenuItemRow>(
+      `UPDATE v0_menu_items
+       SET name = $3,
+           base_price = $4,
+           category_id = $5,
+           image_url = $6,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND id = $2
+       RETURNING
+         id,
+         tenant_id,
+         name,
+         base_price::FLOAT8 AS base_price,
+         category_id,
+         status,
+         image_url,
+         created_at,
+         updated_at`,
+      [
+        input.tenantId,
+        input.menuItemId,
+        input.name,
+        input.basePrice,
+        input.categoryId,
+        input.imageUrl,
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async updateMenuItemStatus(input: {
+    tenantId: string;
+    menuItemId: string;
+    status: MenuActiveStatus;
+  }): Promise<MenuItemRow | null> {
+    const result = await this.db.query<MenuItemRow>(
+      `UPDATE v0_menu_items
+       SET status = $3,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND id = $2
+       RETURNING
+         id,
+         tenant_id,
+         name,
+         base_price::FLOAT8 AS base_price,
+         category_id,
+         status,
+         image_url,
+         created_at,
+         updated_at`,
+      [input.tenantId, input.menuItemId, input.status]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async getMenuItemVisibleInBranch(input: {
+    tenantId: string;
+    branchId: string;
+    menuItemId: string;
+  }): Promise<MenuItemRow | null> {
+    const result = await this.db.query<MenuItemRow>(
+      `SELECT
+         i.id,
+         i.tenant_id,
+         i.name,
+         i.base_price::FLOAT8 AS base_price,
+         i.category_id,
+         i.status,
+         i.image_url,
+         i.created_at,
+         i.updated_at
+       FROM v0_menu_items i
+       INNER JOIN v0_menu_item_branch_visibility v
+         ON v.tenant_id = i.tenant_id
+        AND v.menu_item_id = i.id
+       WHERE i.tenant_id = $1
+         AND v.branch_id = $2
+         AND i.id = $3
+       LIMIT 1`,
+      [input.tenantId, input.branchId, input.menuItemId]
     );
     return result.rows[0] ?? null;
   }
@@ -225,6 +381,21 @@ export class V0MenuRepository {
     return result.rows;
   }
 
+  async listVisibleBranchIdsForMenuItem(input: {
+    tenantId: string;
+    menuItemId: string;
+  }): Promise<string[]> {
+    const result = await this.db.query<{ branch_id: string }>(
+      `SELECT branch_id
+       FROM v0_menu_item_branch_visibility
+       WHERE tenant_id = $1
+         AND menu_item_id = $2
+       ORDER BY branch_id ASC`,
+      [input.tenantId, input.menuItemId]
+    );
+    return result.rows.map((row) => row.branch_id);
+  }
+
   async createModifierGroup(input: {
     tenantId: string;
     name: string;
@@ -256,6 +427,86 @@ export class V0MenuRepository {
     return result.rows[0];
   }
 
+  async listModifierGroups(input: {
+    tenantId: string;
+    status?: MenuActiveStatus | null;
+  }): Promise<MenuModifierGroupRow[]> {
+    const result = await this.db.query<MenuModifierGroupRow>(
+      `SELECT *
+       FROM v0_menu_modifier_groups
+       WHERE tenant_id = $1
+         AND ($2::VARCHAR IS NULL OR status = $2)
+       ORDER BY name ASC, created_at ASC`,
+      [input.tenantId, input.status ?? null]
+    );
+    return result.rows;
+  }
+
+  async getModifierGroupById(input: {
+    tenantId: string;
+    groupId: string;
+  }): Promise<MenuModifierGroupRow | null> {
+    const result = await this.db.query<MenuModifierGroupRow>(
+      `SELECT *
+       FROM v0_menu_modifier_groups
+       WHERE tenant_id = $1
+         AND id = $2
+       LIMIT 1`,
+      [input.tenantId, input.groupId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async updateModifierGroup(input: {
+    tenantId: string;
+    groupId: string;
+    name: string;
+    selectionMode: MenuSelectionMode;
+    minSelections: number;
+    maxSelections: number;
+    isRequired: boolean;
+  }): Promise<MenuModifierGroupRow | null> {
+    const result = await this.db.query<MenuModifierGroupRow>(
+      `UPDATE v0_menu_modifier_groups
+       SET name = $3,
+           selection_mode = $4,
+           min_selections = $5,
+           max_selections = $6,
+           is_required = $7,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND id = $2
+       RETURNING *`,
+      [
+        input.tenantId,
+        input.groupId,
+        input.name,
+        input.selectionMode,
+        input.minSelections,
+        input.maxSelections,
+        input.isRequired,
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async updateModifierGroupStatus(input: {
+    tenantId: string;
+    groupId: string;
+    status: MenuActiveStatus;
+  }): Promise<MenuModifierGroupRow | null> {
+    const result = await this.db.query<MenuModifierGroupRow>(
+      `UPDATE v0_menu_modifier_groups
+       SET status = $3,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND id = $2
+       RETURNING *`,
+      [input.tenantId, input.groupId, input.status]
+    );
+    return result.rows[0] ?? null;
+  }
+
   async createModifierOption(input: {
     tenantId: string;
     groupId: string;
@@ -282,6 +533,107 @@ export class V0MenuRepository {
       [input.tenantId, input.groupId, input.label, input.priceDelta]
     );
     return result.rows[0];
+  }
+
+  async getModifierOptionById(input: {
+    tenantId: string;
+    optionId: string;
+  }): Promise<MenuModifierOptionRow | null> {
+    const result = await this.db.query<MenuModifierOptionRow>(
+      `SELECT
+         id,
+         tenant_id,
+         modifier_group_id,
+         label,
+         price_delta::FLOAT8 AS price_delta,
+         status,
+         created_at,
+         updated_at
+       FROM v0_menu_modifier_options
+       WHERE tenant_id = $1
+         AND id = $2
+       LIMIT 1`,
+      [input.tenantId, input.optionId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async updateModifierOption(input: {
+    tenantId: string;
+    optionId: string;
+    label: string;
+    priceDelta: number;
+  }): Promise<MenuModifierOptionRow | null> {
+    const result = await this.db.query<MenuModifierOptionRow>(
+      `UPDATE v0_menu_modifier_options
+       SET label = $3,
+           price_delta = $4,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND id = $2
+       RETURNING
+         id,
+         tenant_id,
+         modifier_group_id,
+         label,
+         price_delta::FLOAT8 AS price_delta,
+         status,
+         created_at,
+         updated_at`,
+      [input.tenantId, input.optionId, input.label, input.priceDelta]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async updateModifierOptionStatus(input: {
+    tenantId: string;
+    optionId: string;
+    status: MenuActiveStatus;
+  }): Promise<MenuModifierOptionRow | null> {
+    const result = await this.db.query<MenuModifierOptionRow>(
+      `UPDATE v0_menu_modifier_options
+       SET status = $3,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND id = $2
+       RETURNING
+         id,
+         tenant_id,
+         modifier_group_id,
+         label,
+         price_delta::FLOAT8 AS price_delta,
+         status,
+         created_at,
+         updated_at`,
+      [input.tenantId, input.optionId, input.status]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async listModifierOptionsByGroupIds(input: {
+    tenantId: string;
+    groupIds: readonly string[];
+  }): Promise<MenuModifierOptionRow[]> {
+    if (input.groupIds.length === 0) {
+      return [];
+    }
+    const result = await this.db.query<MenuModifierOptionRow>(
+      `SELECT
+         id,
+         tenant_id,
+         modifier_group_id,
+         label,
+         price_delta::FLOAT8 AS price_delta,
+         status,
+         created_at,
+         updated_at
+       FROM v0_menu_modifier_options
+       WHERE tenant_id = $1
+         AND modifier_group_id = ANY($2::UUID[])
+       ORDER BY modifier_group_id ASC, label ASC`,
+      [input.tenantId, input.groupIds]
+    );
+    return result.rows;
   }
 
   async setModifierGroupsForMenuItem(input: {
@@ -318,6 +670,21 @@ export class V0MenuRepository {
        SET display_order = EXCLUDED.display_order`,
       [input.tenantId, input.menuItemId, input.groupIds]
     );
+  }
+
+  async listModifierGroupIdsForMenuItem(input: {
+    tenantId: string;
+    menuItemId: string;
+  }): Promise<string[]> {
+    const result = await this.db.query<{ modifier_group_id: string }>(
+      `SELECT modifier_group_id
+       FROM v0_menu_item_modifier_group_links
+       WHERE tenant_id = $1
+         AND menu_item_id = $2
+       ORDER BY display_order ASC, modifier_group_id ASC`,
+      [input.tenantId, input.menuItemId]
+    );
+    return result.rows.map((row) => row.modifier_group_id);
   }
 
   async setBaseComponentsForMenuItem(input: {
@@ -361,6 +728,29 @@ export class V0MenuRepository {
     }
   }
 
+  async listBaseComponentsForMenuItem(input: {
+    tenantId: string;
+    menuItemId: string;
+  }): Promise<MenuItemBaseComponentRow[]> {
+    const result = await this.db.query<MenuItemBaseComponentRow>(
+      `SELECT
+         id,
+         tenant_id,
+         menu_item_id,
+         stock_item_id,
+         quantity_in_base_unit::FLOAT8 AS quantity_in_base_unit,
+         tracking_mode,
+         created_at,
+         updated_at
+       FROM v0_menu_item_base_components
+       WHERE tenant_id = $1
+         AND menu_item_id = $2
+       ORDER BY created_at ASC`,
+      [input.tenantId, input.menuItemId]
+    );
+    return result.rows;
+  }
+
   async setComponentDeltasForModifierOption(input: {
     tenantId: string;
     modifierOptionId: string;
@@ -400,5 +790,49 @@ export class V0MenuRepository {
         ]
       );
     }
+  }
+
+  async listComponentDeltasByModifierOptionIds(input: {
+    tenantId: string;
+    modifierOptionIds: readonly string[];
+  }): Promise<MenuModifierOptionDeltaRow[]> {
+    if (input.modifierOptionIds.length === 0) {
+      return [];
+    }
+    const result = await this.db.query<MenuModifierOptionDeltaRow>(
+      `SELECT
+         id,
+         tenant_id,
+         modifier_option_id,
+         stock_item_id,
+         quantity_delta_in_base_unit::FLOAT8 AS quantity_delta_in_base_unit,
+         tracking_mode,
+         created_at,
+         updated_at
+       FROM v0_menu_modifier_option_component_deltas
+       WHERE tenant_id = $1
+         AND modifier_option_id = ANY($2::UUID[])
+       ORDER BY modifier_option_id ASC, created_at ASC`,
+      [input.tenantId, input.modifierOptionIds]
+    );
+    return result.rows;
+  }
+
+  async isBranchEntitlementEnabled(input: {
+    tenantId: string;
+    branchId: string;
+    entitlementKey: string;
+  }): Promise<boolean> {
+    const result = await this.db.query<{ enforcement: string }>(
+      `SELECT enforcement
+       FROM v0_branch_entitlements
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND entitlement_key = $3
+       LIMIT 1`,
+      [input.tenantId, input.branchId, input.entitlementKey]
+    );
+    const enforcement = String(result.rows[0]?.enforcement ?? "").toUpperCase();
+    return enforcement === "ENABLED";
   }
 }

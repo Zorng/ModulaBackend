@@ -30,6 +30,26 @@ Branch-scoped capacity (future modeling):
 | `attendance.checkIn` | `module.workforce` |
 | `attendance.checkOut` | `module.workforce` |
 | `attendance.listMine` | `module.workforce` |
+| `menu.items.list` | `core.pos` |
+| `menu.items.read` | `core.pos` |
+| `menu.items.create` | `core.pos` |
+| `menu.items.update` | `core.pos` |
+| `menu.items.archive` | `core.pos` |
+| `menu.items.restore` | `core.pos` |
+| `menu.items.visibility.set` | `core.pos` |
+| `menu.categories.list` | `core.pos` |
+| `menu.categories.create` | `core.pos` |
+| `menu.categories.update` | `core.pos` |
+| `menu.categories.archive` | `core.pos` |
+| `menu.modifierGroups.list` | `core.pos` |
+| `menu.modifierGroups.create` | `core.pos` |
+| `menu.modifierGroups.update` | `core.pos` |
+| `menu.modifierGroups.archive` | `core.pos` |
+| `menu.modifierOptions.create` | `core.pos` |
+| `menu.modifierOptions.update` | `core.pos` |
+| `menu.modifierOptions.archive` | `core.pos` |
+| `menu.composition.upsert` | `core.pos` |
+| `menu.composition.evaluate` | `core.pos` |
 
 ## Planned Expansion (Next POS Modules)
 

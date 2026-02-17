@@ -38,6 +38,28 @@ Legend:
 | `subscription.state.current.read` | TENANT | READ | - | - |
 | `subscription.entitlements.currentBranch.read` | BRANCH | READ | - | - |
 | `audit.view` | TENANT | READ | OWNER, ADMIN | - |
+| `policy.currentBranch.read` | BRANCH | READ | - | - |
+| `policy.currentBranch.update` | BRANCH | WRITE | OWNER, ADMIN | - |
+| `menu.items.list` | BRANCH | READ | - | `core.pos` |
+| `menu.items.read` | BRANCH | READ | - | `core.pos` |
+| `menu.items.create` | BRANCH | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.items.update` | BRANCH | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.items.archive` | BRANCH | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.items.restore` | BRANCH | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.items.visibility.set` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.categories.list` | TENANT | READ | - | `core.pos` |
+| `menu.categories.create` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.categories.update` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.categories.archive` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.modifierGroups.list` | TENANT | READ | - | `core.pos` |
+| `menu.modifierGroups.create` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.modifierGroups.update` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.modifierGroups.archive` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.modifierOptions.create` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.modifierOptions.update` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.modifierOptions.archive` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.composition.upsert` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
+| `menu.composition.evaluate` | TENANT | READ | - | `core.pos` |
 
 ## Route Mapping
 
@@ -74,6 +96,28 @@ Legend:
 | GET | `/subscription/state/current` | `subscription.state.current.read` | `token` | - |
 | GET | `/subscription/entitlements/current-branch` | `subscription.entitlements.currentBranch.read` | `token` | `token` |
 | GET | `/audit/events` | `audit.view` | `token` | - |
+| GET | `/policy/current-branch` | `policy.currentBranch.read` | `token` | `token` |
+| PATCH | `/policy/current-branch` | `policy.currentBranch.update` | `token` | `token` |
+| GET | `/menu/items` | `menu.items.list` | `token` | `token` |
+| GET | `/menu/items/:id` | `menu.items.read` | `token` | `token` |
+| POST | `/menu/items` | `menu.items.create` | `token` | `token` |
+| PATCH | `/menu/items/:id` | `menu.items.update` | `token` | `token` |
+| POST | `/menu/items/:id/archive` | `menu.items.archive` | `token` | `token` |
+| POST | `/menu/items/:id/restore` | `menu.items.restore` | `token` | `token` |
+| PUT | `/menu/items/:id/visibility` | `menu.items.visibility.set` | `token` | - |
+| GET | `/menu/categories` | `menu.categories.list` | `token` | - |
+| POST | `/menu/categories` | `menu.categories.create` | `token` | - |
+| PATCH | `/menu/categories/:id` | `menu.categories.update` | `token` | - |
+| POST | `/menu/categories/:id/archive` | `menu.categories.archive` | `token` | - |
+| GET | `/menu/modifier-groups` | `menu.modifierGroups.list` | `token` | - |
+| POST | `/menu/modifier-groups` | `menu.modifierGroups.create` | `token` | - |
+| PATCH | `/menu/modifier-groups/:id` | `menu.modifierGroups.update` | `token` | - |
+| POST | `/menu/modifier-groups/:id/archive` | `menu.modifierGroups.archive` | `token` | - |
+| POST | `/menu/modifier-groups/:id/options` | `menu.modifierOptions.create` | `token` | - |
+| PATCH | `/menu/modifier-groups/:id/options/:optionId` | `menu.modifierOptions.update` | `token` | - |
+| POST | `/menu/modifier-groups/:id/options/:optionId/archive` | `menu.modifierOptions.archive` | `token` | - |
+| PUT | `/menu/items/:id/composition` | `menu.composition.upsert` | `token` | - |
+| POST | `/menu/items/:id/composition/evaluate` | `menu.composition.evaluate` | `token` | - |
 
 ## Notes
 

@@ -4,6 +4,29 @@ This document locks the target `/v0/menu` HTTP contract for menu catalog, catego
 
 Base path: `/v0/menu`
 
+Implementation status (Phase 3):
+- Implemented now:
+  - `GET /v0/menu/items`
+  - `GET /v0/menu/items/:menuItemId`
+  - `POST /v0/menu/items`
+  - `PATCH /v0/menu/items/:menuItemId`
+  - `POST /v0/menu/items/:menuItemId/archive`
+  - `POST /v0/menu/items/:menuItemId/restore`
+  - `PUT /v0/menu/items/:menuItemId/visibility`
+  - `GET /v0/menu/categories`
+  - `POST /v0/menu/categories`
+  - `PATCH /v0/menu/categories/:categoryId`
+  - `POST /v0/menu/categories/:categoryId/archive`
+  - `GET /v0/menu/modifier-groups`
+  - `POST /v0/menu/modifier-groups`
+  - `PATCH /v0/menu/modifier-groups/:groupId`
+  - `POST /v0/menu/modifier-groups/:groupId/archive`
+  - `POST /v0/menu/modifier-groups/:groupId/options`
+  - `PATCH /v0/menu/modifier-groups/:groupId/options/:optionId`
+  - `POST /v0/menu/modifier-groups/:groupId/options/:optionId/archive`
+  - `PUT /v0/menu/items/:menuItemId/composition`
+  - `POST /v0/menu/items/:menuItemId/composition/evaluate`
+
 ## Conventions
 
 - JSON casing: `camelCase`
