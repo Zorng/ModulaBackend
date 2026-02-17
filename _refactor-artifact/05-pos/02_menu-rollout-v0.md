@@ -1,6 +1,6 @@
 # Menu Module Rollout (v0)
 
-Status: In progress (Phase 4 next)
+Status: Completed
 Owner context: POSOperation
 
 ## Goal
@@ -48,5 +48,5 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 | 1 Boundary + Contract lock | Completed | Locked module boundary in `_refactor-artifact/02-boundary/menu-boundary-v0.md`; drafted canonical API contract in `api_contract/menu-v0.md` with action/event surface and entitlement constraints for tracked composition writes. |
 | 2 Data model + repositories | Completed | Added schema migration `migrations/019_create_v0_menu_tables.sql` for menu/catalog/modifier/composition/visibility owned tables; scaffolded module repositories and idempotency/event contract anchors in `src/modules/v0/menu/infra/repository.ts` and `src/modules/v0/menu/app/command-contract.ts`. |
 | 3 Commands/queries + access control | Completed | Implemented full contract command/query surface in `src/modules/v0/menu/api/router.ts` and `src/modules/v0/menu/app/service.ts` including update/archive/restore flows for items/categories/modifier groups/options plus tenant-wide listing (`GET /v0/menu/items/all`) for cross-branch management; all writes use idempotent transactional `business + audit + outbox`; access-control action catalog and route registry now cover full menu endpoint set. |
-| 4 Integration + reliability | Not started | |
-| 5 Close-out | Not started | |
+| 4 Integration + reliability | Completed | Added integration coverage in `src/integration-tests/v0-menu.int.test.ts` for tenant-wide listing (`/v0/menu/items/all`), branchId filtering, role gates, create-command idempotency replay/conflict, transactional rollback on forced outbox failure with retry, and outbox dispatcher publish verification for `MENU_ITEM_CREATED`. |
+| 5 Close-out | Completed | Synced rollout status, command outbox catalog, ACL/entitlement artifacts, and API contract frontend notes (including tenant-wide management listing via `/v0/menu/items/all`). |

@@ -456,5 +456,6 @@ Common errors across write endpoints:
 ## Frontend Rollout Notes
 
 - On branch switch, reload menu list from backend (`GET /v0/menu/items`) rather than relying on cached labels.
+- For management screens needing cross-branch catalog data, use `GET /v0/menu/items/all` and render `visibleBranchIds` from backend response.
 - Treat uncategorized as derived view (`categoryId = null`), not a mutable category entity.
 - For write retries, reuse same `Idempotency-Key` to safely handle network retries.
