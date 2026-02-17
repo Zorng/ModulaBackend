@@ -184,6 +184,20 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     actionKey: "audit.view",
     tenantSource: "token",
   },
+  {
+    method: "GET",
+    pattern: /^\/policy\/current-branch$/,
+    actionKey: "policy.currentBranch.read",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/policy\/current-branch$/,
+    actionKey: "policy.currentBranch.update",
+    tenantSource: "token",
+    branchSource: "token",
+  },
 ];
 
 export function matchProtectedRoute(

@@ -1,6 +1,6 @@
 # Policy Module Boundary (v0)
 
-Status: Phase 1-2 locked  
+Status: Phase 1-3 locked  
 Owner context: `PlatformSystems` (product capability)  
 Canonical route prefix: `/v0/policy`
 
@@ -67,7 +67,7 @@ Canonical route prefix: `/v0/policy`
   - `BRANCH_CONTEXT_REQUIRED`
   - `NO_MEMBERSHIP`
   - `NO_BRANCH_ACCESS`
-  - `ROLE_NOT_ALLOWED`
+  - `PERMISSION_DENIED`
   - `BRANCH_FROZEN`
   - `SUBSCRIPTION_FROZEN`
   - `IDEMPOTENCY_KEY_REQUIRED`
@@ -75,6 +75,7 @@ Canonical route prefix: `/v0/policy`
   - `IDEMPOTENCY_IN_PROGRESS`
   - `POLICY_VALIDATION_FAILED`
   - `POLICY_PATCH_EMPTY`
+  - `BRANCH_NOT_FOUND`
 
 ## 5) Queries (Read Surface)
 
@@ -87,6 +88,7 @@ Canonical route prefix: `/v0/policy`
   - `BRANCH_CONTEXT_REQUIRED`
   - `NO_MEMBERSHIP`
   - `NO_BRANCH_ACCESS`
+  - `BRANCH_NOT_FOUND`
 
 ## 6) Event Contract
 

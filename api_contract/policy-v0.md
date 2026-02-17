@@ -91,6 +91,7 @@ Errors:
 - `401` missing/invalid access token
 - `403` `TENANT_CONTEXT_REQUIRED` or `BRANCH_CONTEXT_REQUIRED`
 - `403` `NO_MEMBERSHIP` or `NO_BRANCH_ACCESS`
+- `404` `BRANCH_NOT_FOUND`
 
 ### 2) Update current-branch policy (partial)
 
@@ -147,9 +148,10 @@ Errors:
 - `401` missing/invalid access token
 - `403` `TENANT_CONTEXT_REQUIRED` or `BRANCH_CONTEXT_REQUIRED`
 - `403` `NO_MEMBERSHIP` or `NO_BRANCH_ACCESS`
-- `403` `ROLE_NOT_ALLOWED`
+- `403` `PERMISSION_DENIED`
 - `403` `BRANCH_FROZEN` (writes blocked on frozen branch)
 - `403` `SUBSCRIPTION_FROZEN` (tenant frozen for writes)
+- `404` `BRANCH_NOT_FOUND`
 - `422` `IDEMPOTENCY_KEY_REQUIRED`
 - `409` `IDEMPOTENCY_CONFLICT`
 - `409` `IDEMPOTENCY_IN_PROGRESS`

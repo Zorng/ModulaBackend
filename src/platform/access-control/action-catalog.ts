@@ -68,4 +68,13 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     allowedRoles: ["OWNER", "ADMIN"],
   },
+  "policy.currentBranch.read": {
+    scope: "BRANCH",
+    effect: "READ",
+  },
+  "policy.currentBranch.update": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+  },
 };
