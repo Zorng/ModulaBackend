@@ -8,7 +8,7 @@
 | Platform | Access Control Action Catalog v0 | Active | `_refactor-artifact/01-platform/access-control-action-catalog-v0.md` |
 | Platform | Entitlement Catalog v0 | Active | `_refactor-artifact/01-platform/entitlement-catalog-v0.md` |
 | Platform | v0 Command Outbox Event Catalog | Active | `_refactor-artifact/01-platform/v0-command-outbox-event-catalog.md` |
-| Platform | Observability Baseline Rollout v0 | In Progress (O2 complete) | `_refactor-artifact/01-platform/observability-baseline-rollout-v0.md` |
+| Platform | Observability Baseline Rollout v0 | In Progress (O3 complete) | `_refactor-artifact/01-platform/observability-baseline-rollout-v0.md` |
 | Platform | Observability Contract v0 | Active | `_refactor-artifact/01-platform/observability-contract-v0.md` |
 | Boundary | Module Boundary Realignment v0 | Completed through B6 | `_refactor-artifact/02-boundary/module-boundary-realignment-v0.md` |
 | Boundary | Module Boundary Template v0 | Template | `_refactor-artifact/02-boundary/module-boundary-template-v0.md` |
@@ -19,4 +19,4 @@
 
 ## Next Recommended Artifact
 
-- Continue `_refactor-artifact/01-platform/observability-baseline-rollout-v0.md` with Phase O3 (instrumentation hooks).
+- Continue `_refactor-artifact/01-platform/observability-baseline-rollout-v0.md` with Phase O4 (metrics + health baseline).

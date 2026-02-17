@@ -69,6 +69,8 @@ Baseline event names:
 - `outbox.dispatch.batch_loaded`
 - `outbox.dispatch.published`
 - `outbox.dispatch.failed`
+- `outbox.dispatch.tick_completed`
+- `outbox.dispatch.tick_failed`
 
 ## Metrics Contract (Baseline)
 

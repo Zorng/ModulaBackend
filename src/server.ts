@@ -8,6 +8,7 @@ import {
 } from "./platform/http/middleware/error-handler.js";
 import { accessControlHook } from "./platform/http/middleware/access-control-hook.js";
 import { requestContextMiddleware } from "./platform/http/middleware/request-context.js";
+import { requestTelemetryMiddleware } from "./platform/http/middleware/request-telemetry.js";
 import { v0Router } from "./platform/http/routes/v0.js";
 import { startV0CommandOutboxDispatcher } from "./platform/outbox/dispatcher.js";
 
@@ -33,6 +34,7 @@ app.use(
 
 app.use(express.json());
 app.use(requestContextMiddleware);
+app.use(requestTelemetryMiddleware);
 
 app.get("/health", async (_req, res) => {
   try {

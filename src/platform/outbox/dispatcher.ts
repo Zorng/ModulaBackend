@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { eventBus } from "../events/index.js";
+import { log } from "#logger";
 
 type V0OutboxRow = {
   id: string;
@@ -50,7 +51,19 @@ function getCompatibilityEventTypes(eventType: string): string[] {
   }
 }
 
-async function processBatch(input: { client: PoolClient; batchSize: number }): Promise<void> {
+async function processBatch(input: { client: PoolClient; batchSize: number }): Promise<{
+  loadedCount: number;
+  publishedCount: number;
+  failedCount: number;
+  backlogCount: number;
+}> {
+  const backlogResult = await input.client.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+     FROM v0_command_outbox
+     WHERE published_at IS NULL`
+  );
+  const backlogCount = Number(backlogResult.rows[0]?.count ?? "0");
+
   const rows = await input.client.query<V0OutboxRow>(
     `SELECT
        id,
@@ -75,7 +88,19 @@ async function processBatch(input: { client: PoolClient; batchSize: number }): P
     [input.batchSize]
   );
 
+  const loadedCount = rows.rows.length;
+  let publishedCount = 0;
+  let failedCount = 0;
+
+  log.debug("outbox.dispatch.batch_loaded", {
+    event: "outbox.dispatch.batch_loaded",
+    loadedCount,
+    backlogCount,
+    batchSize: input.batchSize,
+  });
+
   for (const row of rows.rows) {
+    const publishStartedAtMs = Date.now();
     try {
       const event: V0CommandOutboxEvent = {
         type: row.event_type,
@@ -107,7 +132,18 @@ async function processBatch(input: { client: PoolClient; batchSize: number }): P
          WHERE id = $1`,
         [row.id]
       );
-    } catch {
+      publishedCount += 1;
+      log.debug("outbox.dispatch.published", {
+        event: "outbox.dispatch.published",
+        outboxId: row.id,
+        tenantId: row.tenant_id,
+        branchId: row.branch_id,
+        actionKey: row.action_key,
+        eventType: row.event_type,
+        outcome: row.outcome,
+        durationMs: Date.now() - publishStartedAtMs,
+      });
+    } catch (error) {
       await input.client.query(
         `UPDATE v0_command_outbox
          SET
@@ -115,8 +151,27 @@ async function processBatch(input: { client: PoolClient; batchSize: number }): P
          WHERE id = $1`,
         [row.id]
       );
+      failedCount += 1;
+      log.error("outbox.dispatch.failed", {
+        event: "outbox.dispatch.failed",
+        outboxId: row.id,
+        tenantId: row.tenant_id,
+        branchId: row.branch_id,
+        actionKey: row.action_key,
+        eventType: row.event_type,
+        outcome: row.outcome,
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - publishStartedAtMs,
+      });
     }
   }
+
+  return {
+    loadedCount,
+    publishedCount,
+    failedCount,
+    backlogCount,
+  };
 }
 
 export function startV0CommandOutboxDispatcher(input: DispatcherInput): {
@@ -126,13 +181,27 @@ export function startV0CommandOutboxDispatcher(input: DispatcherInput): {
   const batchSize = input.batchSize ?? 100;
 
   const timer = setInterval(async () => {
+    const tickStartedAtMs = Date.now();
     const client = await input.db.connect();
     try {
       await client.query("BEGIN");
-      await processBatch({ client, batchSize });
+      const summary = await processBatch({ client, batchSize });
       await client.query("COMMIT");
-    } catch {
+      log.debug("outbox.dispatch.tick_completed", {
+        event: "outbox.dispatch.tick_completed",
+        loadedCount: summary.loadedCount,
+        publishedCount: summary.publishedCount,
+        failedCount: summary.failedCount,
+        backlogCount: summary.backlogCount,
+        durationMs: Date.now() - tickStartedAtMs,
+      });
+    } catch (error) {
       await client.query("ROLLBACK");
+      log.error("outbox.dispatch.tick_failed", {
+        event: "outbox.dispatch.tick_failed",
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - tickStartedAtMs,
+      });
     } finally {
       client.release();
     }
