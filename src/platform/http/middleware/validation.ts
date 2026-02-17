@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import type { ZodTypeAny, ZodObject } from "zod";
 import { ZodError } from "zod";
+import { log } from "#logger";
 
 export const validate = (schema: {
   body?: ZodObject<any>;
@@ -18,7 +19,11 @@ export const validate = (schema: {
       }
 
       if (schema.params) {
-        console.log("[Validation Debug] Incoming req.params:", req.params);
+        log.debug("http.validation.params.received", {
+          event: "http.validation.params.received",
+          requestId: req.v0Context?.requestId,
+          params: req.params,
+        });
         req.params = (await schema.params.parseAsync(req.params)) as any;
       }
 
@@ -35,10 +40,15 @@ export const validate = (schema: {
         });
       }
 
-      console.error("[Validation Unexpected Error]", error);
+      log.error("http.validation.failed_unexpected", {
+        event: "http.validation.failed_unexpected",
+        requestId: req.v0Context?.requestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return res.status(500).json({
         error: "Internal Server Error",
         message: "Validation failed unexpectedly",
+        requestId: req.v0Context?.requestId,
       });
     }
   };

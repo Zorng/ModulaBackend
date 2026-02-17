@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { log } from "#logger";
 
 const router = Router();
 
@@ -73,7 +74,14 @@ router.get(
         res.status(404).json({ error: "Image not found" });
       }
     } catch (error) {
-      console.error("[Image Proxy] Error:", error);
+      log.error("image_proxy.fetch_failed", {
+        event: "image_proxy.fetch_failed",
+        requestId: req.v0Context?.requestId,
+        tenantId: req.params?.tenantId,
+        module: req.params?.module,
+        filename: req.params?.filename,
+        error: error instanceof Error ? error.message : String(error),
+      });
 
       if ((error as any).name === "NoSuchKey") {
         res.status(404).json({ error: "Image not found" });

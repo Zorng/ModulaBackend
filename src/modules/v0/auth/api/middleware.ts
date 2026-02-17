@@ -9,11 +9,7 @@ type V0AuthClaims = {
 };
 
 export interface V0AuthRequest extends Request {
-  v0Auth?: {
-    accountId: string;
-    tenantId: string | null;
-    branchId: string | null;
-  };
+  v0Auth?: Request["v0Auth"];
 }
 
 export function requireV0Auth(
@@ -42,6 +38,13 @@ export function requireV0Auth(
       tenantId: claims.tenantId ?? null,
       branchId: claims.branchId ?? null,
     };
+
+    if (req.v0Context) {
+      req.v0Context.actorType = "ACCOUNT";
+      req.v0Context.actorAccountId = claims.accountId;
+      req.v0Context.tenantId = claims.tenantId ?? null;
+      req.v0Context.branchId = claims.branchId ?? null;
+    }
     next();
   } catch {
     res.status(401).json({ success: false, error: "invalid access token" });

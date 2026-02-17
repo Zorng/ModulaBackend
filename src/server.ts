@@ -7,6 +7,7 @@ import {
   notFoundHandler,
 } from "./platform/http/middleware/error-handler.js";
 import { accessControlHook } from "./platform/http/middleware/access-control-hook.js";
+import { requestContextMiddleware } from "./platform/http/middleware/request-context.js";
 import { v0Router } from "./platform/http/routes/v0.js";
 import { startV0CommandOutboxDispatcher } from "./platform/outbox/dispatcher.js";
 
@@ -25,11 +26,13 @@ app.use(
     origin: process.env.CORS_ORIGIN || "*",
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
+    exposedHeaders: ["X-Request-Id"],
   })
 );
 
 app.use(express.json());
+app.use(requestContextMiddleware);
 
 app.get("/health", async (_req, res) => {
   try {
@@ -55,9 +58,17 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT ?? 3000;
 app.listen(PORT, () => {
-  log.info(`server listening on http://localhost:${PORT}`);
+  log.info("server.started", {
+    event: "server.started",
+    port: Number(PORT),
+    url: `http://localhost:${PORT}`,
+  });
   if (shouldRunOutboxDispatcher) {
-    log.info("v0 command outbox dispatcher started");
+    log.info("outbox.dispatcher.started", {
+      event: "outbox.dispatcher.started",
+      pollIntervalMs: Number(process.env.V0_OUTBOX_DISPATCHER_INTERVAL_MS ?? 1000),
+      batchSize: Number(process.env.V0_OUTBOX_DISPATCHER_BATCH_SIZE ?? 100),
+    });
   }
 });
 

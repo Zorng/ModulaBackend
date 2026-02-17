@@ -1,5 +1,6 @@
 // src/platform/http/middleware/error-handler.ts
 import type { Request, Response, NextFunction } from "express";
+import { log } from "#logger";
 import {
   DomainError,
   NotFoundError,
@@ -14,8 +15,11 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
-  // Log error for debugging (use proper logger in production)
-  console.error("[Error Handler]", {
+  const requestId = req.v0Context?.requestId;
+
+  log.error("http.request.failed", {
+    event: "http.request.failed",
+    requestId,
     url: req.url,
     method: req.method,
     error: err.message,
@@ -27,6 +31,7 @@ export const errorHandler = (
     return res.status(404).json({
       error: err.name,
       message: err.message,
+      requestId,
     });
   }
 
@@ -34,6 +39,7 @@ export const errorHandler = (
     return res.status(409).json({
       error: err.name,
       message: err.message,
+      requestId,
     });
   }
 
@@ -41,6 +47,7 @@ export const errorHandler = (
     return res.status(403).json({
       error: err.name,
       message: err.message,
+      requestId,
     });
   }
 
@@ -48,6 +55,7 @@ export const errorHandler = (
     return res.status(400).json({
       error: err.name,
       message: err.message,
+      requestId,
     });
   }
 
@@ -57,6 +65,7 @@ export const errorHandler = (
       error: err.name,
       code: err.code,
       message: err.message,
+      requestId,
     });
   }
 
@@ -69,6 +78,7 @@ export const errorHandler = (
       return res.status(409).json({
         error: "Conflict",
         message: "A record with this value already exists",
+        requestId,
       });
     }
 
@@ -77,6 +87,7 @@ export const errorHandler = (
       return res.status(400).json({
         error: "Bad Request",
         message: "Referenced record does not exist",
+        requestId,
       });
     }
 
@@ -84,6 +95,7 @@ export const errorHandler = (
     return res.status(500).json({
       error: "Database Error",
       message: "A database error occurred",
+      requestId,
     });
   }
 
@@ -94,6 +106,7 @@ export const errorHandler = (
       process.env.NODE_ENV === "production"
         ? "An unexpected error occurred"
         : err.message,
+    requestId,
   });
 };
 
@@ -110,5 +123,6 @@ export const notFoundHandler = (
   res.status(404).json({
     error: "Not Found",
     message: `Route ${req.method} ${req.path} not found`,
+    requestId: req.v0Context?.requestId,
   });
 };

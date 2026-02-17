@@ -33,11 +33,20 @@ export function createAccessControlHook(deps: HookDeps = {}) {
       deny(res, 403, "ACCESS_CONTROL_ROUTE_NOT_REGISTERED");
       return;
     }
+    if (req.v0Context) {
+      req.v0Context.actionKey = route.actionKey;
+    }
 
     const claims = getClaimsFromRequest(req, jwtSecret);
     if (!claims) {
       deny(res, 401, "INVALID_ACCESS_TOKEN");
       return;
+    }
+    if (req.v0Context) {
+      req.v0Context.actorType = "ACCOUNT";
+      req.v0Context.actorAccountId = claims.accountId;
+      req.v0Context.tenantId = claims.tenantId ?? null;
+      req.v0Context.branchId = claims.branchId ?? null;
     }
 
     try {

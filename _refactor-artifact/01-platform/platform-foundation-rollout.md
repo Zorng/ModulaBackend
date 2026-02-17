@@ -178,6 +178,8 @@ Exit criteria:
   - `_implementation_decisions/ADR-20260215-v0-command-audit-outbox-atomicity.md`
 - Next execution tracker:
   - `_refactor-artifact/03-orgaccount/orgaccount-overhaul-pos-readiness.md`
+- Observability companion tracker (baseline-now, full-later):
+  - `_refactor-artifact/01-platform/observability-baseline-rollout-v0.md`
 
 ## Flagged Deviation (OrgAccount Overhaul)
 

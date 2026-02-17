@@ -2,6 +2,7 @@
 import { PoolClient } from "pg";
 import type { DomainEvent } from "../../shared/events.js";
 import { eventBus } from "./index.js";
+import { log } from "#logger";
 
 /**
  * Write event to outbox table within a transaction
@@ -52,8 +53,10 @@ export function startOutboxDispatcher(db: any, intervalMs = 1000) {
         );
       }
     } catch (error) {
-      console.error("Outbox dispatcher error:", error);
-      // TODO: Add proper logging and alerting
+      log.error("outbox.dispatch.failed", {
+        event: "outbox.dispatch.failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }, intervalMs);
 
