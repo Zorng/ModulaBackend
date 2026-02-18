@@ -1,18 +1,18 @@
 import type { Pool } from "pg";
 import { Router, type Response } from "express";
-import { requireV0Auth, type V0AuthRequest } from "../../auth/api/middleware.js";
+import { requireV0Auth, type V0AuthRequest } from "../../../auth/api/middleware.js";
 import { V0AttendanceError, V0AttendanceService } from "../app/service.js";
 import { V0AttendanceRepository } from "../infra/repository.js";
 import {
   getIdempotencyKeyFromHeader,
   V0IdempotencyError,
   V0IdempotencyService,
-} from "../../../../platform/idempotency/service.js";
-import { V0AuditService } from "../../audit/app/service.js";
-import { V0AuditRepository } from "../../audit/infra/repository.js";
-import { TransactionManager } from "../../../../platform/db/transactionManager.js";
-import { V0CommandOutboxRepository } from "../../../../platform/outbox/repository.js";
-import { buildCommandDedupeKey } from "../../../../shared/utils/dedupe.js";
+} from "../../../../../platform/idempotency/service.js";
+import { V0AuditService } from "../../../audit/app/service.js";
+import { V0AuditRepository } from "../../../audit/infra/repository.js";
+import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
+import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
+import { buildCommandDedupeKey } from "../../../../../shared/utils/dedupe.js";
 
 type AttendanceWriteBody =
   | {

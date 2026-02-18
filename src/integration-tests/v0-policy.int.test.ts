@@ -11,7 +11,7 @@ import {
 } from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
-import { bootstrapV0PolicyModule } from "../modules/v0/policy/index.js";
+import { bootstrapV0PolicyModule } from "../modules/v0/businessSystem/policy/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 
 function uniquePhone(): string {

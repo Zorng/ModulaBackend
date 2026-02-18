@@ -2,7 +2,7 @@
 
 This document describes the current branch contract for `/v0`, including:
 - branch profile/visibility reads
-- first-branch activation orchestration endpoints
+- branch activation orchestration endpoints
 
 Base path: `/v0/org`
 
@@ -109,6 +109,10 @@ Errors:
 
 Auth: `Authorization: Bearer <accessToken>`
 
+Idempotency (optional but recommended):
+- Request header: `Idempotency-Key: <string>`
+- Replay response header: `Idempotency-Replayed: true`
+
 Body:
 
 ```json
@@ -172,6 +176,8 @@ Errors:
 - `403` tenant context missing or role not allowed
 - `403` subscription upgrade blocked while tenant is `PAST_DUE` (`code = SUBSCRIPTION_UPGRADE_REQUIRED`)
 - `409` branch fair-use hard limit reached (`code = FAIRUSE_HARD_LIMIT_EXCEEDED`)
+- `409` idempotency conflict (`code = IDEMPOTENCY_CONFLICT`) when same key is reused with a different payload
+- `409` idempotency in-progress (`code = IDEMPOTENCY_IN_PROGRESS`) if the same key is still processing
 - `429` branch activation rate-limited (`code = FAIRUSE_RATE_LIMITED`)
 - `422` missing `branchName`
 
@@ -238,6 +244,8 @@ Errors:
 - `403` subscription upgrade blocked while tenant is `PAST_DUE` (`code = SUBSCRIPTION_UPGRADE_REQUIRED`)
 - `402` payment required/not confirmed (`code = BRANCH_ACTIVATION_PAYMENT_REQUIRED`)
 - `409` draft/invoice not payable (`code = DRAFT_NOT_PENDING_PAYMENT` or `INVOICE_NOT_PAYABLE`)
+- `409` idempotency conflict (`code = IDEMPOTENCY_CONFLICT`) when same key is reused with a different payload
+- `409` idempotency in-progress (`code = IDEMPOTENCY_IN_PROGRESS`) if the same key is still processing
 - `404` activation draft not found (`code = DRAFT_NOT_FOUND`)
 - `422` missing `draftId` or `paymentToken`
 
@@ -248,6 +256,4 @@ Target behavior for branch-as-billable-workspace refinement is tracked in:
 
 Candidate future additions:
 - explicit branch list management endpoint (`GET /v0/org/branches`)
-- subscription-state-gated upgrade denials for blocked activation paths
-- richer payment/subscription-oriented denial family for blocked upgrade paths
-  - example: `SUBSCRIPTION_UPGRADE_REQUIRED`
+- richer subscription denial family for advanced billing states beyond current baseline

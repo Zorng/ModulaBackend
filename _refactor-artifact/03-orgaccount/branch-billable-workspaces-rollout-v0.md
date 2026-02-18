@@ -1,6 +1,6 @@
 # OrgAccount Branch Billable Workspaces Rollout (v0)
 
-Status: In Progress  
+Status: Completed  
 Owner: backend  
 Started: 2026-02-17
 
@@ -91,5 +91,32 @@ Notes:
 | S2 Data Model | Completed | Added activation typing (`FIRST_BRANCH`/`ADDITIONAL_BRANCH`), invoice typing, and subscription billing anchor timestamp for first paid activation. |
 | S3 Command Implementation | Completed | Activation flow supports repeated paid activations, payment-gated confirm, auto-assignment, atomic writes. |
 | S4 Access Control + Entitlement Wiring | Completed | Route/action wiring in place; `PAST_DUE` upgrade gating enforced (`SUBSCRIPTION_UPGRADE_REQUIRED`); fair-use branch activation guards added (`FAIRUSE_HARD_LIMIT_EXCEEDED`, `FAIRUSE_RATE_LIMITED`). |
-| S5 Integration + Reliability | In progress | Integration coverage includes first/additional activation typing, unpaid confirmation, past-due upgrade deny, and fair-use guards; rollback/outbox-failure matrix still incomplete. |
-| S6 Close-Out | In progress | Tracker/index/contracts updated; final close-out depends on S2/S4/S5 completion. |
+| S5 Integration + Reliability | Completed | Added coverage for idempotency replay/conflict (initiate+confirm), forced outbox-failure rollback with idempotency cleanup, and outbox dispatcher publish verification for branch activation events. |
+| S6 Close-Out | Completed | Tracker/index/orgaccount plan aligned, outbox catalog verified, branch API contract finalized for activation typing + idempotency + denial codes. |
+
+## Close-Out Summary
+
+- Branch monetization model locked as **billable workspace** (no reusable slot abstraction).
+- Branch activation flow supports both:
+  - first branch activation (`activationType = FIRST_BRANCH`)
+  - additional branch activation (`activationType = ADDITIONAL_BRANCH`)
+- Billing anchor is set on first paid activation only.
+- Access-control and guard rails:
+  - `SUBSCRIPTION_UPGRADE_REQUIRED` for upgrade actions in `PAST_DUE`
+  - `SUBSCRIPTION_FROZEN` for write actions in `FROZEN`
+  - fair-use protection on activation initiate:
+    - `FAIRUSE_HARD_LIMIT_EXCEEDED`
+    - `FAIRUSE_RATE_LIMITED`
+- Reliability contract verified by integration tests:
+  - idempotency replay/conflict (`initiate` and `confirm`)
+  - forced outbox-failure rollback (no partial writes)
+  - dispatcher publish for branch activation events
+
+## Frontend Notes
+
+- Use `activationType` and `invoice.invoiceType` from activation responses for UX labels:
+  - first activation vs additional activation.
+- Treat `403 SUBSCRIPTION_UPGRADE_REQUIRED` as recoverable billing action:
+  - show pay/resolve subscription CTA.
+- Idempotency is supported via `Idempotency-Key` header; replay is signaled by:
+  - `Idempotency-Replayed: true`.

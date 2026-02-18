@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
-import { V0IdempotencyRepository } from "../../../platform/idempotency/repository.js";
-import { V0IdempotencyService } from "../../../platform/idempotency/service.js";
+import { V0IdempotencyRepository } from "../../../../platform/idempotency/repository.js";
+import { V0IdempotencyService } from "../../../../platform/idempotency/service.js";
 import { createV0MenuRouter } from "./api/router.js";
 import {
   V0_MENU_ACTION_KEYS,

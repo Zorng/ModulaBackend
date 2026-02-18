@@ -2,8 +2,8 @@ import type { Pool } from "pg";
 import { createV0AttendanceRouter } from "./api/router.js";
 import { V0AttendanceService } from "./app/service.js";
 import { V0AttendanceRepository } from "./infra/repository.js";
-import { V0IdempotencyRepository } from "../../../platform/idempotency/repository.js";
-import { V0IdempotencyService } from "../../../platform/idempotency/service.js";
+import { V0IdempotencyRepository } from "../../../../platform/idempotency/repository.js";
+import { V0IdempotencyService } from "../../../../platform/idempotency/service.js";
 
 export function bootstrapV0AttendanceModule(pool: Pool) {
   const repo = new V0AttendanceRepository(pool);

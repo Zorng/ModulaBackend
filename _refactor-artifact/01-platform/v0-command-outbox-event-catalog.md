@@ -56,6 +56,7 @@ type V0CommandOutboxEvent = {
   - entityType: `branch`
   - canonical endpoint metadata: `/v0/org/branches/activation/confirm`
   - payload includes `draftId`, `invoiceId`, `paymentConfirmationRef`
+  - dispatcher publish verification is covered in `src/integration-tests/v0-first-branch-activation.int.test.ts`
 
 ### OrgAccount / Membership (canonical)
 - `ORG_MEMBERSHIP_INVITED`

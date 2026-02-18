@@ -1,7 +1,7 @@
 import {
   buildCommandDedupeKey,
   type CommandOutcome,
-} from "../../../../shared/utils/dedupe.js";
+} from "../../../../../shared/utils/dedupe.js";
 
 export type PolicyCommandOutcome = CommandOutcome;
 

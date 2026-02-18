@@ -6,7 +6,7 @@ import crypto from "crypto";
 import { createTestPool } from "../test-utils/db.js";
 import { createActiveBranch, seedDefaultBranchEntitlements } from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
-import { bootstrapV0AttendanceModule } from "../modules/v0/attendance/index.js";
+import { bootstrapV0AttendanceModule } from "../modules/v0/hr/attendance/index.js";
 import { bootstrapV0StaffManagementModule } from "../modules/v0/hr/staffManagement/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 

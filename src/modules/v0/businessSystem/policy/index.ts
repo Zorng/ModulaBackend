@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
-import { V0IdempotencyRepository } from "../../../platform/idempotency/repository.js";
-import { V0IdempotencyService } from "../../../platform/idempotency/service.js";
+import { V0IdempotencyRepository } from "../../../../platform/idempotency/repository.js";
+import { V0IdempotencyService } from "../../../../platform/idempotency/service.js";
 import { createV0PolicyRouter } from "./api/router.js";
 import { V0PolicyService } from "./app/service.js";
 import { V0PolicyRepository } from "./infra/repository.js";

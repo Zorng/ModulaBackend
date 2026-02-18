@@ -3,6 +3,8 @@ import express from "express";
 import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
+import { eventBus } from "../platform/events/index.js";
+import { startV0CommandOutboxDispatcher } from "../platform/outbox/dispatcher.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
@@ -504,6 +506,293 @@ describe("v0 first branch activation scaffold", () => {
       process.env.V0_FAIRUSE_BRANCH_ACTIVATION_RATE_LIMIT = previousRate;
       process.env.V0_FAIRUSE_BRANCH_ACTIVATION_WINDOW_SECONDS = previousWindow;
       process.env.V0_FAIRUSE_BRANCH_COUNT_PER_TENANT_HARD = previousHard;
+      await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+    }
+  });
+
+  it("supports idempotency replay and conflict for activation initiate", async () => {
+    const ownerPhone = uniquePhone();
+    const ownerToken = await registerAndLogin(app, ownerPhone);
+
+    const tenantCreated = await request(app)
+      .post("/v0/org/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantName: `Initiate Idempotency ${Date.now()}` });
+    expect(tenantCreated.status).toBe(201);
+    const tenantId = tenantCreated.body.data.tenant.id as string;
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantId });
+    expect(tenantSelected.status).toBe(200);
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const first = await request(app)
+      .post("/v0/org/branches/activation/initiate")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .set("Idempotency-Key", "branch-initiate-idem-1")
+      .send({ branchName: "Main Branch" });
+    expect(first.status).toBe(201);
+
+    const replay = await request(app)
+      .post("/v0/org/branches/activation/initiate")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .set("Idempotency-Key", "branch-initiate-idem-1")
+      .send({ branchName: "Main Branch" });
+    expect(replay.status).toBe(201);
+    expect(replay.headers["idempotency-replayed"]).toBe("true");
+    expect(replay.body.data.draftId).toBe(first.body.data.draftId);
+
+    const conflict = await request(app)
+      .post("/v0/org/branches/activation/initiate")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .set("Idempotency-Key", "branch-initiate-idem-1")
+      .send({ branchName: "Different Name" });
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.code).toBe("IDEMPOTENCY_CONFLICT");
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+  });
+
+  it("supports idempotency replay and conflict for activation confirm", async () => {
+    const ownerPhone = uniquePhone();
+    const ownerToken = await registerAndLogin(app, ownerPhone);
+
+    const tenantCreated = await request(app)
+      .post("/v0/org/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantName: `Confirm Idempotency ${Date.now()}` });
+    expect(tenantCreated.status).toBe(201);
+    const tenantId = tenantCreated.body.data.tenant.id as string;
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantId });
+    expect(tenantSelected.status).toBe(200);
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const initiated = await request(app)
+      .post("/v0/org/branches/activation/initiate")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ branchName: "Main Branch" });
+    expect(initiated.status).toBe(201);
+
+    const first = await request(app)
+      .post("/v0/org/branches/activation/confirm")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .set("Idempotency-Key", "branch-confirm-idem-1")
+      .send({
+        draftId: initiated.body.data.draftId,
+        paymentToken: "PAID",
+      });
+    expect(first.status).toBe(201);
+
+    const replay = await request(app)
+      .post("/v0/org/branches/activation/confirm")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .set("Idempotency-Key", "branch-confirm-idem-1")
+      .send({
+        draftId: initiated.body.data.draftId,
+        paymentToken: "PAID",
+      });
+    expect(replay.status).toBe(201);
+    expect(replay.headers["idempotency-replayed"]).toBe("true");
+    expect(replay.body.data.branchId).toBe(first.body.data.branchId);
+
+    const conflict = await request(app)
+      .post("/v0/org/branches/activation/confirm")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .set("Idempotency-Key", "branch-confirm-idem-1")
+      .send({
+        draftId: initiated.body.data.draftId,
+        paymentToken: "DIFFERENT",
+      });
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.code).toBe("IDEMPOTENCY_CONFLICT");
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+  });
+
+  it("rolls back activation initiate when outbox insert fails and clears idempotency processing state", async () => {
+    const ownerPhone = uniquePhone();
+    const ownerToken = await registerAndLogin(app, ownerPhone);
+
+    const tenantCreated = await request(app)
+      .post("/v0/org/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantName: `Initiate Rollback ${Date.now()}` });
+    expect(tenantCreated.status).toBe(201);
+    const tenantId = tenantCreated.body.data.tenant.id as string;
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantId });
+    expect(tenantSelected.status).toBe(200);
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "org.branch.activation.initiate";
+    const failed = await request(app)
+      .post("/v0/org/branches/activation/initiate")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .set("Idempotency-Key", "branch-initiate-fail-1")
+      .send({ branchName: "Main Branch" });
+    expect(failed.status).toBe(500);
+    process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "";
+
+    const draftCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_branch_activation_drafts
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    expect(Number(draftCount.rows[0]?.count ?? "0")).toBe(0);
+
+    const invoiceCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_subscription_invoices
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    expect(Number(invoiceCount.rows[0]?.count ?? "0")).toBe(0);
+
+    const auditCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_audit_events
+       WHERE tenant_id = $1
+         AND action_key = 'org.branch.activation.initiate'`,
+      [tenantId]
+    );
+    expect(Number(auditCount.rows[0]?.count ?? "0")).toBe(0);
+
+    const outboxCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_command_outbox
+       WHERE tenant_id = $1
+         AND action_key = 'org.branch.activation.initiate'`,
+      [tenantId]
+    );
+    expect(Number(outboxCount.rows[0]?.count ?? "0")).toBe(0);
+
+    const idempotencyCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_idempotency_records
+       WHERE tenant_id = $1
+         AND action_key = 'org.branch.activation.initiate'
+         AND idempotency_key = 'branch-initiate-fail-1'`,
+      [tenantId]
+    );
+    expect(Number(idempotencyCount.rows[0]?.count ?? "0")).toBe(0);
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+  });
+
+  it("dispatcher publishes branch activation outbox events", async () => {
+    const ownerPhone = uniquePhone();
+    const ownerToken = await registerAndLogin(app, ownerPhone);
+
+    const tenantCreated = await request(app)
+      .post("/v0/org/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantName: `Branch Dispatch ${Date.now()}` });
+    expect(tenantCreated.status).toBe(201);
+    const tenantId = tenantCreated.body.data.tenant.id as string;
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantId });
+    expect(tenantSelected.status).toBe(200);
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const initiated = await request(app)
+      .post("/v0/org/branches/activation/initiate")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ branchName: "Main Branch" });
+    expect(initiated.status).toBe(201);
+
+    const activated = await request(app)
+      .post("/v0/org/branches/activation/confirm")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({
+        draftId: initiated.body.data.draftId,
+        paymentToken: "PAID",
+      });
+    expect(activated.status).toBe(201);
+
+    const initiateOutbox = await pool.query<{ id: string }>(
+      `SELECT id
+       FROM v0_command_outbox
+       WHERE tenant_id = $1
+         AND event_type = 'ORG_BRANCH_ACTIVATION_INITIATED'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [tenantId]
+    );
+    const activateOutbox = await pool.query<{ id: string }>(
+      `SELECT id
+       FROM v0_command_outbox
+       WHERE tenant_id = $1
+         AND event_type = 'ORG_BRANCH_ACTIVATED'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [tenantId]
+    );
+    const initiateOutboxId = initiateOutbox.rows[0]?.id ?? "";
+    const activateOutboxId = activateOutbox.rows[0]?.id ?? "";
+    expect(initiateOutboxId).not.toBe("");
+    expect(activateOutboxId).not.toBe("");
+
+    const seen = new Set<string>();
+    const published = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("branch activation outbox events were not dispatched in time"));
+      }, 4000);
+
+      eventBus.subscribe("ORG_BRANCH_ACTIVATION_INITIATED", async (event: any) => {
+        if (event?.outboxId === initiateOutboxId) {
+          seen.add(initiateOutboxId);
+          if (seen.has(initiateOutboxId) && seen.has(activateOutboxId)) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        }
+      });
+
+      eventBus.subscribe("ORG_BRANCH_ACTIVATED", async (event: any) => {
+        if (event?.outboxId === activateOutboxId) {
+          seen.add(activateOutboxId);
+          if (seen.has(initiateOutboxId) && seen.has(activateOutboxId)) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        }
+      });
+    });
+
+    const dispatcher = startV0CommandOutboxDispatcher({
+      db: pool,
+      pollIntervalMs: 50,
+      batchSize: 25,
+    });
+
+    try {
+      await published;
+
+      const publishedRows = await pool.query<{ event_type: string; published_at: Date | null }>(
+        `SELECT event_type, published_at
+         FROM v0_command_outbox
+         WHERE id = ANY($1::uuid[])`,
+        [[initiateOutboxId, activateOutboxId]]
+      );
+      expect(publishedRows.rows).toHaveLength(2);
+      for (const row of publishedRows.rows) {
+        expect(row.published_at).not.toBeNull();
+      }
+    } finally {
+      dispatcher.stop();
       await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
     }
   });

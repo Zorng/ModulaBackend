@@ -1,15 +1,15 @@
 import { Router, type Response } from "express";
 import type { Pool } from "pg";
-import { requireV0Auth, type V0AuthRequest } from "../../auth/api/middleware.js";
-import { TransactionManager } from "../../../../platform/db/transactionManager.js";
+import { requireV0Auth, type V0AuthRequest } from "../../../auth/api/middleware.js";
+import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
 import {
   getIdempotencyKeyFromHeader,
   V0IdempotencyError,
   V0IdempotencyService,
-} from "../../../../platform/idempotency/service.js";
-import { V0CommandOutboxRepository } from "../../../../platform/outbox/repository.js";
-import { V0AuditService } from "../../audit/app/service.js";
-import { V0AuditRepository } from "../../audit/infra/repository.js";
+} from "../../../../../platform/idempotency/service.js";
+import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
+import { V0AuditService } from "../../../audit/app/service.js";
+import { V0AuditRepository } from "../../../audit/infra/repository.js";
 import {
   buildMenuCommandDedupeKey,
   V0_MENU_ACTION_KEYS,

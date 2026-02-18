@@ -1,13 +1,13 @@
 import { Router } from "express";
 import { ping, pool } from "#db";
 import { bootstrapV0AuthModule } from "#modules/v0/auth/index.js";
-import { bootstrapV0AttendanceModule } from "#modules/v0/attendance/index.js";
+import { bootstrapV0AttendanceModule } from "#modules/v0/hr/attendance/index.js";
 import { bootstrapV0OrgAccountModule } from "#modules/v0/orgAccount/index.js";
 import { bootstrapV0SubscriptionModule } from "#modules/v0/subscription/index.js";
 import { bootstrapV0AuditModule } from "#modules/v0/audit/index.js";
 import { bootstrapV0StaffManagementModule } from "#modules/v0/hr/staffManagement/index.js";
-import { bootstrapV0PolicyModule } from "#modules/v0/policy/index.js";
-import { bootstrapV0MenuModule } from "#modules/v0/menu/index.js";
+import { bootstrapV0PolicyModule } from "#modules/v0/businessSystem/policy/index.js";
+import { bootstrapV0MenuModule } from "#modules/v0/posOperation/menu/index.js";
 
 export const v0Router = Router();
 const v0AuthModule = bootstrapV0AuthModule(pool);

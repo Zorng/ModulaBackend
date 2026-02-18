@@ -1,5 +1,7 @@
 import type { Pool } from "pg";
 import { Router } from "express";
+import { V0IdempotencyRepository } from "../../../platform/idempotency/repository.js";
+import { V0IdempotencyService } from "../../../platform/idempotency/service.js";
 import { createV0BranchRouter } from "./branch/api/router.js";
 import { StubFirstBranchPaymentVerifier } from "./branch/app/payment-verifier.js";
 import { V0BranchService } from "./branch/app/service.js";
@@ -17,6 +19,7 @@ export function bootstrapV0OrgAccountModule(pool: Pool) {
 export function createV0OrgAccountRouter(db: Pool): Router {
   const router = Router();
 
+  const idempotencyService = new V0IdempotencyService(new V0IdempotencyRepository(db));
   const tenantService = new V0TenantService(new V0TenantRepository(db));
   const branchService = new V0BranchService(
     new V0BranchRepository(db),
@@ -24,7 +27,13 @@ export function createV0OrgAccountRouter(db: Pool): Router {
   );
 
   router.use(createV0TenantRouter(tenantService, db));
-  router.use(createV0BranchRouter(branchService, db));
+  router.use(
+    createV0BranchRouter({
+      service: branchService,
+      db,
+      idempotencyService,
+    })
+  );
   router.use(createV0MembershipRouter(db));
 
   return router;

@@ -11,7 +11,7 @@ import {
 } from "../test-utils/org.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
-import { bootstrapV0MenuModule } from "../modules/v0/menu/index.js";
+import { bootstrapV0MenuModule } from "../modules/v0/posOperation/menu/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 import { startV0CommandOutboxDispatcher } from "../platform/outbox/dispatcher.js";
 import { eventBus } from "../platform/events/index.js";

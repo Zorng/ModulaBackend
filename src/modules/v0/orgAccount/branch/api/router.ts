@@ -5,12 +5,21 @@ import { V0AuthError } from "../../../auth/app/service.js";
 import { V0OrgAccountError } from "../../common/error.js";
 import { V0BranchService } from "../app/service.js";
 import {
+  getIdempotencyKeyFromHeader,
+  V0IdempotencyError,
+  V0IdempotencyService,
+} from "../../../../../platform/idempotency/service.js";
+import {
   executeConfirmFirstBranchActivationCommand,
   executeInitiateFirstBranchActivationCommand,
 } from "./first-branch-activation.command.js";
 import { readOptionalHeaderString } from "../../../../../shared/utils/http.js";
 
-export function createV0BranchRouter(service: V0BranchService, db: Pool): Router {
+export function createV0BranchRouter(input: {
+  service: V0BranchService;
+  db: Pool;
+  idempotencyService: V0IdempotencyService;
+}): Router {
   const router = Router();
 
   router.get(
@@ -24,7 +33,7 @@ export function createV0BranchRouter(service: V0BranchService, db: Pool): Router
           return;
         }
 
-        const data = await service.listAccessibleBranches({ actor });
+        const data = await input.service.listAccessibleBranches({ actor });
         res.status(200).json({ success: true, data });
       } catch (error) {
         handleError(res, error);
@@ -40,7 +49,7 @@ export function createV0BranchRouter(service: V0BranchService, db: Pool): Router
         return;
       }
 
-      const data = await service.getCurrentBranchProfile({ actor });
+      const data = await input.service.getCurrentBranchProfile({ actor });
       res.status(200).json({ success: true, data });
     } catch (error) {
       handleError(res, error);
@@ -59,16 +68,44 @@ export function createV0BranchRouter(service: V0BranchService, db: Pool): Router
           return;
         }
 
-        const data = await executeInitiateFirstBranchActivationCommand({
-          db,
-          actor,
-          branchName: req.body?.branchName,
+        const executeCommand = () =>
+          executeInitiateFirstBranchActivationCommand({
+            db: input.db,
+            actor,
+            branchName: req.body?.branchName,
+            idempotencyKey,
+            actionKey: "org.branch.activation.initiate",
+            eventType: "ORG_BRANCH_ACTIVATION_INITIATED",
+            endpoint: "/v0/org/branches/activation/initiate",
+          });
+
+        if (!idempotencyKey) {
+          const data = await executeCommand();
+          res.status(data.created ? 201 : 200).json({ success: true, data });
+          return;
+        }
+
+        const result = await input.idempotencyService.execute({
           idempotencyKey,
           actionKey: "org.branch.activation.initiate",
-          eventType: "ORG_BRANCH_ACTIVATION_INITIATED",
-          endpoint: "/v0/org/branches/activation/initiate",
+          scope: "TENANT",
+          tenantId: actor.tenantId ?? null,
+          branchId: null,
+          payload: {
+            branchName: req.body?.branchName ?? null,
+          },
+          handler: async () => {
+            const data = await executeCommand();
+            return {
+              statusCode: data.created ? 201 : 200,
+              body: { success: true, data },
+            };
+          },
         });
-        res.status(data.created ? 201 : 200).json({ success: true, data });
+        if (result.replayed) {
+          res.setHeader("Idempotency-Replayed", "true");
+        }
+        res.status(result.statusCode).json(result.body);
       } catch (error) {
         handleError(res, error);
       }
@@ -87,17 +124,46 @@ export function createV0BranchRouter(service: V0BranchService, db: Pool): Router
           return;
         }
 
-        const data = await executeConfirmFirstBranchActivationCommand({
-          db,
-          actor,
-          draftId: req.body?.draftId,
-          paymentToken: req.body?.paymentToken,
+        const executeCommand = () =>
+          executeConfirmFirstBranchActivationCommand({
+            db: input.db,
+            actor,
+            draftId: req.body?.draftId,
+            paymentToken: req.body?.paymentToken,
+            idempotencyKey,
+            actionKey: "org.branch.activation.confirm",
+            eventType: "ORG_BRANCH_ACTIVATED",
+            endpoint: "/v0/org/branches/activation/confirm",
+          });
+
+        if (!idempotencyKey) {
+          const data = await executeCommand();
+          res.status(data.created ? 201 : 200).json({ success: true, data });
+          return;
+        }
+
+        const result = await input.idempotencyService.execute({
           idempotencyKey,
           actionKey: "org.branch.activation.confirm",
-          eventType: "ORG_BRANCH_ACTIVATED",
-          endpoint: "/v0/org/branches/activation/confirm",
+          scope: "TENANT",
+          tenantId: actor.tenantId ?? null,
+          branchId: null,
+          payload: {
+            draftId: req.body?.draftId ?? null,
+            paymentToken: req.body?.paymentToken ?? null,
+          },
+          handler: async () => {
+            const data = await executeCommand();
+            return {
+              statusCode: data.created ? 201 : 200,
+              body: { success: true, data },
+            };
+          },
         });
-        res.status(data.created ? 201 : 200).json({ success: true, data });
+        if (result.replayed) {
+          res.setHeader("Idempotency-Replayed", "true");
+        }
+        res.status(result.statusCode).json(result.body);
       } catch (error) {
         handleError(res, error);
       }
@@ -108,10 +174,19 @@ export function createV0BranchRouter(service: V0BranchService, db: Pool): Router
 }
 
 function readIdempotencyKey(headers: Record<string, string | string[] | undefined>): string | null {
-  return readOptionalHeaderString(headers, "idempotency-key");
+  return getIdempotencyKeyFromHeader(headers) ?? readOptionalHeaderString(headers, "idempotency-key");
 }
 
 function handleError(res: Response, error: unknown): void {
+  if (error instanceof V0IdempotencyError) {
+    res.status(error.statusCode).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+    });
+    return;
+  }
+
   if (error instanceof V0AuthError || error instanceof V0OrgAccountError) {
     res.status(error.statusCode).json({
       success: false,
