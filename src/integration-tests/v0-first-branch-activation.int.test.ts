@@ -79,7 +79,7 @@ describe("v0 first branch activation scaffold", () => {
     const tenantToken = tenantSelected.body.data.accessToken as string;
 
     const initiated = await request(app)
-      .post("/v0/org/branch/first-activation/initiate")
+      .post("/v0/org/branches/activation/initiate")
       .set("Authorization", `Bearer ${tenantToken}`)
       .send({ branchName: "Main Branch" });
     expect(initiated.status).toBe(201);
@@ -90,7 +90,7 @@ describe("v0 first branch activation scaffold", () => {
     const draftId = initiated.body.data.draftId as string;
 
     const initiatedAgain = await request(app)
-      .post("/v0/org/branch/first-activation/initiate")
+      .post("/v0/org/branches/activation/initiate")
       .set("Authorization", `Bearer ${tenantToken}`)
       .send({ branchName: "Ignored Name" });
     expect(initiatedAgain.status).toBe(200);
@@ -98,7 +98,7 @@ describe("v0 first branch activation scaffold", () => {
     expect(initiatedAgain.body.data.branchName).toBe("Main Branch");
 
     const activated = await request(app)
-      .post("/v0/org/branch/first-activation/confirm")
+      .post("/v0/org/branches/activation/confirm")
       .set("Authorization", `Bearer ${tenantToken}`)
       .send({
         draftId,
@@ -109,6 +109,17 @@ describe("v0 first branch activation scaffold", () => {
     expect(activated.body.data.branchName).toBe("Main Branch");
     expect(activated.body.data.status).toBe("ACTIVE");
     expect(typeof activated.body.data.paymentConfirmationRef).toBe("string");
+    const createdBranchId = activated.body.data.branchId as string;
+
+    const accessibleBranches = await request(app)
+      .get("/v0/org/branches/accessible")
+      .set("Authorization", `Bearer ${tenantToken}`);
+    expect(accessibleBranches.status).toBe(200);
+    expect(
+      (accessibleBranches.body.data as Array<{ branchId: string }>).some(
+        (branch) => branch.branchId === createdBranchId
+      )
+    ).toBe(true);
 
     const branchCount = await pool.query<{ count: string }>(
       `SELECT COUNT(*)::TEXT AS count
@@ -137,7 +148,7 @@ describe("v0 first branch activation scaffold", () => {
       [tenantId, activated.body.data.branchId]
     );
     expect(auditEvent.rows[0]).toMatchObject({
-      action_key: "org.branch.firstActivation.confirm",
+      action_key: "org.branch.activation.confirm",
       entity_type: "branch",
       outcome: "SUCCESS",
     });
@@ -151,7 +162,7 @@ describe("v0 first branch activation scaffold", () => {
       [tenantId, draftId]
     );
     expect(initiateAudit.rows[0]).toMatchObject({
-      action_key: "org.branch.firstActivation.initiate",
+      action_key: "org.branch.activation.initiate",
       entity_type: "branch_activation_draft",
     });
 
@@ -164,8 +175,8 @@ describe("v0 first branch activation scaffold", () => {
       [tenantId]
     );
     expect(outboxEvent.rows[0]).toMatchObject({
-      event_type: "ORG_BRANCH_FIRST_ACTIVATED",
-      action_key: "org.branch.firstActivation.confirm",
+      event_type: "ORG_BRANCH_ACTIVATED",
+      action_key: "org.branch.activation.confirm",
     });
     const initiatedOutboxEvent = await pool.query<{ event_type: string; action_key: string }>(
       `SELECT event_type, action_key
@@ -177,12 +188,12 @@ describe("v0 first branch activation scaffold", () => {
       [tenantId, draftId]
     );
     expect(initiatedOutboxEvent.rows[0]).toMatchObject({
-      event_type: "ORG_BRANCH_FIRST_ACTIVATION_INITIATED",
-      action_key: "org.branch.firstActivation.initiate",
+      event_type: "ORG_BRANCH_ACTIVATION_INITIATED",
+      action_key: "org.branch.activation.initiate",
     });
 
     const duplicate = await request(app)
-      .post("/v0/org/branch/first-activation/confirm")
+      .post("/v0/org/branches/activation/confirm")
       .set("Authorization", `Bearer ${tenantToken}`)
       .send({
         draftId,
@@ -213,13 +224,13 @@ describe("v0 first branch activation scaffold", () => {
     const tenantToken = tenantSelected.body.data.accessToken as string;
 
     const initiated = await request(app)
-      .post("/v0/org/branch/first-activation/initiate")
+      .post("/v0/org/branches/activation/initiate")
       .set("Authorization", `Bearer ${tenantToken}`)
       .send({ branchName: "Main Branch" });
     expect(initiated.status).toBe(201);
 
     const rejected = await request(app)
-      .post("/v0/org/branch/first-activation/confirm")
+      .post("/v0/org/branches/activation/confirm")
       .set("Authorization", `Bearer ${tenantToken}`)
       .send({
         draftId: initiated.body.data.draftId,

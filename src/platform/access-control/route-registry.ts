@@ -155,14 +155,14 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "POST",
-    pattern: /^\/org\/branch\/first-activation\/initiate$/,
-    actionKey: "org.branch.firstActivation.initiate",
+    pattern: /^\/org\/branches\/activation\/initiate$/,
+    actionKey: "org.branch.activation.initiate",
     tenantSource: "token",
   },
   {
     method: "POST",
-    pattern: /^\/org\/branch\/first-activation\/confirm$/,
-    actionKey: "org.branch.firstActivation.confirm",
+    pattern: /^\/org\/branches\/activation\/confirm$/,
+    actionKey: "org.branch.activation.confirm",
     tenantSource: "token",
   },
   {

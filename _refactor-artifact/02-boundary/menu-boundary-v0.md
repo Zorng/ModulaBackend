@@ -223,7 +223,7 @@ All produced events:
 
 ### Subscribed events (planned)
 
-- `ORG_BRANCH_FIRST_ACTIVATED`
+- `ORG_BRANCH_ACTIVATED`
   - Handler purpose: optional branch bootstrap for default visibility behavior
   - Idempotency strategy: dedupe by `(tenant_id, branch_id, event_type)`
 - `SUBSCRIPTION_ENTITLEMENT_CHANGED`

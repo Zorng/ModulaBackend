@@ -1,6 +1,8 @@
 # Branch Module (`/v0`) — API Contract
 
-This document describes the current branch profile/visibility read contract for `/v0`.
+This document describes the current branch contract for `/v0`, including:
+- branch profile/visibility reads
+- first-branch activation orchestration endpoints
 
 Base path: `/v0/org`
 
@@ -33,6 +35,10 @@ type BranchProfile = {
 ```
 
 ## Endpoints
+
+Implementation scope note:
+- Current branch activation endpoints are capacity-limited and currently bootstrap-only (`0 -> 1` branch per tenant by default).
+- Additional branch creation/activation (2nd, 3rd, ...) is **not implemented yet** in current `/v0`.
 
 ### 1) List accessible branches in current tenant
 
@@ -95,3 +101,142 @@ Errors:
 - `403` `TENANT_CONTEXT_REQUIRED` or `NO_MEMBERSHIP` (from centralized access control)
 - `403` `BRANCH_CONTEXT_REQUIRED` or `NO_BRANCH_ACCESS`
 - `404` branch not found
+
+### 3) Initiate branch activation draft (payment pending)
+
+`POST /v0/org/branches/activation/initiate`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "branchName": "Main Branch"
+}
+```
+
+Success `201` (new draft+invoice created):
+
+```json
+{
+  "success": true,
+  "data": {
+    "draftId": "uuid",
+    "tenantId": "uuid",
+    "branchName": "Main Branch",
+    "draftStatus": "PENDING_PAYMENT",
+    "invoice": {
+      "invoiceId": "uuid",
+      "status": "ISSUED",
+      "currency": "USD",
+      "totalAmountUsd": "5.00",
+      "issuedAt": "2026-02-17T10:00:00.000Z",
+      "paidAt": null
+    },
+    "created": true
+  }
+}
+```
+
+Success `200` (existing pending draft reused):
+
+```json
+{
+  "success": true,
+  "data": {
+    "draftId": "uuid",
+    "tenantId": "uuid",
+    "branchName": "Main Branch",
+    "draftStatus": "PENDING_PAYMENT",
+    "invoice": {
+      "invoiceId": "uuid",
+      "status": "ISSUED",
+      "currency": "USD",
+      "totalAmountUsd": "5.00",
+      "issuedAt": "2026-02-17T10:00:00.000Z",
+      "paidAt": null
+    },
+    "created": false
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` tenant context missing or role not allowed
+- `409` no available branch slot (`code = BRANCH_SLOT_LIMIT_REACHED`)
+- `422` missing `branchName`
+
+### 4) Confirm branch activation (payment-confirmed path)
+
+`POST /v0/org/branches/activation/confirm`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "draftId": "uuid",
+  "paymentToken": "PAID"
+}
+```
+
+Success `201` (new activation):
+
+```json
+{
+  "success": true,
+  "data": {
+    "draftId": "uuid",
+    "branchId": "uuid",
+    "tenantId": "uuid",
+    "branchName": "Main Branch",
+    "status": "ACTIVE",
+    "invoiceId": "uuid",
+    "paymentConfirmationRef": "stub:...",
+    "created": true
+  }
+}
+```
+
+Notes:
+- On successful activation, requester is auto-assigned to the created branch (active branch assignment).
+
+Success `200` (already activated for same draft):
+
+```json
+{
+  "success": true,
+  "data": {
+    "draftId": "uuid",
+    "branchId": "uuid",
+    "tenantId": "uuid",
+    "branchName": "Main Branch",
+    "status": "ACTIVE",
+    "invoiceId": "uuid",
+    "paymentConfirmationRef": "stub:...",
+    "created": false
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` tenant context missing or role not allowed
+- `402` payment not confirmed (`code = PAYMENT_NOT_CONFIRMED`)
+- `409` no available branch slot (`code = BRANCH_SLOT_LIMIT_REACHED`)
+- `409` draft/invoice not payable (`code = DRAFT_NOT_PENDING_PAYMENT` or `INVOICE_NOT_PAYABLE`)
+- `404` activation draft not found (`code = DRAFT_NOT_FOUND`)
+- `422` missing `draftId` or `paymentToken`
+
+## Planned Extension (Not Implemented Yet)
+
+Target behavior for multi-branch tenants (slot/capacity gated) is being tracked in:
+- `_refactor-artifact/03-orgaccount/branch-slot-capacity-rollout-v0.md`
+
+Candidate future endpoints:
+- `POST /v0/org/branches/activation/initiate`
+- `POST /v0/org/branches/activation/confirm`
+- `GET /v0/org/branches` (tenant-wide management list)

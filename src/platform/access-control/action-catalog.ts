@@ -48,12 +48,12 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
   "org.tenant.current.read": { scope: "TENANT", effect: "READ" },
   "org.branches.accessible.read": { scope: "TENANT", effect: "READ" },
   "org.branch.current.read": { scope: "BRANCH", effect: "READ" },
-  "org.branch.firstActivation.initiate": {
+  "org.branch.activation.initiate": {
     scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
   },
-  "org.branch.firstActivation.confirm": {
+  "org.branch.activation.confirm": {
     scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],

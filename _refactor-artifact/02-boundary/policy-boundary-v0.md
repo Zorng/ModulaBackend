@@ -107,7 +107,7 @@ Canonical route prefix: `/v0/policy`
 
 ### Subscribed events
 
-- `ORG_BRANCH_FIRST_ACTIVATED` (optional initializer)
+- `ORG_BRANCH_ACTIVATED` (optional initializer)
   - Handler purpose: pre-seed default branch policy row
   - Idempotency strategy: dedupe by `(tenant_id, branch_id, event_type)`
 

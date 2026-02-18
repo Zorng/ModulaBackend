@@ -72,6 +72,47 @@ export class V0BranchRepository {
     return result.rows[0];
   }
 
+  async findActiveMembershipId(input: {
+    tenantId: string;
+    accountId: string;
+  }): Promise<string | null> {
+    const result = await this.db.query<{ id: string }>(
+      `SELECT id
+       FROM v0_tenant_memberships
+       WHERE tenant_id = $1
+         AND account_id = $2
+         AND status = 'ACTIVE'
+       LIMIT 1`,
+      [input.tenantId, input.accountId]
+    );
+    return result.rows[0]?.id ?? null;
+  }
+
+  async assignActiveBranch(input: {
+    tenantId: string;
+    branchId: string;
+    accountId: string;
+    membershipId: string;
+  }): Promise<void> {
+    await this.db.query(
+      `INSERT INTO v0_branch_assignments (
+         tenant_id,
+         branch_id,
+         account_id,
+         membership_id,
+         status,
+         assigned_at
+       ) VALUES ($1, $2, $3, $4, 'ACTIVE', NOW())
+       ON CONFLICT (tenant_id, branch_id, account_id)
+       DO UPDATE SET
+         membership_id = EXCLUDED.membership_id,
+         status = 'ACTIVE',
+         revoked_at = NULL,
+         updated_at = NOW()`,
+      [input.tenantId, input.branchId, input.accountId, input.membershipId]
+    );
+  }
+
   async seedDefaultBranchEntitlements(input: {
     tenantId: string;
     branchId: string;

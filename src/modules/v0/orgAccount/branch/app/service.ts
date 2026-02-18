@@ -83,8 +83,8 @@ export class V0BranchService {
     if (branchCount > 0) {
       throw new V0OrgAccountError(
         409,
-        "tenant already has at least one branch",
-        "TENANT_ALREADY_HAS_BRANCH"
+        "branch slot limit reached for tenant",
+        "BRANCH_SLOT_LIMIT_REACHED"
       );
     }
 
@@ -197,14 +197,31 @@ export class V0BranchService {
     if (branchCount > 0) {
       throw new V0OrgAccountError(
         409,
-        "tenant already has at least one branch",
-        "TENANT_ALREADY_HAS_BRANCH"
+        "branch slot limit reached for tenant",
+        "BRANCH_SLOT_LIMIT_REACHED"
       );
     }
 
     const branch = await this.repo.createActiveBranch({
       tenantId: scope.tenantId,
       branchName: activationDraft.branch_display_name,
+    });
+    const membershipId = await this.repo.findActiveMembershipId({
+      tenantId: scope.tenantId,
+      accountId: scope.accountId,
+    });
+    if (!membershipId) {
+      throw new V0OrgAccountError(
+        403,
+        "no active tenant membership for requester",
+        "NO_MEMBERSHIP"
+      );
+    }
+    await this.repo.assignActiveBranch({
+      tenantId: scope.tenantId,
+      branchId: branch.id,
+      accountId: scope.accountId,
+      membershipId,
     });
     await this.repo.markInvoicePaid(activationDraft.invoice_id);
     await this.repo.markDraftActivated({

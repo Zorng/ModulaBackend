@@ -45,16 +45,16 @@ type V0CommandOutboxEvent = {
   - compatibility alias (temporary): `/v0/auth/memberships/:membershipId/branches`
 
 ### OrgAccount / Branch
-- `ORG_BRANCH_FIRST_ACTIVATION_INITIATED`
-  - actionKey: `org.branch.firstActivation.initiate`
+- `ORG_BRANCH_ACTIVATION_INITIATED`
+  - actionKey: `org.branch.activation.initiate`
   - outcome: `SUCCESS`
   - entityType: `branch_activation_draft`
-  - canonical endpoint metadata: `/v0/org/branch/first-activation/initiate`
-- `ORG_BRANCH_FIRST_ACTIVATED`
-  - actionKey: `org.branch.firstActivation.confirm`
+  - canonical endpoint metadata: `/v0/org/branches/activation/initiate`
+- `ORG_BRANCH_ACTIVATED`
+  - actionKey: `org.branch.activation.confirm`
   - outcome: `SUCCESS`
   - entityType: `branch`
-  - canonical endpoint metadata: `/v0/org/branch/first-activation/confirm`
+  - canonical endpoint metadata: `/v0/org/branches/activation/confirm`
   - payload includes `draftId`, `invoiceId`, `paymentConfirmationRef`
 
 ### OrgAccount / Membership (canonical)

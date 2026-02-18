@@ -48,7 +48,7 @@ export function createV0BranchRouter(service: V0BranchService, db: Pool): Router
   });
 
   router.post(
-    "/branch/first-activation/initiate",
+    "/branches/activation/initiate",
     requireV0Auth,
     async (req: V0AuthRequest, res: Response) => {
       const actor = req.v0Auth;
@@ -64,9 +64,9 @@ export function createV0BranchRouter(service: V0BranchService, db: Pool): Router
           actor,
           branchName: req.body?.branchName,
           idempotencyKey,
-          actionKey: "org.branch.firstActivation.initiate",
-          eventType: "ORG_BRANCH_FIRST_ACTIVATION_INITIATED",
-          endpoint: "/v0/org/branch/first-activation/initiate",
+          actionKey: "org.branch.activation.initiate",
+          eventType: "ORG_BRANCH_ACTIVATION_INITIATED",
+          endpoint: "/v0/org/branches/activation/initiate",
         });
         res.status(data.created ? 201 : 200).json({ success: true, data });
       } catch (error) {
@@ -76,7 +76,7 @@ export function createV0BranchRouter(service: V0BranchService, db: Pool): Router
   );
 
   router.post(
-    "/branch/first-activation/confirm",
+    "/branches/activation/confirm",
     requireV0Auth,
     async (req: V0AuthRequest, res: Response) => {
       const actor = req.v0Auth;
@@ -93,9 +93,9 @@ export function createV0BranchRouter(service: V0BranchService, db: Pool): Router
           draftId: req.body?.draftId,
           paymentToken: req.body?.paymentToken,
           idempotencyKey,
-          actionKey: "org.branch.firstActivation.confirm",
-          eventType: "ORG_BRANCH_FIRST_ACTIVATED",
-          endpoint: "/v0/org/branch/first-activation/confirm",
+          actionKey: "org.branch.activation.confirm",
+          eventType: "ORG_BRANCH_ACTIVATED",
+          endpoint: "/v0/org/branches/activation/confirm",
         });
         res.status(data.created ? 201 : 200).json({ success: true, data });
       } catch (error) {
