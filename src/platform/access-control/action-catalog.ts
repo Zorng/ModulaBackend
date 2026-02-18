@@ -198,4 +198,55 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     entitlementKey: "core.pos",
   },
+  "discount.rules.list": {
+    scope: "TENANT",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "discount.rules.read": {
+    scope: "TENANT",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "discount.rules.create": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+    entitlementKey: "core.pos",
+  },
+  "discount.rules.update": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+    entitlementKey: "core.pos",
+  },
+  "discount.rules.activate": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+    entitlementKey: "core.pos",
+  },
+  "discount.rules.deactivate": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+    entitlementKey: "core.pos",
+  },
+  "discount.rules.archive": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+    entitlementKey: "core.pos",
+  },
+  "discount.rules.preflight.eligibleItems": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN"],
+    entitlementKey: "core.pos",
+  },
+  "discount.eligibility.resolve": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
 };

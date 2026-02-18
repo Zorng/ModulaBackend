@@ -2,7 +2,7 @@
 
 Status: Active planning
 Owner: backend
-Last updated: 2026-02-17
+Last updated: 2026-02-18
 
 ## Why this exists
 
@@ -69,7 +69,7 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 |---|---|---|
 | policy | Completed | Phase 1-5 completed (boundary lock, migration/repo, command/query + ACL, integration reliability, close-out). |
 | menu | Completed | Phase 1-5 completed (boundary, contract, schema/repo, full endpoint surface + ACL, reliability tests, close-out sync). |
-| discount | Not started (next) | depends on menu refs + branch scope |
+| discount | Completed | phase 1-5 completed (boundary/contract lock, schema/repository, commands/queries + ACL, integration reliability, close-out sync) |
 | cashSession | Not started | depends on access control + sale hooks |
 | inventory | Not started | self-contained ledger first; sale hooks later |
 | sale-order | Not started | integrate finalize/void orchestrations |

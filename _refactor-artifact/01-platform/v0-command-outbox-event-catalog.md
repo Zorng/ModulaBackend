@@ -189,6 +189,33 @@ Compatibility note:
   - entityType: `menu_item`
   - canonical endpoint metadata: `/v0/menu/items/:menuItemId/composition`
 
+### Discount
+- `DISCOUNT_RULE_CREATED`
+  - actionKey: `discount.rules.create`
+  - outcome: `SUCCESS`
+  - entityType: `discount_rule`
+  - canonical endpoint metadata: `/v0/discount/rules`
+- `DISCOUNT_RULE_UPDATED`
+  - actionKey: `discount.rules.update`
+  - outcome: `SUCCESS`
+  - entityType: `discount_rule`
+  - canonical endpoint metadata: `/v0/discount/rules/:ruleId`
+- `DISCOUNT_RULE_ACTIVATED`
+  - actionKey: `discount.rules.activate`
+  - outcome: `SUCCESS`
+  - entityType: `discount_rule`
+  - canonical endpoint metadata: `/v0/discount/rules/:ruleId/activate`
+- `DISCOUNT_RULE_DEACTIVATED`
+  - actionKey: `discount.rules.deactivate`
+  - outcome: `SUCCESS`
+  - entityType: `discount_rule`
+  - canonical endpoint metadata: `/v0/discount/rules/:ruleId/deactivate`
+- `DISCOUNT_RULE_ARCHIVED`
+  - actionKey: `discount.rules.archive`
+  - outcome: `SUCCESS`
+  - entityType: `discount_rule`
+  - canonical endpoint metadata: `/v0/discount/rules/:ruleId/archive`
+
 ## Notes
 
 - Dispatcher currently uses at-least-once delivery semantics.

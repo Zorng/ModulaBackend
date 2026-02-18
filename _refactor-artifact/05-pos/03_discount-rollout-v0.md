@@ -1,6 +1,6 @@
 # Discount Module Rollout (v0)
 
-Status: Not started
+Status: Completed
 Owner context: POSOperation
 
 ## Goal
@@ -45,8 +45,8 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
-| 1 Boundary + Contract lock | Not started | |
-| 2 Data model + repositories | Not started | |
-| 3 Commands/queries + access control | Not started | |
-| 4 Integration + reliability | Not started | |
-| 5 Close-out | Not started | |
+| 1 Boundary + Contract lock | Completed | Locked module boundary in `_refactor-artifact/02-boundary/discount-boundary-v0.md`; drafted canonical API contract in `api_contract/discount-v0.md` with route prefix `/v0/discount`, action/event naming, branch-safe preflight, and metadata-only eligibility resolve contract. |
+| 2 Data model + repositories | Completed | Added baseline `migrations/022_create_v0_discount_tables.sql`, then aligned to KB branch-owned policy in `migrations/023_align_v0_discount_rules_branch_owned.sql` (`branch_id` on rules, removed multi-branch assignment table). Repository updated to branch-local item eligibility and active-rule overlap reads. |
+| 3 Commands/queries + access control | Completed | Reworked `src/modules/v0/posOperation/discount/app/service.ts` + router for branch-owned create/update, `preflight/eligible-items`, overlap warning+confirm, and effective-inactive editability denial. Access-control mapping updated to `discount.rules.preflight.eligibleItems`. |
+| 4 Integration + reliability | Completed | Expanded `src/integration-tests/v0-discount.int.test.ts` for branch-owned preflight behavior, overlap warning/confirm flow, effective-inactive update denial, idempotency replay/conflict, role denial, and atomic rollback. |
+| 5 Close-out | Completed | Updated boundary + API contract to KB-locked semantics and kept outbox catalog in sync for discount producer events. |

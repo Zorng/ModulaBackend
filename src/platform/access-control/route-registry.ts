@@ -330,6 +330,61 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     actionKey: "menu.composition.evaluate",
     tenantSource: "token",
   },
+  {
+    method: "GET",
+    pattern: /^\/discount\/rules$/,
+    actionKey: "discount.rules.list",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/discount\/rules\/[^/]+$/,
+    actionKey: "discount.rules.read",
+    tenantSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/discount\/rules$/,
+    actionKey: "discount.rules.create",
+    tenantSource: "token",
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/discount\/rules\/[^/]+$/,
+    actionKey: "discount.rules.update",
+    tenantSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/discount\/rules\/[^/]+\/activate$/,
+    actionKey: "discount.rules.activate",
+    tenantSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/discount\/rules\/[^/]+\/deactivate$/,
+    actionKey: "discount.rules.deactivate",
+    tenantSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/discount\/rules\/[^/]+\/archive$/,
+    actionKey: "discount.rules.archive",
+    tenantSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/discount\/preflight\/eligible-items$/,
+    actionKey: "discount.rules.preflight.eligibleItems",
+    tenantSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/discount\/eligibility\/resolve$/,
+    actionKey: "discount.eligibility.resolve",
+    tenantSource: "token",
+    branchSource: "token",
+  },
 ];
 
 export function matchProtectedRoute(
