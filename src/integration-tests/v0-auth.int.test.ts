@@ -171,4 +171,18 @@ describe("v0 auth (phase 1 scaffold)", () => {
 
     await pool.query(`DELETE FROM accounts WHERE phone = $1`, [phone]);
   });
+
+  it("returns 422 when registration password is missing", async () => {
+    const phone = uniquePhone();
+
+    const registerRes = await request(app).post("/v0/auth/register").send({
+      phone,
+      firstName: "No",
+      lastName: "Password",
+    });
+
+    expect(registerRes.status).toBe(422);
+    expect(registerRes.body.success).toBe(false);
+    expect(String(registerRes.body.error)).toContain("password must be at least 8 characters");
+  });
 });

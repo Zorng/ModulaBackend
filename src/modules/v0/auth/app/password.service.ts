@@ -11,7 +11,10 @@ export class V0PasswordService {
     return bcrypt.compare(password, hash);
   }
 
-  static validatePasswordStrength(password: string, minLength: number = 8): boolean {
+  static validatePasswordStrength(password: unknown, minLength: number = 8): boolean {
+    if (typeof password !== "string") {
+      return false;
+    }
     return password.length >= minLength;
   }
 }
