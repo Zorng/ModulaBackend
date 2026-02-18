@@ -16,7 +16,7 @@ export type V0TenantMembershipRow = {
   id: string;
   tenant_id: string;
   account_id: string;
-  status: "INVITED" | "ACTIVE" | "REJECTED" | "DISABLED" | "ARCHIVED";
+  status: "INVITED" | "ACTIVE" | "REVOKED";
 };
 
 export type V0BranchRow = {
@@ -197,5 +197,24 @@ export class V0StaffManagementRepository {
       [membershipId]
     );
     return result.rows.map((row) => row.branch_id);
+  }
+
+  async revokeStaffProjectionForMembership(membershipId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE v0_staff_profiles
+       SET status = 'REVOKED',
+           updated_at = NOW()
+       WHERE membership_id = $1`,
+      [membershipId]
+    );
+
+    await this.db.query(
+      `UPDATE v0_branch_assignments
+       SET status = 'REVOKED',
+           revoked_at = COALESCE(revoked_at, NOW()),
+           updated_at = NOW()
+       WHERE membership_id = $1`,
+      [membershipId]
+    );
   }
 }

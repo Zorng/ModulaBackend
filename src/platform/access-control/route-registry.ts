@@ -60,12 +60,12 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
   {
     method: "POST",
     pattern: /^\/auth\/memberships\/invitations\/[^/]+\/reject$/,
-    actionKey: "org.membership.invitation.reject",
+    actionKey: "org.membership.invitation.revoke",
   },
   {
     method: "POST",
     pattern: /^\/org\/memberships\/invitations\/[^/]+\/reject$/,
-    actionKey: "org.membership.invitation.reject",
+    actionKey: "org.membership.invitation.revoke",
   },
   {
     method: "POST",

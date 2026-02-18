@@ -476,7 +476,7 @@ Success `200`:
   "data": {
     "membershipId": "uuid",
     "tenantId": "uuid",
-    "status": "REJECTED"
+    "status": "REVOKED"
   }
 }
 ```
@@ -530,7 +530,7 @@ Success `200`:
   "data": {
     "membershipId": "uuid",
     "tenantId": "uuid",
-    "status": "DISABLED"
+    "status": "REVOKED"
   }
 }
 ```

@@ -67,8 +67,8 @@ type V0CommandOutboxEvent = {
   - actionKey: `org.membership.invitation.accept`
   - outcome: `SUCCESS`
   - entityType: `membership`
-- `ORG_MEMBERSHIP_INVITATION_REJECTED`
-  - actionKey: `org.membership.invitation.reject`
+- `ORG_MEMBERSHIP_INVITATION_REVOKED`
+  - actionKey: `org.membership.invitation.revoke`
   - outcome: `SUCCESS`
   - entityType: `membership`
 - `ORG_MEMBERSHIP_ROLE_CHANGED`

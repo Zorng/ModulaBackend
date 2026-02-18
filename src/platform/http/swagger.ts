@@ -141,7 +141,7 @@ export function setupSwagger(app: Express) {
 
           EmployeeStatus: {
             type: "string",
-            enum: ["ACTIVE", "INVITED", "DISABLED"],
+            enum: ["ACTIVE", "INVITED", "REVOKED"],
             description: "Current status of the employee",
           },
 

@@ -9,9 +9,7 @@ CREATE TABLE IF NOT EXISTS v0_tenant_memberships (
   status VARCHAR(20) NOT NULL CHECK (status IN (
     'INVITED',
     'ACTIVE',
-    'REJECTED',
-    'DISABLED',
-    'ARCHIVED'
+    'REVOKED'
   )),
   invited_by_membership_id UUID REFERENCES v0_tenant_memberships(id) ON DELETE SET NULL,
   invited_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

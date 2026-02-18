@@ -105,7 +105,7 @@ Owns:
 
 #### `TenantMembership`
 Owns:
-- membership facts + lifecycle (`INVITED/ACTIVE/DISABLED/ARCHIVED`).
+- membership facts + lifecycle (`INVITED/ACTIVE/REVOKED`).
 - membership governance facts (`membership_kind`, `role_key`).
 - membership admin commands (invite/accept/reject/role/revoke).
 
@@ -231,7 +231,7 @@ Target naming for new work should follow domain ownership:
 - `org.tenant.provision`
 - `org.membership.invite`
 - `org.membership.invitation.accept`
-- `org.membership.invitation.reject`
+- `org.membership.invitation.revoke`
 - `org.membership.role.change`
 - `org.membership.revoke`
 - `hr.staff.branch.assign`

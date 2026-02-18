@@ -109,8 +109,8 @@ export function createV0MembershipRouter(db: Pool): Router {
           requesterAccountId,
           membershipId: req.params.membershipId,
           idempotencyKey,
-          actionKey: "org.membership.invitation.reject",
-          eventType: "ORG_MEMBERSHIP_INVITATION_REJECTED",
+          actionKey: "org.membership.invitation.revoke",
+          eventType: "ORG_MEMBERSHIP_INVITATION_REVOKED",
           endpoint: "/v0/org/memberships/invitations/:membershipId/reject",
         });
         res.status(200).json({ success: true, data });

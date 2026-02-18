@@ -21,7 +21,7 @@ Legend:
 | `org.membership.invite` | TENANT | WRITE | OWNER, ADMIN | - |
 | `org.membership.invitations.list` | GLOBAL | READ | - | - |
 | `org.membership.invitation.accept` | GLOBAL | WRITE | - | - |
-| `org.membership.invitation.reject` | GLOBAL | WRITE | - | - |
+| `org.membership.invitation.revoke` | GLOBAL | WRITE | - | - |
 | `org.membership.role.change` | TENANT | WRITE | OWNER, ADMIN | - |
 | `org.membership.revoke` | TENANT | WRITE | OWNER, ADMIN | - |
 | `hr.staff.branch.assign` | TENANT | WRITE | OWNER, ADMIN | - |
@@ -76,8 +76,8 @@ Legend:
 | GET | `/org/memberships/invitations` | `org.membership.invitations.list` | - | - |
 | POST | `/auth/memberships/invitations/:id/accept` | `org.membership.invitation.accept` | - | - |
 | POST | `/org/memberships/invitations/:id/accept` | `org.membership.invitation.accept` | - | - |
-| POST | `/auth/memberships/invitations/:id/reject` | `org.membership.invitation.reject` | - | - |
-| POST | `/org/memberships/invitations/:id/reject` | `org.membership.invitation.reject` | - | - |
+| POST | `/auth/memberships/invitations/:id/reject` | `org.membership.invitation.revoke` | - | - |
+| POST | `/org/memberships/invitations/:id/reject` | `org.membership.invitation.revoke` | - | - |
 | POST | `/auth/memberships/:id/role` | `org.membership.role.change` | `path.membershipId` | - |
 | POST | `/org/memberships/:id/role` | `org.membership.role.change` | `path.membershipId` | - |
 | POST | `/auth/memberships/:id/revoke` | `org.membership.revoke` | `path.membershipId` | - |

@@ -279,12 +279,18 @@ export async function executeRevokeMembershipCommand(
 
   return transactionManager.withTransaction(async (client) => {
     const txService = new V0MembershipService(new V0MembershipRepository(client));
+    const txStaffManagementService = new V0StaffManagementService(
+      new V0StaffManagementRepository(client)
+    );
     const txAuditService = new V0AuditService(new V0AuditRepository(client));
     const txOutboxRepository = new V0CommandOutboxRepository(client);
 
     const commandData = await txService.revokeMembership({
       requesterAccountId: input.requesterAccountId,
       membershipId: input.membershipId as string,
+    });
+    await txStaffManagementService.revokeMembershipStaffProjection({
+      membershipId: commandData.membershipId,
     });
 
     const dedupeKey = buildCommandDedupeKey({

@@ -42,7 +42,7 @@ export type V0TenantMembershipRow = {
   tenant_id: string;
   account_id: string;
   role_key: string;
-  status: "INVITED" | "ACTIVE" | "REJECTED" | "DISABLED" | "ARCHIVED";
+  status: "INVITED" | "ACTIVE" | "REVOKED";
   invited_by_membership_id: string | null;
   invited_at: Date;
   accepted_at: Date | null;
@@ -625,8 +625,9 @@ export class V0AuthRepository {
     const result = await this.db.query<V0TenantMembershipRow>(
       `UPDATE v0_tenant_memberships
        SET
-         status = 'REJECTED',
-         rejected_at = NOW(),
+         status = 'REVOKED',
+         revoked_at = NOW(),
+         rejected_at = NULL,
          updated_at = NOW()
        WHERE id = $1
          AND account_id = $2
@@ -659,7 +660,7 @@ export class V0AuthRepository {
     const result = await this.db.query<V0TenantMembershipRow>(
       `UPDATE v0_tenant_memberships
        SET
-         status = 'DISABLED',
+         status = 'REVOKED',
          revoked_at = NOW(),
          updated_at = NOW()
        WHERE id = $1

@@ -12,7 +12,7 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
   },
   "org.membership.invitations.list": { scope: "GLOBAL", effect: "READ" },
   "org.membership.invitation.accept": { scope: "GLOBAL", effect: "WRITE" },
-  "org.membership.invitation.reject": { scope: "GLOBAL", effect: "WRITE" },
+  "org.membership.invitation.revoke": { scope: "GLOBAL", effect: "WRITE" },
   "org.membership.role.change": {
     scope: "TENANT",
     effect: "WRITE",

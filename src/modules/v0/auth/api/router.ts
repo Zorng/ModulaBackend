@@ -280,8 +280,8 @@ export function createV0AuthRouter(
           requesterAccountId,
           membershipId: req.params.membershipId,
           idempotencyKey,
-          actionKey: "org.membership.invitation.reject",
-          eventType: "ORG_MEMBERSHIP_INVITATION_REJECTED",
+          actionKey: "org.membership.invitation.revoke",
+          eventType: "ORG_MEMBERSHIP_INVITATION_REVOKED",
           endpoint: "/v0/auth/memberships/invitations/:membershipId/reject",
         });
         res.status(200).json({ success: true, data });

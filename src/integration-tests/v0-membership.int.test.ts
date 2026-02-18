@@ -151,7 +151,7 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerAccessToken}`)
       .send({});
     expect(revokeRes.status).toBe(200);
-    expect(revokeRes.body.data.status).toBe("DISABLED");
+    expect(revokeRes.body.data.status).toBe("REVOKED");
 
     const auditRows = await pool.query<{
       action_key: string;

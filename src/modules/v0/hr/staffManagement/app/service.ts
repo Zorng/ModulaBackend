@@ -146,6 +146,11 @@ export class V0StaffManagementService {
       branchIds,
     });
   }
+
+  async revokeMembershipStaffProjection(input: { membershipId: string }): Promise<void> {
+    const membershipId = normalizeRequiredId(input.membershipId, "membershipId is required");
+    await this.repo.revokeStaffProjectionForMembership(membershipId);
+  }
 }
 
 function normalizeRequiredId(value: unknown, message: string): string {
