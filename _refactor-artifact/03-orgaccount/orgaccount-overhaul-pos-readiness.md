@@ -58,18 +58,18 @@ Exit criteria:
   - Idempotency
   - Audit/Outbox contract
 
-### Phase O5 — Branch Slot Capacity Expansion
+### Phase O5 — Branch Billable Workspace Expansion
 Scope:
 - Extend OrgAccount from bootstrap-first-branch only to multi-branch activation.
-- Introduce tenant branch slot/capacity guard for additional branches.
+- Keep branch as a paid workspace unit (no reusable slot abstraction).
 - Keep current branch activation flow intact while adding additional branch activation flow.
 - Detailed execution tracker:
-  - `_refactor-artifact/03-orgaccount/branch-slot-capacity-rollout-v0.md`
+  - `_refactor-artifact/03-orgaccount/branch-billable-workspaces-rollout-v0.md`
 
 Exit criteria:
 - Additional branch activation contract is locked and implemented.
-- Stable denial when slot full (`BRANCH_SLOT_LIMIT_REACHED`).
-- Integration tests cover slot guard + atomic reliability paths.
+- Stable denial codes are payment/subscription-oriented (not slot-oriented).
+- Integration tests cover additional-branch activation + atomic reliability paths.
 
 ## Tracking
 
@@ -79,7 +79,7 @@ Exit criteria:
 | O2 Fair-Use Extension | Completed | Tenant provisioning now enforces `tenant_count_per_account` hard cap and request-frequency rate limiting with stable denial codes (`FAIRUSE_HARD_LIMIT_EXCEEDED`, `FAIRUSE_RATE_LIMITED`). |
 | O3 Atomic Command Contract | Completed | Migrated `tenant.provision`, auth membership writes, and attendance writes to transactional business+audit+outbox contract (`v0_command_outbox`), with integration coverage for rollback and replay-safe dedupe. |
 | O4 POS Core Readiness Slices | In progress (planning locked) | Build order and per-module trackers are locked in `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md`. |
-| O5 Branch Slot Capacity Expansion | Planned | See `_refactor-artifact/03-orgaccount/branch-slot-capacity-rollout-v0.md` for current-vs-target behavior and phased execution. |
+| O5 Branch Billable Workspace Expansion | Planned | See `_refactor-artifact/03-orgaccount/branch-billable-workspaces-rollout-v0.md` for current-vs-target behavior and phased execution. |
 
 ## O3 Close-Out Notes
 

@@ -26,14 +26,14 @@ export class StubFirstBranchPaymentVerifier implements FirstBranchPaymentVerifie
     if (!token) {
       return {
         confirmed: false,
-        reasonCode: "PAYMENT_TOKEN_REQUIRED",
+        reasonCode: "BRANCH_ACTIVATION_PAYMENT_REQUIRED",
       };
     }
 
     if (token !== this.acceptedToken) {
       return {
         confirmed: false,
-        reasonCode: "PAYMENT_NOT_CONFIRMED",
+        reasonCode: "BRANCH_ACTIVATION_PAYMENT_REQUIRED",
       };
     }
 

@@ -22,6 +22,7 @@ These codes are returned in the standard error envelope:
 | `BRANCH_CONTEXT_REQUIRED` | 403 | Action requires branch context, but none is available. |
 | `TENANT_NOT_FOUND` | 404 | Referenced tenant does not exist. |
 | `TENANT_NOT_ACTIVE` | 403 | Tenant is not active for this write action (e.g., frozen). |
+| `SUBSCRIPTION_UPGRADE_REQUIRED` | 403 | Tenant subscription is `PAST_DUE`; upgrade-only actions are blocked until payment recovery. |
 | `SUBSCRIPTION_FROZEN` | 403 | Subscription state is frozen; write operation is blocked. |
 | `NO_MEMBERSHIP` | 403 | Actor has no active membership in tenant. |
 | `BRANCH_NOT_FOUND` | 404 | Referenced branch does not exist under tenant. |

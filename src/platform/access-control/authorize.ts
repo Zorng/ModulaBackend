@@ -43,6 +43,13 @@ export async function authorizeRoute(input: {
   }
 
   const subscriptionState = await getSubscriptionState(input.db, tenantId);
+  if (
+    action.effect === "WRITE" &&
+    subscriptionState === "PAST_DUE" &&
+    UPGRADE_ONLY_ACTIONS.has(input.route.actionKey)
+  ) {
+    return deny(403, "SUBSCRIPTION_UPGRADE_REQUIRED");
+  }
   if (action.effect === "WRITE" && subscriptionState === "FROZEN") {
     return deny(403, "SUBSCRIPTION_FROZEN");
   }
@@ -134,3 +141,8 @@ export async function authorizeRoute(input: {
 function deny(statusCode: number, code: string): AuthorizationDecision {
   return { allow: false, statusCode, code };
 }
+
+const UPGRADE_ONLY_ACTIONS = new Set<string>([
+  "org.branch.activation.initiate",
+  "org.branch.activation.confirm",
+]);

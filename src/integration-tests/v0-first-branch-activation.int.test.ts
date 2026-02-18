@@ -85,7 +85,9 @@ describe("v0 first branch activation scaffold", () => {
     expect(initiated.status).toBe(201);
     expect(initiated.body.data.tenantId).toBe(tenantId);
     expect(initiated.body.data.branchName).toBe("Main Branch");
+    expect(initiated.body.data.activationType).toBe("FIRST_BRANCH");
     expect(initiated.body.data.draftStatus).toBe("PENDING_PAYMENT");
+    expect(initiated.body.data.invoice.invoiceType).toBe("FIRST_BRANCH_ACTIVATION");
     expect(initiated.body.data.invoice.status).toBe("ISSUED");
     const draftId = initiated.body.data.draftId as string;
 
@@ -107,6 +109,7 @@ describe("v0 first branch activation scaffold", () => {
     expect(activated.status).toBe(201);
     expect(activated.body.data.tenantId).toBe(tenantId);
     expect(activated.body.data.branchName).toBe("Main Branch");
+    expect(activated.body.data.activationType).toBe("FIRST_BRANCH");
     expect(activated.body.data.status).toBe("ACTIVE");
     expect(typeof activated.body.data.paymentConfirmationRef).toBe("string");
     const createdBranchId = activated.body.data.branchId as string;
@@ -137,6 +140,14 @@ describe("v0 first branch activation scaffold", () => {
       [tenantId, activated.body.data.branchId]
     );
     expect(Number(entitlementCount.rows[0]?.count ?? "0")).toBe(4);
+
+    const billingAnchor = await pool.query<{ billing_anchor_set_at: Date | null }>(
+      `SELECT billing_anchor_set_at
+       FROM v0_tenant_subscription_states
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    expect(billingAnchor.rows[0]?.billing_anchor_set_at).not.toBeNull();
 
     const auditEvent = await pool.query<{ action_key: string; entity_type: string; outcome: string }>(
       `SELECT action_key, entity_type, outcome
@@ -237,7 +248,7 @@ describe("v0 first branch activation scaffold", () => {
         paymentToken: "UNPAID",
       });
     expect(rejected.status).toBe(402);
-    expect(rejected.body.code).toBe("PAYMENT_NOT_CONFIRMED");
+    expect(rejected.body.code).toBe("BRANCH_ACTIVATION_PAYMENT_REQUIRED");
 
     const branchCount = await pool.query<{ count: string }>(
       `SELECT COUNT(*)::TEXT AS count
@@ -259,5 +270,241 @@ describe("v0 first branch activation scaffold", () => {
     expect(invoiceStatus.rows[0]?.status).toBe("ISSUED");
 
     await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+  });
+
+  it("allows activating a second branch after first branch activation", async () => {
+    const ownerPhone = uniquePhone();
+    const ownerToken = await registerAndLogin(app, ownerPhone);
+
+    const tenantCreated = await request(app)
+      .post("/v0/org/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantName: `Multi Branch Tenant ${Date.now()}` });
+    expect(tenantCreated.status).toBe(201);
+    const tenantId = tenantCreated.body.data.tenant.id as string;
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantId });
+    expect(tenantSelected.status).toBe(200);
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const firstDraft = await request(app)
+      .post("/v0/org/branches/activation/initiate")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ branchName: "Main Branch" });
+    expect(firstDraft.status).toBe(201);
+
+    const firstActivated = await request(app)
+      .post("/v0/org/branches/activation/confirm")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({
+        draftId: firstDraft.body.data.draftId,
+        paymentToken: "PAID",
+      });
+    expect(firstActivated.status).toBe(201);
+
+    const secondDraft = await request(app)
+      .post("/v0/org/branches/activation/initiate")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ branchName: "Second Branch" });
+    expect(secondDraft.status).toBe(201);
+    expect(secondDraft.body.data.branchName).toBe("Second Branch");
+    expect(secondDraft.body.data.activationType).toBe("ADDITIONAL_BRANCH");
+    expect(secondDraft.body.data.invoice.invoiceType).toBe("ADDITIONAL_BRANCH_ACTIVATION");
+
+    const secondActivated = await request(app)
+      .post("/v0/org/branches/activation/confirm")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({
+        draftId: secondDraft.body.data.draftId,
+        paymentToken: "PAID",
+      });
+    expect(secondActivated.status).toBe(201);
+    expect(secondActivated.body.data.branchName).toBe("Second Branch");
+    expect(secondActivated.body.data.activationType).toBe("ADDITIONAL_BRANCH");
+
+    const branchCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM branches
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    expect(Number(branchCount.rows[0]?.count ?? "0")).toBe(2);
+
+    const invoiceTypes = await pool.query<{ invoice_type: string }>(
+      `SELECT invoice_type
+       FROM v0_subscription_invoices
+       WHERE tenant_id = $1
+       ORDER BY created_at ASC`,
+      [tenantId]
+    );
+    expect(invoiceTypes.rows.map((row) => row.invoice_type)).toEqual([
+      "FIRST_BRANCH_ACTIVATION",
+      "ADDITIONAL_BRANCH_ACTIVATION",
+    ]);
+
+    const accessible = await request(app)
+      .get("/v0/org/branches/accessible")
+      .set("Authorization", `Bearer ${tenantToken}`);
+    expect(accessible.status).toBe(200);
+    expect((accessible.body.data as Array<unknown>).length).toBe(2);
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+  });
+
+  it("denies additional branch activation when subscription is past due", async () => {
+    const ownerPhone = uniquePhone();
+    const ownerToken = await registerAndLogin(app, ownerPhone);
+
+    const tenantCreated = await request(app)
+      .post("/v0/org/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantName: `Past Due Upgrade Block ${Date.now()}` });
+    expect(tenantCreated.status).toBe(201);
+    const tenantId = tenantCreated.body.data.tenant.id as string;
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantId });
+    expect(tenantSelected.status).toBe(200);
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const firstDraft = await request(app)
+      .post("/v0/org/branches/activation/initiate")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ branchName: "Main Branch" });
+    expect(firstDraft.status).toBe(201);
+
+    const firstActivated = await request(app)
+      .post("/v0/org/branches/activation/confirm")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({
+        draftId: firstDraft.body.data.draftId,
+        paymentToken: "PAID",
+      });
+    expect(firstActivated.status).toBe(201);
+
+    await pool.query(
+      `UPDATE v0_tenant_subscription_states
+       SET state = 'PAST_DUE', updated_at = NOW()
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+
+    const blocked = await request(app)
+      .post("/v0/org/branches/activation/initiate")
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({ branchName: "Blocked Branch" });
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.code).toBe("SUBSCRIPTION_UPGRADE_REQUIRED");
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+  });
+
+  it("enforces fair-use hard limit on branch activation initiate", async () => {
+    const previousHardLimit = process.env.V0_FAIRUSE_BRANCH_COUNT_PER_TENANT_HARD;
+    process.env.V0_FAIRUSE_BRANCH_COUNT_PER_TENANT_HARD = "1";
+
+    const ownerPhone = uniquePhone();
+    try {
+      const ownerToken = await registerAndLogin(app, ownerPhone);
+
+      const tenantCreated = await request(app)
+        .post("/v0/org/tenants")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ tenantName: `Hard Limit Tenant ${Date.now()}` });
+      expect(tenantCreated.status).toBe(201);
+      const tenantId = tenantCreated.body.data.tenant.id as string;
+
+      const tenantSelected = await request(app)
+        .post("/v0/auth/context/tenant/select")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ tenantId });
+      expect(tenantSelected.status).toBe(200);
+      const tenantToken = tenantSelected.body.data.accessToken as string;
+
+      const firstDraft = await request(app)
+        .post("/v0/org/branches/activation/initiate")
+        .set("Authorization", `Bearer ${tenantToken}`)
+        .send({ branchName: "Main Branch" });
+      expect(firstDraft.status).toBe(201);
+
+      const firstActivated = await request(app)
+        .post("/v0/org/branches/activation/confirm")
+        .set("Authorization", `Bearer ${tenantToken}`)
+        .send({
+          draftId: firstDraft.body.data.draftId,
+          paymentToken: "PAID",
+        });
+      expect(firstActivated.status).toBe(201);
+
+      const blockedSecond = await request(app)
+        .post("/v0/org/branches/activation/initiate")
+        .set("Authorization", `Bearer ${tenantToken}`)
+        .send({ branchName: "Second Branch" });
+      expect(blockedSecond.status).toBe(409);
+      expect(blockedSecond.body.code).toBe("FAIRUSE_HARD_LIMIT_EXCEEDED");
+    } finally {
+      process.env.V0_FAIRUSE_BRANCH_COUNT_PER_TENANT_HARD = previousHardLimit;
+      await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+    }
+  });
+
+  it("enforces fair-use rate limit on branch activation initiate", async () => {
+    const previousRate = process.env.V0_FAIRUSE_BRANCH_ACTIVATION_RATE_LIMIT;
+    const previousWindow = process.env.V0_FAIRUSE_BRANCH_ACTIVATION_WINDOW_SECONDS;
+    const previousHard = process.env.V0_FAIRUSE_BRANCH_COUNT_PER_TENANT_HARD;
+    process.env.V0_FAIRUSE_BRANCH_ACTIVATION_RATE_LIMIT = "1";
+    process.env.V0_FAIRUSE_BRANCH_ACTIVATION_WINDOW_SECONDS = "3600";
+    process.env.V0_FAIRUSE_BRANCH_COUNT_PER_TENANT_HARD = "100";
+
+    const ownerPhone = uniquePhone();
+    try {
+      const ownerToken = await registerAndLogin(app, ownerPhone);
+
+      const tenantCreated = await request(app)
+        .post("/v0/org/tenants")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ tenantName: `Rate Limit Tenant ${Date.now()}` });
+      expect(tenantCreated.status).toBe(201);
+      const tenantId = tenantCreated.body.data.tenant.id as string;
+
+      const tenantSelected = await request(app)
+        .post("/v0/auth/context/tenant/select")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ tenantId });
+      expect(tenantSelected.status).toBe(200);
+      const tenantToken = tenantSelected.body.data.accessToken as string;
+
+      const firstDraft = await request(app)
+        .post("/v0/org/branches/activation/initiate")
+        .set("Authorization", `Bearer ${tenantToken}`)
+        .send({ branchName: "Main Branch" });
+      expect(firstDraft.status).toBe(201);
+
+      const firstActivated = await request(app)
+        .post("/v0/org/branches/activation/confirm")
+        .set("Authorization", `Bearer ${tenantToken}`)
+        .send({
+          draftId: firstDraft.body.data.draftId,
+          paymentToken: "PAID",
+        });
+      expect(firstActivated.status).toBe(201);
+
+      const blockedSecond = await request(app)
+        .post("/v0/org/branches/activation/initiate")
+        .set("Authorization", `Bearer ${tenantToken}`)
+        .send({ branchName: "Second Branch" });
+      expect(blockedSecond.status).toBe(429);
+      expect(blockedSecond.body.code).toBe("FAIRUSE_RATE_LIMITED");
+    } finally {
+      process.env.V0_FAIRUSE_BRANCH_ACTIVATION_RATE_LIMIT = previousRate;
+      process.env.V0_FAIRUSE_BRANCH_ACTIVATION_WINDOW_SECONDS = previousWindow;
+      process.env.V0_FAIRUSE_BRANCH_COUNT_PER_TENANT_HARD = previousHard;
+      await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+    }
   });
 });

@@ -17,10 +17,10 @@
 | Boundary | Policy Boundary v0 | Active (Phase 1-5 lock) | `_refactor-artifact/02-boundary/policy-boundary-v0.md` |
 | Boundary | Menu Boundary v0 | Active (rolled out module boundary) | `_refactor-artifact/02-boundary/menu-boundary-v0.md` |
 | OrgAccount | OrgAccount Overhaul + POS Readiness | In Progress | `_refactor-artifact/03-orgaccount/orgaccount-overhaul-pos-readiness.md` |
-| OrgAccount | Branch Slot Capacity Rollout v0 | Planned | `_refactor-artifact/03-orgaccount/branch-slot-capacity-rollout-v0.md` |
+| OrgAccount | Branch Billable Workspaces Rollout v0 | Planned | `_refactor-artifact/03-orgaccount/branch-billable-workspaces-rollout-v0.md` |
 | Auth | SaaS Multi-Tenant Overhaul | Completed | `_refactor-artifact/04-auth/saas-multi-tenant-overhaul.md` |
 | POS | POS Module Build Order v0 | Active planning | `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md` |
 
 ## Next Recommended Artifact
 
-- Start `_refactor-artifact/03-orgaccount/branch-slot-capacity-rollout-v0.md` Phase S1 (contract + decision lock), then continue POS module order.
+- Start `_refactor-artifact/03-orgaccount/branch-billable-workspaces-rollout-v0.md` Phase S1 (contract + decision lock), then continue POS module order.

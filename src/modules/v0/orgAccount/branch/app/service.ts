@@ -3,6 +3,24 @@ import type { FirstBranchPaymentVerifier } from "./payment-verifier.js";
 import { V0BranchRepository } from "../infra/repository.js";
 
 export class V0BranchService {
+  private readonly branchCountPerTenantHard = parsePositiveInt(
+    process.env.V0_FAIRUSE_BRANCH_COUNT_PER_TENANT_HARD ??
+      process.env.V0_BRANCH_COUNT_PER_TENANT_HARD,
+    100
+  );
+
+  private readonly branchActivationRateLimit = parsePositiveInt(
+    process.env.V0_FAIRUSE_BRANCH_ACTIVATION_RATE_LIMIT ??
+      process.env.V0_BRANCH_ACTIVATION_RATE_LIMIT,
+    30
+  );
+
+  private readonly branchActivationRateWindowSeconds = parsePositiveInt(
+    process.env.V0_FAIRUSE_BRANCH_ACTIVATION_WINDOW_SECONDS ??
+      process.env.V0_BRANCH_ACTIVATION_RATE_WINDOW_SECONDS,
+    3600
+  );
+
   constructor(
     private readonly repo: V0BranchRepository,
     private readonly paymentVerifier: FirstBranchPaymentVerifier
@@ -61,9 +79,11 @@ export class V0BranchService {
     draftId: string;
     tenantId: string;
     branchName: string;
+    activationType: "FIRST_BRANCH" | "ADDITIONAL_BRANCH";
     draftStatus: "PENDING_PAYMENT";
     invoice: {
       invoiceId: string;
+      invoiceType: "FIRST_BRANCH_ACTIVATION" | "ADDITIONAL_BRANCH_ACTIVATION";
       status: "ISSUED";
       currency: "USD";
       totalAmountUsd: string;
@@ -79,25 +99,43 @@ export class V0BranchService {
     }
 
     await this.repo.lockTenantForFirstBranchActivation(scope.tenantId);
-    const branchCount = await this.repo.countBranchesByTenant(scope.tenantId);
-    if (branchCount > 0) {
-      throw new V0OrgAccountError(
-        409,
-        "branch slot limit reached for tenant",
-        "BRANCH_SLOT_LIMIT_REACHED"
-      );
-    }
 
     const existingDraft = await this.repo.findPendingFirstBranchActivationDraft(scope.tenantId);
     if (existingDraft) {
       return mapPendingDraft(existingDraft, false);
     }
+    const activationAttemptCount = await this.repo.recordFairUseEventAndCountRecent({
+      accountId: scope.accountId,
+      actionKey: "org.branch.activation.initiate",
+      windowSeconds: this.branchActivationRateWindowSeconds,
+    });
+    if (activationAttemptCount > this.branchActivationRateLimit) {
+      throw new V0OrgAccountError(
+        429,
+        "branch activation is rate-limited; try again later",
+        "FAIRUSE_RATE_LIMITED"
+      );
+    }
+    const branchCount = await this.repo.countBranchesByTenant(scope.tenantId);
+    if (branchCount >= this.branchCountPerTenantHard) {
+      throw new V0OrgAccountError(
+        409,
+        "branch creation hard limit reached for this tenant",
+        "FAIRUSE_HARD_LIMIT_EXCEEDED"
+      );
+    }
+    const activationType = resolveActivationType(branchCount);
 
     const createdDraft = await this.repo.createFirstBranchActivationDraftWithInvoice({
       tenantId: scope.tenantId,
       requestedByAccountId: scope.accountId,
       branchDisplayName: branchName,
-      totalAmountUsd: resolveFirstBranchActivationAmountUsd(),
+      activationType,
+      invoiceType:
+        activationType === "FIRST_BRANCH"
+          ? "FIRST_BRANCH_ACTIVATION"
+          : "ADDITIONAL_BRANCH_ACTIVATION",
+      totalAmountUsd: resolveBranchActivationAmountUsd(activationType),
     });
 
     return mapPendingDraft(createdDraft, true);
@@ -112,6 +150,7 @@ export class V0BranchService {
     branchId: string;
     tenantId: string;
     branchName: string;
+    activationType: "FIRST_BRANCH" | "ADDITIONAL_BRANCH";
     status: string;
     invoiceId: string;
     paymentConfirmationRef: string | null;
@@ -158,6 +197,7 @@ export class V0BranchService {
         branchId: branch.id,
         tenantId: branch.tenant_id,
         branchName: branch.name,
+        activationType: activationDraft.activation_type,
         status: branch.status,
         invoiceId: activationDraft.invoice_id,
         paymentConfirmationRef: activationDraft.payment_confirmation_ref,
@@ -189,16 +229,7 @@ export class V0BranchService {
       throw new V0OrgAccountError(
         402,
         "payment is not confirmed for first branch activation",
-        payment.reasonCode ?? "PAYMENT_NOT_CONFIRMED"
-      );
-    }
-
-    const branchCount = await this.repo.countBranchesByTenant(scope.tenantId);
-    if (branchCount > 0) {
-      throw new V0OrgAccountError(
-        409,
-        "branch slot limit reached for tenant",
-        "BRANCH_SLOT_LIMIT_REACHED"
+        mapBranchActivationPaymentDenialCode(payment.reasonCode)
       );
     }
 
@@ -229,6 +260,9 @@ export class V0BranchService {
       branchId: branch.id,
       paymentConfirmationRef: payment.confirmationReference ?? null,
     });
+    if (activationDraft.activation_type === "FIRST_BRANCH") {
+      await this.repo.setBillingAnchorIfUnset(scope.tenantId);
+    }
     await this.repo.seedDefaultBranchEntitlements({
       tenantId: scope.tenantId,
       branchId: branch.id,
@@ -239,6 +273,7 @@ export class V0BranchService {
       branchId: branch.id,
       tenantId: branch.tenant_id,
       branchName: branch.name,
+      activationType: activationDraft.activation_type,
       status: branch.status,
       invoiceId: activationDraft.invoice_id,
       paymentConfirmationRef: payment.confirmationReference ?? null,
@@ -252,8 +287,10 @@ function mapPendingDraft(
     draft_id: string;
     tenant_id: string;
     branch_display_name: string;
+    activation_type: "FIRST_BRANCH" | "ADDITIONAL_BRANCH";
     draft_status: "PENDING_PAYMENT" | "ACTIVATED" | "CANCELLED";
     invoice_id: string;
+    invoice_type: "FIRST_BRANCH_ACTIVATION" | "ADDITIONAL_BRANCH_ACTIVATION";
     invoice_status: "ISSUED" | "PAID" | "VOID" | "FAILED";
     invoice_currency: "USD" | string;
     invoice_total_amount_usd: string;
@@ -265,9 +302,11 @@ function mapPendingDraft(
   draftId: string;
   tenantId: string;
   branchName: string;
+  activationType: "FIRST_BRANCH" | "ADDITIONAL_BRANCH";
   draftStatus: "PENDING_PAYMENT";
   invoice: {
     invoiceId: string;
+    invoiceType: "FIRST_BRANCH_ACTIVATION" | "ADDITIONAL_BRANCH_ACTIVATION";
     status: "ISSUED";
     currency: "USD";
     totalAmountUsd: string;
@@ -290,9 +329,11 @@ function mapPendingDraft(
     draftId: draft.draft_id,
     tenantId: draft.tenant_id,
     branchName: draft.branch_display_name,
+    activationType: draft.activation_type,
     draftStatus: draft.draft_status,
     invoice: {
       invoiceId: draft.invoice_id,
+      invoiceType: draft.invoice_type,
       status: draft.invoice_status,
       currency: draft.invoice_currency,
       totalAmountUsd: draft.invoice_total_amount_usd,
@@ -303,16 +344,45 @@ function mapPendingDraft(
   };
 }
 
-function resolveFirstBranchActivationAmountUsd(): string {
-  const raw = String(process.env.V0_FIRST_BRANCH_ACTIVATION_FEE_USD ?? "5.00").trim();
+function resolveBranchActivationAmountUsd(
+  activationType: "FIRST_BRANCH" | "ADDITIONAL_BRANCH"
+): string {
+  const envKey =
+    activationType === "FIRST_BRANCH"
+      ? "V0_FIRST_BRANCH_ACTIVATION_FEE_USD"
+      : "V0_ADDITIONAL_BRANCH_ACTIVATION_FEE_USD";
+  const fallback =
+    activationType === "FIRST_BRANCH"
+      ? "5.00"
+      : String(process.env.V0_FIRST_BRANCH_ACTIVATION_FEE_USD ?? "5.00");
+  const raw = String(process.env[envKey] ?? fallback).trim();
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed < 0) {
     throw new V0OrgAccountError(
       500,
-      "invalid V0_FIRST_BRANCH_ACTIVATION_FEE_USD configuration"
+      `invalid ${envKey} configuration`
     );
   }
   return parsed.toFixed(2);
+}
+
+function resolveActivationType(
+  branchCount: number
+): "FIRST_BRANCH" | "ADDITIONAL_BRANCH" {
+  return branchCount <= 0 ? "FIRST_BRANCH" : "ADDITIONAL_BRANCH";
+}
+
+function mapBranchActivationPaymentDenialCode(reasonCode?: string): string {
+  void reasonCode;
+  return "BRANCH_ACTIVATION_PAYMENT_REQUIRED";
+}
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(String(raw ?? "").trim(), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
 }
 
 function assertTenantContext(actor: OrgActorContext): {

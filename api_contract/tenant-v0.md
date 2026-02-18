@@ -86,7 +86,8 @@ Success `201`:
 Notes:
 - `branch` is always `null` at tenant provisioning time.
 - First branch activation is a separate orchestration after payment confirmation.
-- Additional branches (2nd, 3rd, ...) are not created via tenant endpoint and are planned under branch slot rollout.
+- Additional branches (2nd, 3rd, ...) are created via the Branch activation endpoints, not via tenant provisioning.
+- Branches are treated as billable workspaces (not reusable slot tokens).
 
 Errors:
 - `401` missing/invalid access token or inactive account

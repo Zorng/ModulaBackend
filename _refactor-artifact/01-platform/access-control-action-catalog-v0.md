@@ -132,6 +132,7 @@ Legend:
   - `READ_ONLY` + write action => `ENTITLEMENT_READ_ONLY`
 - Subscription state gate behavior:
   - `WRITE` when subscription is `FROZEN` => deny `SUBSCRIPTION_FROZEN`
+  - `WRITE` upgrade actions (`org.branch.activation.*`) when subscription is `PAST_DUE` => deny `SUBSCRIPTION_UPGRADE_REQUIRED`
 - Branch status gate behavior:
   - `WRITE` on frozen branch => deny `BRANCH_FROZEN`
   - `READ` on frozen branch => allowed if assignment/membership gates pass.

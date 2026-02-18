@@ -16,6 +16,7 @@ export type FirstBranchActivationDraftRow = {
   tenant_id: string;
   requested_by_account_id: string;
   branch_display_name: string;
+  activation_type: "FIRST_BRANCH" | "ADDITIONAL_BRANCH";
   draft_status: "PENDING_PAYMENT" | "ACTIVATED" | "CANCELLED";
   activated_branch_id: string | null;
   payment_confirmation_ref: string | null;
@@ -23,6 +24,7 @@ export type FirstBranchActivationDraftRow = {
   updated_at: Date;
   activated_at: Date | null;
   invoice_id: string;
+  invoice_type: "FIRST_BRANCH_ACTIVATION" | "ADDITIONAL_BRANCH_ACTIVATION";
   invoice_status: "ISSUED" | "PAID" | "VOID" | "FAILED";
   invoice_currency: "USD";
   invoice_total_amount_usd: string;
@@ -32,6 +34,37 @@ export type FirstBranchActivationDraftRow = {
 
 export class V0BranchRepository {
   constructor(private readonly db: Queryable) {}
+
+  async recordFairUseEventAndCountRecent(input: {
+    accountId: string;
+    actionKey: string;
+    windowSeconds: number;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `WITH inserted AS (
+         INSERT INTO v0_fair_use_events (
+           account_id,
+           action_key
+         )
+         VALUES ($1, $2)
+         RETURNING created_at
+       ),
+       recent AS (
+         SELECT created_at
+         FROM v0_fair_use_events
+         WHERE account_id = $1
+           AND action_key = $2
+           AND created_at >= NOW() - ($3::TEXT || ' seconds')::INTERVAL
+         UNION ALL
+         SELECT created_at
+         FROM inserted
+       )
+       SELECT COUNT(*)::TEXT AS count
+       FROM recent`,
+      [input.accountId, input.actionKey, input.windowSeconds]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
 
   async lockTenantForFirstBranchActivation(tenantId: string): Promise<void> {
     await this.db.query(
@@ -146,6 +179,7 @@ export class V0BranchRepository {
          d.tenant_id,
          d.requested_by_account_id,
          d.branch_display_name,
+         d.activation_type,
          d.status AS draft_status,
          d.activated_branch_id,
          d.payment_confirmation_ref,
@@ -153,6 +187,7 @@ export class V0BranchRepository {
          d.updated_at,
          d.activated_at,
          i.id AS invoice_id,
+         i.invoice_type,
          i.status AS invoice_status,
          i.currency AS invoice_currency,
          i.total_amount_usd::TEXT AS invoice_total_amount_usd,
@@ -172,6 +207,8 @@ export class V0BranchRepository {
     tenantId: string;
     requestedByAccountId: string;
     branchDisplayName: string;
+    activationType: "FIRST_BRANCH" | "ADDITIONAL_BRANCH";
+    invoiceType: "FIRST_BRANCH_ACTIVATION" | "ADDITIONAL_BRANCH_ACTIVATION";
     totalAmountUsd: string;
   }): Promise<FirstBranchActivationDraftRow> {
     const result = await this.db.query<FirstBranchActivationDraftRow>(
@@ -187,7 +224,7 @@ export class V0BranchRepository {
          )
          VALUES (
            $1,
-           'FIRST_BRANCH_ACTIVATION',
+           $5,
            'ISSUED',
            'USD',
            $4::NUMERIC(12,2),
@@ -201,6 +238,7 @@ export class V0BranchRepository {
            tenant_id,
            requested_by_account_id,
            branch_display_name,
+           activation_type,
            status,
            invoice_id
          )
@@ -208,6 +246,7 @@ export class V0BranchRepository {
            $1,
            $2,
            $3,
+           $6,
            'PENDING_PAYMENT',
            i.id
          FROM inserted_invoice i
@@ -218,6 +257,7 @@ export class V0BranchRepository {
          d.tenant_id,
          d.requested_by_account_id,
          d.branch_display_name,
+         d.activation_type,
          d.status AS draft_status,
          d.activated_branch_id,
          d.payment_confirmation_ref,
@@ -225,6 +265,7 @@ export class V0BranchRepository {
          d.updated_at,
          d.activated_at,
          i.id AS invoice_id,
+         i.invoice_type,
          i.status AS invoice_status,
          i.currency AS invoice_currency,
          i.total_amount_usd::TEXT AS invoice_total_amount_usd,
@@ -237,6 +278,8 @@ export class V0BranchRepository {
         input.requestedByAccountId,
         input.branchDisplayName,
         input.totalAmountUsd,
+        input.invoiceType,
+        input.activationType,
       ]
     );
     return result.rows[0];
@@ -254,6 +297,7 @@ export class V0BranchRepository {
          d.tenant_id,
          d.requested_by_account_id,
          d.branch_display_name,
+         d.activation_type,
          d.status AS draft_status,
          d.activated_branch_id,
          d.payment_confirmation_ref,
@@ -261,6 +305,7 @@ export class V0BranchRepository {
          d.updated_at,
          d.activated_at,
          i.id AS invoice_id,
+         i.invoice_type,
          i.status AS invoice_status,
          i.currency AS invoice_currency,
          i.total_amount_usd::TEXT AS invoice_total_amount_usd,
@@ -285,6 +330,17 @@ export class V0BranchRepository {
          updated_at = NOW()
        WHERE id = $1`,
       [invoiceId]
+    );
+  }
+
+  async setBillingAnchorIfUnset(tenantId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE v0_tenant_subscription_states
+       SET
+         billing_anchor_set_at = COALESCE(billing_anchor_set_at, NOW()),
+         updated_at = NOW()
+       WHERE tenant_id = $1`,
+      [tenantId]
     );
   }
 

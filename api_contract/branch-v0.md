@@ -37,8 +37,9 @@ type BranchProfile = {
 ## Endpoints
 
 Implementation scope note:
-- Current branch activation endpoints are capacity-limited and currently bootstrap-only (`0 -> 1` branch per tenant by default).
-- Additional branch creation/activation (2nd, 3rd, ...) is **not implemented yet** in current `/v0`.
+- Current activation flow supports repeated branch activations.
+- Each activation is payment-gated and creates one branch.
+- A tenant can only have one `PENDING_PAYMENT` activation draft at a time.
 
 ### 1) List accessible branches in current tenant
 
@@ -125,9 +126,11 @@ Success `201` (new draft+invoice created):
     "draftId": "uuid",
     "tenantId": "uuid",
     "branchName": "Main Branch",
+    "activationType": "FIRST_BRANCH",
     "draftStatus": "PENDING_PAYMENT",
     "invoice": {
       "invoiceId": "uuid",
+      "invoiceType": "FIRST_BRANCH_ACTIVATION",
       "status": "ISSUED",
       "currency": "USD",
       "totalAmountUsd": "5.00",
@@ -148,9 +151,11 @@ Success `200` (existing pending draft reused):
     "draftId": "uuid",
     "tenantId": "uuid",
     "branchName": "Main Branch",
+    "activationType": "FIRST_BRANCH",
     "draftStatus": "PENDING_PAYMENT",
     "invoice": {
       "invoiceId": "uuid",
+      "invoiceType": "FIRST_BRANCH_ACTIVATION",
       "status": "ISSUED",
       "currency": "USD",
       "totalAmountUsd": "5.00",
@@ -165,7 +170,9 @@ Success `200` (existing pending draft reused):
 Errors:
 - `401` missing/invalid access token
 - `403` tenant context missing or role not allowed
-- `409` no available branch slot (`code = BRANCH_SLOT_LIMIT_REACHED`)
+- `403` subscription upgrade blocked while tenant is `PAST_DUE` (`code = SUBSCRIPTION_UPGRADE_REQUIRED`)
+- `409` branch fair-use hard limit reached (`code = FAIRUSE_HARD_LIMIT_EXCEEDED`)
+- `429` branch activation rate-limited (`code = FAIRUSE_RATE_LIMITED`)
 - `422` missing `branchName`
 
 ### 4) Confirm branch activation (payment-confirmed path)
@@ -193,6 +200,7 @@ Success `201` (new activation):
     "branchId": "uuid",
     "tenantId": "uuid",
     "branchName": "Main Branch",
+    "activationType": "FIRST_BRANCH",
     "status": "ACTIVE",
     "invoiceId": "uuid",
     "paymentConfirmationRef": "stub:...",
@@ -203,6 +211,7 @@ Success `201` (new activation):
 
 Notes:
 - On successful activation, requester is auto-assigned to the created branch (active branch assignment).
+- `activationType` indicates whether the draft/activation is `FIRST_BRANCH` or `ADDITIONAL_BRANCH`.
 
 Success `200` (already activated for same draft):
 
@@ -214,6 +223,7 @@ Success `200` (already activated for same draft):
     "branchId": "uuid",
     "tenantId": "uuid",
     "branchName": "Main Branch",
+    "activationType": "FIRST_BRANCH",
     "status": "ACTIVE",
     "invoiceId": "uuid",
     "paymentConfirmationRef": "stub:...",
@@ -225,18 +235,19 @@ Success `200` (already activated for same draft):
 Errors:
 - `401` missing/invalid access token
 - `403` tenant context missing or role not allowed
-- `402` payment not confirmed (`code = PAYMENT_NOT_CONFIRMED`)
-- `409` no available branch slot (`code = BRANCH_SLOT_LIMIT_REACHED`)
+- `403` subscription upgrade blocked while tenant is `PAST_DUE` (`code = SUBSCRIPTION_UPGRADE_REQUIRED`)
+- `402` payment required/not confirmed (`code = BRANCH_ACTIVATION_PAYMENT_REQUIRED`)
 - `409` draft/invoice not payable (`code = DRAFT_NOT_PENDING_PAYMENT` or `INVOICE_NOT_PAYABLE`)
 - `404` activation draft not found (`code = DRAFT_NOT_FOUND`)
 - `422` missing `draftId` or `paymentToken`
 
 ## Planned Extension (Not Implemented Yet)
 
-Target behavior for multi-branch tenants (slot/capacity gated) is being tracked in:
-- `_refactor-artifact/03-orgaccount/branch-slot-capacity-rollout-v0.md`
+Target behavior for branch-as-billable-workspace refinement is tracked in:
+- `_refactor-artifact/03-orgaccount/branch-billable-workspaces-rollout-v0.md`
 
-Candidate future endpoints:
-- `POST /v0/org/branches/activation/initiate`
-- `POST /v0/org/branches/activation/confirm`
-- `GET /v0/org/branches` (tenant-wide management list)
+Candidate future additions:
+- explicit branch list management endpoint (`GET /v0/org/branches`)
+- subscription-state-gated upgrade denials for blocked activation paths
+- richer payment/subscription-oriented denial family for blocked upgrade paths
+  - example: `SUBSCRIPTION_UPGRADE_REQUIRED`
