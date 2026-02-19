@@ -37,6 +37,8 @@ This folder contains the **frontend-facing HTTP API contracts** for this backend
 - `api_contract/discount-v0.md`
 - `api_contract/cash-session-v0.md`
 - `api_contract/media-v0.md`
+- `api_contract/operational-notification-v0.md`
+- `api_contract/offline-sync-v0.md`
 
 ## Frontend Integration Sequence (`/v0`)
 

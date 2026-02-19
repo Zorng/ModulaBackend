@@ -12,10 +12,14 @@
 | Platform | Observability Contract v0 | Active | `_refactor-artifact/01-platform/observability-contract-v0.md` |
 | Platform | Observability Thresholds v0 | Active | `_refactor-artifact/01-platform/observability-thresholds-v0.md` |
 | Platform | Observability Dashboard + Alert Starter v0 | Active | `_refactor-artifact/01-platform/observability-dashboard-alert-starter-v0.md` |
+| Platform | Operational Notification Rollout v0 | In Progress (N1 completed) | `_refactor-artifact/01-platform/operational-notification-rollout-v0.md` |
+| Platform | Offline Sync Foundation Rollout v0 | In Progress (S1 completed) | `_refactor-artifact/01-platform/offline-sync-foundation-rollout-v0.md` |
 | Boundary | Module Boundary Realignment v0 | Completed through B6 | `_refactor-artifact/02-boundary/module-boundary-realignment-v0.md` |
 | Boundary | Module Boundary Template v0 | Template | `_refactor-artifact/02-boundary/module-boundary-template-v0.md` |
 | Boundary | Policy Boundary v0 | Active (Phase 1-5 lock) | `_refactor-artifact/02-boundary/policy-boundary-v0.md` |
 | Boundary | Menu Boundary v0 | Active (rolled out module boundary) | `_refactor-artifact/02-boundary/menu-boundary-v0.md` |
+| Boundary | Operational Notification Boundary v0 | Locked (N1) | `_refactor-artifact/02-boundary/operational-notification-boundary-v0.md` |
+| Boundary | Offline Sync Boundary v0 | Locked (S1) | `_refactor-artifact/02-boundary/offline-sync-boundary-v0.md` |
 | OrgAccount | OrgAccount Overhaul + POS Readiness | In Progress | `_refactor-artifact/03-orgaccount/orgaccount-overhaul-pos-readiness.md` |
 | OrgAccount | Branch Billable Workspaces Rollout v0 | Completed | `_refactor-artifact/03-orgaccount/branch-billable-workspaces-rollout-v0.md` |
 | Auth | SaaS Multi-Tenant Overhaul | Completed | `_refactor-artifact/04-auth/saas-multi-tenant-overhaul.md` |
@@ -23,4 +27,7 @@
 
 ## Next Recommended Artifact
 
-- Continue POS module execution from `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md` (next unresolved rollout in order).
+- Complete platform pre-inventory prerequisites:
+  - `_refactor-artifact/01-platform/operational-notification-rollout-v0.md`
+  - `_refactor-artifact/01-platform/offline-sync-foundation-rollout-v0.md`
+- Then resume POS execution order from `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md`.

@@ -1,6 +1,6 @@
 # POS Module Build Order (KB-Aligned, v0)
 
-Status: Active planning
+Status: Active planning (inventory start paused by platform preflight)
 Owner: backend
 Last updated: 2026-02-18
 
@@ -41,6 +41,15 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 - `reporting` must aggregate stable facts from prior modules, so it follows write models.
 - `offlineSync` and `printing` are resilience/effect layers and should bind to stable command/event contracts.
 
+## Pre-Inventory prerequisite (locked)
+
+Before starting `inventory`, complete these platform foundations:
+- `_refactor-artifact/01-platform/operational-notification-rollout-v0.md`
+- `_refactor-artifact/01-platform/offline-sync-foundation-rollout-v0.md`
+
+Reason:
+- inventory + sale-order would otherwise need replay/notification retrofits after implementation.
+
 ## Execution rules
 
 - Keep **one module tracker in-progress at a time**.
@@ -71,7 +80,7 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 | menu | Completed | Phase 1-5 completed (boundary, contract, schema/repo, full endpoint surface + ACL, reliability tests, close-out sync). |
 | discount | Completed | phase 1-5 completed (boundary/contract lock, schema/repository, commands/queries + ACL, integration reliability, close-out sync) |
 | cashSession | Completed | Phase 1-5 completed (boundary/contract, schema/repo, command/query/ACL, integration reliability, close-out sync). |
-| inventory | Not started | self-contained ledger first; sale hooks later |
+| inventory | Blocked (preflight) | start after operational-notification + offline-sync foundation are locked |
 | sale-order | Not started | integrate finalize/void orchestrations |
 | receipt | Not started | consume finalized sale snapshot only |
 | reporting | Not started | read-only aggregation only |
