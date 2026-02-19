@@ -83,7 +83,7 @@ Completion (2026-02-19):
 | menu | Completed | Phase 1-5 completed (boundary, contract, schema/repo, full endpoint surface + ACL, reliability tests, close-out sync). |
 | discount | Completed | phase 1-5 completed (boundary/contract lock, schema/repository, commands/queries + ACL, integration reliability, close-out sync) |
 | cashSession | Completed | Phase 1-5 completed (boundary/contract, schema/repo, command/query/ACL, integration reliability, close-out sync). |
-| inventory | Ready | platform preflight completed on 2026-02-19 |
+| inventory | In progress | Phase 0+1 locked (`05_inventory-rollout-v0.md`, `inventory-boundary-v0.md`, `api_contract/inventory-v0.md`) |
 | sale-order | Not started | integrate finalize/void orchestrations |
 | receipt | Not started | consume finalized sale snapshot only |
 | reporting | Not started | read-only aggregation only |

@@ -9,6 +9,7 @@ import {
   V0IdempotencyService,
 } from "../../../../../platform/idempotency/service.js";
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
+import { V0SyncRepository } from "../../../platformSystem/sync/infra/repository.js";
 import { uploadSingleImage } from "../../../../../platform/http/middleware/multer.js";
 import {
   deriveObjectKeyFromImageUrl,
@@ -609,6 +610,7 @@ export function createV0MenuRouter(input: {
             );
             const txAuditService = new V0AuditService(new V0AuditRepository(client));
             const txOutboxRepository = new V0CommandOutboxRepository(client);
+            const txSyncRepository = new V0SyncRepository(client);
 
             const commandData = await inputWrite.handler(txService);
             const entityId =
@@ -632,7 +634,7 @@ export function createV0MenuRouter(input: {
               },
             });
 
-            await txOutboxRepository.insertEvent({
+            const outbox = await txOutboxRepository.insertEvent({
               tenantId,
               branchId: branchId || null,
               actionKey,
@@ -648,6 +650,29 @@ export function createV0MenuRouter(input: {
                 replayed: false,
               },
             });
+
+            if (outbox.inserted && outbox.row) {
+              const syncBranchIds = await txSyncRepository.listActiveBranchIdsByTenant(
+                tenantId
+              );
+              const targetBranchIds =
+                syncBranchIds.length > 0 ? syncBranchIds : branchId ? [branchId] : [];
+
+              for (const targetBranchId of targetBranchIds) {
+                await txSyncRepository.appendChange({
+                  tenantId,
+                  branchId: targetBranchId,
+                  moduleKey: "menu",
+                  entityType: inputWrite.entityType,
+                  entityId,
+                  operation: "UPSERT",
+                  revision: `menu:${outbox.row.id}`,
+                  data: toSyncData(commandData),
+                  changedAt: outbox.row.occurred_at,
+                  sourceOutboxId: outbox.row.id,
+                });
+              }
+            }
 
             return commandData;
           });
@@ -686,6 +711,13 @@ function asNumber(value: unknown): number | undefined {
   }
   const parsed = Number(str);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function toSyncData(data: unknown): Record<string, unknown> {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    return data as Record<string, unknown>;
+  }
+  return { value: data };
 }
 
 function handleError(res: Response, error: unknown): void {

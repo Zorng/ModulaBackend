@@ -10,6 +10,7 @@ import {
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
 import { V0AuditService } from "../../../audit/app/service.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
+import { V0SyncRepository } from "../../../platformSystem/sync/infra/repository.js";
 import {
   buildPolicyCommandDedupeKey,
   V0_POLICY_ACTION_KEYS,
@@ -110,7 +111,7 @@ export function createV0PolicyRouter(input: {
                 },
               });
 
-              await txOutboxRepository.insertEvent({
+              const outbox = await txOutboxRepository.insertEvent({
                 tenantId,
                 branchId,
                 actionKey,
@@ -128,6 +129,21 @@ export function createV0PolicyRouter(input: {
                   newValues: commandData.newValues,
                 },
               });
+              if (outbox.inserted && outbox.row) {
+                const txSyncRepository = new V0SyncRepository(client);
+                await txSyncRepository.appendChange({
+                  tenantId,
+                  branchId,
+                  moduleKey: "policy",
+                  entityType: "branch_policy",
+                  entityId: branchId,
+                  operation: "UPSERT",
+                  revision: `policy:${outbox.row.id}`,
+                  data: commandData.policy as Record<string, unknown>,
+                  changedAt: outbox.row.occurred_at,
+                  sourceOutboxId: outbox.row.id,
+                });
+              }
 
               return commandData.policy;
             });

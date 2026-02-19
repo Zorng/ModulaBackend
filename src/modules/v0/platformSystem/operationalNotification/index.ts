@@ -4,14 +4,16 @@ import { V0OperationalNotificationRealtimeBroker } from "./app/realtime.js";
 import { V0OperationalNotificationService } from "./app/service.js";
 import { registerOperationalNotificationSubscribers } from "./app/subscribers.js";
 import { V0OperationalNotificationRepository } from "./infra/repository.js";
+import { V0SyncRepository } from "../sync/infra/repository.js";
 
 export function bootstrapV0OperationalNotificationModule(pool: Pool) {
   const repo = new V0OperationalNotificationRepository(pool);
   const realtime = new V0OperationalNotificationRealtimeBroker();
-  const service = new V0OperationalNotificationService(repo, realtime);
+  const syncRepo = new V0SyncRepository(pool);
+  const service = new V0OperationalNotificationService(repo, realtime, syncRepo);
   registerOperationalNotificationSubscribers(service);
   const router = createV0OperationalNotificationRouter(service);
-  return { repo, service, realtime, router };
+  return { repo, service, realtime, syncRepo, router };
 }
 
 export { V0OperationalNotificationService } from "./app/service.js";

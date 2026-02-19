@@ -13,6 +13,7 @@ import { V0AuditRepository } from "../../../audit/infra/repository.js";
 import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
 import { buildCommandDedupeKey } from "../../../../../shared/utils/dedupe.js";
+import { V0SyncRepository } from "../../../platformSystem/sync/infra/repository.js";
 
 type AttendanceWriteBody =
   | {
@@ -69,6 +70,7 @@ export function createV0AttendanceRouter(
             const txService = new V0AttendanceService(new V0AttendanceRepository(client));
             const txAuditService = new V0AuditService(new V0AuditRepository(client));
             const txOutboxRepository = new V0CommandOutboxRepository(client);
+            const txSyncRepository = new V0SyncRepository(client);
             try {
               const commandData = await txService.checkIn({
                 actor,
@@ -96,7 +98,7 @@ export function createV0AttendanceRouter(
                   endpoint: "/v0/attendance/check-in",
                 },
               });
-              await txOutboxRepository.insertEvent({
+              const outbox = await txOutboxRepository.insertEvent({
                 tenantId,
                 branchId,
                 actionKey,
@@ -112,6 +114,22 @@ export function createV0AttendanceRouter(
                   replayed: false,
                 },
               });
+
+              if (outbox.inserted && outbox.row) {
+                await txSyncRepository.appendChange({
+                  tenantId,
+                  branchId,
+                  accountId: actor.accountId,
+                  moduleKey: "attendance",
+                  entityType: "attendance_record",
+                  entityId: commandData.id,
+                  operation: "UPSERT",
+                  revision: `attendance:${outbox.row.id}`,
+                  data: commandData,
+                  changedAt: outbox.row.occurred_at,
+                  sourceOutboxId: outbox.row.id,
+                });
+              }
 
               return { status: "SUCCESS" as const, data: commandData };
             } catch (error) {
@@ -213,6 +231,7 @@ export function createV0AttendanceRouter(
             const txService = new V0AttendanceService(new V0AttendanceRepository(client));
             const txAuditService = new V0AuditService(new V0AuditRepository(client));
             const txOutboxRepository = new V0CommandOutboxRepository(client);
+            const txSyncRepository = new V0SyncRepository(client);
             try {
               const commandData = await txService.checkOut({
                 actor,
@@ -240,7 +259,7 @@ export function createV0AttendanceRouter(
                   endpoint: "/v0/attendance/check-out",
                 },
               });
-              await txOutboxRepository.insertEvent({
+              const outbox = await txOutboxRepository.insertEvent({
                 tenantId,
                 branchId,
                 actionKey,
@@ -256,6 +275,22 @@ export function createV0AttendanceRouter(
                   replayed: false,
                 },
               });
+
+              if (outbox.inserted && outbox.row) {
+                await txSyncRepository.appendChange({
+                  tenantId,
+                  branchId,
+                  accountId: actor.accountId,
+                  moduleKey: "attendance",
+                  entityType: "attendance_record",
+                  entityId: commandData.id,
+                  operation: "UPSERT",
+                  revision: `attendance:${outbox.row.id}`,
+                  data: commandData,
+                  changedAt: outbox.row.occurred_at,
+                  sourceOutboxId: outbox.row.id,
+                });
+              }
 
               return { status: "SUCCESS" as const, data: commandData };
             } catch (error) {

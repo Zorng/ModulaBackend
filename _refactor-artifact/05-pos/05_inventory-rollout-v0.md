@@ -1,6 +1,6 @@
 # Inventory Module Rollout (v0)
 
-Status: Not started
+Status: In progress
 Owner context: POSOperation
 
 ## Goal
@@ -16,6 +16,13 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 - `knowledge_base/BusinessLogic/4_process/30_POSOperation/22_void_sale_inventory_reversal_process.md`
 
 ## Execution phases
+
+### Phase 0 — Offline-first DoD gate (OF6)
+- lock inventory offline-first checklist:
+  - `_refactor-artifact/05-pos/05_inventory-offline-first-dod-checklist-v0.md`
+- define inventory replay operation types + payload contracts for `/v0/offline-sync/replay`
+- define inventory sync producer entity map for `/v0/sync/pull`
+- lock conflict code taxonomy + resolution hints for inventory invariants
 
 ### Phase 1 — Boundary + Contract lock
 - confirm owned facts vs consumed facts
@@ -46,7 +53,8 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
-| 1 Boundary + Contract lock | Not started | |
+| 0 Offline-first DoD gate | Completed | Replay operation family, sync entity map, and conflict taxonomy are now locked in `_refactor-artifact/05-pos/05_inventory-offline-first-dod-checklist-v0.md`. |
+| 1 Boundary + Contract lock | Completed | Boundary locked in `_refactor-artifact/02-boundary/inventory-boundary-v0.md`; API contract drafted in `api_contract/inventory-v0.md`. |
 | 2 Data model + repositories | Not started | |
 | 3 Commands/queries + access control | Not started | |
 | 4 Integration + reliability | Not started | |

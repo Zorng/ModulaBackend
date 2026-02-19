@@ -30,6 +30,7 @@ export class V0OfflineSyncService {
     batchId: string;
     tenantId: string;
     branchId: string;
+    leaseMs: number;
     operation: V0OfflineReplayOperationInput;
   }) {
     return this.repo.tryStartOperation({
@@ -42,6 +43,7 @@ export class V0OfflineSyncService {
       occurredAt: input.operation.occurredAt,
       payload: input.operation.payload,
       payloadHash: input.operation.payloadHash,
+      leaseMs: input.leaseMs,
     });
   }
 
@@ -53,6 +55,14 @@ export class V0OfflineSyncService {
     resultRefId: string | null;
   }): Promise<V0OfflineSyncOperationRow | null> {
     return this.repo.completeOperation(input);
+  }
+
+  findOperationByIdentity(input: {
+    tenantId: string;
+    branchId: string;
+    clientOpId: string;
+  }): Promise<V0OfflineSyncOperationRow | null> {
+    return this.repo.findOperationByIdentity(input);
   }
 
   finalizeBatch(input: {

@@ -8,6 +8,7 @@ import {
   V0IdempotencyService,
 } from "../../../../../platform/idempotency/service.js";
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
+import { V0SyncRepository } from "../../../platformSystem/sync/infra/repository.js";
 import { V0AuditService } from "../../../audit/app/service.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
 import {
@@ -266,6 +267,7 @@ export function createV0DiscountRouter(input: {
             const txService = new V0DiscountService(new V0DiscountRepository(client));
             const txAuditService = new V0AuditService(new V0AuditRepository(client));
             const txOutboxRepository = new V0CommandOutboxRepository(client);
+            const txSyncRepository = new V0SyncRepository(client);
 
             const commandData = await inputWrite.handler(txService);
             const entityId = String((commandData as { id?: string })?.id ?? tenantId);
@@ -291,7 +293,7 @@ export function createV0DiscountRouter(input: {
               },
             });
 
-            await txOutboxRepository.insertEvent({
+            const outbox = await txOutboxRepository.insertEvent({
               tenantId,
               branchId: branchId || null,
               actionKey,
@@ -307,6 +309,27 @@ export function createV0DiscountRouter(input: {
                 replayed: false,
               },
             });
+
+            if (outbox.inserted && outbox.row) {
+              const targetBranchId = normalizeOptionalString(
+                (commandData as { branchId?: unknown })?.branchId
+              ) ?? branchId;
+
+              if (targetBranchId) {
+                await txSyncRepository.appendChange({
+                  tenantId,
+                  branchId: targetBranchId,
+                  moduleKey: "discount",
+                  entityType: inputWrite.entityType,
+                  entityId,
+                  operation: "UPSERT",
+                  revision: `discount:${outbox.row.id}`,
+                  data: toSyncData(commandData),
+                  changedAt: outbox.row.occurred_at,
+                  sourceOutboxId: outbox.row.id,
+                });
+              }
+            }
 
             return commandData;
           });
@@ -345,6 +368,18 @@ function asNumber(value: unknown): number | undefined {
   }
   const parsed = Number(str);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function toSyncData(data: unknown): Record<string, unknown> {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    return data as Record<string, unknown>;
+  }
+  return { value: data };
 }
 
 function handleError(res: Response, error: unknown): void {

@@ -366,4 +366,8 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     entitlementKey: "core.pos",
   },
+  "sync.pull": {
+    scope: "BRANCH",
+    effect: "READ",
+  },
 };

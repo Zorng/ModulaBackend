@@ -28,6 +28,8 @@ type ReplayOperation = {
   index: number;
   clientOpId: string;
   operationType: V0OfflineSyncOperationType;
+  deviceId: string | null;
+  dependsOn: string[];
   tenantId: string;
   branchId: string;
   occurredAt: Date;
@@ -43,6 +45,13 @@ type ReplayResult = {
   code?: string;
   message?: string;
   resultRefId?: string | null;
+  resolution?: ReplayResolutionHint;
+};
+
+type ReplayResolutionHint = {
+  category: "RETRYABLE" | "PERMANENT" | "MANUAL";
+  retryAfterMs: number | null;
+  action: string;
 };
 
 type ApplyOutcome =
@@ -65,11 +74,13 @@ export function createV0OfflineSyncRouter(input: {
   transactionManager: TransactionManager;
 }): Router {
   const router = Router();
+  const operationLeaseMs = resolveOfflineSyncOperationLeaseMs();
 
   router.post("/replay", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
       const actor = assertActorScope(req);
       const parsed = parseReplayRequestBody(req.body, actor);
+      const replayResultByClientOpId = new Map<string, ReplayResult>();
       const batch = await input.service.createBatch({
         tenantId: actor.tenantId,
         branchId: actor.branchId,
@@ -85,7 +96,15 @@ export function createV0OfflineSyncRouter(input: {
 
       for (const operation of parsed.operations) {
         const result = await input.transactionManager.withTransaction(
-          async (client) => executeOperationInTransaction(client, batch.id, actor, operation),
+          async (client) =>
+            executeOperationInTransaction(
+              client,
+              batch.id,
+              actor,
+              operation,
+              operationLeaseMs,
+              replayResultByClientOpId
+            ),
           {
             requestId: req.v0Context?.requestId,
             actionKey: V0_OFFLINE_SYNC_ACTION_KEYS.replayApply,
@@ -95,6 +114,7 @@ export function createV0OfflineSyncRouter(input: {
         );
 
         results.push(result);
+        replayResultByClientOpId.set(operation.clientOpId, result);
         if (result.status === "APPLIED") {
           appliedCount += 1;
         } else if (result.status === "DUPLICATE") {
@@ -186,13 +206,16 @@ async function executeOperationInTransaction(
   client: PoolClient,
   batchId: string,
   actor: ActorScope,
-  operation: ReplayOperation
+  operation: ReplayOperation,
+  operationLeaseMs: number,
+  priorResults: ReadonlyMap<string, ReplayResult>
 ): Promise<ReplayResult> {
   const service = new V0OfflineSyncService(new V0OfflineSyncRepository(client));
   const started = await service.startOperation({
     batchId,
     tenantId: actor.tenantId,
     branchId: actor.branchId,
+    leaseMs: operationLeaseMs,
     operation: {
       index: operation.index,
       clientOpId: operation.clientOpId,
@@ -205,16 +228,35 @@ async function executeOperationInTransaction(
 
   if (!started.started) {
     if (started.payloadConflict) {
-      return {
+      return withFailureResolution({
         index: operation.index,
         clientOpId: operation.clientOpId,
         operationType: operation.operationType,
         status: "FAILED",
         code: "OFFLINE_SYNC_PAYLOAD_CONFLICT",
         message: "clientOpId already used with different payload",
-      };
+      });
     }
     return mapExistingOperationToReplayResult(operation, started.row);
+  }
+
+  const dependencyFailure = await resolveDependencyFailure({
+    service,
+    operation,
+    priorResults,
+  });
+  if (dependencyFailure) {
+    const completed = await service.completeOperation({
+      operationId: started.row.id,
+      status: "FAILED",
+      failureCode: dependencyFailure.failureCode,
+      failureMessage: dependencyFailure.failureMessage,
+      resultRefId: null,
+    });
+    if (!completed) {
+      throw new Error("failed to finalize dependency-failed offline sync operation");
+    }
+    return mapPersistedOperationToReplayResult(completed);
   }
 
   const outcome = await applyOperation({
@@ -235,6 +277,54 @@ async function executeOperationInTransaction(
   }
 
   return mapPersistedOperationToReplayResult(completed);
+}
+
+async function resolveDependencyFailure(input: {
+  service: V0OfflineSyncService;
+  operation: ReplayOperation;
+  priorResults: ReadonlyMap<string, ReplayResult>;
+}): Promise<{ failureCode: string; failureMessage: string } | null> {
+  for (const dependencyClientOpId of input.operation.dependsOn) {
+    const prior = input.priorResults.get(dependencyClientOpId);
+    if (prior) {
+      if (prior.status === "APPLIED" || prior.status === "DUPLICATE") {
+        continue;
+      }
+      return {
+        failureCode: "OFFLINE_SYNC_DEPENDENCY_MISSING",
+        failureMessage: `dependency ${dependencyClientOpId} was not applied`,
+      };
+    }
+
+    const existing = await input.service.findOperationByIdentity({
+      tenantId: input.operation.tenantId,
+      branchId: input.operation.branchId,
+      clientOpId: dependencyClientOpId,
+    });
+    if (!existing || (existing.status !== "APPLIED" && existing.status !== "DUPLICATE")) {
+      return {
+        failureCode: "OFFLINE_SYNC_DEPENDENCY_MISSING",
+        failureMessage: `dependency ${dependencyClientOpId} was not found as applied`,
+      };
+    }
+  }
+
+  return null;
+}
+
+function resolveOfflineSyncOperationLeaseMs(): number {
+  const raw = Number(process.env.OFFLINE_SYNC_OPERATION_LEASE_MS ?? 120_000);
+  if (!Number.isFinite(raw)) {
+    return 120_000;
+  }
+  const rounded = Math.floor(raw);
+  if (rounded < 5_000) {
+    return 5_000;
+  }
+  if (rounded > 3_600_000) {
+    return 3_600_000;
+  }
+  return rounded;
 }
 
 async function applyOperation(input: {
@@ -386,17 +476,17 @@ function mapExistingOperationToReplayResult(
   row: V0OfflineSyncOperationRow
 ): ReplayResult {
   if (row.status === "IN_PROGRESS") {
-    return {
+    return withFailureResolution({
       index: operation.index,
       clientOpId: operation.clientOpId,
       operationType: operation.operationType,
       status: "FAILED",
       code: "OFFLINE_SYNC_IN_PROGRESS",
       message: "operation is currently in progress",
-    };
+    });
   }
   if (row.status === "FAILED") {
-    return {
+    return withFailureResolution({
       index: operation.index,
       clientOpId: operation.clientOpId,
       operationType: operation.operationType,
@@ -404,7 +494,7 @@ function mapExistingOperationToReplayResult(
       code: row.failure_code ?? "OFFLINE_SYNC_OPERATION_FAILED",
       message: row.failure_message ?? "operation failed",
       resultRefId: row.result_ref_id,
-    };
+    });
   }
   return {
     index: operation.index,
@@ -417,7 +507,7 @@ function mapExistingOperationToReplayResult(
 
 function mapPersistedOperationToReplayResult(row: V0OfflineSyncOperationRow): ReplayResult {
   if (row.status === "FAILED") {
-    return {
+    return withFailureResolution({
       index: row.operation_index,
       clientOpId: row.client_op_id,
       operationType: row.operation_type as V0OfflineSyncOperationType,
@@ -425,10 +515,10 @@ function mapPersistedOperationToReplayResult(row: V0OfflineSyncOperationRow): Re
       code: row.failure_code ?? "OFFLINE_SYNC_OPERATION_FAILED",
       message: row.failure_message ?? "operation failed",
       resultRefId: row.result_ref_id,
-    };
+    });
   }
   if (row.status === "IN_PROGRESS") {
-    return {
+    return withFailureResolution({
       index: row.operation_index,
       clientOpId: row.client_op_id,
       operationType: row.operation_type as V0OfflineSyncOperationType,
@@ -436,7 +526,7 @@ function mapPersistedOperationToReplayResult(row: V0OfflineSyncOperationRow): Re
       code: "OFFLINE_SYNC_IN_PROGRESS",
       message: "operation is currently in progress",
       resultRefId: row.result_ref_id,
-    };
+    });
   }
   return {
     index: row.operation_index,
@@ -455,6 +545,7 @@ function parseReplayRequestBody(
   haltOnFailure: boolean;
 } {
   const normalized = asRecord(body, "body must be an object");
+  const batchDeviceId = parseOptionalDeviceId(normalized.deviceId);
   const operationsRaw = normalized.operations;
   if (!Array.isArray(operationsRaw) || operationsRaw.length === 0) {
     throw new V0OfflineSyncError(
@@ -472,22 +563,145 @@ function parseReplayRequestBody(
   }
 
   const operations = operationsRaw.map((raw, index) =>
-    parseOperation(raw, index, actor)
+    parseOperation(raw, index, actor, batchDeviceId)
   );
+  validateOperationDependencyOrder(operations);
   const haltOnFailure = normalizeHaltOnFailure(normalized.haltOnFailure);
   return { operations, haltOnFailure };
+}
+
+function validateOperationDependencyOrder(operations: readonly ReplayOperation[]): void {
+  const opIndexByClientOpId = new Map<string, number>();
+  for (const operation of operations) {
+    if (opIndexByClientOpId.has(operation.clientOpId)) {
+      throw new V0OfflineSyncError(
+        422,
+        "OFFLINE_SYNC_PAYLOAD_INVALID",
+        `duplicate clientOpId in batch: ${operation.clientOpId}`
+      );
+    }
+    opIndexByClientOpId.set(operation.clientOpId, operation.index);
+  }
+
+  for (const operation of operations) {
+    for (const dependencyClientOpId of operation.dependsOn) {
+      const dependencyIndex = opIndexByClientOpId.get(dependencyClientOpId);
+      if (dependencyIndex === undefined) {
+        continue;
+      }
+      if (dependencyIndex >= operation.index) {
+        throw new V0OfflineSyncError(
+          422,
+          "OFFLINE_SYNC_PAYLOAD_INVALID",
+          `operations[${operation.index}].dependsOn must reference an earlier operation when dependency is in the same batch`
+        );
+      }
+    }
+  }
 }
 
 function parseOperation(
   raw: unknown,
   index: number,
-  actor: ActorScope
+  actor: ActorScope,
+  batchDeviceId: string | null
 ): ReplayOperation {
   const value = asRecord(raw, `operations[${index}] must be an object`);
   const clientOpId = assertUuid(value.clientOpId, `operations[${index}].clientOpId`);
   const operationType = assertOperationType(value.operationType, index);
-  const tenantId = assertUuid(value.tenantId, `operations[${index}].tenantId`);
-  const branchId = assertUuid(value.branchId, `operations[${index}].branchId`);
+  const context = parseOperationContext(value, actor, index);
+  const deviceId = parseOptionalDeviceId(value.deviceId) ?? batchDeviceId;
+  const dependsOn = parseDependsOn(value.dependsOn, index, clientOpId);
+
+  const occurredAt = parseOccurredAt(value.occurredAt, index);
+  const payload = asRecord(value.payload, `operations[${index}].payload must be an object`);
+
+  return {
+    index,
+    clientOpId,
+    operationType,
+    deviceId,
+    dependsOn,
+    tenantId: context.tenantId,
+    branchId: context.branchId,
+    occurredAt,
+    payload,
+    payloadHash: hashJsonPayload(payload),
+  };
+}
+
+function withFailureResolution(result: ReplayResult): ReplayResult {
+  if (result.status !== "FAILED") {
+    return result;
+  }
+  const code = normalizeOptionalString(result.code) ?? "OFFLINE_SYNC_OPERATION_FAILED";
+  return {
+    ...result,
+    resolution: buildResolutionHint(code),
+  };
+}
+
+function buildResolutionHint(code: string): ReplayResolutionHint {
+  const normalized = code.toUpperCase();
+
+  if (normalized === "OFFLINE_SYNC_IN_PROGRESS") {
+    return {
+      category: "RETRYABLE",
+      retryAfterMs: 2000,
+      action: "retry_with_backoff",
+    };
+  }
+  if (normalized === "OFFLINE_SYNC_OPERATION_FAILED") {
+    return {
+      category: "RETRYABLE",
+      retryAfterMs: 5000,
+      action: "retry_with_backoff",
+    };
+  }
+
+  if (
+    normalized === "OFFLINE_SYNC_DEPENDENCY_MISSING" ||
+    normalized === "CASH_SESSION_NOT_FOUND" ||
+    normalized === "CASH_SESSION_ALREADY_OPEN" ||
+    normalized === "CASH_SESSION_NOT_OPEN" ||
+    normalized === "ATTENDANCE_ALREADY_CHECKED_IN" ||
+    normalized === "ATTENDANCE_NO_ACTIVE_CHECKIN" ||
+    normalized === "BRANCH_FROZEN" ||
+    normalized === "SUBSCRIPTION_FROZEN" ||
+    normalized === "ENTITLEMENT_BLOCKED" ||
+    normalized === "ENTITLEMENT_READ_ONLY" ||
+    normalized === "NO_MEMBERSHIP" ||
+    normalized === "NO_BRANCH_ACCESS" ||
+    normalized === "PERMISSION_DENIED"
+  ) {
+    return {
+      category: "MANUAL",
+      retryAfterMs: null,
+      action: "requires_user_intervention",
+    };
+  }
+
+  return {
+    category: "PERMANENT",
+    retryAfterMs: null,
+    action: "mark_permanent_failed",
+  };
+}
+
+function parseOperationContext(
+  value: Record<string, unknown>,
+  actor: ActorScope,
+  index: number
+): { tenantId: string; branchId: string } {
+  const tenantRaw = normalizeOptionalString(value.tenantId);
+  const branchRaw = normalizeOptionalString(value.branchId);
+
+  const tenantId = tenantRaw
+    ? assertUuid(tenantRaw, `operations[${index}].tenantId`)
+    : actor.tenantId;
+  const branchId = branchRaw
+    ? assertUuid(branchRaw, `operations[${index}].branchId`)
+    : actor.branchId;
 
   if (tenantId !== actor.tenantId || branchId !== actor.branchId) {
     throw new V0OfflineSyncError(
@@ -497,19 +711,60 @@ function parseOperation(
     );
   }
 
-  const occurredAt = parseOccurredAt(value.occurredAt, index);
-  const payload = asRecord(value.payload, `operations[${index}].payload must be an object`);
+  return { tenantId, branchId };
+}
 
-  return {
-    index,
-    clientOpId,
-    operationType,
-    tenantId,
-    branchId,
-    occurredAt,
-    payload,
-    payloadHash: hashJsonPayload(payload),
-  };
+function parseOptionalDeviceId(value: unknown): string | null {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.length > 128) {
+    throw new V0OfflineSyncError(
+      422,
+      "OFFLINE_SYNC_PAYLOAD_INVALID",
+      "deviceId must be at most 128 characters"
+    );
+  }
+  return normalized;
+}
+
+function parseDependsOn(
+  value: unknown,
+  index: number,
+  clientOpId: string
+): string[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new V0OfflineSyncError(
+      422,
+      "OFFLINE_SYNC_PAYLOAD_INVALID",
+      `operations[${index}].dependsOn must be an array of UUIDs`
+    );
+  }
+  if (value.length > 50) {
+    throw new V0OfflineSyncError(
+      422,
+      "OFFLINE_SYNC_PAYLOAD_INVALID",
+      `operations[${index}].dependsOn cannot exceed 50 entries`
+    );
+  }
+
+  const deduped = new Set<string>();
+  for (let i = 0; i < value.length; i += 1) {
+    const dep = assertUuid(value[i], `operations[${index}].dependsOn[${i}]`);
+    if (dep === clientOpId) {
+      throw new V0OfflineSyncError(
+        422,
+        "OFFLINE_SYNC_PAYLOAD_INVALID",
+        `operations[${index}].dependsOn cannot include its own clientOpId`
+      );
+    }
+    deduped.add(dep);
+  }
+  return [...deduped];
 }
 
 function assertOperationType(

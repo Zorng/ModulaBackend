@@ -40,6 +40,7 @@ export type V0OfflineSyncOperationRow = {
   failure_code: string | null;
   failure_message: string | null;
   result_ref_id: string | null;
+  lease_expires_at: Date | null;
   processed_at: Date;
   created_at: Date;
 };
@@ -90,6 +91,7 @@ export class V0OfflineSyncRepository {
     occurredAt: Date;
     payload: Record<string, unknown>;
     payloadHash: string;
+    leaseMs: number;
   }): Promise<{ row: V0OfflineSyncOperationRow; started: boolean; payloadConflict: boolean }> {
     const insertResult = await this.db.query<V0OfflineSyncOperationRow>(
       `INSERT INTO v0_offline_sync_operations (
@@ -102,27 +104,25 @@ export class V0OfflineSyncRepository {
          occurred_at,
          payload,
          payload_hash,
-         status
+         status,
+         lease_expires_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB, $9, 'IN_PROGRESS')
+       VALUES (
+         $1,
+         $2,
+         $3,
+         $4,
+         $5,
+         $6,
+         $7,
+         $8::JSONB,
+         $9,
+         'IN_PROGRESS',
+         NOW() + ($10::BIGINT * INTERVAL '1 millisecond')
+       )
        ON CONFLICT (tenant_id, branch_id, client_op_id) DO NOTHING
        RETURNING
-         id,
-         batch_id,
-         tenant_id,
-         branch_id,
-         client_op_id,
-         operation_index,
-         operation_type,
-         occurred_at,
-         payload,
-         payload_hash,
-         status,
-         failure_code,
-         failure_message,
-         result_ref_id,
-         processed_at,
-         created_at`,
+         ${OFFLINE_SYNC_OPERATION_SELECT_FIELDS}`,
       [
         input.batchId,
         input.tenantId,
@@ -133,6 +133,7 @@ export class V0OfflineSyncRepository {
         input.occurredAt,
         JSON.stringify(input.payload),
         input.payloadHash,
+        input.leaseMs,
       ]
     );
 
@@ -149,10 +150,52 @@ export class V0OfflineSyncRepository {
     if (!existing) {
       throw new Error("offline sync operation conflict detected but existing row not found");
     }
+
+    if (existing.payload_hash !== input.payloadHash) {
+      return {
+        row: existing,
+        started: false,
+        payloadConflict: true,
+      };
+    }
+
+    if (
+      existing.status === "IN_PROGRESS" &&
+      existing.lease_expires_at &&
+      existing.lease_expires_at.getTime() <= Date.now()
+    ) {
+      const reclaimed = await this.reclaimExpiredInProgressOperation({
+        operationId: existing.id,
+        batchId: input.batchId,
+        operationIndex: input.operationIndex,
+        operationType: input.operationType,
+        occurredAt: input.occurredAt,
+        payload: input.payload,
+        payloadHash: input.payloadHash,
+        leaseMs: input.leaseMs,
+      });
+      if (reclaimed) {
+        return { row: reclaimed, started: true, payloadConflict: false };
+      }
+
+      const latest = await this.findOperationByIdentity({
+        tenantId: input.tenantId,
+        branchId: input.branchId,
+        clientOpId: input.clientOpId,
+      });
+      if (latest) {
+        return {
+          row: latest,
+          started: false,
+          payloadConflict: false,
+        };
+      }
+    }
+
     return {
       row: existing,
       started: false,
-      payloadConflict: existing.payload_hash !== input.payloadHash,
+      payloadConflict: false,
     };
   }
 
@@ -169,26 +212,12 @@ export class V0OfflineSyncRepository {
            failure_code = $3,
            failure_message = $4,
            result_ref_id = $5,
+           lease_expires_at = NULL,
            processed_at = NOW()
        WHERE id = $1
          AND status = 'IN_PROGRESS'
        RETURNING
-         id,
-         batch_id,
-         tenant_id,
-         branch_id,
-         client_op_id,
-         operation_index,
-         operation_type,
-         occurred_at,
-         payload,
-         payload_hash,
-         status,
-         failure_code,
-         failure_message,
-         result_ref_id,
-         processed_at,
-         created_at`,
+         ${OFFLINE_SYNC_OPERATION_SELECT_FIELDS}`,
       [
         input.operationId,
         input.status,
@@ -207,22 +236,7 @@ export class V0OfflineSyncRepository {
   }): Promise<V0OfflineSyncOperationRow | null> {
     const result = await this.db.query<V0OfflineSyncOperationRow>(
       `SELECT
-         id,
-         batch_id,
-         tenant_id,
-         branch_id,
-         client_op_id,
-         operation_index,
-         operation_type,
-         occurred_at,
-         payload,
-         payload_hash,
-         status,
-         failure_code,
-         failure_message,
-         result_ref_id,
-         processed_at,
-         created_at
+         ${OFFLINE_SYNC_OPERATION_SELECT_FIELDS}
        FROM v0_offline_sync_operations
        WHERE tenant_id = $1
          AND branch_id = $2
@@ -314,22 +328,7 @@ export class V0OfflineSyncRepository {
   }): Promise<V0OfflineSyncOperationRow[]> {
     const result = await this.db.query<V0OfflineSyncOperationRow>(
       `SELECT
-         id,
-         batch_id,
-         tenant_id,
-         branch_id,
-         client_op_id,
-         operation_index,
-         operation_type,
-         occurred_at,
-         payload,
-         payload_hash,
-         status,
-         failure_code,
-         failure_message,
-         result_ref_id,
-         processed_at,
-         created_at
+         ${OFFLINE_SYNC_OPERATION_SELECT_FIELDS}
        FROM v0_offline_sync_operations
        WHERE batch_id = $1
        ORDER BY operation_index ASC`,
@@ -337,4 +336,66 @@ export class V0OfflineSyncRepository {
     );
     return result.rows;
   }
+
+  private async reclaimExpiredInProgressOperation(input: {
+    operationId: string;
+    batchId: string;
+    operationIndex: number;
+    operationType: string;
+    occurredAt: Date;
+    payload: Record<string, unknown>;
+    payloadHash: string;
+    leaseMs: number;
+  }): Promise<V0OfflineSyncOperationRow | null> {
+    const result = await this.db.query<V0OfflineSyncOperationRow>(
+      `UPDATE v0_offline_sync_operations
+       SET batch_id = $2,
+           operation_index = $3,
+           operation_type = $4,
+           occurred_at = $5,
+           payload = $6::JSONB,
+           status = 'IN_PROGRESS',
+           failure_code = NULL,
+           failure_message = NULL,
+           result_ref_id = NULL,
+           lease_expires_at = NOW() + ($7::BIGINT * INTERVAL '1 millisecond'),
+           processed_at = NOW()
+       WHERE id = $1
+         AND status = 'IN_PROGRESS'
+         AND lease_expires_at <= NOW()
+         AND payload_hash = $8
+       RETURNING
+         ${OFFLINE_SYNC_OPERATION_SELECT_FIELDS}`,
+      [
+        input.operationId,
+        input.batchId,
+        input.operationIndex,
+        input.operationType,
+        input.occurredAt,
+        JSON.stringify(input.payload),
+        input.leaseMs,
+        input.payloadHash,
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
 }
+
+const OFFLINE_SYNC_OPERATION_SELECT_FIELDS = `
+id,
+batch_id,
+tenant_id,
+branch_id,
+client_op_id,
+operation_index,
+operation_type,
+occurred_at,
+payload,
+payload_hash,
+status,
+failure_code,
+failure_message,
+result_ref_id,
+lease_expires_at,
+processed_at,
+created_at`;

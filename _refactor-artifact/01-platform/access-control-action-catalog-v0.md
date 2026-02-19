@@ -69,6 +69,7 @@ Legend:
 | `operationalNotification.read.markAll` | BRANCH | WRITE | - | `core.pos` |
 | `offlineSync.replay.apply` | BRANCH | WRITE | - | `core.pos` |
 | `offlineSync.replay.read` | BRANCH | READ | - | `core.pos` |
+| `sync.pull` | BRANCH | READ | - | - |
 
 ## Route Mapping
 
@@ -136,6 +137,7 @@ Legend:
 | POST | `/notifications/read-all` | `operationalNotification.read.markAll` | `token` | `token` |
 | POST | `/offline-sync/replay` | `offlineSync.replay.apply` | `token` | `token` |
 | GET | `/offline-sync/replay/batches/:id` | `offlineSync.replay.read` | `token` | `token` |
+| POST | `/sync/pull` | `sync.pull` | `token` | `token` |
 
 ## Notes
 

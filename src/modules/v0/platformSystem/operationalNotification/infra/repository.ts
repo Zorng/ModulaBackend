@@ -31,6 +31,11 @@ export type V0OperationalNotificationRecipientRow = {
   created_at: Date;
 };
 
+export type V0OperationalNotificationReadMarkRow = {
+  notification_id: string;
+  read_at: Date;
+};
+
 export type V0CashSessionCloseContextRow = {
   tenant_id: string;
   branch_id: string;
@@ -248,21 +253,20 @@ export class V0OperationalNotificationRepository {
     tenantId: string;
     branchId: string;
     recipientAccountId: string;
-  }): Promise<number> {
-    const result = await this.db.query<{ affected: string }>(
-      `WITH updated AS (
-         UPDATE v0_operational_notification_recipients
-         SET read_at = COALESCE(read_at, NOW())
-         WHERE tenant_id = $1
-           AND branch_id = $2
-           AND recipient_account_id = $3
-           AND read_at IS NULL
-         RETURNING 1
-       )
-       SELECT COUNT(*)::TEXT AS affected FROM updated`,
+  }): Promise<V0OperationalNotificationReadMarkRow[]> {
+    const result = await this.db.query<V0OperationalNotificationReadMarkRow>(
+      `UPDATE v0_operational_notification_recipients
+       SET read_at = COALESCE(read_at, NOW())
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND recipient_account_id = $3
+         AND read_at IS NULL
+       RETURNING
+         notification_id,
+         read_at`,
       [input.tenantId, input.branchId, input.recipientAccountId]
     );
-    return Number(result.rows[0]?.affected ?? "0");
+    return result.rows;
   }
 
   async listOperationalRecipientAccountIdsForCashSessionZView(input: {

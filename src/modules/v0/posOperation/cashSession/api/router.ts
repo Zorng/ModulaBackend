@@ -10,6 +10,7 @@ import {
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
 import { V0AuditService } from "../../../audit/app/service.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
+import { V0SyncRepository } from "../../../platformSystem/sync/infra/repository.js";
 import {
   buildCashSessionCommandDedupeKey,
   V0_CASH_SESSION_ACTION_KEYS,
@@ -332,6 +333,7 @@ export function createV0CashSessionRouter(input: {
             const txService = new V0CashSessionService(new V0CashSessionRepository(client));
             const txAuditService = new V0AuditService(new V0AuditRepository(client));
             const txOutboxRepository = new V0CommandOutboxRepository(client);
+            const txSyncRepository = new V0SyncRepository(client);
 
             const commandData = await inputWrite.handler(txService, commandIdempotencyKey);
             const entityId = String((commandData as { id?: string })?.id ?? tenantId);
@@ -358,7 +360,7 @@ export function createV0CashSessionRouter(input: {
               },
             });
 
-            await txOutboxRepository.insertEvent({
+            const outbox = await txOutboxRepository.insertEvent({
               tenantId,
               branchId: branchId || null,
               actionKey,
@@ -374,6 +376,20 @@ export function createV0CashSessionRouter(input: {
                 replayed: false,
               },
             });
+            if (outbox.inserted && outbox.row && branchId) {
+              await txSyncRepository.appendChange({
+                tenantId,
+                branchId,
+                moduleKey: "cashSession",
+                entityType: inputWrite.entityType,
+                entityId,
+                operation: "UPSERT",
+                revision: `cashSession:${outbox.row.id}`,
+                data: (commandData as Record<string, unknown>) ?? {},
+                changedAt: outbox.row.occurred_at,
+                sourceOutboxId: outbox.row.id,
+              });
+            }
 
             return commandData;
           });

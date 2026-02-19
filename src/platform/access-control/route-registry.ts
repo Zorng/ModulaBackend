@@ -537,6 +537,13 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     tenantSource: "token",
     branchSource: "token",
   },
+  {
+    method: "POST",
+    pattern: /^\/sync\/pull$/,
+    actionKey: "sync.pull",
+    tenantSource: "token",
+    branchSource: "token",
+  },
 ];
 
 export function matchProtectedRoute(

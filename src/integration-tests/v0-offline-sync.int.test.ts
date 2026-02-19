@@ -15,6 +15,7 @@ import { bootstrapV0AttendanceModule } from "../modules/v0/hr/attendance/index.j
 import { bootstrapV0CashSessionModule } from "../modules/v0/posOperation/cashSession/index.js";
 import { bootstrapV0OfflineSyncModule } from "../modules/v0/platformSystem/offlineSync/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
+import { hashJsonPayload } from "../shared/utils/hash.js";
 
 function uniquePhone(): string {
   const now = Date.now().toString().slice(-9);
@@ -217,6 +218,10 @@ describe("v0 offline sync integration", () => {
       code: "OFFLINE_SYNC_PAYLOAD_CONFLICT",
       operationType: "cashSession.open",
       clientOpId,
+      resolution: {
+        category: "PERMANENT",
+        action: "mark_permanent_failed",
+      },
     });
 
     const sessionCount = await pool.query<{ count: string }>(
@@ -268,6 +273,10 @@ describe("v0 offline sync integration", () => {
       status: "FAILED",
       operationType: "cashSession.close",
       code: "CASH_SESSION_NOT_FOUND",
+      resolution: {
+        category: "MANUAL",
+        action: "requires_user_intervention",
+      },
     });
 
     const attendanceCount = await pool.query<{ count: string }>(
@@ -279,5 +288,348 @@ describe("v0 offline sync integration", () => {
     );
     expect(Number(attendanceCount.rows[0]?.count ?? "0")).toBe(0);
   });
-});
 
+  it("reclaims stale IN_PROGRESS operations by lease timeout and applies replay", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const clientOpId = "10000000-0000-4000-8000-000000000030";
+    const occurredAt = new Date().toISOString();
+    const payload = {
+      openingFloatUsd: 40,
+      openingFloatKhr: 100000,
+      note: "recover stale in-progress op",
+    };
+
+    const seededBatch = await pool.query<{ id: string }>(
+      `INSERT INTO v0_offline_sync_batches (tenant_id, branch_id, status)
+       VALUES ($1, $2, 'IN_PROGRESS')
+       RETURNING id`,
+      [setup.tenantId, setup.branchId]
+    );
+    const seededBatchId = seededBatch.rows[0]?.id;
+    expect(seededBatchId).toBeTruthy();
+
+    await pool.query(
+      `INSERT INTO v0_offline_sync_operations (
+         batch_id,
+         tenant_id,
+         branch_id,
+         client_op_id,
+         operation_index,
+         operation_type,
+         occurred_at,
+         payload,
+         payload_hash,
+         status,
+         lease_expires_at
+       )
+       VALUES ($1, $2, $3, $4, 0, 'cashSession.open', $5, $6::JSONB, $7, 'IN_PROGRESS', NOW() - INTERVAL '1 minute')`,
+      [
+        seededBatchId,
+        setup.tenantId,
+        setup.branchId,
+        clientOpId,
+        occurredAt,
+        JSON.stringify(payload),
+        hashJsonPayload(payload),
+      ]
+    );
+
+    const replay = await request(app)
+      .post("/v0/offline-sync/replay")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId,
+            operationType: "cashSession.open",
+            tenantId: setup.tenantId,
+            branchId: setup.branchId,
+            occurredAt,
+            payload,
+          },
+        ],
+      });
+
+    expect(replay.status).toBe(200);
+    expect(replay.body.data.results[0]).toMatchObject({
+      status: "APPLIED",
+      operationType: "cashSession.open",
+      clientOpId,
+    });
+
+    const sessionCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_cash_sessions
+       WHERE tenant_id = $1
+         AND branch_id = $2`,
+      [setup.tenantId, setup.branchId]
+    );
+    expect(Number(sessionCount.rows[0]?.count ?? "0")).toBe(1);
+  });
+
+  it("returns OFFLINE_SYNC_IN_PROGRESS when existing operation lease is still active", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const clientOpId = "10000000-0000-4000-8000-000000000040";
+    const occurredAt = new Date().toISOString();
+    const payload = {
+      openingFloatUsd: 50,
+      openingFloatKhr: 0,
+      note: "active lease lock",
+    };
+
+    const seededBatch = await pool.query<{ id: string }>(
+      `INSERT INTO v0_offline_sync_batches (tenant_id, branch_id, status)
+       VALUES ($1, $2, 'IN_PROGRESS')
+       RETURNING id`,
+      [setup.tenantId, setup.branchId]
+    );
+    const seededBatchId = seededBatch.rows[0]?.id;
+    expect(seededBatchId).toBeTruthy();
+
+    await pool.query(
+      `INSERT INTO v0_offline_sync_operations (
+         batch_id,
+         tenant_id,
+         branch_id,
+         client_op_id,
+         operation_index,
+         operation_type,
+         occurred_at,
+         payload,
+         payload_hash,
+         status,
+         lease_expires_at
+       )
+       VALUES ($1, $2, $3, $4, 0, 'cashSession.open', $5, $6::JSONB, $7, 'IN_PROGRESS', NOW() + INTERVAL '5 minutes')`,
+      [
+        seededBatchId,
+        setup.tenantId,
+        setup.branchId,
+        clientOpId,
+        occurredAt,
+        JSON.stringify(payload),
+        hashJsonPayload(payload),
+      ]
+    );
+
+    const replay = await request(app)
+      .post("/v0/offline-sync/replay")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId,
+            operationType: "cashSession.open",
+            tenantId: setup.tenantId,
+            branchId: setup.branchId,
+            occurredAt,
+            payload,
+          },
+        ],
+      });
+
+    expect(replay.status).toBe(200);
+    expect(replay.body.data.results[0]).toMatchObject({
+      status: "FAILED",
+      operationType: "cashSession.open",
+      clientOpId,
+      code: "OFFLINE_SYNC_IN_PROGRESS",
+      resolution: {
+        category: "RETRYABLE",
+        action: "retry_with_backoff",
+      },
+    });
+  });
+
+  it("accepts canonical envelope without per-op tenant/branch and with optional dependsOn/deviceId", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const occurredAt = new Date().toISOString();
+
+    const response = await request(app)
+      .post("/v0/offline-sync/replay")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        deviceId: "tablet-front-counter-01",
+        haltOnFailure: true,
+        operations: [
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000041",
+            operationType: "attendance.startWork",
+            occurredAt,
+            dependsOn: [],
+            payload: { occurredAt },
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.results[0]).toMatchObject({
+      status: "APPLIED",
+      operationType: "attendance.startWork",
+      clientOpId: "10000000-0000-4000-8000-000000000041",
+    });
+  });
+
+  it("applies dependent operation when dependsOn references a prior applied op in batch", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const occurredAt = new Date().toISOString();
+
+    const response = await request(app)
+      .post("/v0/offline-sync/replay")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000042",
+            operationType: "attendance.startWork",
+            occurredAt,
+            payload: { occurredAt },
+          },
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000043",
+            operationType: "attendance.endWork",
+            occurredAt,
+            dependsOn: ["10000000-0000-4000-8000-000000000042"],
+            payload: { occurredAt },
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.results).toHaveLength(2);
+    expect(response.body.data.results[0]).toMatchObject({
+      status: "APPLIED",
+      operationType: "attendance.startWork",
+      clientOpId: "10000000-0000-4000-8000-000000000042",
+    });
+    expect(response.body.data.results[1]).toMatchObject({
+      status: "APPLIED",
+      operationType: "attendance.endWork",
+      clientOpId: "10000000-0000-4000-8000-000000000043",
+    });
+  });
+
+  it("fails with OFFLINE_SYNC_DEPENDENCY_MISSING when dependsOn target is not applied", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const occurredAt = new Date().toISOString();
+
+    const response = await request(app)
+      .post("/v0/offline-sync/replay")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000044",
+            operationType: "attendance.startWork",
+            occurredAt,
+            dependsOn: ["10000000-0000-4000-8000-000000000099"],
+            payload: { occurredAt },
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.stoppedAt).toBe(0);
+    expect(response.body.data.results).toHaveLength(1);
+    expect(response.body.data.results[0]).toMatchObject({
+      status: "FAILED",
+      operationType: "attendance.startWork",
+      clientOpId: "10000000-0000-4000-8000-000000000044",
+      code: "OFFLINE_SYNC_DEPENDENCY_MISSING",
+      resolution: {
+        category: "MANUAL",
+        action: "requires_user_intervention",
+      },
+    });
+  });
+
+  it("rejects payload when dependsOn references a later operation in same batch", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const occurredAt = new Date().toISOString();
+
+    const response = await request(app)
+      .post("/v0/offline-sync/replay")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000045",
+            operationType: "attendance.endWork",
+            occurredAt,
+            dependsOn: ["10000000-0000-4000-8000-000000000046"],
+            payload: { occurredAt },
+          },
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000046",
+            operationType: "attendance.startWork",
+            occurredAt,
+            payload: { occurredAt },
+          },
+        ],
+      });
+
+    expect(response.status).toBe(422);
+    expect(response.body.code).toBe("OFFLINE_SYNC_PAYLOAD_INVALID");
+  });
+
+  it("marks unsupported operation as PERMANENT in resolution hint", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const occurredAt = new Date().toISOString();
+
+    const response = await request(app)
+      .post("/v0/offline-sync/replay")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000047",
+            operationType: "sale.finalize",
+            occurredAt,
+            payload: {},
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.results[0]).toMatchObject({
+      status: "FAILED",
+      code: "OFFLINE_SYNC_OPERATION_NOT_SUPPORTED",
+      resolution: {
+        category: "PERMANENT",
+        action: "mark_permanent_failed",
+      },
+    });
+  });
+
+  it("marks attendance invariant denial as MANUAL in resolution hint", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const occurredAt = new Date().toISOString();
+
+    const response = await request(app)
+      .post("/v0/offline-sync/replay")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000048",
+            operationType: "attendance.endWork",
+            occurredAt,
+            payload: { occurredAt },
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.results[0]).toMatchObject({
+      status: "FAILED",
+      code: "ATTENDANCE_NO_ACTIVE_CHECKIN",
+      resolution: {
+        category: "MANUAL",
+        action: "requires_user_intervention",
+      },
+    });
+  });
+});
