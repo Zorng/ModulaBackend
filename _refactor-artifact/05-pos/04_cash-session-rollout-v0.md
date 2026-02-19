@@ -15,7 +15,21 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 - `knowledge_base/BusinessLogic/4_process/30_POSOperation/10_finalize_sale_orch.md`
 - `knowledge_base/BusinessLogic/4_process/30_POSOperation/23_void_sale_cash_reversal_process.md`
 
+## Offline-first DoD gates (standardized)
+
+- Replay parity: cash-session write commands are replay-safe in `pushSync`.
+- Pull deltas: successful writes emit sync changes for `moduleKey = cashSession`.
+- Conflict taxonomy: deterministic session invariant + platform denial codes.
+- Convergence tests: replay apply/duplicate/failure and pull convergence coverage.
+- Observability baseline: replay outcome counters by code.
+
 ## Execution phases
+
+### Phase 0 — Offline-first DoD gate
+- lock replay operation mappings for cash-session writes
+- lock pull entity map for cash-session projections
+- lock conflict code/resolution mapping
+- lock convergence test matrix
 
 ### Phase 1 — Boundary + Contract lock
 - confirm owned facts vs consumed facts
@@ -46,6 +60,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
+| 0 Offline-first DoD gate | Completed | Retroactive gate satisfied via OF5 producer coverage and cash-session replay/idempotency + pull sync checks. |
 | 1 Boundary + Contract lock | Completed | Locked boundary in `_refactor-artifact/02-boundary/cash-session-boundary-v0.md`; drafted canonical contract in `api_contract/cash-session-v0.md` with route prefix `/v0/cash`, action keys, event names, and cross-module sale/void hook anchors. |
 | 2 Data model + repositories | Completed | Added `migrations/025_create_v0_cash_session_tables.sql` for `v0_cash_sessions`, `v0_cash_movements`, and `v0_cash_reconciliation_snapshots` with one-open-session invariant + sale-anchor dedupe constraints. Added repository + command contract scaffolding in `src/modules/v0/posOperation/cashSession/infra/repository.ts` and `src/modules/v0/posOperation/cashSession/app/command-contract.ts` (including idempotency scope + sale movement anchor helper). |
 | 3 Commands/queries + access control | Completed | Implemented service + router commands/queries in `src/modules/v0/posOperation/cashSession/app/service.ts` and `src/modules/v0/posOperation/cashSession/api/router.ts`; wired module bootstrap + `/v0/cash` mount; added action catalog and protected route mappings for `cashSession.*` keys in `src/platform/access-control/action-catalog.ts` and `src/platform/access-control/route-registry.ts`. |

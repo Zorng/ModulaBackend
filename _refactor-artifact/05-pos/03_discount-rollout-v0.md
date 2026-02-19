@@ -14,7 +14,21 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 - `knowledge_base/BusinessLogic/3_contract/10_edgecases/discount_edge_case_sweep.md`
 - `knowledge_base/BusinessLogic/4_process/30_POSOperation/10_finalize_sale_orch.md`
 
+## Offline-first DoD gates (standardized)
+
+- Replay parity: all discount write commands map to replay-safe operations.
+- Pull deltas: successful writes emit sync changes for `moduleKey = discount`.
+- Conflict taxonomy: deterministic overlap/editability/validation denial codes.
+- Convergence tests: replay apply/duplicate/conflict and pull visibility coverage.
+- Observability baseline: replay outcome counters by code.
+
 ## Execution phases
+
+### Phase 0 — Offline-first DoD gate
+- lock replay operation mappings for discount writes
+- lock pull entity map for discount projections
+- lock conflict code/resolution mapping
+- lock convergence test matrix
 
 ### Phase 1 — Boundary + Contract lock
 - confirm owned facts vs consumed facts
@@ -45,6 +59,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
+| 0 Offline-first DoD gate | Completed | Retroactive gate satisfied via OF5 producer coverage and discount replay/idempotency + pull sync checks. |
 | 1 Boundary + Contract lock | Completed | Locked module boundary in `_refactor-artifact/02-boundary/discount-boundary-v0.md`; drafted canonical API contract in `api_contract/discount-v0.md` with route prefix `/v0/discount`, action/event naming, branch-safe preflight, and metadata-only eligibility resolve contract. |
 | 2 Data model + repositories | Completed | Added baseline `migrations/022_create_v0_discount_tables.sql`, then aligned to KB branch-owned policy in `migrations/023_align_v0_discount_rules_branch_owned.sql` (`branch_id` on rules, removed multi-branch assignment table). Repository updated to branch-local item eligibility and active-rule overlap reads. |
 | 3 Commands/queries + access control | Completed | Reworked `src/modules/v0/posOperation/discount/app/service.ts` + router for branch-owned create/update, `preflight/eligible-items`, overlap warning+confirm, and effective-inactive editability denial. Access-control mapping updated to `discount.rules.preflight.eligibleItems`. |

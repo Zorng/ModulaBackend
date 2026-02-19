@@ -17,7 +17,20 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 - `knowledge_base/BusinessLogic/4_process/10_WorkForce/40_attendance_report.md`
 - `knowledge_base/BusinessLogic/3_contract/10_edgecases/reporting_edge_case_sweep.md`
 
+## Offline-first DoD gates (standardized, read-only profile)
+
+- Replay parity: N/A (reporting is read-oriented; no direct business writes expected).
+- Pull readiness: report projections/feeds must be consumable by pull-sync hydration.
+- Conflict taxonomy: deterministic query/filter validation codes.
+- Convergence tests: pull-hydrated facts match report query outputs.
+- Observability baseline: report query latency/error metrics by endpoint.
+
 ## Execution phases
+
+### Phase 0 — Offline-first DoD gate
+- lock reporting read-model hydration expectations for pull-sync
+- lock query validation code taxonomy
+- lock convergence test matrix between pull-hydrated state and report queries
 
 ### Phase 1 — Boundary + Contract lock
 - confirm owned facts vs consumed facts
@@ -48,6 +61,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
+| 0 Offline-first DoD gate | Not started | |
 | 1 Boundary + Contract lock | Not started | |
 | 2 Data model + repositories | Not started | |
 | 3 Commands/queries + access control | Not started | |

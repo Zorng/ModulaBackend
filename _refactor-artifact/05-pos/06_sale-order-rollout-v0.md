@@ -30,7 +30,21 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
   - ON-01 is emitted on `VoidRequest(status=PENDING)` creation only.
   - Do not emit ON-01 from `sale.status=VOID_PENDING` transitions.
 
+## Offline-first DoD gates (standardized)
+
+- Replay parity: all sale/order write commands must have `pushSync` operation mapping.
+- Pull deltas: finalize/void/order mutations must emit `saleOrder`-scoped sync changes.
+- Conflict taxonomy: deterministic codes + `resolution` for retry/manual/permanent handling.
+- Convergence tests: replay + pull convergence for sale/order lifecycle.
+- Observability baseline: replay failure/duplicate/applied counters by code.
+
 ## Execution phases
+
+### Phase 0 — Offline-first DoD gate
+- lock replay operation mappings for sale/order writes
+- lock pull entity map for sale/order projections
+- lock conflict code/resolution mapping
+- lock convergence test matrix
 
 ### Phase 1 — Boundary + Contract lock
 - confirm owned facts vs consumed facts
@@ -61,6 +75,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
+| 0 Offline-first DoD gate | Not started | |
 | 1 Boundary + Contract lock | Not started | |
 | 2 Data model + repositories | Not started | |
 | 3 Commands/queries + access control | Not started | |

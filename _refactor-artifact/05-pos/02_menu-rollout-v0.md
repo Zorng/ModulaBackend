@@ -14,7 +14,21 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 - `knowledge_base/BusinessLogic/_maps/menu_story_coverage_map.md`
 - `knowledge_base/BusinessLogic/3_contract/10_edgecases/pos_operation_edge_case_sweep_patched.md`
 
+## Offline-first DoD gates (standardized)
+
+- Replay parity: all menu writes map to replay operations through `pushSync`.
+- Pull deltas: successful writes emit sync changes for `moduleKey = menu`.
+- Conflict taxonomy: deterministic duplicate/conflict/invariant denial codes.
+- Convergence tests: replay + pull-sync convergence asserted in integration coverage.
+- Observability baseline: replay outcome counters by code.
+
 ## Execution phases
+
+### Phase 0 — Offline-first DoD gate
+- lock replay operation mappings for menu writes
+- lock pull entity map for menu projections
+- lock conflict code/resolution mapping
+- lock convergence test matrix
 
 ### Phase 1 — Boundary + Contract lock
 - confirm owned facts vs consumed facts
@@ -45,6 +59,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
+| 0 Offline-first DoD gate | Completed | Retroactive gate satisfied via OF5 producer coverage and menu replay/idempotency + pull sync integration checks. |
 | 1 Boundary + Contract lock | Completed | Locked module boundary in `_refactor-artifact/02-boundary/menu-boundary-v0.md`; drafted canonical API contract in `api_contract/menu-v0.md` with action/event surface and entitlement constraints for tracked composition writes. |
 | 2 Data model + repositories | Completed | Added schema migration `migrations/019_create_v0_menu_tables.sql` for menu/catalog/modifier/composition/visibility owned tables; scaffolded module repositories and idempotency/event contract anchors in `src/modules/v0/menu/infra/repository.ts` and `src/modules/v0/menu/app/command-contract.ts`. |
 | 3 Commands/queries + access control | Completed | Implemented full contract command/query surface in `src/modules/v0/menu/api/router.ts` and `src/modules/v0/menu/app/service.ts` including update/archive/restore flows for items/categories/modifier groups/options plus tenant-wide listing (`GET /v0/menu/items/all`) for cross-branch management; all writes use idempotent transactional `business + audit + outbox`; access-control action catalog and route registry now cover full menu endpoint set. |

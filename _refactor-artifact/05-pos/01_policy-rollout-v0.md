@@ -15,7 +15,21 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 - `knowledge_base/BusinessLogic/4_process/60_PlatformSystems/20_resolve_branch_policy_process.md`
 - `knowledge_base/BusinessLogic/3_contract/10_edgecases/policy_edge_case_sweep.md`
 
+## Offline-first DoD gates (standardized)
+
+- Replay parity: policy writes are replay-safe via `pushSync` operation mapping.
+- Pull deltas: successful policy writes emit sync changes for `moduleKey = policy`.
+- Conflict taxonomy: deterministic policy + platform denial codes with resolution mapping.
+- Convergence tests: replay apply/duplicate/conflict + pull visibility coverage.
+- Observability baseline: replay outcome counters by code.
+
 ## Execution phases
+
+### Phase 0 — Offline-first DoD gate
+- lock replay operation mappings for policy writes
+- lock pull entity map for policy projections
+- lock conflict code/resolution mapping
+- lock convergence test matrix
 
 ### Phase 1 — Boundary + Contract lock
 - confirm owned facts vs consumed facts
@@ -46,6 +60,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
+| 0 Offline-first DoD gate | Completed | Retroactive gate satisfied via OF5 producer coverage and existing policy replay/idempotency tests. |
 | 1 Boundary + Contract lock | Completed | Canonical route/action/event boundary locked in `_refactor-artifact/02-boundary/policy-boundary-v0.md`; API contract drafted at `api_contract/policy-v0.md`. |
 | 2 Data model + repositories | Completed | Added `migrations/018_create_v0_branch_policies.sql`; scaffolded repository and command contract anchors under `src/modules/v0/policy/`. |
 | 3 Commands/queries + access control | Completed | Implemented `/v0/policy/current-branch` query/update handlers with transactional update path and audit/outbox emission; access-control route/action mappings added. |

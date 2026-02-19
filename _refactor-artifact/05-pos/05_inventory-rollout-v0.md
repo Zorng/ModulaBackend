@@ -15,6 +15,11 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 - `knowledge_base/BusinessLogic/4_process/30_POSOperation/13_stock_deduction_on_finalize_sale_process.md`
 - `knowledge_base/BusinessLogic/4_process/30_POSOperation/22_void_sale_inventory_reversal_process.md`
 
+## Offline-first DoD gates (standardized)
+
+- This module is the reference implementation for the standardized offline-first Phase 0 gate.
+- Canonical checklist: `_refactor-artifact/05-pos/05_inventory-offline-first-dod-checklist-v0.md`.
+
 ## Execution phases
 
 ### Phase 0 — Offline-first DoD gate (OF6)

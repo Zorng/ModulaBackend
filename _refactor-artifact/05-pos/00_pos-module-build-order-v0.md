@@ -60,6 +60,17 @@ Completion (2026-02-19):
 - For each write command, enforce atomic `business + audit + outbox` transaction contract.
 - Update `api_contract/*-v0.md` in the same phase as endpoint implementation.
 
+## Offline-First Standard Gate (applies to every POS rollout)
+
+- Add a module-specific **Phase 0** before boundary lock.
+- Phase 0 must lock:
+  - replay parity (`/v0/sync/push` op mapping for all write commands),
+  - pull delta emission (`/v0/sync/pull` UPSERT/TOMBSTONE behavior),
+  - deterministic conflict taxonomy (`code + resolution`),
+  - convergence tests (replay + pull),
+  - minimum observability counters for replay outcomes.
+- Read-only modules (for example reporting) can mark replay parity as N/A but must still define pull/hydration expectations.
+
 ## Module trackers
 
 | Order | Module | Tracker |

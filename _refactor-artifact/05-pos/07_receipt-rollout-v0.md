@@ -13,7 +13,21 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 - `knowledge_base/BusinessLogic/4_process/30_POSOperation/10_finalize_sale_orch.md`
 - `knowledge_base/BusinessLogic/4_process/60_PlatformSystems/55_printing_effects_dispatch_process.md`
 
+## Offline-first DoD gates (standardized)
+
+- Replay parity: receipt-producing writes (from sale finalize pipeline) must be replay-safe.
+- Pull deltas: receipt projection updates must emit sync changes for receipt hydration.
+- Conflict taxonomy: deterministic failure codes for receipt snapshot generation dependencies.
+- Convergence tests: replayed finalize operations produce receipt data visible via pull.
+- Observability baseline: replay outcome counters by code.
+
 ## Execution phases
+
+### Phase 0 — Offline-first DoD gate
+- lock replay operation mappings affecting receipt generation
+- lock pull entity map for receipt projections
+- lock conflict code/resolution mapping
+- lock convergence test matrix
 
 ### Phase 1 — Boundary + Contract lock
 - confirm owned facts vs consumed facts
@@ -44,6 +58,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
+| 0 Offline-first DoD gate | Not started | |
 | 1 Boundary + Contract lock | Not started | |
 | 2 Data model + repositories | Not started | |
 | 3 Commands/queries + access control | Not started | |

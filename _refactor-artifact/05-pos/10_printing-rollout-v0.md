@@ -14,7 +14,21 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 - `knowledge_base/BusinessLogic/4_process/60_PlatformSystems/55_printing_effects_dispatch_process.md`
 - `knowledge_base/BusinessLogic/3_contract/10_edgecases/printing_effects_edge_case_sweep.md`
 
+## Offline-first DoD gates (standardized)
+
+- Replay parity: print-related write intents (if any) must define replay-safe command mapping.
+- Pull readiness: print job/read-model status must be pull-sync consumable where applicable.
+- Conflict taxonomy: deterministic device/adapter failure codes + retry guidance.
+- Convergence tests: replayed triggers produce expected print job states/events.
+- Observability baseline: print dispatch success/failure metrics by adapter/code.
+
 ## Execution phases
+
+### Phase 0 — Offline-first DoD gate
+- lock replay mappings for print-triggering intents
+- lock pull/read visibility requirements for print job states
+- lock deterministic failure taxonomy + resolution expectations
+- lock convergence/retry test matrix
 
 ### Phase 1 — Boundary + Contract lock
 - confirm owned facts vs consumed facts
@@ -45,6 +59,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
+| 0 Offline-first DoD gate | Not started | |
 | 1 Boundary + Contract lock | Not started | |
 | 2 Data model + repositories | Not started | |
 | 3 Commands/queries + access control | Not started | |
