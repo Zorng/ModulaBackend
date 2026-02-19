@@ -19,6 +19,17 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 - `knowledge_base/BusinessLogic/4_process/30_POSOperation/08_checkout_open_ticket_process.md`
 - `knowledge_base/BusinessLogic/3_contract/10_edgecases/pos_operation_edge_case_sweep_patched.md`
 
+## Locked policy update (KB sync 2026-02-19)
+
+- Void behavior is mode-aware:
+  - Workforce OFF (solo): direct void (no separate approval actor required)
+  - Workforce ON (team): request/approve workflow
+- `VOID_PENDING` must not be interpreted as "awaiting approval" in all cases.
+  - It can also represent in-progress reversal execution.
+- Notification trigger rule:
+  - ON-01 is emitted on `VoidRequest(status=PENDING)` creation only.
+  - Do not emit ON-01 from `sale.status=VOID_PENDING` transitions.
+
 ## Execution phases
 
 ### Phase 1 — Boundary + Contract lock

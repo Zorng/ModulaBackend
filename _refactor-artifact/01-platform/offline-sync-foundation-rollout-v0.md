@@ -1,6 +1,6 @@
 # Offline Sync Foundation Rollout (v0)
 
-Status: In progress (S1 completed)  
+Status: Completed  
 Owner: backend  
 Started: 2026-02-19
 
@@ -68,7 +68,7 @@ Out of scope:
 | Phase | Status | Notes |
 |---|---|---|
 | S1 Boundary + Contract lock | Completed | Locked module boundary and API contract: `_refactor-artifact/02-boundary/offline-sync-boundary-v0.md`, `api_contract/offline-sync-v0.md`. |
-| S2 Data model + repository | Not started | |
-| S3 Replay command surface | Not started | |
-| S4 Reliability + dependency handling | Not started | |
-| S5 Close-out | Not started | |
+| S2 Data model + repository | Completed | Added schema migration `migrations/027_create_v0_offline_sync_tables.sql` and module repository/service scaffold under `src/modules/v0/platformSystem/offlineSync/*`. |
+| S3 Replay command surface | Completed | Implemented `/v0/offline-sync/replay` and `/v0/offline-sync/replay/batches/:batchId` with operation routing to attendance/cash-session handlers, client-op replay identity, and ACL route/action registration. |
+| S4 Reliability + dependency handling | Completed | Added replay claim/finalize status flow (`IN_PROGRESS -> APPLIED|DUPLICATE|FAILED`) with deterministic duplicate/conflict behavior and halt-on-failure dependency handling, with integration coverage in `src/integration-tests/v0-offline-sync.int.test.ts`. |
+| S5 Close-out | Completed | Synced event-catalog notes and API contract/frontend guidance; POS build-order pre-inventory platform prerequisites now satisfied. |

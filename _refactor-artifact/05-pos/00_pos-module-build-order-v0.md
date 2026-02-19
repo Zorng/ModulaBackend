@@ -1,8 +1,8 @@
 # POS Module Build Order (KB-Aligned, v0)
 
-Status: Active planning (inventory start paused by platform preflight)
+Status: Active execution (inventory ready)
 Owner: backend
-Last updated: 2026-02-18
+Last updated: 2026-02-19
 
 ## Why this exists
 
@@ -41,14 +41,17 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 - `reporting` must aggregate stable facts from prior modules, so it follows write models.
 - `offlineSync` and `printing` are resilience/effect layers and should bind to stable command/event contracts.
 
-## Pre-Inventory prerequisite (locked)
+## Pre-Inventory prerequisite (locked and completed)
 
-Before starting `inventory`, complete these platform foundations:
+Before starting `inventory`, these platform foundations must be completed:
 - `_refactor-artifact/01-platform/operational-notification-rollout-v0.md`
 - `_refactor-artifact/01-platform/offline-sync-foundation-rollout-v0.md`
 
 Reason:
 - inventory + sale-order would otherwise need replay/notification retrofits after implementation.
+
+Completion (2026-02-19):
+- both platform preflight trackers are now completed; inventory is unblocked.
 
 ## Execution rules
 
@@ -80,7 +83,7 @@ Reason:
 | menu | Completed | Phase 1-5 completed (boundary, contract, schema/repo, full endpoint surface + ACL, reliability tests, close-out sync). |
 | discount | Completed | phase 1-5 completed (boundary/contract lock, schema/repository, commands/queries + ACL, integration reliability, close-out sync) |
 | cashSession | Completed | Phase 1-5 completed (boundary/contract, schema/repo, command/query/ACL, integration reliability, close-out sync). |
-| inventory | Blocked (preflight) | start after operational-notification + offline-sync foundation are locked |
+| inventory | Ready | platform preflight completed on 2026-02-19 |
 | sale-order | Not started | integrate finalize/void orchestrations |
 | receipt | Not started | consume finalized sale snapshot only |
 | reporting | Not started | read-only aggregation only |

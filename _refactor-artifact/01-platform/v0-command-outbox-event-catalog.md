@@ -250,6 +250,14 @@ Compatibility note:
 
 Verification note:
 - dispatcher publish path for `CASH_SESSION_OPENED` is covered by `src/integration-tests/v0-cash-session.int.test.ts`.
+- subscriber integration note:
+  - `CASH_SESSION_CLOSED` and `CASH_SESSION_FORCE_CLOSED` are consumed by OperationalNotification subscriber to emit ON-04 in-app awareness signals.
+  - covered by `src/integration-tests/v0-operational-notification.int.test.ts`.
+
+### Offline Sync (foundation behavior note)
+- `offlineSync.replay.apply` is a replay orchestrator action and does not currently emit dedicated outbox event types.
+- it routes to underlying command handlers; domain events are emitted by those underlying commands when applicable.
+- replay outcomes are persisted in `v0_offline_sync_operations` / `v0_offline_sync_batches` and exposed via API.
 
 ## Notes
 

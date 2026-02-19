@@ -326,4 +326,39 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     entitlementKey: "core.pos",
   },
+  "operationalNotification.inbox.list": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "operationalNotification.inbox.unreadCount": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "operationalNotification.read": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "operationalNotification.read.mark": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    entitlementKey: "core.pos",
+  },
+  "operationalNotification.read.markAll": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    entitlementKey: "core.pos",
+  },
+  "offlineSync.replay.apply": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    entitlementKey: "core.pos",
+  },
+  "offlineSync.replay.read": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
 };

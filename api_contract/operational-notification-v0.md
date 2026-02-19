@@ -5,8 +5,7 @@ This document locks the target `/v0/notifications` HTTP contract for in-app oper
 Base path: `/v0/notifications`
 
 Implementation status:
-- Phase N1 contract lock completed.
-- Endpoints below are target contract for N2-N5 rollout.
+- Phase N1-N5 completed (contract + schema + query/command surface + ACL mapping + cash-session close emission integration + reliability close-out).
 
 ## Conventions
 
@@ -48,6 +47,18 @@ type NotificationItem = {
   readAt: string | null; // ISO datetime
 };
 ```
+
+## Trigger Semantics (Locked)
+
+- Workforce OFF (solo mode):
+  - void is direct (no separate approval loop).
+- Workforce ON (team mode):
+  - void uses request/approve workflow.
+- `VOID_PENDING` in sale state is not approval-specific.
+  - It may represent pending approval or in-progress reversal execution.
+- Therefore:
+  - `VOID_APPROVAL_NEEDED` (ON-01) must be emitted only when a `VoidRequest` is created with `status=PENDING`.
+  - Do not emit ON-01 purely from `sale.status=VOID_PENDING`.
 
 ## Endpoints
 
@@ -157,4 +168,3 @@ Response `200`:
 - Emission is best-effort. Failure to emit notification does not rollback source business writes.
 - Recipients are resolved in `(tenantId, branchId)` scope with access checks to avoid leakage.
 - Deep-link actions remain state-authoritative; stale notifications do not bypass current permissions/state.
-

@@ -180,7 +180,7 @@ Exit criteria:
   - `_refactor-artifact/03-orgaccount/orgaccount-overhaul-pos-readiness.md`
 - Observability companion tracker (baseline-now, full-later):
   - `_refactor-artifact/01-platform/observability-baseline-rollout-v0.md`
-- POS pre-inventory platform trackers:
+- POS pre-inventory platform trackers: completed on 2026-02-19
   - `_refactor-artifact/01-platform/operational-notification-rollout-v0.md`
   - `_refactor-artifact/01-platform/offline-sync-foundation-rollout-v0.md`
 

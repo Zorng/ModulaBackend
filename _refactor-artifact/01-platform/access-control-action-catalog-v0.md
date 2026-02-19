@@ -61,6 +61,13 @@ Legend:
 | `menu.modifierOptions.archive` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
 | `menu.composition.upsert` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
 | `menu.composition.evaluate` | TENANT | READ | - | `core.pos` |
+| `operationalNotification.inbox.list` | BRANCH | READ | - | `core.pos` |
+| `operationalNotification.inbox.unreadCount` | BRANCH | READ | - | `core.pos` |
+| `operationalNotification.read` | BRANCH | READ | - | `core.pos` |
+| `operationalNotification.read.mark` | BRANCH | WRITE | - | `core.pos` |
+| `operationalNotification.read.markAll` | BRANCH | WRITE | - | `core.pos` |
+| `offlineSync.replay.apply` | BRANCH | WRITE | - | `core.pos` |
+| `offlineSync.replay.read` | BRANCH | READ | - | `core.pos` |
 
 ## Route Mapping
 
@@ -120,6 +127,13 @@ Legend:
 | POST | `/menu/modifier-groups/:id/options/:optionId/archive` | `menu.modifierOptions.archive` | `token` | - |
 | PUT | `/menu/items/:id/composition` | `menu.composition.upsert` | `token` | - |
 | POST | `/menu/items/:id/composition/evaluate` | `menu.composition.evaluate` | `token` | - |
+| GET | `/notifications/inbox` | `operationalNotification.inbox.list` | `token` | `token` |
+| GET | `/notifications/unread-count` | `operationalNotification.inbox.unreadCount` | `token` | `token` |
+| GET | `/notifications/:id` | `operationalNotification.read` | `token` | `token` |
+| POST | `/notifications/:id/read` | `operationalNotification.read.mark` | `token` | `token` |
+| POST | `/notifications/read-all` | `operationalNotification.read.markAll` | `token` | `token` |
+| POST | `/offline-sync/replay` | `offlineSync.replay.apply` | `token` | `token` |
+| GET | `/offline-sync/replay/batches/:id` | `offlineSync.replay.read` | `token` | `token` |
 
 ## Notes
 

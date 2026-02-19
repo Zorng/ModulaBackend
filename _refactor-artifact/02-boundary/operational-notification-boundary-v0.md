@@ -77,9 +77,13 @@ Produced (platform observational):
 
 Subscribed (business transitions):
 - `CASH_SESSION_CLOSED` (ON-04 baseline)
-- `SALE_VOID_REQUESTED` (ON-01, when sale module is available)
+- `VOID_REQUEST_CREATED_PENDING` (ON-01, when sale module is available)
 - `SALE_VOIDED` (ON-02, when sale module is available)
 - `SALE_VOID_REJECTED` (ON-03, when sale module is available)
+
+Trigger guard (locked):
+- do not emit ON-01 from `sale.status=VOID_PENDING` transition by itself.
+- ON-01 must be keyed to explicit pending-approval request creation only.
 
 ## 7) Access Control Mapping (Locked Target)
 
@@ -101,4 +105,3 @@ Entitlement baseline:
 ## 9) API Contract Docs
 
 - Canonical contract file: `api_contract/operational-notification-v0.md`
-

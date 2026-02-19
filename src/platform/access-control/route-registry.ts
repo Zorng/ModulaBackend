@@ -481,6 +481,55 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     tenantSource: "token",
     branchSource: "token",
   },
+  {
+    method: "GET",
+    pattern: /^\/notifications\/inbox$/,
+    actionKey: "operationalNotification.inbox.list",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/notifications\/unread-count$/,
+    actionKey: "operationalNotification.inbox.unreadCount",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/notifications\/[^/]+$/,
+    actionKey: "operationalNotification.read",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/notifications\/[^/]+\/read$/,
+    actionKey: "operationalNotification.read.mark",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/notifications\/read-all$/,
+    actionKey: "operationalNotification.read.markAll",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/offline-sync\/replay$/,
+    actionKey: "offlineSync.replay.apply",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/offline-sync\/replay\/batches\/[^/]+$/,
+    actionKey: "offlineSync.replay.read",
+    tenantSource: "token",
+    branchSource: "token",
+  },
 ];
 
 export function matchProtectedRoute(

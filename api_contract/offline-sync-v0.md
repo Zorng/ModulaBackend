@@ -5,8 +5,7 @@ This document locks the target `/v0/offline-sync` HTTP contract for server-side 
 Base path: `/v0/offline-sync`
 
 Implementation status:
-- Phase S1 contract lock completed.
-- Endpoints below are target contract for S2-S5 rollout.
+- Phase S1-S5 completed (contract + schema + replay/query command surface + ACL mapping + reliability coverage + close-out sync).
 
 ## Conventions
 
@@ -174,6 +173,8 @@ Module-specific:
 - `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`
 - `OFFLINE_SYNC_DEPENDENCY_MISSING`
 - `OFFLINE_SYNC_PAYLOAD_INVALID`
+- `OFFLINE_SYNC_PAYLOAD_CONFLICT`
+- `OFFLINE_SYNC_IN_PROGRESS`
 
 Propagated from underlying command checks:
 - `BRANCH_FROZEN`
@@ -189,4 +190,5 @@ Propagated from underlying command checks:
 - Reuse the same `clientOpId` on retries of the same local op.
 - Treat `DUPLICATE` as successful replay (already applied).
 - For `FAILED` with deterministic codes (for example `BRANCH_FROZEN`), mark op as permanent failure and stop blind retries.
-
+- Current implementation note:
+  - `sale.finalize` is accepted as a replay operation type but currently returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED` until sale-order module rollout is complete.

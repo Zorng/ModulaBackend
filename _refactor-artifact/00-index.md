@@ -12,8 +12,8 @@
 | Platform | Observability Contract v0 | Active | `_refactor-artifact/01-platform/observability-contract-v0.md` |
 | Platform | Observability Thresholds v0 | Active | `_refactor-artifact/01-platform/observability-thresholds-v0.md` |
 | Platform | Observability Dashboard + Alert Starter v0 | Active | `_refactor-artifact/01-platform/observability-dashboard-alert-starter-v0.md` |
-| Platform | Operational Notification Rollout v0 | In Progress (N1 completed) | `_refactor-artifact/01-platform/operational-notification-rollout-v0.md` |
-| Platform | Offline Sync Foundation Rollout v0 | In Progress (S1 completed) | `_refactor-artifact/01-platform/offline-sync-foundation-rollout-v0.md` |
+| Platform | Operational Notification Rollout v0 | Completed | `_refactor-artifact/01-platform/operational-notification-rollout-v0.md` |
+| Platform | Offline Sync Foundation Rollout v0 | Completed | `_refactor-artifact/01-platform/offline-sync-foundation-rollout-v0.md` |
 | Boundary | Module Boundary Realignment v0 | Completed through B6 | `_refactor-artifact/02-boundary/module-boundary-realignment-v0.md` |
 | Boundary | Module Boundary Template v0 | Template | `_refactor-artifact/02-boundary/module-boundary-template-v0.md` |
 | Boundary | Policy Boundary v0 | Active (Phase 1-5 lock) | `_refactor-artifact/02-boundary/policy-boundary-v0.md` |
@@ -27,7 +27,4 @@
 
 ## Next Recommended Artifact
 
-- Complete platform pre-inventory prerequisites:
-  - `_refactor-artifact/01-platform/operational-notification-rollout-v0.md`
-  - `_refactor-artifact/01-platform/offline-sync-foundation-rollout-v0.md`
-- Then resume POS execution order from `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md`.
+- Resume POS execution order from `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md` at inventory rollout.
