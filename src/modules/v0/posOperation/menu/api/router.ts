@@ -1,5 +1,6 @@
 import { Router, type Response } from "express";
 import type { Pool } from "pg";
+import multer from "multer";
 import { requireV0Auth, type V0AuthRequest } from "../../../auth/api/middleware.js";
 import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
 import {
@@ -8,6 +9,11 @@ import {
   V0IdempotencyService,
 } from "../../../../../platform/idempotency/service.js";
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
+import { uploadSingleImage } from "../../../../../platform/http/middleware/multer.js";
+import {
+  uploadTenantScopedImageToR2,
+  V0ImageStorageError,
+} from "../../../../../platform/storage/r2-image-storage.js";
 import { V0AuditService } from "../../../audit/app/service.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
 import {
@@ -36,6 +42,47 @@ export function createV0MenuRouter(input: {
 }): Router {
   const router = Router();
   const transactionManager = new TransactionManager(input.db);
+
+  router.post("/images/upload", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
+    try {
+      await runUploadSingleImage(req, res);
+
+      const actor = req.v0Auth;
+      if (!actor) {
+        res.status(401).json({ success: false, error: "authentication required" });
+        return;
+      }
+
+      const tenantId = String(actor.tenantId ?? "").trim();
+      if (!tenantId) {
+        throw new V0MenuError(403, "tenant context required", "TENANT_CONTEXT_REQUIRED");
+      }
+      if (!req.file) {
+        throw new V0MenuError(422, "image file is required", "UPLOAD_FILE_REQUIRED");
+      }
+
+      const uploaded = await uploadTenantScopedImageToR2({
+        tenantId,
+        area: "menu",
+        fileBuffer: req.file.buffer,
+        mimeType: req.file.mimetype,
+        originalFilename: req.file.originalname,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          imageUrl: uploaded.imageUrl,
+          key: uploaded.key,
+          filename: uploaded.filename,
+          mimeType: uploaded.mimeType,
+          sizeBytes: uploaded.sizeBytes,
+        },
+      });
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
 
   router.get("/items", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
@@ -621,6 +668,40 @@ function asNumber(value: unknown): number | undefined {
 }
 
 function handleError(res: Response, error: unknown): void {
+  if (error instanceof multer.MulterError) {
+    if (error.code === "LIMIT_FILE_SIZE") {
+      res.status(400).json({
+        success: false,
+        error: "image must be less than 5MB",
+        code: "UPLOAD_FILE_TOO_LARGE",
+      });
+      return;
+    }
+    if (error.code === "LIMIT_UNEXPECTED_FILE") {
+      res.status(400).json({
+        success: false,
+        error: "unexpected file field; use 'image'",
+        code: "UPLOAD_INVALID_FIELD",
+      });
+      return;
+    }
+    res.status(400).json({
+      success: false,
+      error: error.message,
+      code: "UPLOAD_BAD_REQUEST",
+    });
+    return;
+  }
+
+  if (error instanceof V0ImageStorageError) {
+    res.status(error.statusCode).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+    });
+    return;
+  }
+
   if (error instanceof V0IdempotencyError) {
     res.status(error.statusCode).json({
       success: false,
@@ -638,8 +719,33 @@ function handleError(res: Response, error: unknown): void {
     return;
   }
 
+  if (error instanceof Error && error.message.startsWith("Invalid file type:")) {
+    res.status(422).json({
+      success: false,
+      error: error.message,
+      code: "UPLOAD_INVALID_TYPE",
+    });
+    return;
+  }
+
   res.status(500).json({
     success: false,
     error: error instanceof Error ? error.message : "internal server error",
+  });
+}
+
+function runUploadSingleImage(req: V0AuthRequest, res: Response): Promise<void> {
+  return new Promise((resolve, reject) => {
+    (uploadSingleImage as unknown as (
+      request: V0AuthRequest,
+      response: Response,
+      next: (err?: unknown) => void
+    ) => void)(req, res, (err?: unknown) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
   });
 }

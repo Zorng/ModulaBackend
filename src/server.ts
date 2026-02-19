@@ -10,6 +10,7 @@ import {
 import { accessControlHook } from "./platform/http/middleware/access-control-hook.js";
 import { requestContextMiddleware } from "./platform/http/middleware/request-context.js";
 import { requestTelemetryMiddleware } from "./platform/http/middleware/request-telemetry.js";
+import { imageProxyRouter } from "./platform/http/routes/image-proxy.js";
 import { v0Router } from "./platform/http/routes/v0.js";
 import { startV0CommandOutboxDispatcher } from "./platform/outbox/dispatcher.js";
 
@@ -30,7 +31,7 @@ app.use(
     origin: process.env.CORS_ORIGIN || "*",
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id", "Idempotency-Key"],
     exposedHeaders: ["X-Request-Id"],
   })
 );
@@ -38,6 +39,7 @@ app.use(
 app.use(express.json());
 app.use(requestContextMiddleware);
 app.use(requestTelemetryMiddleware);
+app.use("/", imageProxyRouter);
 
 app.get("/health", async (_req, res) => {
   try {

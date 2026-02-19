@@ -6,6 +6,7 @@ Base path: `/v0/menu`
 
 Implementation status (Phase 3):
 - Implemented now:
+  - `POST /v0/menu/images/upload`
   - `GET /v0/menu/items`
   - `GET /v0/menu/items/all`
   - `GET /v0/menu/items/:menuItemId`
@@ -39,7 +40,7 @@ Implementation status (Phase 3):
   - `tenantId` / `branchId` come from working-context token.
   - No context override in query/body/headers.
 - Idempotency:
-  - all write endpoints require `Idempotency-Key`.
+  - all write endpoints except image upload require `Idempotency-Key`.
   - duplicate replay returns stored response with header `Idempotency-Replayed: true`.
 - Access-control reason codes:
   - see `api_contract/access-control-v0.md`
@@ -114,6 +115,40 @@ type MenuItemDetail = MenuItem & {
 ```
 
 ## Endpoints
+
+### 0) Upload menu image
+
+`POST /v0/menu/images/upload`
+
+Action key: `menu.images.upload`
+
+Note:
+- Shared uploader is also available at `POST /v0/media/images/upload` with `area=menu` (see `api_contract/media-v0.md`).
+
+Headers:
+- `Content-Type: multipart/form-data`
+
+Body (form-data):
+- `image` (file) — required, jpeg/png/webp, max 5MB
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "imageUrl": "https://cdn-or-proxy-url",
+    "key": "menu-item-images/<tenantId>/<generated-filename>.jpg",
+    "filename": "<generated-filename>.jpg",
+    "mimeType": "image/jpeg",
+    "sizeBytes": 123456
+  }
+}
+```
+
+Errors:
+- `400` `UPLOAD_FILE_TOO_LARGE` / `UPLOAD_INVALID_FIELD`
+- `422` `UPLOAD_FILE_REQUIRED`
+- `503` `IMAGE_STORAGE_NOT_CONFIGURED` / `IMAGE_UPLOAD_FAILED`
 
 ### 1) List menu items (branch-visible)
 
@@ -458,4 +493,7 @@ Common errors across write endpoints:
 - On branch switch, reload menu list from backend (`GET /v0/menu/items`) rather than relying on cached labels.
 - For management screens needing cross-branch catalog data, use `GET /v0/menu/items/all` and render `visibleBranchIds` from backend response.
 - Treat uncategorized as derived view (`categoryId = null`), not a mutable category entity.
+- For image flow:
+  1. upload file via `POST /v0/menu/images/upload`
+  2. use returned `imageUrl` in create/update menu item payload.
 - For write retries, reuse same `Idempotency-Key` to safely handle network retries.

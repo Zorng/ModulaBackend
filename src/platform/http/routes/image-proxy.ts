@@ -1,6 +1,10 @@
 import { Router, Request, Response } from "express";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { log } from "#logger";
+import {
+  buildTenantImageObjectKey,
+  type TenantImageArea,
+} from "../../storage/r2-image-storage.js";
 
 const router = Router();
 
@@ -36,18 +40,25 @@ function getS3Client(): S3Client {
 }
 
 /**
- * GET /images/:tenantId/:module/:filename
+ * GET /images/:tenantId/:area/:filename
  * Proxy images from R2 with CORS headers
  */
-router.get(
-  "/images/:tenantId/:module/:filename",
-  async (req: Request, res: Response) => {
+router.get("/images/:tenantId/:area/:filename", async (req: Request, res: Response) => {
     try {
-      const { tenantId, module, filename } = req.params;
-      const bucketName = process.env.R2_BUCKET_NAME || "modula-menu-images";
+      const { tenantId, area: requestedArea, filename } = req.params;
+      const bucketName = process.env.R2_BUCKET_NAME || "modula-images";
 
       // Construct S3 key
-      const key = `tenants/${tenantId}/${module}/${filename}`;
+      const area = normalizeArea(requestedArea);
+      if (!area) {
+        res.status(404).json({ error: "Image not found" });
+        return;
+      }
+      const key = buildTenantImageObjectKey({
+        tenantId,
+        area,
+        filename,
+      });
 
       // Fetch from R2
       const client = getS3Client();
@@ -78,7 +89,7 @@ router.get(
         event: "image_proxy.fetch_failed",
         requestId: req.v0Context?.requestId,
         tenantId: req.params?.tenantId,
-        module: req.params?.module,
+        area: req.params?.area,
         filename: req.params?.filename,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -89,7 +100,19 @@ router.get(
         res.status(500).json({ error: "Failed to fetch image" });
       }
     }
+});
+
+function normalizeArea(value: string): TenantImageArea | null {
+  const area = String(value ?? "").trim().toLowerCase();
+  switch (area) {
+    case "menu":
+    case "inventory":
+    case "tenant":
+    case "profile":
+      return area;
+    default:
+      return null;
   }
-);
+}
 
 export { router as imageProxyRouter };

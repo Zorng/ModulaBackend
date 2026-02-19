@@ -82,6 +82,17 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     entitlementKey: "core.pos",
   },
+  "menu.images.upload": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
+  "media.images.upload": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+  },
   "menu.items.listAll": {
     scope: "TENANT",
     effect: "READ",

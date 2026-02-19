@@ -6,6 +6,7 @@ import {
 export type MenuCommandOutcome = CommandOutcome;
 
 export const V0_MENU_ACTION_KEYS = {
+  uploadImage: "menu.images.upload",
   listItems: "menu.items.list",
   listAllItems: "menu.items.listAll",
   readItem: "menu.items.read",

@@ -206,6 +206,18 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     branchSource: "token",
   },
   {
+    method: "POST",
+    pattern: /^\/menu\/images\/upload$/,
+    actionKey: "menu.images.upload",
+    tenantSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/media\/images\/upload$/,
+    actionKey: "media.images.upload",
+    tenantSource: "token",
+  },
+  {
     method: "GET",
     pattern: /^\/menu\/items\/all$/,
     actionKey: "menu.items.listAll",
