@@ -416,6 +416,62 @@ describe("v0 menu integration", () => {
     expect(Number(outboxCount.rows[0]?.count ?? "0")).toBe(1);
   });
 
+  it("links pending media upload when menu item is saved with uploaded imageUrl", async () => {
+    const setup = await setupOwnerTenantContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Menu Media Link ${uniqueSuffix()}`,
+    });
+
+    const filename = `uploaded-${uniqueSuffix()}.jpg`;
+    const imageUrl = `/images/${setup.tenantId}/menu/${filename}`;
+    const objectKey = `menu-item-images/${setup.tenantId}/${filename}`;
+    await pool.query(
+      `INSERT INTO v0_media_uploads (
+         tenant_id,
+         area,
+         object_key,
+         image_url,
+         mime_type,
+         size_bytes,
+         status
+       ) VALUES ($1, 'menu', $2, $3, 'image/jpeg', 1024, 'PENDING')`,
+      [setup.tenantId, objectKey, imageUrl]
+    );
+
+    const created = await request(app)
+      .post("/v0/menu/items")
+      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .set("Idempotency-Key", "menu-item-media-link-1")
+      .send({
+        name: `Media Linked Item ${uniqueSuffix()}`,
+        basePrice: 2.0,
+        categoryId: null,
+        modifierGroupIds: [],
+        visibleBranchIds: [setup.branchAId],
+        imageUrl,
+      });
+    expect(created.status).toBe(200);
+    const menuItemId = created.body.data.id as string;
+
+    const upload = await pool.query<{
+      status: string;
+      linked_entity_type: string | null;
+      linked_entity_id: string | null;
+    }>(
+      `SELECT status, linked_entity_type, linked_entity_id
+       FROM v0_media_uploads
+       WHERE tenant_id = $1
+         AND object_key = $2`,
+      [setup.tenantId, objectKey]
+    );
+
+    expect(upload.rows[0]?.status).toBe("LINKED");
+    expect(upload.rows[0]?.linked_entity_type).toBe("menu_item");
+    expect(upload.rows[0]?.linked_entity_id).toBe(menuItemId);
+  });
+
   it("rolls back menu item create when outbox insert fails and allows retry with same key", async () => {
     const setup = await setupOwnerTenantContext({
       app,

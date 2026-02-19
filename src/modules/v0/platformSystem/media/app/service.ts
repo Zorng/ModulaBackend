@@ -1,7 +1,9 @@
 import {
+  deriveObjectKeyFromImageUrl,
   type TenantImageArea,
   uploadTenantScopedImageToR2,
 } from "../../../../../platform/storage/r2-image-storage.js";
+import { V0MediaUploadRepository } from "../../../../../platform/media-uploads/repository.js";
 
 export const V0_MEDIA_IMAGE_AREAS: ReadonlyArray<TenantImageArea> = [
   "menu",
@@ -27,9 +29,12 @@ type UploadTenantImageInput = {
   fileBuffer: Buffer;
   mimeType: string;
   originalFilename: string;
+  uploadedByAccountId: string | null;
 };
 
 export class V0MediaService {
+  constructor(private readonly uploadsRepo: V0MediaUploadRepository) {}
+
   async uploadTenantImage(input: UploadTenantImageInput) {
     const tenantId = String(input.tenantId ?? "").trim();
     if (!tenantId) {
@@ -45,13 +50,30 @@ export class V0MediaService {
       );
     }
 
-    return uploadTenantScopedImageToR2({
+    const uploaded = await uploadTenantScopedImageToR2({
       tenantId,
       area,
       fileBuffer: input.fileBuffer,
       mimeType: input.mimeType,
       originalFilename: input.originalFilename,
     });
+
+    await this.uploadsRepo.createPendingUpload({
+      tenantId,
+      area,
+      objectKey:
+        deriveObjectKeyFromImageUrl({
+          imageUrl: uploaded.imageUrl,
+          tenantId,
+          area,
+        }) ?? uploaded.key,
+      imageUrl: uploaded.imageUrl,
+      mimeType: uploaded.mimeType,
+      sizeBytes: uploaded.sizeBytes,
+      uploadedByAccountId: input.uploadedByAccountId,
+    });
+
+    return uploaded;
   }
 }
 

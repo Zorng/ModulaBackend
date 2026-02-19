@@ -11,6 +11,10 @@ Base path: `/v0/media`
 - Multipart field name: `image`
 - Allowed mime types: `image/jpeg`, `image/jpg`, `image/png`, `image/webp`
 - Max size: `5MB`
+- Upload lifecycle:
+  - uploaded images are recorded as `PENDING`
+  - when a feature entity references the `imageUrl` (for example menu item create/update), backend marks it `LINKED`
+  - stale `PENDING` uploads are cleaned up by background dispatcher
 
 ## Endpoint
 

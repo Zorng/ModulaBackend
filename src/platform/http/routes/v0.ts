@@ -19,7 +19,7 @@ const v0SubscriptionModule = bootstrapV0SubscriptionModule(pool);
 const v0AuditModule = bootstrapV0AuditModule(pool);
 const v0StaffManagementModule = bootstrapV0StaffManagementModule(pool);
 const v0PolicyModule = bootstrapV0PolicyModule(pool);
-const v0MediaModule = bootstrapV0MediaModule();
+const v0MediaModule = bootstrapV0MediaModule(pool);
 const v0MenuModule = bootstrapV0MenuModule(pool);
 const v0DiscountModule = bootstrapV0DiscountModule(pool);
 

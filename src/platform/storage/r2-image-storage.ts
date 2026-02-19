@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 
 export type TenantImageArea = "menu" | "inventory" | "tenant" | "profile";
@@ -100,6 +100,23 @@ export async function uploadTenantScopedImageToR2(
   };
 }
 
+export async function deleteObjectFromR2(input: { objectKey: string }): Promise<void> {
+  const config = resolveStorageConfig();
+  try {
+    const command = new DeleteObjectCommand({
+      Bucket: config.bucketName,
+      Key: input.objectKey,
+    });
+    await getS3Client(config).send(command);
+  } catch (error) {
+    throw new V0ImageStorageError(
+      503,
+      "IMAGE_DELETE_FAILED",
+      error instanceof Error ? error.message : "image delete failed"
+    );
+  }
+}
+
 function resolveStorageConfig(): {
   accountId: string;
   accessKeyId: string;
@@ -194,6 +211,50 @@ export function buildTenantImageObjectKey(input: {
 }): string {
   const prefix = TENANT_IMAGE_AREA_PREFIX[input.area];
   return `${prefix}/${input.tenantId}/${input.filename}`;
+}
+
+export function deriveObjectKeyFromImageUrl(input: {
+  imageUrl: string;
+  tenantId: string;
+  area: TenantImageArea;
+}): string | null {
+  const raw = String(input.imageUrl ?? "").trim();
+  if (!raw) {
+    return null;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(raw, "http://localhost");
+  } catch {
+    return null;
+  }
+
+  const pathname = parsed.pathname.replace(/^\/+/, "");
+  if (!pathname) {
+    return null;
+  }
+
+  const proxySegments = pathname.split("/");
+  if (
+    proxySegments[0] === "images" &&
+    proxySegments[1] === input.tenantId &&
+    proxySegments[2] === input.area &&
+    proxySegments[3]
+  ) {
+    return buildTenantImageObjectKey({
+      tenantId: input.tenantId,
+      area: input.area,
+      filename: proxySegments.slice(3).join("/"),
+    });
+  }
+
+  const areaPrefix = TENANT_IMAGE_AREA_PREFIX[input.area];
+  if (pathname.startsWith(`${areaPrefix}/${input.tenantId}/`)) {
+    return pathname;
+  }
+
+  return null;
 }
 
 function normalizeOptionalString(value: unknown): string | null {

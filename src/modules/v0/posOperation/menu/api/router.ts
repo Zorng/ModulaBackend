@@ -11,9 +11,11 @@ import {
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
 import { uploadSingleImage } from "../../../../../platform/http/middleware/multer.js";
 import {
+  deriveObjectKeyFromImageUrl,
   uploadTenantScopedImageToR2,
   V0ImageStorageError,
 } from "../../../../../platform/storage/r2-image-storage.js";
+import { V0MediaUploadRepository } from "../../../../../platform/media-uploads/repository.js";
 import { V0AuditService } from "../../../audit/app/service.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
 import {
@@ -42,6 +44,7 @@ export function createV0MenuRouter(input: {
 }): Router {
   const router = Router();
   const transactionManager = new TransactionManager(input.db);
+  const mediaUploadsRepo = new V0MediaUploadRepository(input.db);
 
   router.post("/images/upload", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
@@ -67,6 +70,21 @@ export function createV0MenuRouter(input: {
         fileBuffer: req.file.buffer,
         mimeType: req.file.mimetype,
         originalFilename: req.file.originalname,
+      });
+
+      await mediaUploadsRepo.createPendingUpload({
+        tenantId,
+        area: "menu",
+        objectKey:
+          deriveObjectKeyFromImageUrl({
+            imageUrl: uploaded.imageUrl,
+            tenantId,
+            area: "menu",
+          }) ?? uploaded.key,
+        imageUrl: uploaded.imageUrl,
+        mimeType: uploaded.mimeType,
+        sizeBytes: uploaded.sizeBytes,
+        uploadedByAccountId: actor.accountId,
       });
 
       res.status(200).json({
@@ -585,7 +603,10 @@ export function createV0MenuRouter(input: {
         },
         handler: async () => {
           const data = await inputWrite.transactionManager.withTransaction(async (client) => {
-            const txService = new V0MenuService(new V0MenuRepository(client));
+            const txService = new V0MenuService(
+              new V0MenuRepository(client),
+              new V0MediaUploadRepository(client)
+            );
             const txAuditService = new V0AuditService(new V0AuditRepository(client));
             const txOutboxRepository = new V0CommandOutboxRepository(client);
 

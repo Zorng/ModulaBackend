@@ -27,6 +27,7 @@ export function createV0MediaRouter(service: V0MediaService): Router {
         fileBuffer: req.file.buffer,
         mimeType: req.file.mimetype,
         originalFilename: req.file.originalname,
+        uploadedByAccountId: String(actor.accountId ?? "").trim() || null,
       });
 
       res.status(200).json({

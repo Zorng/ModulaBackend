@@ -4,6 +4,8 @@ import {
   type MenuModifierOptionDeltaRow,
   type MenuTrackingMode,
 } from "../infra/repository.js";
+import { V0MediaUploadRepository } from "../../../../../platform/media-uploads/repository.js";
+import { deriveObjectKeyFromImageUrl } from "../../../../../platform/storage/r2-image-storage.js";
 
 type ActorContext = {
   accountId: string;
@@ -31,7 +33,10 @@ export class V0MenuError extends Error {
 }
 
 export class V0MenuService {
-  constructor(private readonly repo: V0MenuRepository) {}
+  constructor(
+    private readonly repo: V0MenuRepository,
+    private readonly mediaUploadsRepo?: V0MediaUploadRepository
+  ) {}
 
   async listItems(input: {
     actor: ActorContext;
@@ -727,6 +732,11 @@ export class V0MenuService {
       menuItemId: created.id,
       groupIds: modifierGroupIds,
     });
+    await this.linkMenuImageUpload({
+      tenantId: scope.tenantId,
+      menuItemId: created.id,
+      imageUrl: created.image_url,
+    });
 
     return {
       id: created.id,
@@ -808,6 +818,13 @@ export class V0MenuService {
     if (!updated) {
       throw new V0MenuError(404, "menu item not found", "MENU_ITEM_NOT_FOUND");
     }
+    if (hasImageUrl) {
+      await this.linkMenuImageUpload({
+        tenantId: scope.tenantId,
+        menuItemId: updated.id,
+        imageUrl: updated.image_url,
+      });
+    }
 
     if (hasVisibleBranches) {
       const visibleBranchIds = toUuidArray(body.visibleBranchIds, "visibleBranchIds");
@@ -848,6 +865,31 @@ export class V0MenuService {
       createdAt: updated.created_at.toISOString(),
       updatedAt: updated.updated_at.toISOString(),
     };
+  }
+
+  private async linkMenuImageUpload(input: {
+    tenantId: string;
+    menuItemId: string;
+    imageUrl: string | null;
+  }): Promise<void> {
+    if (!this.mediaUploadsRepo || !input.imageUrl) {
+      return;
+    }
+
+    const objectKey = deriveObjectKeyFromImageUrl({
+      imageUrl: input.imageUrl,
+      tenantId: input.tenantId,
+      area: "menu",
+    });
+
+    await this.mediaUploadsRepo.markLinkedUploadByReference({
+      tenantId: input.tenantId,
+      area: "menu",
+      imageUrl: input.imageUrl,
+      objectKey,
+      linkedEntityType: "menu_item",
+      linkedEntityId: input.menuItemId,
+    });
   }
 
   async archiveMenuItem(input: {

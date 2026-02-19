@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import { V0IdempotencyRepository } from "../../../../platform/idempotency/repository.js";
 import { V0IdempotencyService } from "../../../../platform/idempotency/service.js";
+import { V0MediaUploadRepository } from "../../../../platform/media-uploads/repository.js";
 import { createV0MenuRouter } from "./api/router.js";
 import {
   V0_MENU_ACTION_KEYS,
@@ -13,7 +14,8 @@ import { V0MenuRepository } from "./infra/repository.js";
 
 export function bootstrapV0MenuModule(pool: Pool) {
   const repo = new V0MenuRepository(pool);
-  const service = new V0MenuService(repo);
+  const mediaUploadsRepo = new V0MediaUploadRepository(pool);
+  const service = new V0MenuService(repo, mediaUploadsRepo);
   const idempotencyRepo = new V0IdempotencyRepository(pool);
   const idempotencyService = new V0IdempotencyService(idempotencyRepo);
   const router = createV0MenuRouter({
