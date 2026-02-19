@@ -13,7 +13,7 @@ import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
 import { bootstrapV0AttendanceModule } from "../modules/v0/hr/attendance/index.js";
 import { bootstrapV0CashSessionModule } from "../modules/v0/posOperation/cashSession/index.js";
-import { bootstrapV0OfflineSyncModule } from "../modules/v0/platformSystem/offlineSync/index.js";
+import { bootstrapV0PushSyncModule } from "../modules/v0/platformSystem/pushSync/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 import { hashJsonPayload } from "../shared/utils/hash.js";
 
@@ -112,7 +112,7 @@ async function setupOwnerBranchContext(input: {
   return { branchToken, tenantId, branchId };
 }
 
-describe("v0 offline sync integration", () => {
+describe("v0 push sync integration", () => {
   let pool: Pool;
   let app: express.Express;
 
@@ -129,7 +129,8 @@ describe("v0 offline sync integration", () => {
     app.use("/v0/org", bootstrapV0OrgAccountModule(pool).router);
     app.use("/v0/attendance", bootstrapV0AttendanceModule(pool).router);
     app.use("/v0/cash", bootstrapV0CashSessionModule(pool).router);
-    app.use("/v0/offline-sync", bootstrapV0OfflineSyncModule(pool).router);
+    const pushSyncModule = bootstrapV0PushSyncModule(pool);
+        app.use("/v0/sync", pushSyncModule.router);
   });
 
   afterAll(async () => {
@@ -142,7 +143,7 @@ describe("v0 offline sync integration", () => {
     const occurredAt = new Date().toISOString();
 
     const first = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [
@@ -168,7 +169,7 @@ describe("v0 offline sync integration", () => {
     });
 
     const replay = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [
@@ -194,7 +195,7 @@ describe("v0 offline sync integration", () => {
     });
 
     const conflict = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [
@@ -234,12 +235,43 @@ describe("v0 offline sync integration", () => {
     expect(Number(sessionCount.rows[0]?.count ?? "0")).toBe(1);
   });
 
+  it("accepts canonical push route (/v0/sync/push)", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const clientOpId = "10000000-0000-4000-8000-000000000011";
+    const occurredAt = new Date().toISOString();
+
+    const response = await request(app)
+      .post("/v0/sync/push")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId,
+            operationType: "cashSession.open",
+            occurredAt,
+            payload: {
+              openingFloatUsd: 15,
+              openingFloatKhr: 25000,
+              note: "push alias open",
+            },
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.results[0]).toMatchObject({
+      status: "APPLIED",
+      operationType: "cashSession.open",
+      clientOpId,
+    });
+  });
+
   it("halts on first failure when haltOnFailure is true (default)", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     const now = new Date().toISOString();
 
     const response = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [
@@ -335,7 +367,7 @@ describe("v0 offline sync integration", () => {
     );
 
     const replay = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [
@@ -413,7 +445,7 @@ describe("v0 offline sync integration", () => {
     );
 
     const replay = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [
@@ -446,7 +478,7 @@ describe("v0 offline sync integration", () => {
     const occurredAt = new Date().toISOString();
 
     const response = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         deviceId: "tablet-front-counter-01",
@@ -476,7 +508,7 @@ describe("v0 offline sync integration", () => {
     const occurredAt = new Date().toISOString();
 
     const response = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [
@@ -516,7 +548,7 @@ describe("v0 offline sync integration", () => {
     const occurredAt = new Date().toISOString();
 
     const response = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [
@@ -551,7 +583,7 @@ describe("v0 offline sync integration", () => {
     const occurredAt = new Date().toISOString();
 
     const response = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [
@@ -580,7 +612,7 @@ describe("v0 offline sync integration", () => {
     const occurredAt = new Date().toISOString();
 
     const response = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [
@@ -609,7 +641,7 @@ describe("v0 offline sync integration", () => {
     const occurredAt = new Date().toISOString();
 
     const response = await request(app)
-      .post("/v0/offline-sync/replay")
+      .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [

@@ -7,13 +7,13 @@ import {
   V0OperationalNotificationRealtimeBroker,
   type V0OperationalNotificationRealtimeEvent,
 } from "./realtime.js";
-import { V0SyncRepository } from "../../sync/infra/repository.js";
+import { V0PullSyncRepository } from "../../pullSync/infra/repository.js";
 
 export class V0OperationalNotificationService {
   constructor(
     private readonly repo: V0OperationalNotificationRepository,
     private readonly realtime: V0OperationalNotificationRealtimeBroker,
-    private readonly syncRepo?: V0SyncRepository
+    private readonly syncRepo?: V0PullSyncRepository
   ) {}
 
   async emit(input: {

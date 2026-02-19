@@ -67,9 +67,9 @@ Legend:
 | `operationalNotification.read` | BRANCH | READ | - | `core.pos` |
 | `operationalNotification.read.mark` | BRANCH | WRITE | - | `core.pos` |
 | `operationalNotification.read.markAll` | BRANCH | WRITE | - | `core.pos` |
-| `offlineSync.replay.apply` | BRANCH | WRITE | - | `core.pos` |
-| `offlineSync.replay.read` | BRANCH | READ | - | `core.pos` |
-| `sync.pull` | BRANCH | READ | - | - |
+| `pushSync.apply` | BRANCH | WRITE | - | `core.pos` |
+| `pushSync.read` | BRANCH | READ | - | `core.pos` |
+| `pullSync.pull` | BRANCH | READ | - | `core.pos` |
 
 ## Route Mapping
 
@@ -135,9 +135,11 @@ Legend:
 | GET | `/notifications/:id` | `operationalNotification.read` | `token` | `token` |
 | POST | `/notifications/:id/read` | `operationalNotification.read.mark` | `token` | `token` |
 | POST | `/notifications/read-all` | `operationalNotification.read.markAll` | `token` | `token` |
-| POST | `/offline-sync/replay` | `offlineSync.replay.apply` | `token` | `token` |
-| GET | `/offline-sync/replay/batches/:id` | `offlineSync.replay.read` | `token` | `token` |
-| POST | `/sync/pull` | `sync.pull` | `token` | `token` |
+| POST | `/sync/push` | `pushSync.apply` | `token` | `token` |
+| GET | `/sync/push/batches/:id` | `pushSync.read` | `token` | `token` |
+| POST | `/sync/replay` | `pushSync.apply` | `token` | `token` |
+| GET | `/sync/replay/batches/:id` | `pushSync.read` | `token` | `token` |
+| POST | `/sync/pull` | `pullSync.pull` | `token` | `token` |
 
 ## Notes
 

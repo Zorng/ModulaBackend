@@ -31,7 +31,7 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 6. `sale-order` (finalize orchestration integrating policy/menu/discount/cash/inventory)
 7. `receipt` (immutable receipt snapshot from finalized sale)
 8. `reporting` (read-only management projections)
-9. `offlineSync` (queue + replay for allowed operations)
+9. `pushSync` (queue + replay for allowed operations)
 10. `printing` (operational effects; best-effort)
 
 ## Why this order
@@ -39,13 +39,13 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 - `sale-order` is integration-heavy and depends on policy/menu/discount/cash/inventory seams.
 - `receipt` must render sale snapshots, so it follows sale snapshot finalization rules.
 - `reporting` must aggregate stable facts from prior modules, so it follows write models.
-- `offlineSync` and `printing` are resilience/effect layers and should bind to stable command/event contracts.
+- `pushSync` and `printing` are resilience/effect layers and should bind to stable command/event contracts.
 
 ## Pre-Inventory prerequisite (locked and completed)
 
 Before starting `inventory`, these platform foundations must be completed:
 - `_refactor-artifact/01-platform/operational-notification-rollout-v0.md`
-- `_refactor-artifact/01-platform/offline-sync-foundation-rollout-v0.md`
+- `_refactor-artifact/01-platform/push-sync-foundation-rollout-v0.md`
 
 Reason:
 - inventory + sale-order would otherwise need replay/notification retrofits after implementation.
@@ -72,7 +72,7 @@ Completion (2026-02-19):
 | 6 | sale-order | `_refactor-artifact/05-pos/06_sale-order-rollout-v0.md` |
 | 7 | receipt | `_refactor-artifact/05-pos/07_receipt-rollout-v0.md` |
 | 8 | reporting | `_refactor-artifact/05-pos/08_reporting-rollout-v0.md` |
-| 9 | offlineSync | `_refactor-artifact/05-pos/09_offline-sync-rollout-v0.md` |
+| 9 | pushSync | `_refactor-artifact/05-pos/09_push-sync-rollout-v0.md` |
 | 10 | printing | `_refactor-artifact/05-pos/10_printing-rollout-v0.md` |
 
 ## Tracking board
@@ -87,5 +87,5 @@ Completion (2026-02-19):
 | sale-order | Not started | integrate finalize/void orchestrations |
 | receipt | Not started | consume finalized sale snapshot only |
 | reporting | Not started | read-only aggregation only |
-| offlineSync | Not started | queue/replay over stable commands |
+| pushSync | Not started | queue/replay over stable commands |
 | printing | Not started | best-effort operational effects |

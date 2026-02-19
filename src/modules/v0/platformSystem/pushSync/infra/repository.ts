@@ -2,20 +2,20 @@ import type { Pool, PoolClient } from "pg";
 
 type Queryable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
 
-export type V0OfflineSyncBatchStatus = "IN_PROGRESS" | "COMPLETED" | "PARTIAL" | "FAILED";
-export type V0OfflineSyncOperationStatus =
+export type V0PushSyncBatchStatus = "IN_PROGRESS" | "COMPLETED" | "PARTIAL" | "FAILED";
+export type V0PushSyncOperationStatus =
   | "IN_PROGRESS"
   | "APPLIED"
   | "DUPLICATE"
   | "FAILED";
 
-export type V0OfflineSyncBatchRow = {
+export type V0PushSyncBatchRow = {
   id: string;
   tenant_id: string;
   branch_id: string;
   submitted_by_account_id: string | null;
   halt_on_failure: boolean;
-  status: V0OfflineSyncBatchStatus;
+  status: V0PushSyncBatchStatus;
   operation_count: number;
   applied_count: number;
   duplicate_count: number;
@@ -25,7 +25,7 @@ export type V0OfflineSyncBatchRow = {
   completed_at: Date | null;
 };
 
-export type V0OfflineSyncOperationRow = {
+export type V0PushSyncOperationRow = {
   id: string;
   batch_id: string;
   tenant_id: string;
@@ -36,7 +36,7 @@ export type V0OfflineSyncOperationRow = {
   occurred_at: Date;
   payload: Record<string, unknown>;
   payload_hash: string;
-  status: V0OfflineSyncOperationStatus;
+  status: V0PushSyncOperationStatus;
   failure_code: string | null;
   failure_message: string | null;
   result_ref_id: string | null;
@@ -45,7 +45,7 @@ export type V0OfflineSyncOperationRow = {
   created_at: Date;
 };
 
-export class V0OfflineSyncRepository {
+export class V0PushSyncRepository {
   constructor(private readonly db: Queryable) {}
 
   async createBatch(input: {
@@ -53,8 +53,8 @@ export class V0OfflineSyncRepository {
     branchId: string;
     submittedByAccountId: string | null;
     haltOnFailure: boolean;
-  }): Promise<V0OfflineSyncBatchRow> {
-    const result = await this.db.query<V0OfflineSyncBatchRow>(
+  }): Promise<V0PushSyncBatchRow> {
+    const result = await this.db.query<V0PushSyncBatchRow>(
       `INSERT INTO v0_offline_sync_batches (
          tenant_id,
          branch_id,
@@ -92,8 +92,8 @@ export class V0OfflineSyncRepository {
     payload: Record<string, unknown>;
     payloadHash: string;
     leaseMs: number;
-  }): Promise<{ row: V0OfflineSyncOperationRow; started: boolean; payloadConflict: boolean }> {
-    const insertResult = await this.db.query<V0OfflineSyncOperationRow>(
+  }): Promise<{ row: V0PushSyncOperationRow; started: boolean; payloadConflict: boolean }> {
+    const insertResult = await this.db.query<V0PushSyncOperationRow>(
       `INSERT INTO v0_offline_sync_operations (
          batch_id,
          tenant_id,
@@ -201,12 +201,12 @@ export class V0OfflineSyncRepository {
 
   async completeOperation(input: {
     operationId: string;
-    status: Exclude<V0OfflineSyncOperationStatus, "IN_PROGRESS">;
+    status: Exclude<V0PushSyncOperationStatus, "IN_PROGRESS">;
     failureCode: string | null;
     failureMessage: string | null;
     resultRefId: string | null;
-  }): Promise<V0OfflineSyncOperationRow | null> {
-    const result = await this.db.query<V0OfflineSyncOperationRow>(
+  }): Promise<V0PushSyncOperationRow | null> {
+    const result = await this.db.query<V0PushSyncOperationRow>(
       `UPDATE v0_offline_sync_operations
        SET status = $2,
            failure_code = $3,
@@ -233,8 +233,8 @@ export class V0OfflineSyncRepository {
     tenantId: string;
     branchId: string;
     clientOpId: string;
-  }): Promise<V0OfflineSyncOperationRow | null> {
-    const result = await this.db.query<V0OfflineSyncOperationRow>(
+  }): Promise<V0PushSyncOperationRow | null> {
+    const result = await this.db.query<V0PushSyncOperationRow>(
       `SELECT
          ${OFFLINE_SYNC_OPERATION_SELECT_FIELDS}
        FROM v0_offline_sync_operations
@@ -249,14 +249,14 @@ export class V0OfflineSyncRepository {
 
   async finalizeBatch(input: {
     batchId: string;
-    status: Exclude<V0OfflineSyncBatchStatus, "IN_PROGRESS">;
+    status: Exclude<V0PushSyncBatchStatus, "IN_PROGRESS">;
     operationCount: number;
     appliedCount: number;
     duplicateCount: number;
     failedCount: number;
     stoppedAt: number | null;
-  }): Promise<V0OfflineSyncBatchRow | null> {
-    const result = await this.db.query<V0OfflineSyncBatchRow>(
+  }): Promise<V0PushSyncBatchRow | null> {
+    const result = await this.db.query<V0PushSyncBatchRow>(
       `UPDATE v0_offline_sync_batches
        SET status = $2,
            operation_count = $3,
@@ -297,8 +297,8 @@ export class V0OfflineSyncRepository {
     tenantId: string;
     branchId: string;
     batchId: string;
-  }): Promise<V0OfflineSyncBatchRow | null> {
-    const result = await this.db.query<V0OfflineSyncBatchRow>(
+  }): Promise<V0PushSyncBatchRow | null> {
+    const result = await this.db.query<V0PushSyncBatchRow>(
       `SELECT
          id,
          tenant_id,
@@ -325,8 +325,8 @@ export class V0OfflineSyncRepository {
 
   async listBatchOperations(input: {
     batchId: string;
-  }): Promise<V0OfflineSyncOperationRow[]> {
-    const result = await this.db.query<V0OfflineSyncOperationRow>(
+  }): Promise<V0PushSyncOperationRow[]> {
+    const result = await this.db.query<V0PushSyncOperationRow>(
       `SELECT
          ${OFFLINE_SYNC_OPERATION_SELECT_FIELDS}
        FROM v0_offline_sync_operations
@@ -346,8 +346,8 @@ export class V0OfflineSyncRepository {
     payload: Record<string, unknown>;
     payloadHash: string;
     leaseMs: number;
-  }): Promise<V0OfflineSyncOperationRow | null> {
-    const result = await this.db.query<V0OfflineSyncOperationRow>(
+  }): Promise<V0PushSyncOperationRow | null> {
+    const result = await this.db.query<V0PushSyncOperationRow>(
       `UPDATE v0_offline_sync_operations
        SET batch_id = $2,
            operation_index = $3,

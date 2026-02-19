@@ -1,6 +1,10 @@
 import { describe, expect, it, jest } from "@jest/globals";
-import { V0SyncService, buildModuleScopeHash, normalizeModuleScopes } from "../../app/service.js";
-import type { V0SyncRepository } from "../../infra/repository.js";
+import {
+  V0PullSyncService,
+  buildModuleScopeHash,
+  normalizeModuleScopes,
+} from "../../app/service.js";
+import type { V0PullSyncRepository } from "../../infra/repository.js";
 
 describe("v0 sync service", () => {
   it("normalizes module scopes and falls back to full set", () => {
@@ -24,7 +28,7 @@ describe("v0 sync service", () => {
   });
 
   it("pulls N+1 and returns hasMore with next cursor sequence", async () => {
-    const repo: Pick<V0SyncRepository, "listChangesAfterSequence"> = {
+    const repo: Pick<V0PullSyncRepository, "listChangesAfterSequence"> = {
       listChangesAfterSequence: jest.fn(async () => [
         {
           id: "1",
@@ -61,7 +65,7 @@ describe("v0 sync service", () => {
       ]),
     };
 
-    const service = new V0SyncService(repo as unknown as V0SyncRepository);
+    const service = new V0PullSyncService(repo as unknown as V0PullSyncRepository);
     const result = await service.pull({
       accountId: "a1",
       tenantId: "t1",

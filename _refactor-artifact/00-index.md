@@ -13,7 +13,7 @@
 | Platform | Observability Thresholds v0 | Active | `_refactor-artifact/01-platform/observability-thresholds-v0.md` |
 | Platform | Observability Dashboard + Alert Starter v0 | Active | `_refactor-artifact/01-platform/observability-dashboard-alert-starter-v0.md` |
 | Platform | Operational Notification Rollout v0 | Completed | `_refactor-artifact/01-platform/operational-notification-rollout-v0.md` |
-| Platform | Offline Sync Foundation Rollout v0 | Completed | `_refactor-artifact/01-platform/offline-sync-foundation-rollout-v0.md` |
+| Platform | Push Sync Foundation Rollout v0 | Completed | `_refactor-artifact/01-platform/push-sync-foundation-rollout-v0.md` |
 | Platform | Offline-First Rollout v0 | In progress (OF1 completed) | `_refactor-artifact/01-platform/offline-first-rollout-v0.md` |
 | Platform | OF2 Sync State Infrastructure Plan v0 | Drafted | `_refactor-artifact/01-platform/of2-sync-state-infrastructure-plan-v0.md` |
 | Boundary | Module Boundary Realignment v0 | Completed through B6 | `_refactor-artifact/02-boundary/module-boundary-realignment-v0.md` |
@@ -21,7 +21,7 @@
 | Boundary | Policy Boundary v0 | Active (Phase 1-5 lock) | `_refactor-artifact/02-boundary/policy-boundary-v0.md` |
 | Boundary | Menu Boundary v0 | Active (rolled out module boundary) | `_refactor-artifact/02-boundary/menu-boundary-v0.md` |
 | Boundary | Operational Notification Boundary v0 | Locked (N1) | `_refactor-artifact/02-boundary/operational-notification-boundary-v0.md` |
-| Boundary | Offline Sync Boundary v0 | Locked (S1) | `_refactor-artifact/02-boundary/offline-sync-boundary-v0.md` |
+| Boundary | Push Sync Boundary v0 | Locked (S1) | `_refactor-artifact/02-boundary/push-sync-boundary-v0.md` |
 | Boundary | Inventory Boundary v0 | Locked (Phase 1) | `_refactor-artifact/02-boundary/inventory-boundary-v0.md` |
 | OrgAccount | OrgAccount Overhaul + POS Readiness | In Progress | `_refactor-artifact/03-orgaccount/orgaccount-overhaul-pos-readiness.md` |
 | OrgAccount | Branch Billable Workspaces Rollout v0 | Completed | `_refactor-artifact/03-orgaccount/branch-billable-workspaces-rollout-v0.md` |
@@ -32,3 +32,9 @@
 
 - Continue inventory rollout execution at Phase 2 in `_refactor-artifact/05-pos/05_inventory-rollout-v0.md`.
 - Continue full offline-first architecture from `_refactor-artifact/01-platform/offline-first-rollout-v0.md` (OF6 implementation steps).
+
+## Filename Redirects
+
+- `_refactor-artifact/01-platform/offline-sync-foundation-rollout-v0.md` -> `_refactor-artifact/01-platform/push-sync-foundation-rollout-v0.md`
+- `_refactor-artifact/02-boundary/offline-sync-boundary-v0.md` -> `_refactor-artifact/02-boundary/push-sync-boundary-v0.md`
+- `_refactor-artifact/05-pos/09_offline-sync-rollout-v0.md` -> `_refactor-artifact/05-pos/09_push-sync-rollout-v0.md`

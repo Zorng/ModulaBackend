@@ -1,4 +1,4 @@
-# Offline Sync Module Rollout (v0)
+# Push Sync Module Rollout (v0)
 
 Status: Not started
 Owner context: PlatformSystems (backend platform foundation)
@@ -20,7 +20,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 ### Phase 1 — Boundary + Contract lock
 - confirm owned facts vs consumed facts
 - define canonical route prefix + action keys + event names
-- draft/lock `api_contract/offline-sync-v0.md`
+- draft/lock `api_contract/push-sync-v0.md`
 
 ### Phase 2 — Data model + repositories
 - migrations for owned tables/projections

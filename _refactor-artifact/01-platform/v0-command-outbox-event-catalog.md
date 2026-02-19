@@ -255,7 +255,7 @@ Verification note:
   - covered by `src/integration-tests/v0-operational-notification.int.test.ts`.
 
 ### Offline Sync (foundation behavior note)
-- `offlineSync.replay.apply` is a replay orchestrator action and does not currently emit dedicated outbox event types.
+- `pushSync.apply` is a replay orchestrator action and does not currently emit dedicated outbox event types.
 - it routes to underlying command handlers; domain events are emitted by those underlying commands when applicable.
 - replay outcomes are persisted in `v0_offline_sync_operations` / `v0_offline_sync_batches` and exposed via API.
 

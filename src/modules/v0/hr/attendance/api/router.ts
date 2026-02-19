@@ -13,7 +13,7 @@ import { V0AuditRepository } from "../../../audit/infra/repository.js";
 import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
 import { buildCommandDedupeKey } from "../../../../../shared/utils/dedupe.js";
-import { V0SyncRepository } from "../../../platformSystem/sync/infra/repository.js";
+import { V0PullSyncRepository } from "../../../platformSystem/pullSync/infra/repository.js";
 
 type AttendanceWriteBody =
   | {
@@ -70,7 +70,7 @@ export function createV0AttendanceRouter(
             const txService = new V0AttendanceService(new V0AttendanceRepository(client));
             const txAuditService = new V0AuditService(new V0AuditRepository(client));
             const txOutboxRepository = new V0CommandOutboxRepository(client);
-            const txSyncRepository = new V0SyncRepository(client);
+            const txSyncRepository = new V0PullSyncRepository(client);
             try {
               const commandData = await txService.checkIn({
                 actor,
@@ -231,7 +231,7 @@ export function createV0AttendanceRouter(
             const txService = new V0AttendanceService(new V0AttendanceRepository(client));
             const txAuditService = new V0AuditService(new V0AuditRepository(client));
             const txOutboxRepository = new V0CommandOutboxRepository(client);
-            const txSyncRepository = new V0SyncRepository(client);
+            const txSyncRepository = new V0PullSyncRepository(client);
             try {
               const commandData = await txService.checkOut({
                 actor,

@@ -1,11 +1,11 @@
 import {
-  V0OfflineSyncRepository,
-  type V0OfflineSyncBatchRow,
-  type V0OfflineSyncOperationStatus,
-  type V0OfflineSyncOperationRow,
+  V0PushSyncRepository,
+  type V0PushSyncBatchRow,
+  type V0PushSyncOperationStatus,
+  type V0PushSyncOperationRow,
 } from "../infra/repository.js";
 
-export type V0OfflineReplayOperationInput = {
+export type V0PushReplayOperationInput = {
   index: number;
   clientOpId: string;
   operationType: string;
@@ -14,15 +14,15 @@ export type V0OfflineReplayOperationInput = {
   payloadHash: string;
 };
 
-export class V0OfflineSyncService {
-  constructor(private readonly repo: V0OfflineSyncRepository) {}
+export class V0PushSyncService {
+  constructor(private readonly repo: V0PushSyncRepository) {}
 
   createBatch(input: {
     tenantId: string;
     branchId: string;
     submittedByAccountId: string | null;
     haltOnFailure: boolean;
-  }): Promise<V0OfflineSyncBatchRow> {
+  }): Promise<V0PushSyncBatchRow> {
     return this.repo.createBatch(input);
   }
 
@@ -31,7 +31,7 @@ export class V0OfflineSyncService {
     tenantId: string;
     branchId: string;
     leaseMs: number;
-    operation: V0OfflineReplayOperationInput;
+    operation: V0PushReplayOperationInput;
   }) {
     return this.repo.tryStartOperation({
       batchId: input.batchId,
@@ -49,11 +49,11 @@ export class V0OfflineSyncService {
 
   completeOperation(input: {
     operationId: string;
-    status: Exclude<V0OfflineSyncOperationStatus, "IN_PROGRESS">;
+    status: Exclude<V0PushSyncOperationStatus, "IN_PROGRESS">;
     failureCode: string | null;
     failureMessage: string | null;
     resultRefId: string | null;
-  }): Promise<V0OfflineSyncOperationRow | null> {
+  }): Promise<V0PushSyncOperationRow | null> {
     return this.repo.completeOperation(input);
   }
 
@@ -61,7 +61,7 @@ export class V0OfflineSyncService {
     tenantId: string;
     branchId: string;
     clientOpId: string;
-  }): Promise<V0OfflineSyncOperationRow | null> {
+  }): Promise<V0PushSyncOperationRow | null> {
     return this.repo.findOperationByIdentity(input);
   }
 

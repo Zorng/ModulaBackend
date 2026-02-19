@@ -17,7 +17,7 @@ import { bootstrapV0MenuModule } from "../modules/v0/posOperation/menu/index.js"
 import { bootstrapV0DiscountModule } from "../modules/v0/posOperation/discount/index.js";
 import { bootstrapV0AttendanceModule } from "../modules/v0/hr/attendance/index.js";
 import { bootstrapV0OperationalNotificationModule } from "../modules/v0/platformSystem/operationalNotification/index.js";
-import { bootstrapV0SyncModule } from "../modules/v0/platformSystem/sync/index.js";
+import { bootstrapV0PullSyncModule } from "../modules/v0/platformSystem/pullSync/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 
 type BranchContext = {
@@ -190,7 +190,7 @@ async function setupMemberBranchContext(input: {
 describe("v0 sync integration", () => {
   let pool: Pool;
   let app: express.Express;
-  let syncModule: ReturnType<typeof bootstrapV0SyncModule>;
+  let syncModule: ReturnType<typeof bootstrapV0PullSyncModule>;
   let operationalNotificationModule: ReturnType<
     typeof bootstrapV0OperationalNotificationModule
   >;
@@ -213,7 +213,7 @@ describe("v0 sync integration", () => {
     app.use("/v0/discount", bootstrapV0DiscountModule(pool).router);
     operationalNotificationModule = bootstrapV0OperationalNotificationModule(pool);
     app.use("/v0/notifications", operationalNotificationModule.router);
-    syncModule = bootstrapV0SyncModule(pool);
+    syncModule = bootstrapV0PullSyncModule(pool);
     app.use("/v0/sync", syncModule.router);
   });
 

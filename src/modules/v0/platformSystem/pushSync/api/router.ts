@@ -8,14 +8,14 @@ import { V0AttendanceRepository } from "../../../hr/attendance/infra/repository.
 import { V0CashSessionError, V0CashSessionService } from "../../../posOperation/cashSession/app/service.js";
 import { V0CashSessionRepository } from "../../../posOperation/cashSession/infra/repository.js";
 import {
-  V0_OFFLINE_SYNC_ACTION_KEYS,
-  V0_OFFLINE_SYNC_OPERATION_TYPES,
-  type V0OfflineSyncOperationType,
+  V0_PUSH_SYNC_ACTION_KEYS,
+  V0_PUSH_SYNC_OPERATION_TYPES,
+  type V0PushSyncOperationType,
 } from "../app/command-contract.js";
-import { V0OfflineSyncService } from "../app/service.js";
+import { V0PushSyncService } from "../app/service.js";
 import {
-  type V0OfflineSyncOperationRow,
-  V0OfflineSyncRepository,
+  type V0PushSyncOperationRow,
+  V0PushSyncRepository,
 } from "../infra/repository.js";
 
 type ActorScope = {
@@ -27,7 +27,7 @@ type ActorScope = {
 type ReplayOperation = {
   index: number;
   clientOpId: string;
-  operationType: V0OfflineSyncOperationType;
+  operationType: V0PushSyncOperationType;
   deviceId: string | null;
   dependsOn: string[];
   tenantId: string;
@@ -40,7 +40,7 @@ type ReplayOperation = {
 type ReplayResult = {
   index: number;
   clientOpId: string;
-  operationType: V0OfflineSyncOperationType;
+  operationType: V0PushSyncOperationType;
   status: "APPLIED" | "DUPLICATE" | "FAILED";
   code?: string;
   message?: string;
@@ -58,25 +58,25 @@ type ApplyOutcome =
   | { status: "APPLIED"; resultRefId: string | null }
   | { status: "FAILED"; failureCode: string; failureMessage: string };
 
-export class V0OfflineSyncError extends Error {
+export class V0PushSyncError extends Error {
   constructor(
     readonly statusCode: number,
     readonly code: string,
     message: string
   ) {
     super(message);
-    this.name = "V0OfflineSyncError";
+    this.name = "V0PushSyncError";
   }
 }
 
-export function createV0OfflineSyncRouter(input: {
-  service: V0OfflineSyncService;
+export function createV0PushSyncRouter(input: {
+  service: V0PushSyncService;
   transactionManager: TransactionManager;
 }): Router {
   const router = Router();
-  const operationLeaseMs = resolveOfflineSyncOperationLeaseMs();
+  const operationLeaseMs = resolvePushSyncOperationLeaseMs();
 
-  router.post("/replay", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
+  const handleReplay = async (req: V0AuthRequest, res: Response) => {
     try {
       const actor = assertActorScope(req);
       const parsed = parseReplayRequestBody(req.body, actor);
@@ -107,7 +107,7 @@ export function createV0OfflineSyncRouter(input: {
             ),
           {
             requestId: req.v0Context?.requestId,
-            actionKey: V0_OFFLINE_SYNC_ACTION_KEYS.replayApply,
+            actionKey: V0_PUSH_SYNC_ACTION_KEYS.apply,
             tenantId: actor.tenantId,
             branchId: actor.branchId,
           }
@@ -157,47 +157,49 @@ export function createV0OfflineSyncRouter(input: {
     } catch (error) {
       handleError(res, error);
     }
-  });
+  };
 
-  router.get(
-    "/replay/batches/:batchId",
-    requireV0Auth,
-    async (req: V0AuthRequest, res: Response) => {
-      try {
-        const actor = assertActorScope(req);
-        const batchId = assertUuid(req.params.batchId, "batchId");
+  const handleReplayBatchRead = async (req: V0AuthRequest, res: Response) => {
+    try {
+      const actor = assertActorScope(req);
+      const batchId = assertUuid(req.params.batchId, "batchId");
 
-        const detail = await input.service.getBatchDetail({
-          tenantId: actor.tenantId,
-          branchId: actor.branchId,
-          batchId,
-        });
-        if (!detail) {
-          throw new V0OfflineSyncError(
-            404,
-            "OFFLINE_SYNC_BATCH_NOT_FOUND",
-            "offline sync batch not found"
-          );
-        }
-
-        res.status(200).json({
-          success: true,
-          data: {
-            batchId: detail.batch.id,
-            tenantId: detail.batch.tenant_id,
-            branchId: detail.batch.branch_id,
-            createdAt: detail.batch.created_at.toISOString(),
-            status: detail.batch.status,
-            haltedOnFailure: detail.batch.halt_on_failure,
-            stoppedAt: detail.batch.stopped_at,
-            results: detail.operations.map(mapPersistedOperationToReplayResult),
-          },
-        });
-      } catch (error) {
-        handleError(res, error);
+      const detail = await input.service.getBatchDetail({
+        tenantId: actor.tenantId,
+        branchId: actor.branchId,
+        batchId,
+      });
+      if (!detail) {
+        throw new V0PushSyncError(
+          404,
+          "OFFLINE_SYNC_BATCH_NOT_FOUND",
+          "offline sync batch not found"
+        );
       }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          batchId: detail.batch.id,
+          tenantId: detail.batch.tenant_id,
+          branchId: detail.batch.branch_id,
+          createdAt: detail.batch.created_at.toISOString(),
+          status: detail.batch.status,
+          haltedOnFailure: detail.batch.halt_on_failure,
+          stoppedAt: detail.batch.stopped_at,
+          results: detail.operations.map(mapPersistedOperationToReplayResult),
+        },
+      });
+    } catch (error) {
+      handleError(res, error);
     }
-  );
+  };
+
+  router.post("/replay", requireV0Auth, handleReplay);
+  router.post("/push", requireV0Auth, handleReplay); // alias for push/pull terminology
+
+  router.get("/replay/batches/:batchId", requireV0Auth, handleReplayBatchRead);
+  router.get("/push/batches/:batchId", requireV0Auth, handleReplayBatchRead);
 
   return router;
 }
@@ -210,7 +212,7 @@ async function executeOperationInTransaction(
   operationLeaseMs: number,
   priorResults: ReadonlyMap<string, ReplayResult>
 ): Promise<ReplayResult> {
-  const service = new V0OfflineSyncService(new V0OfflineSyncRepository(client));
+  const service = new V0PushSyncService(new V0PushSyncRepository(client));
   const started = await service.startOperation({
     batchId,
     tenantId: actor.tenantId,
@@ -280,7 +282,7 @@ async function executeOperationInTransaction(
 }
 
 async function resolveDependencyFailure(input: {
-  service: V0OfflineSyncService;
+  service: V0PushSyncService;
   operation: ReplayOperation;
   priorResults: ReadonlyMap<string, ReplayResult>;
 }): Promise<{ failureCode: string; failureMessage: string } | null> {
@@ -312,8 +314,12 @@ async function resolveDependencyFailure(input: {
   return null;
 }
 
-function resolveOfflineSyncOperationLeaseMs(): number {
-  const raw = Number(process.env.OFFLINE_SYNC_OPERATION_LEASE_MS ?? 120_000);
+function resolvePushSyncOperationLeaseMs(): number {
+  const raw = Number(
+    process.env.PUSH_SYNC_OPERATION_LEASE_MS ??
+      process.env.OFFLINE_SYNC_OPERATION_LEASE_MS ??
+      120_000
+  );
   if (!Number.isFinite(raw)) {
     return 120_000;
   }
@@ -379,7 +385,7 @@ async function applyOperation(input: {
       case "cashSession.movement": {
         const sessionId = assertUuid(input.operation.payload.sessionId, "payload.sessionId");
         const movementType = normalizeMovementType(input.operation.payload.movementType);
-        const idempotencyKey = `offline-sync:${input.operation.clientOpId}`;
+        const idempotencyKey = `push-sync:${input.operation.clientOpId}`;
 
         if (movementType === "PAID_IN") {
           const movement = await cashService.recordPaidIn({
@@ -473,7 +479,7 @@ function mapAttendanceMessageToCode(message: string): string {
 
 function mapExistingOperationToReplayResult(
   operation: ReplayOperation,
-  row: V0OfflineSyncOperationRow
+  row: V0PushSyncOperationRow
 ): ReplayResult {
   if (row.status === "IN_PROGRESS") {
     return withFailureResolution({
@@ -505,12 +511,12 @@ function mapExistingOperationToReplayResult(
   };
 }
 
-function mapPersistedOperationToReplayResult(row: V0OfflineSyncOperationRow): ReplayResult {
+function mapPersistedOperationToReplayResult(row: V0PushSyncOperationRow): ReplayResult {
   if (row.status === "FAILED") {
     return withFailureResolution({
       index: row.operation_index,
       clientOpId: row.client_op_id,
-      operationType: row.operation_type as V0OfflineSyncOperationType,
+      operationType: row.operation_type as V0PushSyncOperationType,
       status: "FAILED",
       code: row.failure_code ?? "OFFLINE_SYNC_OPERATION_FAILED",
       message: row.failure_message ?? "operation failed",
@@ -521,7 +527,7 @@ function mapPersistedOperationToReplayResult(row: V0OfflineSyncOperationRow): Re
     return withFailureResolution({
       index: row.operation_index,
       clientOpId: row.client_op_id,
-      operationType: row.operation_type as V0OfflineSyncOperationType,
+      operationType: row.operation_type as V0PushSyncOperationType,
       status: "FAILED",
       code: "OFFLINE_SYNC_IN_PROGRESS",
       message: "operation is currently in progress",
@@ -531,7 +537,7 @@ function mapPersistedOperationToReplayResult(row: V0OfflineSyncOperationRow): Re
   return {
     index: row.operation_index,
     clientOpId: row.client_op_id,
-    operationType: row.operation_type as V0OfflineSyncOperationType,
+    operationType: row.operation_type as V0PushSyncOperationType,
     status: row.status,
     resultRefId: row.result_ref_id,
   };
@@ -548,14 +554,14 @@ function parseReplayRequestBody(
   const batchDeviceId = parseOptionalDeviceId(normalized.deviceId);
   const operationsRaw = normalized.operations;
   if (!Array.isArray(operationsRaw) || operationsRaw.length === 0) {
-    throw new V0OfflineSyncError(
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_PAYLOAD_INVALID",
       "operations must be a non-empty array"
     );
   }
   if (operationsRaw.length > 100) {
-    throw new V0OfflineSyncError(
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_PAYLOAD_INVALID",
       "operations cannot exceed 100 entries"
@@ -574,7 +580,7 @@ function validateOperationDependencyOrder(operations: readonly ReplayOperation[]
   const opIndexByClientOpId = new Map<string, number>();
   for (const operation of operations) {
     if (opIndexByClientOpId.has(operation.clientOpId)) {
-      throw new V0OfflineSyncError(
+      throw new V0PushSyncError(
         422,
         "OFFLINE_SYNC_PAYLOAD_INVALID",
         `duplicate clientOpId in batch: ${operation.clientOpId}`
@@ -590,7 +596,7 @@ function validateOperationDependencyOrder(operations: readonly ReplayOperation[]
         continue;
       }
       if (dependencyIndex >= operation.index) {
-        throw new V0OfflineSyncError(
+        throw new V0PushSyncError(
           422,
           "OFFLINE_SYNC_PAYLOAD_INVALID",
           `operations[${operation.index}].dependsOn must reference an earlier operation when dependency is in the same batch`
@@ -704,7 +710,7 @@ function parseOperationContext(
     : actor.branchId;
 
   if (tenantId !== actor.tenantId || branchId !== actor.branchId) {
-    throw new V0OfflineSyncError(
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_CONTEXT_MISMATCH",
       `operations[${index}] tenant/branch context does not match token`
@@ -720,7 +726,7 @@ function parseOptionalDeviceId(value: unknown): string | null {
     return null;
   }
   if (normalized.length > 128) {
-    throw new V0OfflineSyncError(
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_PAYLOAD_INVALID",
       "deviceId must be at most 128 characters"
@@ -738,14 +744,14 @@ function parseDependsOn(
     return [];
   }
   if (!Array.isArray(value)) {
-    throw new V0OfflineSyncError(
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_PAYLOAD_INVALID",
       `operations[${index}].dependsOn must be an array of UUIDs`
     );
   }
   if (value.length > 50) {
-    throw new V0OfflineSyncError(
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_PAYLOAD_INVALID",
       `operations[${index}].dependsOn cannot exceed 50 entries`
@@ -756,7 +762,7 @@ function parseDependsOn(
   for (let i = 0; i < value.length; i += 1) {
     const dep = assertUuid(value[i], `operations[${index}].dependsOn[${i}]`);
     if (dep === clientOpId) {
-      throw new V0OfflineSyncError(
+      throw new V0PushSyncError(
         422,
         "OFFLINE_SYNC_PAYLOAD_INVALID",
         `operations[${index}].dependsOn cannot include its own clientOpId`
@@ -770,29 +776,29 @@ function parseDependsOn(
 function assertOperationType(
   value: unknown,
   index: number
-): V0OfflineSyncOperationType {
+): V0PushSyncOperationType {
   const normalized = normalizeOptionalString(value);
   if (!normalized) {
-    throw new V0OfflineSyncError(
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_PAYLOAD_INVALID",
       `operations[${index}].operationType is required`
     );
   }
-  if (!(V0_OFFLINE_SYNC_OPERATION_TYPES as readonly string[]).includes(normalized)) {
-    throw new V0OfflineSyncError(
+  if (!(V0_PUSH_SYNC_OPERATION_TYPES as readonly string[]).includes(normalized)) {
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_OPERATION_NOT_SUPPORTED",
       `unsupported operationType: ${normalized}`
     );
   }
-  return normalized as V0OfflineSyncOperationType;
+  return normalized as V0PushSyncOperationType;
 }
 
 function parseOccurredAt(value: unknown, index: number): Date {
   const raw = normalizeOptionalString(value);
   if (!raw) {
-    throw new V0OfflineSyncError(
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_PAYLOAD_INVALID",
       `operations[${index}].occurredAt is required`
@@ -800,7 +806,7 @@ function parseOccurredAt(value: unknown, index: number): Date {
   }
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) {
-    throw new V0OfflineSyncError(
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_PAYLOAD_INVALID",
       `operations[${index}].occurredAt must be a valid ISO timestamp`
@@ -812,7 +818,7 @@ function parseOccurredAt(value: unknown, index: number): Date {
 function assertActorScope(req: V0AuthRequest): ActorScope {
   const actor = req.v0Auth;
   if (!actor) {
-    throw new V0OfflineSyncError(401, "INVALID_ACCESS_TOKEN", "authentication required");
+    throw new V0PushSyncError(401, "INVALID_ACCESS_TOKEN", "authentication required");
   }
   const accountId = normalizeRequiredString(actor.accountId, "INVALID_ACCESS_TOKEN");
   const tenantId = normalizeRequiredString(actor.tenantId, "TENANT_CONTEXT_REQUIRED");
@@ -823,7 +829,7 @@ function assertActorScope(req: V0AuthRequest): ActorScope {
 function normalizeRequiredString(value: unknown, code: string): string {
   const normalized = normalizeOptionalString(value);
   if (!normalized) {
-    throw new V0OfflineSyncError(403, code, code);
+    throw new V0PushSyncError(403, code, code);
   }
   return normalized;
 }
@@ -845,7 +851,7 @@ function normalizeHaltOnFailure(value: unknown): boolean {
 
 function asRecord(value: unknown, message: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new V0OfflineSyncError(422, "OFFLINE_SYNC_PAYLOAD_INVALID", message);
+    throw new V0PushSyncError(422, "OFFLINE_SYNC_PAYLOAD_INVALID", message);
   }
   return value as Record<string, unknown>;
 }
@@ -853,7 +859,7 @@ function asRecord(value: unknown, message: string): Record<string, unknown> {
 function assertUuid(value: unknown, fieldName: string): string {
   const normalized = normalizeOptionalString(value);
   if (!normalized || !UUID_PATTERN.test(normalized)) {
-    throw new V0OfflineSyncError(
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_PAYLOAD_INVALID",
       `${fieldName} must be a valid UUID`
@@ -869,7 +875,7 @@ function getOptionalIsoString(value: unknown): string | null {
   }
   const parsed = new Date(normalized);
   if (Number.isNaN(parsed.getTime())) {
-    throw new V0OfflineSyncError(
+    throw new V0PushSyncError(
       422,
       "OFFLINE_SYNC_PAYLOAD_INVALID",
       "occurredAt must be a valid ISO timestamp"
@@ -883,7 +889,7 @@ function normalizeMovementType(value: unknown): "PAID_IN" | "PAID_OUT" | "ADJUST
   if (normalized === "PAID_IN" || normalized === "PAID_OUT" || normalized === "ADJUSTMENT") {
     return normalized;
   }
-  throw new V0OfflineSyncError(
+  throw new V0PushSyncError(
     422,
     "OFFLINE_SYNC_PAYLOAD_INVALID",
     "payload.movementType must be PAID_IN, PAID_OUT, or ADJUSTMENT"
@@ -897,7 +903,7 @@ function stripSessionId(payload: Record<string, unknown>): Record<string, unknow
 }
 
 function handleError(res: Response, error: unknown): void {
-  if (error instanceof V0OfflineSyncError) {
+  if (error instanceof V0PushSyncError) {
     res.status(error.statusCode).json({
       success: false,
       error: error.message,

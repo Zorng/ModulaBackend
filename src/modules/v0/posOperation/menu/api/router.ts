@@ -9,7 +9,7 @@ import {
   V0IdempotencyService,
 } from "../../../../../platform/idempotency/service.js";
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
-import { V0SyncRepository } from "../../../platformSystem/sync/infra/repository.js";
+import { V0PullSyncRepository } from "../../../platformSystem/pullSync/infra/repository.js";
 import { uploadSingleImage } from "../../../../../platform/http/middleware/multer.js";
 import {
   deriveObjectKeyFromImageUrl,
@@ -610,7 +610,7 @@ export function createV0MenuRouter(input: {
             );
             const txAuditService = new V0AuditService(new V0AuditRepository(client));
             const txOutboxRepository = new V0CommandOutboxRepository(client);
-            const txSyncRepository = new V0SyncRepository(client);
+            const txSyncRepository = new V0PullSyncRepository(client);
 
             const commandData = await inputWrite.handler(txService);
             const entityId =

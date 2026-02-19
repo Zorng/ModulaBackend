@@ -356,18 +356,19 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "WRITE",
     entitlementKey: "core.pos",
   },
-  "offlineSync.replay.apply": {
+  "pushSync.apply": {
     scope: "BRANCH",
     effect: "WRITE",
     entitlementKey: "core.pos",
   },
-  "offlineSync.replay.read": {
+  "pushSync.read": {
     scope: "BRANCH",
     effect: "READ",
     entitlementKey: "core.pos",
   },
-  "sync.pull": {
+  "pullSync.pull": {
     scope: "BRANCH",
     effect: "READ",
+    entitlementKey: "core.pos",
   },
 };

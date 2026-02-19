@@ -1,13 +1,13 @@
 import { Router, type Response } from "express";
 import { requireV0Auth, type V0AuthRequest } from "../../../auth/api/middleware.js";
 import {
-  V0SyncService,
+  V0PullSyncService,
   buildModuleScopeHash,
   normalizeModuleScopes,
 } from "../app/service.js";
 import {
-  V0_SYNC_MODULE_KEYS,
-  type V0SyncModuleKey,
+  V0_PULL_SYNC_MODULE_KEYS,
+  type V0PullSyncModuleKey,
 } from "../app/command-contract.js";
 
 type ActorScope = {
@@ -24,18 +24,18 @@ type SyncCursorPayload = {
   lastSequence: string;
 };
 
-export class V0SyncError extends Error {
+export class V0PullSyncError extends Error {
   constructor(
     readonly statusCode: number,
     readonly code: string,
     message: string
   ) {
     super(message);
-    this.name = "V0SyncError";
+    this.name = "V0PullSyncError";
   }
 }
 
-export function createV0SyncRouter(service: V0SyncService): Router {
+export function createV0PullSyncRouter(service: V0PullSyncService): Router {
   const router = Router();
 
   router.post("/pull", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
@@ -122,7 +122,7 @@ export function createV0SyncRouter(service: V0SyncService): Router {
 function assertActorScope(req: V0AuthRequest): ActorScope {
   const actor = req.v0Auth;
   if (!actor) {
-    throw new V0SyncError(401, "INVALID_ACCESS_TOKEN", "authentication required");
+    throw new V0PullSyncError(401, "INVALID_ACCESS_TOKEN", "authentication required");
   }
   const accountId = normalizeRequiredString(actor.accountId, "INVALID_ACCESS_TOKEN");
   const tenantId = normalizeRequiredString(actor.tenantId, "TENANT_CONTEXT_REQUIRED");
@@ -133,7 +133,7 @@ function assertActorScope(req: V0AuthRequest): ActorScope {
 function normalizeRequiredString(value: unknown, code: string): string {
   const normalized = normalizeOptionalString(value);
   if (!normalized) {
-    throw new V0SyncError(403, code, code);
+    throw new V0PullSyncError(403, code, code);
   }
   return normalized;
 }
@@ -146,11 +146,11 @@ function normalizeOptionalString(value: unknown): string | null {
 function normalizeLimit(value: unknown): number {
   const n = Number(value ?? 200);
   if (!Number.isFinite(n)) {
-    throw new V0SyncError(422, "SYNC_LIMIT_INVALID", "limit must be a number");
+    throw new V0PullSyncError(422, "SYNC_LIMIT_INVALID", "limit must be a number");
   }
   const rounded = Math.floor(n);
   if (rounded <= 0 || rounded > 1000) {
-    throw new V0SyncError(
+    throw new V0PullSyncError(
       422,
       "SYNC_LIMIT_INVALID",
       "limit must be between 1 and 1000"
@@ -159,13 +159,13 @@ function normalizeLimit(value: unknown): number {
   return rounded;
 }
 
-function parseModuleScopes(value: unknown): V0SyncModuleKey[] {
+function parseModuleScopes(value: unknown): V0PullSyncModuleKey[] {
   if (value === undefined || value === null) {
     return normalizeModuleScopes(undefined);
   }
 
   if (!Array.isArray(value)) {
-    throw new V0SyncError(
+    throw new V0PullSyncError(
       422,
       "SYNC_SCOPE_INVALID",
       "moduleScopes must be an array of supported module keys"
@@ -176,11 +176,11 @@ function parseModuleScopes(value: unknown): V0SyncModuleKey[] {
     return normalizeModuleScopes(undefined);
   }
 
-  const allowed = new Set<string>(V0_SYNC_MODULE_KEYS);
+  const allowed = new Set<string>(V0_PULL_SYNC_MODULE_KEYS);
   for (let i = 0; i < value.length; i += 1) {
     const normalized = String(value[i] ?? "").trim();
     if (!allowed.has(normalized)) {
-      throw new V0SyncError(
+      throw new V0PullSyncError(
         422,
         "SYNC_SCOPE_INVALID",
         `moduleScopes[${i}] is not supported`
@@ -193,7 +193,7 @@ function parseModuleScopes(value: unknown): V0SyncModuleKey[] {
 
 function asRecord(value: unknown, message: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new V0SyncError(422, "SYNC_PAYLOAD_INVALID", message);
+    throw new V0PullSyncError(422, "SYNC_PAYLOAD_INVALID", message);
   }
   return value as Record<string, unknown>;
 }
@@ -205,7 +205,7 @@ function encodeCursor(payload: SyncCursorPayload): string {
 function decodeCursor(value: unknown): SyncCursorPayload {
   const cursor = normalizeOptionalString(value);
   if (!cursor) {
-    throw new V0SyncError(422, "SYNC_CURSOR_INVALID", "cursor must be a non-empty string");
+    throw new V0PullSyncError(422, "SYNC_CURSOR_INVALID", "cursor must be a non-empty string");
   }
 
   let parsed: unknown;
@@ -213,7 +213,7 @@ function decodeCursor(value: unknown): SyncCursorPayload {
     const decoded = Buffer.from(cursor, "base64url").toString("utf8");
     parsed = JSON.parse(decoded);
   } catch {
-    throw new V0SyncError(422, "SYNC_CURSOR_INVALID", "cursor is malformed");
+    throw new V0PullSyncError(422, "SYNC_CURSOR_INVALID", "cursor is malformed");
   }
 
   const record = asRecord(parsed, "cursor is malformed");
@@ -232,7 +232,7 @@ function decodeCursor(value: unknown): SyncCursorPayload {
     !lastSequence ||
     !/^\d+$/.test(lastSequence)
   ) {
-    throw new V0SyncError(422, "SYNC_CURSOR_INVALID", "cursor is invalid");
+    throw new V0PullSyncError(422, "SYNC_CURSOR_INVALID", "cursor is invalid");
   }
 
   return {
@@ -254,7 +254,7 @@ function assertCursorMatchesScope(
     cursor.branchId !== actor.branchId ||
     cursor.moduleScopeHash !== moduleScopeHash
   ) {
-    throw new V0SyncError(
+    throw new V0PullSyncError(
       422,
       "SYNC_CURSOR_INVALID",
       "cursor does not match current sync scope"
@@ -263,7 +263,7 @@ function assertCursorMatchesScope(
 }
 
 function handleError(res: Response, error: unknown): void {
-  if (error instanceof V0SyncError) {
+  if (error instanceof V0PullSyncError) {
     res.status(error.statusCode).json({
       success: false,
       error: error.message,

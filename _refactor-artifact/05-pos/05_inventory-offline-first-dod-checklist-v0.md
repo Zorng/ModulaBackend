@@ -14,14 +14,14 @@ Define non-negotiable offline-first acceptance criteria for inventory so we do n
 - `_refactor-artifact/05-pos/05_inventory-rollout-v0.md`
 - `knowledge_base/BusinessLogic/5_modSpec/40_POSOperation/inventory_module_patched.md`
 - `knowledge_base/BusinessLogic/2_domain/40_POSOperation/inventory_domain.md`
-- `api_contract/offline-sync-v0.md`
+- `api_contract/push-sync-v0.md`
 - `api_contract/sync-v0.md`
 
 ## DoD Gates
 
 ### Gate A — Command surface is replay-safe
 
-- All inventory write commands have replay operation types in `/v0/offline-sync/replay`.
+- All inventory write commands have replay operation types in `/v0/sync/push`.
 - Every replayable inventory command has deterministic idempotency identity:
   - key basis: `(token.tenantId, token.branchId, clientOpId)`.
 - Duplicate replay yields `DUPLICATE` (not second mutation).

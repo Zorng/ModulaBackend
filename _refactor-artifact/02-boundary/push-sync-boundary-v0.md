@@ -1,12 +1,12 @@
-# Offline Sync Module Boundary (v0)
+# Push Sync (Replay) Module Boundary (v0)
 
 Status: Phase S1 locked  
 Owner context: `PlatformSystem`  
-Canonical route prefix: `/v0/offline-sync`
+Canonical route prefix: `/v0/sync/push`
 
 ## 1) Module Identity
 
-- Module name: `offlineSync`
+- Module name: `pushSync`
 - Primary KB references:
   - modSpec: `knowledge_base/BusinessLogic/5_modSpec/60_PlatformSystems/offlineSync_module.md`
   - domain: `knowledge_base/BusinessLogic/2_domain/60_PlatformSystems/offline_sync_domain.md`
@@ -42,8 +42,8 @@ Canonical route prefix: `/v0/offline-sync`
 
 ## 4) Commands (Write Surface)
 
-- Endpoint: `POST /v0/offline-sync/replay`
-  - Action key: `offlineSync.replay.apply`
+- Endpoint: `POST /v0/sync/push`
+  - Action key: `pushSync.apply`
   - Scope/effect: `BRANCH / WRITE`
   - Allowed roles: `OWNER`, `ADMIN`, `MANAGER`, `CASHIER`
   - Idempotency required: no per-request header; replay idempotency uses per-operation `clientOpId`
@@ -66,8 +66,8 @@ Replay envelope fields (locked):
 
 ## 5) Queries (Read Surface)
 
-- Endpoint: `GET /v0/offline-sync/replay/batches/:batchId`
-  - Action key: `offlineSync.replay.read`
+- Endpoint: `GET /v0/sync/push/batches/:batchId`
+  - Action key: `pushSync.read`
   - Scope/effect: `BRANCH / READ`
   - purpose: troubleshooting/reconciliation visibility for replay outcomes
 
@@ -82,8 +82,8 @@ Subscribed:
 
 ## 7) Access Control Mapping (Locked Target)
 
-- `POST /offline-sync/replay` -> `offlineSync.replay.apply`
-- `GET /offline-sync/replay/batches/:batchId` -> `offlineSync.replay.read`
+- `POST /sync/push` -> `pushSync.apply`
+- `GET /sync/push/batches/:batchId` -> `pushSync.read`
 
 Entitlement baseline:
 - `core.pos` for replayed operational writes
@@ -107,5 +107,4 @@ Propagated deterministic denials:
 
 ## 9) API Contract Docs
 
-- Canonical contract file: `api_contract/offline-sync-v0.md`
-
+- Canonical contract file: `api_contract/push-sync-v0.md`

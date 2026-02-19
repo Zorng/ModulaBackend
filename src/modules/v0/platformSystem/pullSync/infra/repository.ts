@@ -2,9 +2,9 @@ import type { Pool, PoolClient } from "pg";
 
 type Queryable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
 
-export type V0SyncChangeOperation = "UPSERT" | "TOMBSTONE";
+export type V0PullSyncChangeOperation = "UPSERT" | "TOMBSTONE";
 
-export type V0SyncChangeRow = {
+export type V0PullSyncChangeRow = {
   id: string;
   sequence: string;
   tenant_id: string;
@@ -13,7 +13,7 @@ export type V0SyncChangeRow = {
   module_key: string;
   entity_type: string;
   entity_id: string;
-  operation: V0SyncChangeOperation;
+  operation: V0PullSyncChangeOperation;
   revision: string;
   data: Record<string, unknown> | null;
   changed_at: Date;
@@ -21,7 +21,7 @@ export type V0SyncChangeRow = {
   created_at: Date;
 };
 
-export type V0SyncCheckpointRow = {
+export type V0PullSyncCheckpointRow = {
   id: string;
   account_id: string;
   device_id: string;
@@ -33,7 +33,7 @@ export type V0SyncCheckpointRow = {
   created_at: Date;
 };
 
-export class V0SyncRepository {
+export class V0PullSyncRepository {
   constructor(private readonly db: Queryable) {}
 
   async listActiveBranchIdsByTenant(tenantId: string): Promise<string[]> {
@@ -55,13 +55,13 @@ export class V0SyncRepository {
     moduleKey: string;
     entityType: string;
     entityId: string;
-    operation: V0SyncChangeOperation;
+    operation: V0PullSyncChangeOperation;
     revision: string;
     data: Record<string, unknown> | null;
     changedAt: Date;
     sourceOutboxId?: string | null;
-  }): Promise<V0SyncChangeRow> {
-    const result = await this.db.query<V0SyncChangeRow>(
+  }): Promise<V0PullSyncChangeRow> {
+    const result = await this.db.query<V0PullSyncChangeRow>(
       `INSERT INTO v0_sync_changes (
          tenant_id,
          branch_id,
@@ -115,8 +115,8 @@ export class V0SyncRepository {
     afterSequence: string;
     moduleKeys: readonly string[];
     limit: number;
-  }): Promise<V0SyncChangeRow[]> {
-    const result = await this.db.query<V0SyncChangeRow>(
+  }): Promise<V0PullSyncChangeRow[]> {
+    const result = await this.db.query<V0PullSyncChangeRow>(
       `SELECT
          id,
          sequence::TEXT AS sequence,
@@ -162,8 +162,8 @@ export class V0SyncRepository {
     branchId: string;
     moduleScopeHash: string;
     lastSequence: string;
-  }): Promise<V0SyncCheckpointRow> {
-    const result = await this.db.query<V0SyncCheckpointRow>(
+  }): Promise<V0PullSyncCheckpointRow> {
+    const result = await this.db.query<V0PullSyncCheckpointRow>(
       `INSERT INTO v0_sync_client_checkpoints (
          account_id,
          device_id,
@@ -205,8 +205,8 @@ export class V0SyncRepository {
     tenantId: string;
     branchId: string;
     moduleScopeHash: string;
-  }): Promise<V0SyncCheckpointRow | null> {
-    const result = await this.db.query<V0SyncCheckpointRow>(
+  }): Promise<V0PullSyncCheckpointRow | null> {
+    const result = await this.db.query<V0PullSyncCheckpointRow>(
       `SELECT
          id,
          account_id,

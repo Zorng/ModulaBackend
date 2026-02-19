@@ -8,7 +8,7 @@ import {
   V0IdempotencyService,
 } from "../../../../../platform/idempotency/service.js";
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
-import { V0SyncRepository } from "../../../platformSystem/sync/infra/repository.js";
+import { V0PullSyncRepository } from "../../../platformSystem/pullSync/infra/repository.js";
 import { V0AuditService } from "../../../audit/app/service.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
 import {
@@ -267,7 +267,7 @@ export function createV0DiscountRouter(input: {
             const txService = new V0DiscountService(new V0DiscountRepository(client));
             const txAuditService = new V0AuditService(new V0AuditRepository(client));
             const txOutboxRepository = new V0CommandOutboxRepository(client);
-            const txSyncRepository = new V0SyncRepository(client);
+            const txSyncRepository = new V0PullSyncRepository(client);
 
             const commandData = await inputWrite.handler(txService);
             const entityId = String((commandData as { id?: string })?.id ?? tenantId);

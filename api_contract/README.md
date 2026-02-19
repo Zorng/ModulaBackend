@@ -39,7 +39,7 @@ This folder contains the **frontend-facing HTTP API contracts** for this backend
 - `api_contract/inventory-v0.md`
 - `api_contract/media-v0.md`
 - `api_contract/operational-notification-v0.md`
-- `api_contract/offline-sync-v0.md`
+- `api_contract/push-sync-v0.md`
 - `api_contract/sync-v0.md`
 
 ## Frontend Integration Sequence (`/v0`)
@@ -53,4 +53,7 @@ This folder contains the **frontend-facing HTTP API contracts** for this backend
    - `GET /v0/org/tenant/current`
    - `GET /v0/org/branch/current`
 4. Call feature endpoints with current token context (no `tenantId`/`branchId` overrides).
-5. Handle access-control + entitlement reason codes as first-class UX states.
+5. For offline-first clients:
+   - push queued writes via `POST /v0/sync/push`
+   - hydrate changes via `POST /v0/sync/pull`
+6. Handle access-control + entitlement reason codes as first-class UX states.

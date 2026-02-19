@@ -1,8 +1,12 @@
-# Offline Sync Module (`/v0`) — API Contract
+# Push Sync Module (`/v0`) — API Contract
 
-This document locks the target `/v0/offline-sync` HTTP contract for server-side replay of offline operation batches.
+This document locks the replay (push-sync) HTTP contract for server-side processing of offline operation batches.
 
-Base path: `/v0/offline-sync`
+Base path: `/v0/sync`
+
+Compatibility alias (transitional):
+- `POST /v0/sync/replay`
+- `GET /v0/sync/replay/batches/:batchId`
 
 Implementation status:
 - Phase S1-S5 completed (contract + schema + replay/query command surface + ACL mapping + reliability coverage + close-out sync).
@@ -24,7 +28,7 @@ Implementation status:
 ## Types
 
 ```ts
-type OfflineOperationType =
+type PushSyncOperationType =
   | "sale.finalize"
   | "cashSession.open"
   | "cashSession.movement"
@@ -32,22 +36,22 @@ type OfflineOperationType =
   | "attendance.startWork"
   | "attendance.endWork";
 
-type OfflineReplayStatus = "APPLIED" | "DUPLICATE" | "FAILED";
+type PushSyncReplayStatus = "APPLIED" | "DUPLICATE" | "FAILED";
 
-type OfflineOperationEnvelope = {
+type PushSyncOperationEnvelope = {
   clientOpId: string; // idempotency identity from client queue
-  operationType: OfflineOperationType;
+  operationType: PushSyncOperationType;
   deviceId?: string; // optional per-op override; otherwise top-level deviceId
   dependsOn?: string[]; // optional list of prior clientOpIds
   occurredAt: string; // ISO datetime (client timestamp, informational)
   payload: Record<string, unknown>;
 };
 
-type OfflineReplayResult = {
+type PushSyncReplayResult = {
   index: number;
   clientOpId: string;
-  operationType: OfflineOperationType;
-  status: OfflineReplayStatus;
+  operationType: PushSyncOperationType;
+  status: PushSyncReplayStatus;
   code?: string; // failure code
   message?: string; // failure message
   resultRefId?: string; // created/affected aggregate id (if APPLIED)
@@ -61,11 +65,11 @@ type OfflineReplayResult = {
 
 ## Endpoints
 
-### 1) Replay queued operations
+### 1) Push queued operations (replay lane)
 
-`POST /v0/offline-sync/replay`
+`POST /v0/sync/push`
 
-Action key: `offlineSync.replay.apply`
+Action key: `pushSync.apply`
 
 Body:
 ```json
@@ -154,11 +158,14 @@ Errors:
 - `422` `OFFLINE_SYNC_CONTEXT_MISMATCH`
 - `422` `OFFLINE_SYNC_PAYLOAD_INVALID`
 
-### 2) Get replay batch detail
+Alias:
+- `POST /v0/sync/replay`
 
-`GET /v0/offline-sync/replay/batches/:batchId`
+### 2) Get push batch detail
 
-Action key: `offlineSync.replay.read`
+`GET /v0/sync/push/batches/:batchId`
+
+Action key: `pushSync.read`
 
 Response `200`:
 ```json
@@ -185,6 +192,9 @@ Response `200`:
 Errors:
 - `404` `OFFLINE_SYNC_BATCH_NOT_FOUND`
 - `403` access denial for non-owned context
+
+Alias:
+- `GET /v0/sync/replay/batches/:batchId`
 
 ## Deterministic Failure Codes
 

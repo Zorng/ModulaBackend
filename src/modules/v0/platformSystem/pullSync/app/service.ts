@@ -1,16 +1,16 @@
 import { hashJsonPayload } from "../../../../../shared/utils/hash.js";
 import {
-  V0_SYNC_MODULE_KEYS,
-  type V0SyncModuleKey,
+  V0_PULL_SYNC_MODULE_KEYS,
+  type V0PullSyncModuleKey,
 } from "./command-contract.js";
 import {
-  V0SyncRepository,
-  type V0SyncCheckpointRow,
-  type V0SyncChangeRow,
+  V0PullSyncRepository,
+  type V0PullSyncCheckpointRow,
+  type V0PullSyncChangeRow,
 } from "../infra/repository.js";
 
-export class V0SyncService {
-  constructor(private readonly repo: V0SyncRepository) {}
+export class V0PullSyncService {
+  constructor(private readonly repo: V0PullSyncRepository) {}
 
   async pull(input: {
     accountId: string;
@@ -18,9 +18,9 @@ export class V0SyncService {
     branchId: string;
     cursorSequence: string;
     limit: number;
-    moduleScopes: readonly V0SyncModuleKey[];
+    moduleScopes: readonly V0PullSyncModuleKey[];
   }): Promise<{
-    changes: V0SyncChangeRow[];
+    changes: V0PullSyncChangeRow[];
     hasMore: boolean;
     nextCursorSequence: string;
   }> {
@@ -53,9 +53,9 @@ export class V0SyncService {
     deviceId: string;
     tenantId: string;
     branchId: string;
-    moduleScopes: readonly V0SyncModuleKey[];
+    moduleScopes: readonly V0PullSyncModuleKey[];
     lastSequence: string;
-  }): Promise<V0SyncCheckpointRow> {
+  }): Promise<V0PullSyncCheckpointRow> {
     const moduleScopeHash = buildModuleScopeHash(input.moduleScopes);
     return this.repo.upsertCheckpoint({
       accountId: input.accountId,
@@ -72,8 +72,8 @@ export class V0SyncService {
     deviceId: string;
     tenantId: string;
     branchId: string;
-    moduleScopes: readonly V0SyncModuleKey[];
-  }): Promise<V0SyncCheckpointRow | null> {
+    moduleScopes: readonly V0PullSyncModuleKey[];
+  }): Promise<V0PullSyncCheckpointRow | null> {
     const moduleScopeHash = buildModuleScopeHash(input.moduleScopes);
     return this.repo.getCheckpoint({
       accountId: input.accountId,
@@ -85,25 +85,27 @@ export class V0SyncService {
   }
 }
 
-export function normalizeModuleScopes(input: unknown): V0SyncModuleKey[] {
+export function normalizeModuleScopes(input: unknown): V0PullSyncModuleKey[] {
   if (!Array.isArray(input) || input.length === 0) {
-    return [...V0_SYNC_MODULE_KEYS];
+    return [...V0_PULL_SYNC_MODULE_KEYS];
   }
 
   const normalized = input
     .map((item) => String(item ?? "").trim())
-    .filter((item): item is V0SyncModuleKey =>
-      (V0_SYNC_MODULE_KEYS as readonly string[]).includes(item)
+    .filter((item): item is V0PullSyncModuleKey =>
+      (V0_PULL_SYNC_MODULE_KEYS as readonly string[]).includes(item)
     );
 
   if (normalized.length === 0) {
-    return [...V0_SYNC_MODULE_KEYS];
+    return [...V0_PULL_SYNC_MODULE_KEYS];
   }
 
   return [...new Set(normalized)].sort();
 }
 
-export function buildModuleScopeHash(moduleScopes: readonly V0SyncModuleKey[]): string {
+export function buildModuleScopeHash(
+  moduleScopes: readonly V0PullSyncModuleKey[]
+): string {
   const canonical = [...new Set(moduleScopes)].sort();
   return hashJsonPayload(canonical);
 }

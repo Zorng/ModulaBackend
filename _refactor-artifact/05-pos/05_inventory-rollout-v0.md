@@ -20,7 +20,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 ### Phase 0 — Offline-first DoD gate (OF6)
 - lock inventory offline-first checklist:
   - `_refactor-artifact/05-pos/05_inventory-offline-first-dod-checklist-v0.md`
-- define inventory replay operation types + payload contracts for `/v0/offline-sync/replay`
+- define inventory replay operation types + payload contracts for `/v0/sync/push`
 - define inventory sync producer entity map for `/v0/sync/pull`
 - lock conflict code taxonomy + resolution hints for inventory invariants
 

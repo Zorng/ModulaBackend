@@ -1,4 +1,4 @@
-# Offline Sync Foundation Rollout (v0)
+# Push Sync Foundation Rollout (v0)
 
 Status: Completed  
 Owner: backend  
@@ -6,7 +6,7 @@ Started: 2026-02-19
 
 ## Goal
 
-Implement backend offline-sync foundation seams now so upcoming POS write modules (inventory, sale-order, receipt) integrate once against stable replay/idempotency contracts.
+Implement backend push-sync foundation seams now so upcoming POS write modules (inventory, sale-order, receipt) integrate once against stable replay/idempotency contracts.
 
 ## Why now (before Inventory)
 
@@ -41,7 +41,7 @@ Out of scope:
 ### Phase S1 — Boundary + Contract lock
 - lock replay envelope fields (`clientOpId`, context, occurredAt, payload)
 - lock reason-code contract (`DEPENDENCY_MISSING`, frozen/entitlement/acl denials, etc.)
-- draft `api_contract/offline-sync-v0.md`
+- draft `api_contract/push-sync-v0.md`
 
 ### Phase S2 — Data model + repository
 - add replay tracking table(s) for applied/failed outcomes
@@ -61,14 +61,14 @@ Out of scope:
 ### Phase S5 — Close-out
 - update `_refactor-artifact/01-platform/v0-command-outbox-event-catalog.md` for replay metadata/events
 - update POS trackers that depend on offline seams
-- finalize frontend integration notes in `api_contract/offline-sync-v0.md`
+- finalize frontend integration notes in `api_contract/push-sync-v0.md`
 
 ## Tracking
 
 | Phase | Status | Notes |
 |---|---|---|
-| S1 Boundary + Contract lock | Completed | Locked module boundary and API contract: `_refactor-artifact/02-boundary/offline-sync-boundary-v0.md`, `api_contract/offline-sync-v0.md`. |
-| S2 Data model + repository | Completed | Added schema migration `migrations/027_create_v0_offline_sync_tables.sql` and module repository/service scaffold under `src/modules/v0/platformSystem/offlineSync/*`. |
-| S3 Replay command surface | Completed | Implemented `/v0/offline-sync/replay` and `/v0/offline-sync/replay/batches/:batchId` with operation routing to attendance/cash-session handlers, client-op replay identity, and ACL route/action registration. |
-| S4 Reliability + dependency handling | Completed | Added replay claim/finalize status flow (`IN_PROGRESS -> APPLIED|DUPLICATE|FAILED`) with deterministic duplicate/conflict behavior, operation lease + stale reclaim behavior, and halt-on-failure dependency handling, with integration coverage in `src/integration-tests/v0-offline-sync.int.test.ts`. |
+| S1 Boundary + Contract lock | Completed | Locked module boundary and API contract: `_refactor-artifact/02-boundary/push-sync-boundary-v0.md`, `api_contract/push-sync-v0.md`. |
+| S2 Data model + repository | Completed | Added schema migration `migrations/027_create_v0_offline_sync_tables.sql` and module repository/service scaffold under `src/modules/v0/platformSystem/pushSync/*` (renamed from `offlineSync/*`). |
+| S3 Replay command surface | Completed | Implemented `/v0/sync/push` and `/v0/sync/push/batches/:batchId` with operation routing to attendance/cash-session handlers, client-op replay identity, and ACL route/action registration. |
+| S4 Reliability + dependency handling | Completed | Added replay claim/finalize status flow (`IN_PROGRESS -> APPLIED|DUPLICATE|FAILED`) with deterministic duplicate/conflict behavior, operation lease + stale reclaim behavior, and halt-on-failure dependency handling, with integration coverage in `src/integration-tests/v0-push-sync.int.test.ts`. |
 | S5 Close-out | Completed | Synced event-catalog notes and API contract/frontend guidance; POS build-order pre-inventory platform prerequisites now satisfied. |

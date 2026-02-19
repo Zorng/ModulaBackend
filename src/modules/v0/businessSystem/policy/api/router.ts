@@ -10,7 +10,7 @@ import {
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
 import { V0AuditService } from "../../../audit/app/service.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
-import { V0SyncRepository } from "../../../platformSystem/sync/infra/repository.js";
+import { V0PullSyncRepository } from "../../../platformSystem/pullSync/infra/repository.js";
 import {
   buildPolicyCommandDedupeKey,
   V0_POLICY_ACTION_KEYS,
@@ -130,7 +130,7 @@ export function createV0PolicyRouter(input: {
                 },
               });
               if (outbox.inserted && outbox.row) {
-                const txSyncRepository = new V0SyncRepository(client);
+                const txSyncRepository = new V0PullSyncRepository(client);
                 await txSyncRepository.appendChange({
                   tenantId,
                   branchId,

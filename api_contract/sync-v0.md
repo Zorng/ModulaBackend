@@ -1,6 +1,6 @@
-# Sync Module (`/v0`) — API Contract
+# Pull Sync Module (`/v0`) — API Contract
 
-This document defines the `/v0/sync` read-sync contract used for offline-first state hydration and incremental catch-up.
+This document defines the `/v0/sync` pull-sync contract used for offline-first state hydration and incremental catch-up.
 
 Base path: `/v0/sync`
 
@@ -31,8 +31,8 @@ Implementation status:
 
 ## Why this exists
 
-- Offline queue replay (`/v0/offline-sync/replay`) handles **writes**.
-- `/v0/sync/pull` handles **read model hydration**:
+- Push lane (`/v0/sync/push`) handles **writes**.
+- Pull lane (`/v0/sync/pull`) handles **read model hydration**:
   - initial bootstrap
   - incremental updates
   - tombstones for archive/delete state
@@ -156,7 +156,7 @@ Errors:
    - call `POST /v0/sync/pull` with `cursor = null` for bootstrap.
 2. Background sync loop:
    - pull incremental deltas with latest cursor.
-3. After `/v0/offline-sync/replay` success:
+3. After `/v0/sync/push` success:
    - immediately run pull sync to converge local read model.
 4. On `SYNC_CURSOR_INVALID`:
    - reset local cursor for current context and perform bootstrap pull.
