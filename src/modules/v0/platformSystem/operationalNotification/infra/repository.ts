@@ -14,6 +14,7 @@ export type V0OperationalNotificationRow = {
   payload: Record<string, unknown> | null;
   dedupe_key: string;
   created_at: Date;
+  was_inserted: boolean;
 };
 
 export type V0OperationalNotificationInboxRow = V0OperationalNotificationRow & {
@@ -80,7 +81,8 @@ export class V0OperationalNotificationRepository {
          body,
          payload,
          dedupe_key,
-         created_at`,
+         created_at,
+         (xmax = 0) AS was_inserted`,
       [
         input.tenantId,
         input.branchId,

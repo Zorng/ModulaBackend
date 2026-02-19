@@ -331,6 +331,11 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     entitlementKey: "core.pos",
   },
+  "operationalNotification.inbox.stream": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
   "operationalNotification.inbox.unreadCount": {
     scope: "BRANCH",
     effect: "READ",

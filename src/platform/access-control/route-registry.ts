@@ -497,6 +497,13 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "GET",
+    pattern: /^\/notifications\/stream$/,
+    actionKey: "operationalNotification.inbox.stream",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "GET",
     pattern: /^\/notifications\/[^/]+$/,
     actionKey: "operationalNotification.read",
     tenantSource: "token",

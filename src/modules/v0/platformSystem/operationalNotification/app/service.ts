@@ -3,9 +3,16 @@ import {
   type V0CashSessionCloseContextRow,
   type V0OperationalNotificationInboxRow,
 } from "../infra/repository.js";
+import {
+  V0OperationalNotificationRealtimeBroker,
+  type V0OperationalNotificationRealtimeEvent,
+} from "./realtime.js";
 
 export class V0OperationalNotificationService {
-  constructor(private readonly repo: V0OperationalNotificationRepository) {}
+  constructor(
+    private readonly repo: V0OperationalNotificationRepository,
+    private readonly realtime: V0OperationalNotificationRealtimeBroker
+  ) {}
 
   async emit(input: {
     tenantId: string;
@@ -38,7 +45,55 @@ export class V0OperationalNotificationService {
       recipientAccountIds: input.recipientAccountIds,
     });
 
+    if (notification.was_inserted && input.recipientAccountIds.length > 0) {
+      const unreadCountByAccountId = new Map<string, number>();
+      await Promise.all(
+        input.recipientAccountIds.map(async (accountId) => {
+          const unreadCount = await this.repo.getUnreadCount({
+            tenantId: input.tenantId,
+            branchId: input.branchId,
+            recipientAccountId: accountId,
+          });
+          unreadCountByAccountId.set(accountId, unreadCount);
+        })
+      );
+      this.realtime.publishCreated({
+        tenantId: input.tenantId,
+        branchId: input.branchId,
+        recipientAccountIds: input.recipientAccountIds,
+        notification: {
+          id: notification.id,
+          type: notification.type,
+          subjectType: notification.subject_type,
+          subjectId: notification.subject_id,
+          title: notification.title,
+          body: notification.body,
+          payload: notification.payload,
+          createdAt: notification.created_at.toISOString(),
+        },
+        unreadCountByAccountId,
+      });
+    }
+
     return notification;
+  }
+
+  subscribeRealtime(
+    input: {
+      tenantId: string;
+      branchId: string;
+      recipientAccountId: string;
+    },
+    listener: (event: V0OperationalNotificationRealtimeEvent) => void
+  ): () => void {
+    return this.realtime.subscribe(
+      {
+        tenantId: input.tenantId,
+        branchId: input.branchId,
+        accountId: input.recipientAccountId,
+      },
+      listener
+    );
   }
 
   listInbox(input: {

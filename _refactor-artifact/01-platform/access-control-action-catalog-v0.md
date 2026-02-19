@@ -62,6 +62,7 @@ Legend:
 | `menu.composition.upsert` | TENANT | WRITE | OWNER, ADMIN, MANAGER | `core.pos` |
 | `menu.composition.evaluate` | TENANT | READ | - | `core.pos` |
 | `operationalNotification.inbox.list` | BRANCH | READ | - | `core.pos` |
+| `operationalNotification.inbox.stream` | BRANCH | READ | - | `core.pos` |
 | `operationalNotification.inbox.unreadCount` | BRANCH | READ | - | `core.pos` |
 | `operationalNotification.read` | BRANCH | READ | - | `core.pos` |
 | `operationalNotification.read.mark` | BRANCH | WRITE | - | `core.pos` |
@@ -128,6 +129,7 @@ Legend:
 | PUT | `/menu/items/:id/composition` | `menu.composition.upsert` | `token` | - |
 | POST | `/menu/items/:id/composition/evaluate` | `menu.composition.evaluate` | `token` | - |
 | GET | `/notifications/inbox` | `operationalNotification.inbox.list` | `token` | `token` |
+| GET | `/notifications/stream` | `operationalNotification.inbox.stream` | `token` | `token` |
 | GET | `/notifications/unread-count` | `operationalNotification.inbox.unreadCount` | `token` | `token` |
 | GET | `/notifications/:id` | `operationalNotification.read` | `token` | `token` |
 | POST | `/notifications/:id/read` | `operationalNotification.read.mark` | `token` | `token` |

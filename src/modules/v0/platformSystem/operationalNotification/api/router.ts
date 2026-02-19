@@ -72,6 +72,51 @@ export function createV0OperationalNotificationRouter(
     }
   });
 
+  router.get("/stream", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
+    try {
+      const actor = assertActorScope(req);
+      startSse(res);
+
+      const unreadCount = await service.getUnreadCount({
+        tenantId: actor.tenantId,
+        branchId: actor.branchId,
+        recipientAccountId: actor.accountId,
+      });
+      writeSse(res, "ready", {
+        unreadCount,
+        serverTime: new Date().toISOString(),
+      });
+
+      const unsubscribe = service.subscribeRealtime(
+        {
+          tenantId: actor.tenantId,
+          branchId: actor.branchId,
+          recipientAccountId: actor.accountId,
+        },
+        (event) => {
+          writeSse(res, event.type, event.data);
+        }
+      );
+
+      const heartbeat = setInterval(() => {
+        if (res.writableEnded) {
+          clearInterval(heartbeat);
+          return;
+        }
+        res.write(": keep-alive\n\n");
+      }, 25_000);
+
+      const cleanup = () => {
+        clearInterval(heartbeat);
+        unsubscribe();
+      };
+      req.on("close", cleanup);
+      req.on("aborted", cleanup);
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
+
   router.get("/:notificationId", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
       const actor = assertActorScope(req);
@@ -152,6 +197,24 @@ export function createV0OperationalNotificationRouter(
   });
 
   return router;
+}
+
+function startSse(res: Response): void {
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+  res.write("retry: 3000\n\n");
+}
+
+function writeSse(res: Response, event: string, data: Record<string, unknown>): void {
+  if (res.writableEnded) {
+    return;
+  }
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
 function assertActorScope(req: V0AuthRequest): ActorScope {
