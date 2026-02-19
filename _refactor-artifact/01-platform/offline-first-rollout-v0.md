@@ -40,6 +40,7 @@ Missing for full offline-first:
 - Use one logical command contract across both modes.
 - Server remains source of truth for business invariants.
 - Offline behavior must be deterministic and observable.
+- Realtime pull trigger strategy for `/v0`: SSE-first (`/v0/notifications/stream`) with periodic pull fallback.
 
 ## Execution phases
 
