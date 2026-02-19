@@ -19,6 +19,9 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 ## Offline-first DoD gates (standardized, read-only profile)
 
+Template:
+- `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md`
+
 - Replay parity: N/A (reporting is read-oriented; no direct business writes expected).
 - Pull readiness: report projections/feeds must be consumable by pull-sync hydration.
 - Conflict taxonomy: deterministic query/filter validation codes.

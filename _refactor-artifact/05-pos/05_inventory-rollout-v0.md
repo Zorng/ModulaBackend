@@ -18,6 +18,8 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 ## Offline-first DoD gates (standardized)
 
 - This module is the reference implementation for the standardized offline-first Phase 0 gate.
+- Template:
+  - `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md`
 - Canonical checklist: `_refactor-artifact/05-pos/05_inventory-offline-first-dod-checklist-v0.md`.
 
 ## Execution phases

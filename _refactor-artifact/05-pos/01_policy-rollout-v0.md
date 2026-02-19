@@ -17,6 +17,9 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 ## Offline-first DoD gates (standardized)
 
+Template:
+- `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md`
+
 - Replay parity: policy writes are replay-safe via `pushSync` operation mapping.
 - Pull deltas: successful policy writes emit sync changes for `moduleKey = policy`.
 - Conflict taxonomy: deterministic policy + platform denial codes with resolution mapping.

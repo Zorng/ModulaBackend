@@ -16,6 +16,9 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 ## Offline-first DoD gates (standardized)
 
+Template:
+- `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md`
+
 - Replay parity: all menu writes map to replay operations through `pushSync`.
 - Pull deltas: successful writes emit sync changes for `moduleKey = menu`.
 - Conflict taxonomy: deterministic duplicate/conflict/invariant denial codes.

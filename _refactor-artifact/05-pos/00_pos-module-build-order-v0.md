@@ -63,6 +63,8 @@ Completion (2026-02-19):
 ## Offline-First Standard Gate (applies to every POS rollout)
 
 - Add a module-specific **Phase 0** before boundary lock.
+- Use template:
+  - `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md`
 - Phase 0 must lock:
   - replay parity (`/v0/sync/push` op mapping for all write commands),
   - pull delta emission (`/v0/sync/pull` UPSERT/TOMBSTONE behavior),

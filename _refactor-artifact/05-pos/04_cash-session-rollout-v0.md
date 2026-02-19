@@ -17,6 +17,9 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 ## Offline-first DoD gates (standardized)
 
+Template:
+- `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md`
+
 - Replay parity: cash-session write commands are replay-safe in `pushSync`.
 - Pull deltas: successful writes emit sync changes for `moduleKey = cashSession`.
 - Conflict taxonomy: deterministic session invariant + platform denial codes.

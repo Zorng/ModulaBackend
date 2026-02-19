@@ -15,6 +15,9 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 ## Offline-first DoD gates (standardized)
 
+Template:
+- `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md`
+
 - Replay parity: receipt-producing writes (from sale finalize pipeline) must be replay-safe.
 - Pull deltas: receipt projection updates must emit sync changes for receipt hydration.
 - Conflict taxonomy: deterministic failure codes for receipt snapshot generation dependencies.

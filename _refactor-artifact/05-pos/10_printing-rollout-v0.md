@@ -16,6 +16,9 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 ## Offline-first DoD gates (standardized)
 
+Template:
+- `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md`
+
 - Replay parity: print-related write intents (if any) must define replay-safe command mapping.
 - Pull readiness: print job/read-model status must be pull-sync consumable where applicable.
 - Conflict taxonomy: deterministic device/adapter failure codes + retry guidance.

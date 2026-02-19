@@ -32,6 +32,9 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 ## Offline-first DoD gates (standardized)
 
+Template:
+- `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md`
+
 - Replay parity: all sale/order write commands must have `pushSync` operation mapping.
 - Pull deltas: finalize/void/order mutations must emit `saleOrder`-scoped sync changes.
 - Conflict taxonomy: deterministic codes + `resolution` for retry/manual/permanent handling.
