@@ -260,4 +260,70 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     entitlementKey: "core.pos",
   },
+  "cashSession.open": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "cashSession.close": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "cashSession.forceClose": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
+  "cashSession.movement.paidIn": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "cashSession.movement.paidOut": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "cashSession.movement.adjustment": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
+  "cashSession.active.read": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "cashSession.list": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "cashSession.read": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "cashSession.movements.list": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "cashSession.x.view": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "cashSession.z.view": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
 };
