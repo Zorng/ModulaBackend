@@ -70,7 +70,7 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 | policy | Completed | Phase 1-5 completed (boundary lock, migration/repo, command/query + ACL, integration reliability, close-out). |
 | menu | Completed | Phase 1-5 completed (boundary, contract, schema/repo, full endpoint surface + ACL, reliability tests, close-out sync). |
 | discount | Completed | phase 1-5 completed (boundary/contract lock, schema/repository, commands/queries + ACL, integration reliability, close-out sync) |
-| cashSession | Not started | depends on access control + sale hooks |
+| cashSession | In progress | Phase 1 complete (boundary + API contract lock). |
 | inventory | Not started | self-contained ledger first; sale hooks later |
 | sale-order | Not started | integrate finalize/void orchestrations |
 | receipt | Not started | consume finalized sale snapshot only |

@@ -1,6 +1,6 @@
 # Cash Session Module Rollout (v0)
 
-Status: Not started
+Status: In progress
 Owner context: POSOperation
 
 ## Goal
@@ -46,7 +46,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 
 | Phase | Status | Notes |
 |---|---|---|
-| 1 Boundary + Contract lock | Not started | |
+| 1 Boundary + Contract lock | Completed | Locked boundary in `_refactor-artifact/02-boundary/cash-session-boundary-v0.md`; drafted canonical contract in `api_contract/cash-session-v0.md` with route prefix `/v0/cash`, action keys, event names, and cross-module sale/void hook anchors. |
 | 2 Data model + repositories | Not started | |
 | 3 Commands/queries + access control | Not started | |
 | 4 Integration + reliability | Not started | |
