@@ -1,6 +1,6 @@
 # Cash Session Module Rollout (v0)
 
-Status: In progress
+Status: Completed
 Owner context: POSOperation
 
 ## Goal
@@ -49,5 +49,5 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 | 1 Boundary + Contract lock | Completed | Locked boundary in `_refactor-artifact/02-boundary/cash-session-boundary-v0.md`; drafted canonical contract in `api_contract/cash-session-v0.md` with route prefix `/v0/cash`, action keys, event names, and cross-module sale/void hook anchors. |
 | 2 Data model + repositories | Completed | Added `migrations/025_create_v0_cash_session_tables.sql` for `v0_cash_sessions`, `v0_cash_movements`, and `v0_cash_reconciliation_snapshots` with one-open-session invariant + sale-anchor dedupe constraints. Added repository + command contract scaffolding in `src/modules/v0/posOperation/cashSession/infra/repository.ts` and `src/modules/v0/posOperation/cashSession/app/command-contract.ts` (including idempotency scope + sale movement anchor helper). |
 | 3 Commands/queries + access control | Completed | Implemented service + router commands/queries in `src/modules/v0/posOperation/cashSession/app/service.ts` and `src/modules/v0/posOperation/cashSession/api/router.ts`; wired module bootstrap + `/v0/cash` mount; added action catalog and protected route mappings for `cashSession.*` keys in `src/platform/access-control/action-catalog.ts` and `src/platform/access-control/route-registry.ts`. |
-| 4 Integration + reliability | Not started | |
-| 5 Close-out | Not started | |
+| 4 Integration + reliability | Completed | Added `src/integration-tests/v0-cash-session.int.test.ts` covering idempotency replay/conflict, atomic rollback on forced outbox failure, movement duplicate safety, and outbox dispatcher publish path (`CASH_SESSION_OPENED`). Targeted suite passes via `pnpm test:integration src/integration-tests/v0-cash-session.int.test.ts`. |
+| 5 Close-out | Completed | Updated outbox producer catalog in `_refactor-artifact/01-platform/v0-command-outbox-event-catalog.md`, refreshed frontend implementation notes in `api_contract/cash-session-v0.md`, and marked module rollout complete. |

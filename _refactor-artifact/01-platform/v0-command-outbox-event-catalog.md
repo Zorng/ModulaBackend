@@ -216,6 +216,41 @@ Compatibility note:
   - entityType: `discount_rule`
   - canonical endpoint metadata: `/v0/discount/rules/:ruleId/archive`
 
+### Cash Session
+- `CASH_SESSION_OPENED`
+  - actionKey: `cashSession.open`
+  - outcome: `SUCCESS`
+  - entityType: `cash_session`
+  - canonical endpoint metadata: `/v0/cash/sessions`
+- `CASH_SESSION_CLOSED`
+  - actionKey: `cashSession.close`
+  - outcome: `SUCCESS`
+  - entityType: `cash_session`
+  - canonical endpoint metadata: `/v0/cash/sessions/:sessionId/close`
+- `CASH_SESSION_FORCE_CLOSED`
+  - actionKey: `cashSession.forceClose`
+  - outcome: `SUCCESS`
+  - entityType: `cash_session`
+  - canonical endpoint metadata: `/v0/cash/sessions/:sessionId/force-close`
+- `CASH_MOVEMENT_RECORDED`
+  - actionKey: `cashSession.movement.paidIn`
+  - outcome: `SUCCESS`
+  - entityType: `cash_movement`
+  - canonical endpoint metadata: `/v0/cash/sessions/:sessionId/movements/paid-in`
+- `CASH_MOVEMENT_RECORDED`
+  - actionKey: `cashSession.movement.paidOut`
+  - outcome: `SUCCESS`
+  - entityType: `cash_movement`
+  - canonical endpoint metadata: `/v0/cash/sessions/:sessionId/movements/paid-out`
+- `CASH_ADJUSTMENT_RECORDED`
+  - actionKey: `cashSession.movement.adjustment`
+  - outcome: `SUCCESS`
+  - entityType: `cash_movement`
+  - canonical endpoint metadata: `/v0/cash/sessions/:sessionId/movements/adjustment`
+
+Verification note:
+- dispatcher publish path for `CASH_SESSION_OPENED` is covered by `src/integration-tests/v0-cash-session.int.test.ts`.
+
 ## Notes
 
 - Dispatcher currently uses at-least-once delivery semantics.

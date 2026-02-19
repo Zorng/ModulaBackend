@@ -5,8 +5,8 @@ This document defines the canonical `/v0/cash` contract for Cash Session.
 Base path: `/v0/cash`
 
 Implementation status:
-- Phase 1 contract lock completed.
-- Endpoints below are the target surface for rollout phases 2-4.
+- Phase 1-4 completed (contract + schema/repo + command/query/ACL + reliability tests).
+- Note: non-cash totals (`totalSalesNonCash*` / `totalSalesKhqr*`) are contract-locked and currently return zero until sale-order integration starts emitting those aggregates.
 
 ## Conventions
 
