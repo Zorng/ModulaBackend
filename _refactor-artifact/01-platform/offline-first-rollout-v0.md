@@ -29,6 +29,7 @@ Missing for full offline-first:
 - `knowledge_base/BusinessLogic/5_modSpec/60_PlatformSystems/offlineSync_module.md`
 - `knowledge_base/BusinessLogic/2_domain/60_PlatformSystems/offline_sync_domain.md`
 - `knowledge_base/BusinessLogic/4_process/60_PlatformSystems/60_offline_operation_queue_process.md`
+- `knowledge_base/BusinessLogic/4_process/60_PlatformSystems/65_offline_sync_pull_hydration_process.md`
 - `knowledge_base/BusinessLogic/4_process/60_PlatformSystems/70_offline_sync_replay_process.md`
 - `knowledge_base/BusinessLogic/3_contract/10_edgecases/offline_sync_edge_case_sweep.md`
 

@@ -2,6 +2,7 @@ export const V0_PULL_SYNC_MODULE_KEYS = [
   "policy",
   "menu",
   "discount",
+  "inventory",
   "cashSession",
   "attendance",
   "operationalNotification",

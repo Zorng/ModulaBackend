@@ -13,6 +13,7 @@ Canonical route prefix: `/v0/sync/push`
   - processes:
     - `knowledge_base/BusinessLogic/4_process/60_PlatformSystems/60_offline_operation_queue_process.md`
     - `knowledge_base/BusinessLogic/4_process/60_PlatformSystems/70_offline_sync_replay_process.md`
+    - `knowledge_base/BusinessLogic/4_process/60_PlatformSystems/65_offline_sync_pull_hydration_process.md` (sibling process; pull/hydration lane)
   - edge cases: `knowledge_base/BusinessLogic/3_contract/10_edgecases/offline_sync_edge_case_sweep.md`
 
 ## 2) Owned Facts (Source of Truth)

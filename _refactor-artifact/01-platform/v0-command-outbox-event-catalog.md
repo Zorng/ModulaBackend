@@ -216,6 +216,63 @@ Compatibility note:
   - entityType: `discount_rule`
   - canonical endpoint metadata: `/v0/discount/rules/:ruleId/archive`
 
+### Inventory
+- `INVENTORY_STOCK_CATEGORY_CREATED`
+  - actionKey: `inventory.categories.create`
+  - outcome: `SUCCESS`
+  - entityType: `inventory_stock_category`
+  - canonical endpoint metadata: `/v0/inventory/categories`
+- `INVENTORY_STOCK_CATEGORY_UPDATED`
+  - actionKey: `inventory.categories.update`
+  - outcome: `SUCCESS`
+  - entityType: `inventory_stock_category`
+  - canonical endpoint metadata: `/v0/inventory/categories/:categoryId`
+- `INVENTORY_STOCK_CATEGORY_ARCHIVED`
+  - actionKey: `inventory.categories.archive`
+  - outcome: `SUCCESS`
+  - entityType: `inventory_stock_category`
+  - canonical endpoint metadata: `/v0/inventory/categories/:categoryId/archive`
+- `INVENTORY_STOCK_ITEM_CREATED`
+  - actionKey: `inventory.items.create`
+  - outcome: `SUCCESS`
+  - entityType: `inventory_stock_item`
+  - canonical endpoint metadata: `/v0/inventory/items`
+- `INVENTORY_STOCK_ITEM_UPDATED`
+  - actionKey: `inventory.items.update`
+  - outcome: `SUCCESS`
+  - entityType: `inventory_stock_item`
+  - canonical endpoint metadata: `/v0/inventory/items/:stockItemId`
+- `INVENTORY_STOCK_ITEM_ARCHIVED`
+  - actionKey: `inventory.items.archive`
+  - outcome: `SUCCESS`
+  - entityType: `inventory_stock_item`
+  - canonical endpoint metadata: `/v0/inventory/items/:stockItemId/archive`
+- `INVENTORY_STOCK_ITEM_RESTORED`
+  - actionKey: `inventory.items.restore`
+  - outcome: `SUCCESS`
+  - entityType: `inventory_stock_item`
+  - canonical endpoint metadata: `/v0/inventory/items/:stockItemId/restore`
+- `INVENTORY_RESTOCK_BATCH_RECORDED`
+  - actionKey: `inventory.restockBatches.create`
+  - outcome: `SUCCESS`
+  - entityType: `inventory_restock_batch`
+  - canonical endpoint metadata: `/v0/inventory/restock-batches`
+- `INVENTORY_RESTOCK_BATCH_METADATA_UPDATED`
+  - actionKey: `inventory.restockBatches.updateMeta`
+  - outcome: `SUCCESS`
+  - entityType: `inventory_restock_batch`
+  - canonical endpoint metadata: `/v0/inventory/restock-batches/:batchId`
+- `INVENTORY_RESTOCK_BATCH_ARCHIVED`
+  - actionKey: `inventory.restockBatches.archive`
+  - outcome: `SUCCESS`
+  - entityType: `inventory_restock_batch`
+  - canonical endpoint metadata: `/v0/inventory/restock-batches/:batchId/archive`
+- `INVENTORY_ADJUSTMENT_RECORDED`
+  - actionKey: `inventory.adjustments.apply`
+  - outcome: `SUCCESS`
+  - entityType: `inventory_journal_entry`
+  - canonical endpoint metadata: `/v0/inventory/adjustments`
+
 ### Cash Session
 - `CASH_SESSION_OPENED`
   - actionKey: `cashSession.open`

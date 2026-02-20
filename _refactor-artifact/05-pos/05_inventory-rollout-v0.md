@@ -62,7 +62,7 @@ Implement this module on `/v0` with boundary-safe ownership, atomic command cont
 |---|---|---|
 | 0 Offline-first DoD gate | Completed | Replay operation family, sync entity map, and conflict taxonomy are now locked in `_refactor-artifact/05-pos/05_inventory-offline-first-dod-checklist-v0.md`. |
 | 1 Boundary + Contract lock | Completed | Boundary locked in `_refactor-artifact/02-boundary/inventory-boundary-v0.md`; API contract drafted in `api_contract/inventory-v0.md`. |
-| 2 Data model + repositories | Not started | |
-| 3 Commands/queries + access control | Not started | |
-| 4 Integration + reliability | Not started | |
-| 5 Close-out | Not started | |
+| 2 Data model + repositories | Completed | Added `migrations/033_create_v0_inventory_tables.sql` with canonical inventory owned tables (`v0_inventory_stock_categories`, `v0_inventory_stock_items`, `v0_inventory_restock_batches`, `v0_inventory_journal_entries`, `v0_inventory_branch_stock`) plus idempotency/external-source uniqueness constraints and projection indexes. Added repository + command contract scaffolding under `src/modules/v0/posOperation/inventory/` (`app/command-contract.ts`, `infra/repository.ts`, `index.ts`). |
+| 3 Commands/queries + access control | Completed | Implemented `V0InventoryService` command/query surface and `createV0InventoryRouter` with idempotent write transactions (`business + audit + outbox + sync`). Wired module bootstrap/mount (`/v0/inventory`) and access-control metadata + protected route registrations for `inventory.*` actions. Tenant-scope writes now fan out sync changes to all active tenant branches. |
+| 4 Integration + reliability | Completed | Added `src/integration-tests/v0-inventory.int.test.ts` covering idempotency replay + payload conflict, tenant-write fan-out into branch sync streams, restock journal/projection sync deltas, and atomic rollback via forced outbox failure. Also added `inventory` to pull-sync module scopes and updated `api_contract/sync-v0.md`. |
+| 5 Close-out | Completed | Updated `_refactor-artifact/01-platform/v0-command-outbox-event-catalog.md` with inventory outbox event types/action keys/endpoints and finalized rollout notes. |
