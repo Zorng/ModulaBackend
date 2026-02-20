@@ -20,7 +20,9 @@ Base path: `/v0/auth`
 
 ## Endpoints
 
-### 1) Register account
+### Account Onboarding
+
+#### 1) Register account
 
 `POST /v0/auth/register`
 
@@ -58,7 +60,7 @@ Errors:
 - `409` account already exists
 - `422` invalid input (missing phone/name/password or weak password)
 
-### 2) Send registration OTP
+#### 2) Send registration OTP
 
 `POST /v0/auth/otp/send`
 
@@ -90,7 +92,7 @@ Errors:
 - `422` missing phone
 - `429` OTP cooldown/rate-limit
 
-### 3) Verify registration OTP
+#### 3) Verify registration OTP
 
 `POST /v0/auth/otp/verify`
 
@@ -116,7 +118,9 @@ Errors:
 - `400` otp not found / expired / attempts exceeded / invalid
 - `422` missing phone or otp
 
-### 4) Login
+### Session Management
+
+#### 4) Login
 
 `POST /v0/auth/login`
 
@@ -158,7 +162,7 @@ Errors:
 - `403` phone not verified
 - `422` missing phone or password
 
-### 5) Refresh session
+#### 5) Refresh session
 
 `POST /v0/auth/refresh`
 
@@ -190,7 +194,7 @@ Errors:
 - `401` invalid/expired refresh token or inactive account
 - `422` missing refreshToken
 
-### 6) Logout
+#### 6) Logout
 
 `POST /v0/auth/logout`
 
@@ -213,7 +217,9 @@ Success `200`:
 Errors:
 - `422` missing refreshToken
 
-### 7) List tenant context options
+### Context Selection
+
+#### 7) List tenant context options
 
 `GET /v0/auth/context/tenants`
 
@@ -245,7 +251,7 @@ Success `200`:
 - `TENANT_SELECTION_REQUIRED`
 - `TENANT_SELECTED`
 
-### 8) Select tenant context
+#### 8) Select tenant context
 
 `POST /v0/auth/context/tenant/select`
 
@@ -284,7 +290,7 @@ Errors:
 - `403` no active membership for tenant
 - `422` missing tenantId
 
-### 9) List branch context options
+#### 9) List branch context options
 
 `GET /v0/auth/context/branches`
 
@@ -316,7 +322,7 @@ Success `200`:
 - `BRANCH_SELECTION_REQUIRED`
 - `BRANCH_SELECTED`
 
-### 10) Select branch context
+#### 10) Select branch context
 
 `POST /v0/auth/context/branch/select`
 

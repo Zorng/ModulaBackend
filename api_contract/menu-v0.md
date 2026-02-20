@@ -1,33 +1,11 @@
 # Menu Module (`/v0`) — API Contract
 
-This document locks the target `/v0/menu` HTTP contract for menu catalog, categories, modifiers, branch visibility, and composition metadata.
+This document describes the `/v0/menu` HTTP contract for menu catalog, categories, modifiers, branch visibility, and composition metadata.
 
 Base path: `/v0/menu`
 
-Implementation status (Phase 3):
-- Implemented now:
-  - `POST /v0/menu/images/upload`
-  - `GET /v0/menu/items`
-  - `GET /v0/menu/items/all`
-  - `GET /v0/menu/items/:menuItemId`
-  - `POST /v0/menu/items`
-  - `PATCH /v0/menu/items/:menuItemId`
-  - `POST /v0/menu/items/:menuItemId/archive`
-  - `POST /v0/menu/items/:menuItemId/restore`
-  - `PUT /v0/menu/items/:menuItemId/visibility`
-  - `GET /v0/menu/categories`
-  - `POST /v0/menu/categories`
-  - `PATCH /v0/menu/categories/:categoryId`
-  - `POST /v0/menu/categories/:categoryId/archive`
-  - `GET /v0/menu/modifier-groups`
-  - `POST /v0/menu/modifier-groups`
-  - `PATCH /v0/menu/modifier-groups/:groupId`
-  - `POST /v0/menu/modifier-groups/:groupId/archive`
-  - `POST /v0/menu/modifier-groups/:groupId/options`
-  - `PATCH /v0/menu/modifier-groups/:groupId/options/:optionId`
-  - `POST /v0/menu/modifier-groups/:groupId/options/:optionId/archive`
-  - `PUT /v0/menu/items/:menuItemId/composition`
-  - `POST /v0/menu/items/:menuItemId/composition/evaluate`
+Implementation status:
+- Endpoints below are implemented on `/v0`.
 
 ## Conventions
 
@@ -38,12 +16,12 @@ Implementation status (Phase 3):
 - Auth: `Authorization: Bearer <accessToken>`
 - Context model:
   - `tenantId` / `branchId` come from working-context token.
-  - No context override in query/body/headers.
+  - no context override via query/body/headers.
 - Idempotency:
   - all write endpoints except image upload require `Idempotency-Key`.
-  - duplicate replay returns stored response with header `Idempotency-Replayed: true`.
+  - duplicate replay returns stored response with `Idempotency-Replayed: true`.
 - Access-control reason codes:
-  - see `api_contract/access-control-v0.md`
+  - see `api_contract/access-control-v0.md`.
 
 ## Types
 
@@ -53,13 +31,13 @@ type ActiveStatus = "ACTIVE" | "ARCHIVED";
 
 type Component = {
   stockItemId: string;
-  quantityInBaseUnit: number; // > 0 in persisted composition rows
+  quantityInBaseUnit: number;
   trackingMode: TrackingMode;
 };
 
 type ModifierDelta = {
   stockItemId: string;
-  quantityDeltaInBaseUnit: number; // can be negative for omit behaviors
+  quantityDeltaInBaseUnit: number;
   trackingMode: TrackingMode;
 };
 
@@ -116,7 +94,9 @@ type MenuItemDetail = MenuItem & {
 
 ## Endpoints
 
-### 0) Upload menu image
+### Media Upload
+
+#### 1) Upload menu image
 
 `POST /v0/menu/images/upload`
 
@@ -132,6 +112,7 @@ Body (form-data):
 - `image` (file) — required, jpeg/png/webp, max 5MB
 
 Response `200`:
+
 ```json
 {
   "success": true,
@@ -150,7 +131,9 @@ Errors:
 - `422` `UPLOAD_FILE_REQUIRED`
 - `503` `IMAGE_STORAGE_NOT_CONFIGURED` / `IMAGE_UPLOAD_FAILED`
 
-### 1) List menu items (branch-visible)
+### Menu Items
+
+#### 2) List menu items (branch-visible)
 
 `GET /v0/menu/items?status=active|archived|all&categoryId=uuid&search=text&limit=50&offset=0`
 
@@ -164,7 +147,7 @@ Errors:
 - `401` missing/invalid token
 - `403` context/membership/branch access denial reason
 
-### 1.1) List tenant menu items (all branches, management view)
+#### 3) List tenant menu items (all branches, management view)
 
 `GET /v0/menu/items/all?status=active|archived|all&categoryId=uuid&search=text&branchId=uuid&limit=50&offset=0`
 
@@ -175,7 +158,7 @@ Notes:
 - Optional `branchId` filters to items visible in that branch.
 - Intended for management screens (cross-branch catalog view).
 
-### 2) Get menu item detail
+#### 4) Get menu item detail
 
 `GET /v0/menu/items/:menuItemId`
 
@@ -185,7 +168,7 @@ Errors:
 - `404` `MENU_ITEM_NOT_FOUND`
 - access-control errors as above
 
-### 3) Create menu item
+#### 5) Create menu item
 
 `POST /v0/menu/items`
 
@@ -195,6 +178,7 @@ Headers:
 - `Idempotency-Key: <client key>`
 
 Body:
+
 ```json
 {
   "name": "Iced Latte",
@@ -212,7 +196,7 @@ Errors:
 - `422` `MENU_LIMIT_SOFT_EXCEEDED`
 - `422` validation reason codes
 
-### 4) Update menu item
+#### 6) Update menu item
 
 `PATCH /v0/menu/items/:menuItemId`
 
@@ -227,7 +211,7 @@ Errors:
 - `404` `MENU_ITEM_NOT_FOUND`
 - idempotency/access-control/validation errors
 
-### 5) Archive menu item
+#### 7) Archive menu item
 
 `POST /v0/menu/items/:menuItemId/archive`
 
@@ -240,7 +224,7 @@ Errors:
 - `404` `MENU_ITEM_NOT_FOUND`
 - `422` business guard violations
 
-### 6) Restore menu item
+#### 8) Restore menu item
 
 `POST /v0/menu/items/:menuItemId/restore`
 
@@ -253,7 +237,7 @@ Errors:
 - `404` `MENU_ITEM_NOT_FOUND`
 - `422` `MENU_LIMIT_SOFT_EXCEEDED`
 
-### 7) Set branch visibility
+#### 9) Set branch visibility
 
 `PUT /v0/menu/items/:menuItemId/visibility`
 
@@ -263,6 +247,7 @@ Headers:
 - `Idempotency-Key: <client key>`
 
 Body:
+
 ```json
 {
   "visibleBranchIds": ["uuid"]
@@ -272,13 +257,15 @@ Body:
 Notes:
 - Empty list is allowed (item exists but hidden from POS).
 
-### 8) List categories
+### Categories
+
+#### 10) List categories
 
 `GET /v0/menu/categories?status=active|archived|all`
 
 Action key: `menu.categories.list`
 
-### 9) Create category
+#### 11) Create category
 
 `POST /v0/menu/categories`
 
@@ -288,13 +275,14 @@ Headers:
 - `Idempotency-Key: <client key>`
 
 Body:
+
 ```json
 {
   "name": "Coffee"
 }
 ```
 
-### 10) Update category
+#### 12) Update category
 
 `PATCH /v0/menu/categories/:categoryId`
 
@@ -304,13 +292,14 @@ Headers:
 - `Idempotency-Key: <client key>`
 
 Body:
+
 ```json
 {
   "name": "Coffee & Tea"
 }
 ```
 
-### 11) Archive category
+#### 13) Archive category
 
 `POST /v0/menu/categories/:categoryId/archive`
 
@@ -320,15 +309,17 @@ Headers:
 - `Idempotency-Key: <client key>`
 
 Notes:
-- Items linked to archived category must resolve as uncategorized for listing.
+- Items linked to archived category resolve as uncategorized for listing.
 
-### 12) List modifier groups
+### Modifiers
+
+#### 14) List modifier groups
 
 `GET /v0/menu/modifier-groups?status=active|archived|all`
 
 Action key: `menu.modifierGroups.list`
 
-### 13) Create modifier group
+#### 15) Create modifier group
 
 `POST /v0/menu/modifier-groups`
 
@@ -338,6 +329,7 @@ Headers:
 - `Idempotency-Key: <client key>`
 
 Body:
+
 ```json
 {
   "name": "Size",
@@ -348,7 +340,7 @@ Body:
 }
 ```
 
-### 14) Update modifier group
+#### 16) Update modifier group
 
 `PATCH /v0/menu/modifier-groups/:groupId`
 
@@ -357,7 +349,7 @@ Action key: `menu.modifierGroups.update`
 Headers:
 - `Idempotency-Key: <client key>`
 
-### 15) Archive modifier group
+#### 17) Archive modifier group
 
 `POST /v0/menu/modifier-groups/:groupId/archive`
 
@@ -366,7 +358,7 @@ Action key: `menu.modifierGroups.archive`
 Headers:
 - `Idempotency-Key: <client key>`
 
-### 16) Create modifier option
+#### 18) Create modifier option
 
 `POST /v0/menu/modifier-groups/:groupId/options`
 
@@ -376,6 +368,7 @@ Headers:
 - `Idempotency-Key: <client key>`
 
 Body:
+
 ```json
 {
   "label": "Large",
@@ -390,7 +383,7 @@ Body:
 }
 ```
 
-### 17) Update modifier option
+#### 19) Update modifier option
 
 `PATCH /v0/menu/modifier-groups/:groupId/options/:optionId`
 
@@ -399,7 +392,7 @@ Action key: `menu.modifierOptions.update`
 Headers:
 - `Idempotency-Key: <client key>`
 
-### 18) Archive modifier option
+#### 20) Archive modifier option
 
 `POST /v0/menu/modifier-groups/:groupId/options/:optionId/archive`
 
@@ -408,7 +401,9 @@ Action key: `menu.modifierOptions.archive`
 Headers:
 - `Idempotency-Key: <client key>`
 
-### 19) Upsert menu item composition
+### Composition
+
+#### 21) Upsert menu item composition
 
 `PUT /v0/menu/items/:menuItemId/composition`
 
@@ -418,6 +413,7 @@ Headers:
 - `Idempotency-Key: <client key>`
 
 Body:
+
 ```json
 {
   "baseComponents": [
@@ -441,13 +437,14 @@ Errors:
 - `403` `INVENTORY_ENTITLEMENT_REQUIRED_FOR_TRACKED_COMPONENTS`
 - `422` `MENU_COMPOSITION_INVALID` / `MENU_COMPONENT_NEGATIVE_QUANTITY`
 
-### 20) Evaluate composition (read-only)
+#### 22) Evaluate composition (read-only)
 
 `POST /v0/menu/items/:menuItemId/composition/evaluate`
 
 Action key: `menu.composition.evaluate`
 
 Body:
+
 ```json
 {
   "selectedModifierOptionIds": ["uuid"]
@@ -455,6 +452,7 @@ Body:
 ```
 
 Success `200`:
+
 ```json
 {
   "success": true,
