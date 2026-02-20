@@ -1,6 +1,6 @@
 # Sale + Order Module Rollout (v0)
 
-Status: In progress
+Status: Completed
 Owner context: POSOperation
 
 ## Goal
@@ -50,6 +50,8 @@ Sale-order KHQR finalize path depends on:
   - `K2` data model + repository
   - `K3` backend confirmation service
   - `K4` sale-order integration gate
+  - `K5` webhook ingestion integration
+  - `K6` reconciliation scheduler
 
 Scope note:
 - Non-KHQR sale-order paths may continue in parallel.
@@ -95,8 +97,8 @@ Scope note:
 | Phase | Status | Notes |
 |---|---|---|
 | 0 Offline-first DoD gate | Completed | Locked in `_refactor-artifact/05-pos/06_sale-order-offline-first-dod-checklist-v0.md` (replay surface classification, sync entity map, conflict taxonomy, convergence matrix, and solo/team void semantics). |
-| 1 Boundary + Contract lock | Not started | |
-| 2 Data model + repositories | Not started | |
-| 3 Commands/queries + access control | Not started | |
-| 4 Integration + reliability | Not started | |
-| 5 Close-out | Not started | |
+| 1 Boundary + Contract lock | Completed | Locked module boundary in `_refactor-artifact/02-boundary/sale-order-boundary-v0.md` and drafted canonical contract in `api_contract/sale-order-v0.md` (orders/sales route groups, action keys, replay policy, error taxonomy, and solo/team void split). |
+| 2 Data model + repositories | Completed | Added baseline owned-table schema in `migrations/035_create_v0_sale_order_tables.sql`, then aligned sale payment snapshot to KB dual-currency/tender model in `migrations/036_v0_sale_dual_currency_snapshot.sql`; repository + idempotency anchor contract in `src/modules/v0/posOperation/saleOrder/infra/repository.ts` and `src/modules/v0/posOperation/saleOrder/app/command-contract.ts`. |
+| 3 Commands/queries + access control | Completed | Implemented command/query handlers in `src/modules/v0/posOperation/saleOrder/app/service.ts`, mounted API routes in `src/modules/v0/posOperation/saleOrder/api/router.ts` and `src/platform/http/routes/v0.ts`, and registered action/route ACL mappings in `src/platform/access-control/action-catalog.ts` + `src/platform/access-control/route-registry.ts`. |
+| 4 Integration + reliability | Completed | Added integration reliability coverage in `src/integration-tests/v0-sale-order.int.test.ts` for (1) atomic rollback on forced outbox failure (`order.place`), (2) idempotency replay/conflict behavior, and (3) outbox publish + pull-sync delta exposure for `saleOrder` module. |
+| 5 Close-out | Completed | Finalized rollout tracker state, updated outbox event catalog with sale/order producer events, and added frontend rollout note for online-vs-replay support in `api_contract/sale-order-v0.md`. |

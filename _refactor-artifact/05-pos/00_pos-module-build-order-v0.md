@@ -61,7 +61,7 @@ Completion (2026-02-19):
 - Update `api_contract/*-v0.md` in the same phase as endpoint implementation.
 - KHQR prerequisite for sale-order:
   - lock/payment foundation under `_refactor-artifact/01-platform/khqr-payment-foundation-rollout-v0.md`
-  - minimum required before KHQR finalize acceptance: `K1-K4`
+  - minimum required before KHQR finalize acceptance: `K1-K6`
 
 ## Offline-First Standard Gate (applies to every POS rollout)
 
@@ -100,7 +100,7 @@ Completion (2026-02-19):
 | discount | Completed | phase 1-5 completed (boundary/contract lock, schema/repository, commands/queries + ACL, integration reliability, close-out sync) |
 | cashSession | Completed | Phase 1-5 completed (boundary/contract, schema/repo, command/query/ACL, integration reliability, close-out sync). |
 | inventory | In progress | Phase 0+1 locked (`05_inventory-rollout-v0.md`, `inventory-boundary-v0.md`, `api_contract/inventory-v0.md`) |
-| sale-order | In progress | Phase 0 locked in `_refactor-artifact/05-pos/06_sale-order-offline-first-dod-checklist-v0.md`; next is boundary + contract lock. KHQR finalize path is gated by `_refactor-artifact/01-platform/khqr-payment-foundation-rollout-v0.md` (`K1-K4`). |
+| sale-order | In progress | Phase 0-2 completed (`06_sale-order-offline-first-dod-checklist-v0.md`, `02-boundary/sale-order-boundary-v0.md`, `api_contract/sale-order-v0.md`, `migrations/035_create_v0_sale_order_tables.sql`, `migrations/036_v0_sale_dual_currency_snapshot.sql`, `src/modules/v0/posOperation/saleOrder/*`). Next: command/query + access-control wiring (Phase 3). KHQR foundation prerequisite completed (`K1-K6`). |
 | receipt | Not started | consume finalized sale snapshot only |
 | reporting | Not started | read-only aggregation only |
 | pushSync | Not started | queue/replay over stable commands |

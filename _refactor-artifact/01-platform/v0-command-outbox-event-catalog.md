@@ -311,6 +311,57 @@ Verification note:
   - `CASH_SESSION_CLOSED` and `CASH_SESSION_FORCE_CLOSED` are consumed by OperationalNotification subscriber to emit ON-04 in-app awareness signals.
   - covered by `src/integration-tests/v0-operational-notification.int.test.ts`.
 
+### Sale + Order
+- `ORDER_TICKET_PLACED`
+  - actionKey: `order.place`
+  - outcome: `SUCCESS`
+  - entityType: `order_ticket`
+  - canonical endpoint metadata: `/v0/orders`
+- `ORDER_ITEMS_ADDED`
+  - actionKey: `order.items.add`
+  - outcome: `SUCCESS`
+  - entityType: `order_ticket`
+  - canonical endpoint metadata: `/v0/orders/:orderId/items`
+- `ORDER_CHECKOUT_COMPLETED`
+  - actionKey: `order.checkout`
+  - outcome: `SUCCESS`
+  - entityType: `sale`
+  - canonical endpoint metadata: `/v0/orders/:orderId/checkout`
+- `ORDER_FULFILLMENT_STATUS_UPDATED`
+  - actionKey: `order.fulfillment.status.update`
+  - outcome: `SUCCESS`
+  - entityType: `order_fulfillment_batch`
+  - canonical endpoint metadata: `/v0/orders/:orderId/fulfillment`
+- `SALE_FINALIZED`
+  - actionKey: `sale.finalize`
+  - outcome: `SUCCESS`
+  - entityType: `sale`
+  - canonical endpoint metadata: `/v0/sales/:saleId/finalize`
+- `SALE_VOID_REQUESTED`
+  - actionKey: `sale.void.request`
+  - outcome: `SUCCESS`
+  - entityType: `void_request`
+  - canonical endpoint metadata: `/v0/sales/:saleId/void/request`
+- `SALE_VOID_APPROVED`
+  - actionKey: `sale.void.approve`
+  - outcome: `SUCCESS`
+  - entityType: `void_request`
+  - canonical endpoint metadata: `/v0/sales/:saleId/void/approve`
+- `SALE_VOID_REJECTED`
+  - actionKey: `sale.void.reject`
+  - outcome: `SUCCESS`
+  - entityType: `void_request`
+  - canonical endpoint metadata: `/v0/sales/:saleId/void/reject`
+- `SALE_VOID_EXECUTED`
+  - actionKey: `sale.void.execute`
+  - outcome: `SUCCESS`
+  - entityType: `sale`
+  - canonical endpoint metadata: `/v0/sales/:saleId/void/execute`
+
+Verification note:
+- command atomicity/idempotency/pull-delta integration coverage is in `src/integration-tests/v0-sale-order.int.test.ts`.
+- no sale/order event subscribers are wired yet; events are currently producer-only.
+
 ### Offline Sync (foundation behavior note)
 - `pushSync.apply` is a replay orchestrator action and does not currently emit dedicated outbox event types.
 - it routes to underlying command handlers; domain events are emitted by those underlying commands when applicable.

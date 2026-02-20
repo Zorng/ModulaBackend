@@ -16,6 +16,7 @@ import { bootstrapV0MenuModule } from "#modules/v0/posOperation/menu/index.js";
 import { bootstrapV0DiscountModule } from "#modules/v0/posOperation/discount/index.js";
 import { bootstrapV0CashSessionModule } from "#modules/v0/posOperation/cashSession/index.js";
 import { bootstrapV0InventoryModule } from "#modules/v0/posOperation/inventory/index.js";
+import { bootstrapV0SaleOrderModule } from "#modules/v0/posOperation/saleOrder/index.js";
 
 export const v0Router = Router();
 const v0AuthModule = bootstrapV0AuthModule(pool);
@@ -34,6 +35,7 @@ const v0MenuModule = bootstrapV0MenuModule(pool);
 const v0DiscountModule = bootstrapV0DiscountModule(pool);
 const v0CashSessionModule = bootstrapV0CashSessionModule(pool);
 const v0InventoryModule = bootstrapV0InventoryModule(pool);
+const v0SaleOrderModule = bootstrapV0SaleOrderModule(pool);
 
 v0Router.use("/auth", v0AuthModule.router);
 v0Router.use("/attendance", v0AttendanceModule.router);
@@ -51,6 +53,7 @@ v0Router.use("/menu", v0MenuModule.router);
 v0Router.use("/discount", v0DiscountModule.router);
 v0Router.use("/cash", v0CashSessionModule.router);
 v0Router.use("/inventory", v0InventoryModule.router);
+v0Router.use("/", v0SaleOrderModule.router);
 
 v0Router.get("/health", async (_req, res) => {
   const now = await ping();

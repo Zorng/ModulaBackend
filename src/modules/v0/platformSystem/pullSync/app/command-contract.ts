@@ -4,6 +4,7 @@ export const V0_PULL_SYNC_MODULE_KEYS = [
   "discount",
   "inventory",
   "cashSession",
+  "saleOrder",
   "attendance",
   "operationalNotification",
 ] as const;
