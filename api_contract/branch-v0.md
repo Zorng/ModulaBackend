@@ -30,6 +30,8 @@ type BranchProfile = {
   branchName: string;
   branchAddress: string | null;
   contactNumber: string | null;
+  khqrReceiverAccountId: string | null;
+  khqrReceiverName: string | null;
   status: BranchStatus;
 };
 ```
@@ -62,6 +64,8 @@ Success `200`:
       "branchName": "Olympic",
       "branchAddress": "Street 2004",
       "contactNumber": "+85512000009",
+      "khqrReceiverAccountId": "khqr-receiver",
+      "khqrReceiverName": "Main Branch Receiver",
       "status": "ACTIVE"
     }
   ]
@@ -92,6 +96,8 @@ Success `200`:
     "branchName": "Olympic",
     "branchAddress": "Street 2004",
     "contactNumber": "+85512000009",
+    "khqrReceiverAccountId": "khqr-receiver",
+    "khqrReceiverName": "Main Branch Receiver",
     "status": "FROZEN"
   }
 }
@@ -103,7 +109,46 @@ Errors:
 - `403` `BRANCH_CONTEXT_REQUIRED` or `NO_BRANCH_ACCESS`
 - `404` branch not found
 
-### 3) Initiate branch activation draft (payment pending)
+### 3) Set current branch KHQR receiver account
+
+`PATCH /v0/org/branch/current/khqr-receiver`
+
+Body:
+```json
+{
+  "khqrReceiverAccountId": "bakong-account-id",
+  "khqrReceiverName": "Main Branch Receiver"
+}
+```
+
+Notes:
+- Branch context in token is required.
+- Used by KHQR payment module as backend source of truth for receiver account.
+
+Success `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "branchId": "uuid",
+    "tenantId": "uuid",
+    "branchName": "Olympic",
+    "branchAddress": "Street 2004",
+    "contactNumber": "+85512000009",
+    "khqrReceiverAccountId": "bakong-account-id",
+    "khqrReceiverName": "Main Branch Receiver",
+    "status": "ACTIVE"
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` `BRANCH_CONTEXT_REQUIRED` or `NO_BRANCH_ACCESS`
+- `422` `ORG_BRANCH_KHQR_RECEIVER_INVALID`
+- `404` branch not found
+
+### 4) Initiate branch activation draft (payment pending)
 
 `POST /v0/org/branches/activation/initiate`
 
@@ -181,7 +226,7 @@ Errors:
 - `429` branch activation rate-limited (`code = FAIRUSE_RATE_LIMITED`)
 - `422` missing `branchName`
 
-### 4) Confirm branch activation (payment-confirmed path)
+### 5) Confirm branch activation (payment-confirmed path)
 
 `POST /v0/org/branches/activation/confirm`
 

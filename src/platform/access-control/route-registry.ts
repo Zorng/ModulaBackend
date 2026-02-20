@@ -154,6 +154,13 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     branchSource: "token",
   },
   {
+    method: "PATCH",
+    pattern: /^\/org\/branch\/current\/khqr-receiver$/,
+    actionKey: "org.branch.current.khqrReceiver.update",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
     method: "POST",
     pattern: /^\/org\/branches\/activation\/initiate\/?$/,
     actionKey: "org.branch.activation.initiate",
@@ -216,6 +223,13 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     pattern: /^\/media\/images\/upload$/,
     actionKey: "media.images.upload",
     tenantSource: "token",
+  },
+  {
+    method: "POST",
+    pattern: /^\/payments\/khqr\/sales\/[^/]+\/generate$/,
+    actionKey: "payment.khqr.generate",
+    tenantSource: "token",
+    branchSource: "token",
   },
   {
     method: "POST",

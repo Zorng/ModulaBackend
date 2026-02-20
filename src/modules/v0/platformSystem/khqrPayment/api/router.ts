@@ -61,6 +61,63 @@ export function createV0KhqrPaymentRouter(input: {
     }
   });
 
+  router.post("/sales/:saleId/generate", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
+    const actor = req.v0Auth;
+    const idempotencyKey = getIdempotencyKeyFromHeader(req.headers);
+    const actionKey = V0_KHQR_PAYMENT_ACTION_KEYS.generate;
+
+    try {
+      if (!actor) {
+        res.status(401).json({ success: false, error: "authentication required" });
+        return;
+      }
+      const saleId = assertUuid(req.params.saleId, "saleId");
+      const body = parseGenerateBody(req.body);
+      const tenantId = normalizeOptionalString(actor.tenantId);
+      const branchId = normalizeOptionalString(actor.branchId);
+
+      const result = await input.idempotencyService.execute<KhqrResponseBody>({
+        idempotencyKey,
+        actionKey,
+        scope: "BRANCH",
+        tenantId,
+        branchId,
+        payload: {
+          saleId,
+          body,
+        },
+        handler: async () => {
+          const data = await transactionManager.withTransaction(async (client) => {
+            const txService = new V0KhqrPaymentService(
+              new V0KhqrPaymentRepository(client),
+              input.provider
+            );
+            return txService.generateForSale({
+              actor,
+              saleId,
+              expiresInSeconds: body.expiresInSeconds,
+            });
+          });
+
+          return {
+            statusCode: 201,
+            body: {
+              success: true,
+              data,
+            },
+          };
+        },
+      });
+
+      if (result.replayed) {
+        res.setHeader("Idempotency-Replayed", "true");
+      }
+      res.status(result.statusCode).json(result.body);
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
+
   router.post("/attempts", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     const actor = req.v0Auth;
     const idempotencyKey = getIdempotencyKeyFromHeader(req.headers);
@@ -96,7 +153,6 @@ export function createV0KhqrPaymentRouter(input: {
               md5: body.md5,
               amount: body.amount,
               currency: body.currency,
-              toAccountId: body.toAccountId,
               expiresAt: body.expiresAt,
             });
           });
@@ -227,7 +283,6 @@ function parseRegisterBody(body: unknown): {
   md5: string;
   amount: number;
   currency: "USD" | "KHR";
-  toAccountId: string;
   expiresAt: Date | null;
 } {
   const record = asRecord(body);
@@ -235,21 +290,12 @@ function parseRegisterBody(body: unknown): {
   const md5 = assertMd5(record.md5, "md5");
   const amount = assertPositiveNumber(record.amount, "amount");
   const currency = assertCurrency(record.currency);
-  const toAccountId = normalizeOptionalString(record.toAccountId);
-  if (!toAccountId) {
-    throw new V0KhqrPaymentError(
-      422,
-      "KHQR_ATTEMPT_PAYLOAD_INVALID",
-      "toAccountId is required"
-    );
-  }
   const expiresAt = parseOptionalIsoDate(record.expiresAt, "expiresAt");
   return {
     saleId,
     md5,
     amount,
     currency,
-    toAccountId,
     expiresAt,
   };
 }
@@ -259,6 +305,23 @@ function parseConfirmBody(body: unknown): { md5: string } {
   return {
     md5: assertMd5(record.md5, "md5"),
   };
+}
+
+function parseGenerateBody(body: unknown): { expiresInSeconds: number | null } {
+  const record = asRecord(body ?? {});
+  const raw = record.expiresInSeconds;
+  if (raw === undefined || raw === null || String(raw).trim().length === 0) {
+    return { expiresInSeconds: null };
+  }
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw new V0KhqrPaymentError(
+      422,
+      "KHQR_ATTEMPT_PAYLOAD_INVALID",
+      "expiresInSeconds must be a positive number"
+    );
+  }
+  return { expiresInSeconds: Math.floor(numeric) };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

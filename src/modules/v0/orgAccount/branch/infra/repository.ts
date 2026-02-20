@@ -8,6 +8,8 @@ export type BranchProfileRow = {
   name: string;
   address: string | null;
   contact_phone: string | null;
+  khqr_receiver_account_id: string | null;
+  khqr_receiver_name: string | null;
   status: string;
 };
 
@@ -99,6 +101,8 @@ export class V0BranchRepository {
          name,
          address,
          contact_phone,
+         khqr_receiver_account_id,
+         khqr_receiver_name,
          status`,
       [input.tenantId, input.branchName]
     );
@@ -373,11 +377,45 @@ export class V0BranchRepository {
          name,
          address,
          contact_phone,
+         khqr_receiver_account_id,
+         khqr_receiver_name,
          status
        FROM branches
        WHERE id = $1
          AND tenant_id = $2`,
       [input.branchId, input.tenantId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async setBranchKhqrReceiver(input: {
+    tenantId: string;
+    branchId: string;
+    khqrReceiverAccountId: string | null;
+    khqrReceiverName: string | null;
+  }): Promise<BranchProfileRow | null> {
+    const result = await this.db.query<BranchProfileRow>(
+      `UPDATE branches
+       SET khqr_receiver_account_id = $3,
+           khqr_receiver_name = $4,
+           updated_at = NOW()
+       WHERE id = $1
+         AND tenant_id = $2
+       RETURNING
+         id,
+         tenant_id,
+         name,
+         address,
+         contact_phone,
+         khqr_receiver_account_id,
+         khqr_receiver_name,
+         status`,
+      [
+        input.branchId,
+        input.tenantId,
+        input.khqrReceiverAccountId,
+        input.khqrReceiverName,
+      ]
     );
     return result.rows[0] ?? null;
   }
@@ -416,6 +454,8 @@ export class V0BranchRepository {
          b.name,
          b.address,
          b.contact_phone,
+         b.khqr_receiver_account_id,
+         b.khqr_receiver_name,
          b.status
        FROM v0_branch_assignments ba
        JOIN v0_tenant_memberships m ON m.id = ba.membership_id

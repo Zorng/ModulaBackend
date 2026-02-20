@@ -6,8 +6,8 @@ Base path: `/v0/payments/khqr`
 
 Implementation status:
 - K1-K6 completed (`K5` webhook ingest + `K6` reconciliation scheduler baseline).
-- Endpoints below are implemented for KHQR attempt registration/read and confirm-by-md5.
-- Sale-order write endpoint is not implemented yet; KHQR finalize gating is enforced in `pushSync` `sale.finalize` replay path.
+- Endpoints below are implemented for KHQR generation, attempt registration/read, confirm-by-md5, and webhook ingestion.
+- Sale finalize gate is enforced on online `/v0/sales/:saleId/finalize`.
 
 ## Conventions
 
@@ -58,13 +58,86 @@ type KhqrAttempt = {
   createdAt: string;
   updatedAt: string;
 };
+
+type KhqrPayloadType = "DEEPLINK_URL" | "EMV_KHQR_STRING" | "TEXT";
 ```
 
 ## Endpoints
 
+### Generation
+
+#### 1) Generate KHQR for pending sale
+
+`POST /v0/payments/khqr/sales/:saleId/generate`
+
+Action key: `payment.khqr.generate`
+
+Headers:
+- `Idempotency-Key: <client key>`
+
+Body:
+```json
+{
+  "expiresInSeconds": 180
+}
+```
+
+Success `201`:
+```json
+{
+  "success": true,
+  "data": {
+    "attempt": {
+      "attemptId": "uuid",
+      "saleId": "uuid",
+      "md5": "khqr-md5",
+      "status": "WAITING_FOR_PAYMENT",
+      "amount": 3.5,
+      "currency": "USD",
+      "toAccountId": "bakong-account-id",
+      "expiresAt": "2026-02-21T10:30:00.000Z",
+      "paidConfirmedAt": null,
+      "supersededByAttemptId": null,
+      "createdAt": "2026-02-21T10:00:00.000Z",
+      "updatedAt": "2026-02-21T10:00:00.000Z"
+    },
+    "paymentRequest": {
+      "md5": "khqr-md5",
+      "payload": "khqr://...",
+      "payloadFormat": "RAW_TEXT",
+      "payloadType": "DEEPLINK_URL",
+      "deepLinkUrl": "khqr://...",
+      "amount": 3.5,
+      "currency": "USD",
+      "toAccountId": "bakong-account-id",
+      "expiresAt": "2026-02-21T10:30:00.000Z",
+      "provider": "STUB",
+      "providerReference": "stub:..."
+    }
+  }
+}
+```
+
+Notes:
+- `toAccountId` is resolved by backend from current branch KHQR receiver configuration.
+- Frontend must not supply receiver account during generation.
+- `payloadType` indicates how client should consume `payload`:
+  - `DEEPLINK_URL`: launch/link flow
+  - `EMV_KHQR_STRING`: render as QR image
+  - `TEXT`: fallback plain text mode
+- `payload` is the primary QR data; for scanner-compatible mode it should be `EMV_KHQR_STRING`.
+- `deepLinkUrl` is optional helper URL when provider supplies deeplink-style launch flow.
+
+Errors:
+- `404` `KHQR_SALE_NOT_FOUND`
+- `422` `KHQR_SALE_PAYMENT_METHOD_INVALID`
+- `422` `KHQR_SALE_STATUS_INVALID`
+- `422` `KHQR_BRANCH_RECEIVER_NOT_CONFIGURED`
+- `409` idempotency conflict/in-progress
+
 ### Payment Attempts
 
-#### 1) Register KHQR payment attempt
+#### 2) Register KHQR payment attempt
 
 `POST /v0/payments/khqr/attempts`
 
@@ -80,7 +153,6 @@ Body:
   "md5": "khqr-md5",
   "amount": 2.5,
   "currency": "USD",
-  "toAccountId": "bakong-account-id",
   "expiresAt": "2026-02-21T10:30:00.000Z"
 }
 ```
@@ -109,13 +181,14 @@ Success `201`:
 Notes:
 - Registering a new active attempt for same sale marks older active attempt as `SUPERSEDED`.
 - This endpoint only records attempt truth; it does not finalize sale.
+- `toAccountId` is resolved by backend from current branch KHQR receiver configuration.
 
 Errors:
 - `422` validation errors (`KHQR_ATTEMPT_PAYLOAD_INVALID`)
 - `409` `KHQR_ATTEMPT_ALREADY_TERMINAL` (if sale already finalized/voided when integrated)
 - `409` idempotency conflict/in-progress
 
-#### 2) Get KHQR payment attempt by id
+#### 3) Get KHQR payment attempt by id
 
 `GET /v0/payments/khqr/attempts/:attemptId`
 
@@ -145,7 +218,7 @@ Success `200`:
 Errors:
 - `404` `KHQR_ATTEMPT_NOT_FOUND`
 
-#### 3) Get KHQR payment attempt by md5
+#### 4) Get KHQR payment attempt by md5
 
 `GET /v0/payments/khqr/attempts/by-md5/:md5`
 
@@ -155,7 +228,7 @@ Response shape and errors are the same as endpoint #2.
 
 ### Confirmation
 
-#### 4) Confirm KHQR payment by md5 (backend verification)
+#### 5) Confirm KHQR payment by md5 (backend verification)
 
 `POST /v0/payments/khqr/confirm`
 
@@ -252,7 +325,7 @@ Errors:
 
 ### Webhook Ingestion
 
-#### 5) Ingest provider webhook event (open route)
+#### 6) Ingest provider webhook event (open route)
 
 `POST /v0/payments/khqr/webhooks/provider`
 
@@ -350,6 +423,17 @@ Runtime dispatcher periodically re-checks `WAITING_FOR_PAYMENT` and `PENDING_CON
 - records confirmation evidence and updates attempt status
 
 Runtime env controls:
+- `V0_KHQR_PROVIDER` (`stub` | `bakong` | `bakong_http`)
+- `V0_KHQR_PROVIDER_BASE_URL`
+- `V0_KHQR_PROVIDER_GENERATE_URL` (optional explicit URL)
+- `V0_KHQR_PROVIDER_VERIFY_URL` (optional explicit URL)
+- `V0_KHQR_ENABLE_SDK_GENERATION` (optional boolean; when enabled, generate uses local Bakong SDK EMV builder)
+- `V0_KHQR_PROVIDER_API_KEY` (optional provider API key)
+- `V0_KHQR_PROVIDER_API_KEY_HEADER` (default `x-api-key`)
+- `V0_KHQR_PROVIDER_TIMEOUT_MS` (default `5000`)
+- `V0_KHQR_WEBHOOK_SECRET`
+- `V0_KHQR_WEBHOOK_SECRET_HEADER` (default `x-khqr-webhook-secret`)
+- `V0_KHQR_ATTEMPT_TTL_SECONDS` (default `300`)
 - `V0_KHQR_RECONCILIATION_ENABLED` (default `true`)
 - `V0_KHQR_RECONCILIATION_INTERVAL_MS` (default `30000`)
 - `V0_KHQR_RECONCILIATION_BATCH_SIZE` (default `50`)

@@ -69,6 +69,25 @@ export type V0KhqrReconciliationCandidateRow = {
   branch_id: string;
 };
 
+export type V0BranchKhqrReceiverRow = {
+  khqr_receiver_account_id: string | null;
+  khqr_receiver_name: string | null;
+};
+
+export type V0SaleKhqrSnapshotRow = {
+  id: string;
+  tenant_id: string;
+  branch_id: string;
+  status: "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
+  payment_method: "CASH" | "KHQR";
+  tender_currency: V0KhqrCurrency;
+  tender_amount: number;
+  grand_total_usd: number;
+  grand_total_khr: number;
+  khqr_md5: string | null;
+  khqr_to_account_id: string | null;
+};
+
 const ATTEMPT_SELECT_FIELDS = `
   id,
   tenant_id,
@@ -115,6 +134,80 @@ const EVIDENCE_SELECT_FIELDS = `
 
 export class V0KhqrPaymentRepository {
   constructor(private readonly db: Queryable) {}
+
+  async findBranchKhqrReceiver(input: {
+    tenantId: string;
+    branchId: string;
+  }): Promise<V0BranchKhqrReceiverRow | null> {
+    const result = await this.db.query<V0BranchKhqrReceiverRow>(
+      `SELECT
+         khqr_receiver_account_id,
+         khqr_receiver_name
+       FROM branches
+       WHERE tenant_id = $1
+         AND id = $2
+       LIMIT 1`,
+      [input.tenantId, input.branchId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async lockSaleForKhqrGeneration(input: {
+    tenantId: string;
+    branchId: string;
+    saleId: string;
+  }): Promise<V0SaleKhqrSnapshotRow | null> {
+    const result = await this.db.query<V0SaleKhqrSnapshotRow>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         status,
+         payment_method,
+         tender_currency,
+         tender_amount::FLOAT8 AS tender_amount,
+         grand_total_usd::FLOAT8 AS grand_total_usd,
+         grand_total_khr::FLOAT8 AS grand_total_khr,
+         khqr_md5,
+         khqr_to_account_id
+       FROM v0_sales
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3
+       LIMIT 1
+       FOR UPDATE`,
+      [input.tenantId, input.branchId, input.saleId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async updateSaleKhqrReference(input: {
+    tenantId: string;
+    branchId: string;
+    saleId: string;
+    md5: string;
+    toAccountId: string;
+    khqrHash: string | null;
+  }): Promise<void> {
+    await this.db.query(
+      `UPDATE v0_sales
+       SET khqr_md5 = $4,
+           khqr_to_account_id = $5,
+           khqr_hash = COALESCE($6, khqr_hash),
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.saleId,
+        input.md5,
+        input.toAccountId,
+        input.khqrHash,
+      ]
+    );
+  }
 
   async listReconciliationCandidates(input: {
     limit: number;

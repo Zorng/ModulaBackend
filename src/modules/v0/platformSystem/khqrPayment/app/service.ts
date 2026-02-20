@@ -5,7 +5,11 @@ import type {
   V0KhqrVerificationStatus,
 } from "../infra/repository.js";
 import { V0KhqrPaymentRepository } from "../infra/repository.js";
-import type { V0KhqrPaymentProvider, V0KhqrWebhookEvent } from "./payment-provider.js";
+import type {
+  V0KhqrGeneratedPaymentRequest,
+  V0KhqrPaymentProvider,
+  V0KhqrWebhookEvent,
+} from "./payment-provider.js";
 
 type ActorScope = NonNullable<V0AuthRequest["v0Auth"]>;
 
@@ -32,10 +36,10 @@ export class V0KhqrPaymentService {
     md5: string;
     amount: number;
     currency: V0KhqrCurrency;
-    toAccountId: string;
     expiresAt: Date | null;
   }): Promise<{ created: boolean; attempt: V0KhqrPaymentAttemptView }> {
     const scope = assertBranchScope(input.actor);
+    const receiver = await this.resolveBranchKhqrReceiver(scope);
     const existing = await this.repo.findAttemptByMd5({
       tenantId: scope.tenantId,
       branchId: scope.branchId,
@@ -55,7 +59,7 @@ export class V0KhqrPaymentService {
       md5: input.md5,
       expectedAmount: input.amount,
       expectedCurrency: input.currency,
-      expectedToAccountId: input.toAccountId,
+      expectedToAccountId: receiver.toAccountId,
       expiresAt: input.expiresAt,
       createdByAccountId: scope.accountId,
     });
@@ -70,6 +74,78 @@ export class V0KhqrPaymentService {
     return {
       created: true,
       attempt: mapAttempt(created),
+    };
+  }
+
+  async generateForSale(input: {
+    actor: ActorScope;
+    saleId: string;
+    expiresInSeconds: number | null;
+  }): Promise<V0KhqrGenerateResult> {
+    const scope = assertBranchScope(input.actor);
+    const sale = await this.repo.lockSaleForKhqrGeneration({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      saleId: input.saleId,
+    });
+    if (!sale) {
+      throw new V0KhqrPaymentError(404, "KHQR_SALE_NOT_FOUND", "sale not found");
+    }
+    if (sale.payment_method !== "KHQR") {
+      throw new V0KhqrPaymentError(
+        422,
+        "KHQR_SALE_PAYMENT_METHOD_INVALID",
+        "sale payment method must be KHQR"
+      );
+    }
+    if (sale.status !== "PENDING") {
+      throw new V0KhqrPaymentError(
+        422,
+        "KHQR_SALE_STATUS_INVALID",
+        "sale is not pending and cannot generate khqr"
+      );
+    }
+
+    const receiver = await this.resolveBranchKhqrReceiver(scope);
+    const expiresAt = resolveAttemptExpiry(input.expiresInSeconds);
+    const generated = await this.provider.createPaymentRequest({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      saleId: sale.id,
+      amount: sale.tender_amount,
+      currency: sale.tender_currency,
+      toAccountId: receiver.toAccountId,
+      receiverName: receiver.receiverName,
+      expiresAt,
+    });
+
+    const attemptResult = await this.registerAttempt({
+      actor: input.actor,
+      saleId: sale.id,
+      md5: generated.md5,
+      amount: sale.tender_amount,
+      currency: sale.tender_currency,
+      expiresAt,
+    });
+
+    await this.repo.updateSaleKhqrReference({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      saleId: sale.id,
+      md5: generated.md5,
+      toAccountId: receiver.toAccountId,
+      khqrHash: generated.payloadHash,
+    });
+
+    return {
+      attempt: attemptResult.attempt,
+      paymentRequest: mapGeneratedRequest({
+        generated,
+        amount: sale.tender_amount,
+        currency: sale.tender_currency,
+        toAccountId: receiver.toAccountId,
+        expiresAt,
+      }),
     };
   }
 
@@ -432,6 +508,31 @@ export class V0KhqrPaymentService {
 
     return updatedAttempt;
   }
+
+  private async resolveBranchKhqrReceiver(scope: {
+    tenantId: string;
+    branchId: string;
+  }): Promise<{ toAccountId: string; receiverName: string | null }> {
+    const row = await this.repo.findBranchKhqrReceiver({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+    });
+    if (!row) {
+      throw new V0KhqrPaymentError(404, "KHQR_BRANCH_NOT_FOUND", "branch not found");
+    }
+    const toAccountId = normalizeOptionalString(row.khqr_receiver_account_id);
+    if (!toAccountId) {
+      throw new V0KhqrPaymentError(
+        422,
+        "KHQR_BRANCH_RECEIVER_NOT_CONFIGURED",
+        "khqr receiver account is not configured for this branch"
+      );
+    }
+    return {
+      toAccountId,
+      receiverName: normalizeOptionalString(row.khqr_receiver_name),
+    };
+  }
 }
 
 export type V0KhqrPaymentAttemptView = {
@@ -462,6 +563,23 @@ export type V0KhqrReconcileResult = {
   attemptId: string | null;
   verificationStatus: V0KhqrVerificationStatus | null;
   reasonCode: string | null;
+};
+
+export type V0KhqrGenerateResult = {
+  attempt: V0KhqrPaymentAttemptView;
+  paymentRequest: {
+    md5: string;
+    payload: string;
+    payloadFormat: "RAW_TEXT";
+    payloadType: "DEEPLINK_URL" | "EMV_KHQR_STRING" | "TEXT";
+    deepLinkUrl: string | null;
+    amount: number;
+    currency: V0KhqrCurrency;
+    toAccountId: string;
+    expiresAt: string | null;
+    provider: "BAKONG" | "STUB";
+    providerReference: string | null;
+  };
 };
 
 function mapAttempt(row: V0KhqrPaymentAttemptRow): V0KhqrPaymentAttemptView {
@@ -543,6 +661,48 @@ function resolveDefaultKhqrProviderName(): "BAKONG" | "STUB" {
     .trim()
     .toLowerCase();
   return providerName === "stub" ? "STUB" : "BAKONG";
+}
+
+function mapGeneratedRequest(input: {
+  generated: V0KhqrGeneratedPaymentRequest;
+  amount: number;
+  currency: V0KhqrCurrency;
+  toAccountId: string;
+  expiresAt: Date | null;
+}): V0KhqrGenerateResult["paymentRequest"] {
+  return {
+    md5: input.generated.md5,
+    payload: input.generated.payload,
+    payloadFormat: input.generated.payloadFormat,
+    payloadType: input.generated.payloadType,
+    deepLinkUrl: input.generated.deepLinkUrl,
+    amount: input.amount,
+    currency: input.currency,
+    toAccountId: input.toAccountId,
+    expiresAt: input.expiresAt ? input.expiresAt.toISOString() : null,
+    provider: input.generated.provider,
+    providerReference: input.generated.providerReference,
+  };
+}
+
+function resolveAttemptExpiry(expiresInSeconds: number | null): Date | null {
+  const defaultTtlSeconds = clamp(
+    Number.parseInt(String(process.env.V0_KHQR_ATTEMPT_TTL_SECONDS ?? "300"), 10),
+    30,
+    60 * 60
+  );
+  const ttlSeconds =
+    expiresInSeconds === null
+      ? defaultTtlSeconds
+      : clamp(Math.floor(expiresInSeconds), 30, 60 * 60);
+  return new Date(Date.now() + ttlSeconds * 1000);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
 }
 
 function resolveWebhookVerificationOutcome(

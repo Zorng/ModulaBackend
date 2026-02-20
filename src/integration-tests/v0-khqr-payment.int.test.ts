@@ -84,6 +84,8 @@ async function setupOwnerBranchContext(input: {
     pool: input.pool,
     tenantId,
     branchName: `KHQR Branch ${uniqueSuffix()}`,
+    khqrReceiverAccountId: "khqr-receiver",
+    khqrReceiverName: "Khqr Receiver",
   });
 
   await assignActiveBranch({

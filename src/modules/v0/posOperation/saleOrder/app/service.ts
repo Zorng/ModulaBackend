@@ -798,6 +798,13 @@ function parseCheckoutBody(body: Record<string, unknown>, lines: V0OrderTicketLi
   const tenderCurrency = parseTenderCurrency(body.tenderCurrency);
   const defaultTenderAmount = tenderCurrency === "USD" ? grandTotalUsd : grandTotalKhr;
   const tenderAmount = parseNumberOrDefault(body.tenderAmount, defaultTenderAmount, "tenderAmount");
+  if (paymentMethod === "KHQR" && Math.abs(tenderAmount - defaultTenderAmount) > 0.009) {
+    throw new V0SaleOrderError(
+      422,
+      "khqr tenderAmount must match sale grand total",
+      "SALE_KHQR_TENDER_AMOUNT_INVALID"
+    );
+  }
   const cashReceivedTenderAmount = parseNullableNumber(body.cashReceivedTenderAmount, "cashReceivedTenderAmount");
   const cashChangeTenderAmount = parseNumberOrDefault(
     body.cashChangeTenderAmount,

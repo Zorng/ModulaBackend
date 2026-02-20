@@ -132,6 +132,7 @@ Rules:
 - KHQR requires backend-confirmed proof:
   - `SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED`
   - `SALE_FINALIZE_KHQR_PROOF_MISMATCH`
+- KHQR generation should use `POST /v0/payments/khqr/sales/:saleId/generate` before waiting for payment confirmation.
 
 #### 8) Request void (team mode)
 `POST /v0/sales/:saleId/void/request`  
@@ -187,6 +188,7 @@ Action key: `sale.void.request.read`
 - `SALE_FINALIZE_REQUIRES_OPEN_CASH_SESSION`
 - `SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED`
 - `SALE_FINALIZE_KHQR_PROOF_MISMATCH`
+- `SALE_KHQR_TENDER_AMOUNT_INVALID`
 - `ORDER_NOT_FOUND`
 - `ORDER_NOT_UNPAID`
 - `VOID_REQUEST_NOT_FOUND`

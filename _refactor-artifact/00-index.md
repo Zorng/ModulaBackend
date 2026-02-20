@@ -16,6 +16,7 @@
 | Platform | Push Sync Foundation Rollout v0 | Completed | `_refactor-artifact/01-platform/push-sync-foundation-rollout-v0.md` |
 | Platform | Offline-First Rollout v0 | In progress (OF1 completed) | `_refactor-artifact/01-platform/offline-first-rollout-v0.md` |
 | Platform | OF2 Sync State Infrastructure Plan v0 | Drafted | `_refactor-artifact/01-platform/of2-sync-state-infrastructure-plan-v0.md` |
+| Platform | KHQR Production Readiness Rollout v0 | In Progress (P0) | `_refactor-artifact/01-platform/khqr-production-readiness-rollout-v0.md` |
 | Boundary | Module Boundary Realignment v0 | Completed through B6 | `_refactor-artifact/02-boundary/module-boundary-realignment-v0.md` |
 | Boundary | Module Boundary Template v0 | Template | `_refactor-artifact/02-boundary/module-boundary-template-v0.md` |
 | Boundary | Policy Boundary v0 | Active (Phase 1-5 lock) | `_refactor-artifact/02-boundary/policy-boundary-v0.md` |

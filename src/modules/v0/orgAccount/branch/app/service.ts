@@ -39,6 +39,8 @@ export class V0BranchService {
       branchName: branch.name,
       branchAddress: branch.address,
       contactNumber: branch.contact_phone,
+      khqrReceiverAccountId: branch.khqr_receiver_account_id,
+      khqrReceiverName: branch.khqr_receiver_name,
       status: branch.status,
     }));
   }
@@ -68,7 +70,56 @@ export class V0BranchService {
       branchName: branch.name,
       branchAddress: branch.address,
       contactNumber: branch.contact_phone,
+      khqrReceiverAccountId: branch.khqr_receiver_account_id,
+      khqrReceiverName: branch.khqr_receiver_name,
       status: branch.status,
+    };
+  }
+
+  async setCurrentBranchKhqrReceiver(input: {
+    actor: OrgActorContext;
+    khqrReceiverAccountId: unknown;
+    khqrReceiverName: unknown;
+  }) {
+    const scope = assertBranchContext(input.actor);
+    const hasAccess = await this.repo.hasActiveBranchAssignment({
+      accountId: scope.accountId,
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+    });
+    if (!hasAccess) {
+      throw new V0OrgAccountError(403, "no active branch assignment for branch");
+    }
+
+    const accountId = String(input.khqrReceiverAccountId ?? "").trim();
+    if (!accountId) {
+      throw new V0OrgAccountError(
+        422,
+        "khqrReceiverAccountId is required",
+        "ORG_BRANCH_KHQR_RECEIVER_INVALID"
+      );
+    }
+    const name = normalizeOptionalString(input.khqrReceiverName);
+
+    const updated = await this.repo.setBranchKhqrReceiver({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      khqrReceiverAccountId: accountId,
+      khqrReceiverName: name,
+    });
+    if (!updated) {
+      throw new V0OrgAccountError(404, "branch not found");
+    }
+
+    return {
+      branchId: updated.id,
+      tenantId: updated.tenant_id,
+      branchName: updated.name,
+      branchAddress: updated.address,
+      contactNumber: updated.contact_phone,
+      khqrReceiverAccountId: updated.khqr_receiver_account_id,
+      khqrReceiverName: updated.khqr_receiver_name,
+      status: updated.status,
     };
   }
 
@@ -383,6 +434,11 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
     return fallback;
   }
   return parsed;
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function assertTenantContext(actor: OrgActorContext): {

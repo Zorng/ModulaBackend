@@ -56,6 +56,29 @@ export function createV0BranchRouter(input: {
     }
   });
 
+  router.patch(
+    "/branch/current/khqr-receiver",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const actor = req.v0Auth;
+        if (!actor) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+        const body = asRecord(req.body);
+        const data = await input.service.setCurrentBranchKhqrReceiver({
+          actor,
+          khqrReceiverAccountId: body.khqrReceiverAccountId,
+          khqrReceiverName: body.khqrReceiverName,
+        });
+        res.status(200).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
+      }
+    }
+  );
+
   router.post(
     "/branches/activation/initiate",
     requireV0Auth,
@@ -175,6 +198,13 @@ export function createV0BranchRouter(input: {
 
 function readIdempotencyKey(headers: Record<string, string | string[] | undefined>): string | null {
   return getIdempotencyKeyFromHeader(headers) ?? readOptionalHeaderString(headers, "idempotency-key");
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
 }
 
 function handleError(res: Response, error: unknown): void {

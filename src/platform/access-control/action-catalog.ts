@@ -48,6 +48,12 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
   "org.tenant.current.read": { scope: "TENANT", effect: "READ" },
   "org.branches.accessible.read": { scope: "TENANT", effect: "READ" },
   "org.branch.current.read": { scope: "BRANCH", effect: "READ" },
+  "org.branch.current.khqrReceiver.update": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+    entitlementKey: "core.pos",
+  },
   "org.branch.activation.initiate": {
     scope: "TENANT",
     effect: "WRITE",
@@ -94,6 +100,12 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
   },
   "payment.khqr.attempt.register": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "payment.khqr.generate": {
     scope: "BRANCH",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],

@@ -159,6 +159,20 @@ describe("v0 org account (phase F1 scaffold)", () => {
       status: "ACTIVE",
     });
 
+    const configuredKhqr = await request(app)
+      .patch("/v0/org/branch/current/khqr-receiver")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .send({
+        khqrReceiverAccountId: "khqr-receiver",
+        khqrReceiverName: "Main Branch Receiver",
+      });
+    expect(configuredKhqr.status).toBe(200);
+    expect(configuredKhqr.body.data).toMatchObject({
+      branchId,
+      khqrReceiverAccountId: "khqr-receiver",
+      khqrReceiverName: "Main Branch Receiver",
+    });
+
     await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
   });
 

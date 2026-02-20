@@ -6,16 +6,28 @@ export async function createActiveBranch(input: {
   branchName: string;
   address?: string | null;
   contactPhone?: string | null;
+  khqrReceiverAccountId?: string | null;
+  khqrReceiverName?: string | null;
 }): Promise<string> {
   const result = await input.pool.query<{ id: string }>(
-    `INSERT INTO branches (tenant_id, name, status, address, contact_phone)
-     VALUES ($1, $2, 'ACTIVE', $3, $4)
+    `INSERT INTO branches (
+       tenant_id,
+       name,
+       status,
+       address,
+       contact_phone,
+       khqr_receiver_account_id,
+       khqr_receiver_name
+     )
+     VALUES ($1, $2, 'ACTIVE', $3, $4, $5, $6)
      RETURNING id`,
     [
       input.tenantId,
       input.branchName,
       input.address ?? null,
       input.contactPhone ?? null,
+      input.khqrReceiverAccountId ?? null,
+      input.khqrReceiverName ?? null,
     ]
   );
   return result.rows[0].id;

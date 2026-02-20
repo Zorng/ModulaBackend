@@ -13,6 +13,7 @@ import {
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
 import { bootstrapV0PullSyncModule } from "../modules/v0/platformSystem/pullSync/index.js";
+import { bootstrapV0KhqrPaymentModule } from "../modules/v0/platformSystem/khqrPayment/index.js";
 import { bootstrapV0SaleOrderModule } from "../modules/v0/posOperation/saleOrder/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 
@@ -84,6 +85,8 @@ async function setupOwnerBranchContext(input: {
     pool: input.pool,
     tenantId,
     branchName: `SaleOrder Branch ${uniqueSuffix()}`,
+    khqrReceiverAccountId: "khqr-receiver",
+    khqrReceiverName: "KHQR Receiver",
   });
   await assignActiveBranch({
     pool: input.pool,
@@ -115,13 +118,36 @@ async function setupOwnerBranchContext(input: {
   };
 }
 
-function buildOrderPayload(input: { menuItemId?: string; quantity?: number }) {
+async function openCashSession(input: {
+  pool: Pool;
+  tenantId: string;
+  branchId: string;
+  accountId: string;
+}): Promise<void> {
+  await input.pool.query(
+    `INSERT INTO v0_cash_sessions (
+       tenant_id,
+       branch_id,
+       opened_by_account_id,
+       status,
+       opening_float_usd,
+       opening_float_khr
+     )
+     VALUES ($1, $2, $3, 'OPEN', 50, 0)
+     ON CONFLICT (tenant_id, branch_id)
+     WHERE status = 'OPEN'
+     DO NOTHING`,
+    [input.tenantId, input.branchId, input.accountId]
+  );
+}
+
+function buildOrderPayload(input: { menuItemId?: string; quantity?: number; unitPrice?: number }) {
   return {
     items: [
       {
         menuItemId: input.menuItemId ?? randomUUID(),
         menuItemNameSnapshot: "Iced Latte",
-        unitPrice: 2.5,
+        unitPrice: input.unitPrice ?? 2.5,
         quantity: input.quantity ?? 1,
         modifierSnapshot: [],
         note: null,
@@ -146,6 +172,7 @@ describe("v0 sale-order integration", () => {
     app.use("/v0", createAccessControlHook({ db: pool, jwtSecret: process.env.JWT_SECRET }));
     app.use("/v0/auth", bootstrapV0AuthModule(pool).router);
     app.use("/v0/org", bootstrapV0OrgAccountModule(pool).router);
+    app.use("/v0/payments/khqr", bootstrapV0KhqrPaymentModule(pool).router);
     app.use("/v0/sync", bootstrapV0PullSyncModule(pool).router);
     app.use("/v0", bootstrapV0SaleOrderModule(pool).router);
   });
@@ -319,5 +346,160 @@ describe("v0 sale-order integration", () => {
           && change.entityId === orderId
       )
     ).toBe(true);
+  });
+
+  it("generates KHQR from sale snapshot, confirms payment, and finalizes", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ unitPrice: 3.5 }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const checkout = await request(app)
+      .post(`/v0/orders/${orderId}/checkout`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-checkout-${uniqueSuffix()}`)
+      .send({
+        paymentMethod: "KHQR",
+        tenderCurrency: "USD",
+      });
+    expect(checkout.status).toBe(200);
+    const saleId = checkout.body.data.id as string;
+
+    const generated = await request(app)
+      .post(`/v0/payments/khqr/sales/${saleId}/generate`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-generate-${uniqueSuffix()}`)
+      .send({
+        expiresInSeconds: 180,
+      });
+    expect(generated.status).toBe(201);
+    expect(generated.body.success).toBe(true);
+    expect(generated.body.data.attempt.status).toBe("WAITING_FOR_PAYMENT");
+    expect(generated.body.data.attempt.amount).toBe(3.5);
+    expect(generated.body.data.attempt.currency).toBe("USD");
+    expect(generated.body.data.attempt.toAccountId).toBe("khqr-receiver");
+    expect(typeof generated.body.data.paymentRequest.payload).toBe("string");
+    expect(generated.body.data.paymentRequest.payloadType).toBe("DEEPLINK_URL");
+    expect(generated.body.data.paymentRequest.deepLinkUrl).toBe(
+      generated.body.data.paymentRequest.payload
+    );
+    const md5 = generated.body.data.attempt.md5 as string;
+
+    const webhook = await request(app)
+      .post("/v0/payments/khqr/webhooks/provider")
+      .set("x-khqr-webhook-secret", process.env.V0_KHQR_WEBHOOK_SECRET ?? "dev-khqr-webhook-secret")
+      .send({
+        tenantId: setup.tenantId,
+        branchId: setup.branchId,
+        md5,
+        providerEventId: `evt-${uniqueSuffix()}`,
+        providerTxHash: `tx-${uniqueSuffix()}`,
+        providerReference: "bakong-confirmed",
+        verificationStatus: "CONFIRMED",
+        confirmedAmount: 3.5,
+        confirmedCurrency: "USD",
+        confirmedToAccountId: "khqr-receiver",
+        occurredAt: new Date().toISOString(),
+      });
+    expect(webhook.status).toBe(200);
+    expect(webhook.body.data.attempt.status).toBe("PAID_CONFIRMED");
+
+    const finalized = await request(app)
+      .post(`/v0/sales/${saleId}/finalize`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-finalize-${uniqueSuffix()}`)
+      .send({
+        khqrMd5: md5,
+      });
+    expect(finalized.status).toBe(200);
+    expect(finalized.body.success).toBe(true);
+    expect(finalized.body.data.status).toBe("FINALIZED");
+  });
+
+  it("rejects KHQR checkout when tenderAmount does not match sale grand total", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-tender-invalid-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ unitPrice: 2.5, quantity: 3 }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const checkout = await request(app)
+      .post(`/v0/orders/${orderId}/checkout`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-tender-invalid-checkout-${uniqueSuffix()}`)
+      .send({
+        paymentMethod: "KHQR",
+        tenderCurrency: "USD",
+        tenderAmount: 2.5,
+      });
+
+    expect(checkout.status).toBe(422);
+    expect(checkout.body).toMatchObject({
+      success: false,
+      code: "SALE_KHQR_TENDER_AMOUNT_INVALID",
+    });
+  });
+
+  it("rejects KHQR generation when branch receiver account is not configured", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+    await pool.query(
+      `UPDATE branches
+       SET khqr_receiver_account_id = NULL,
+           khqr_receiver_name = NULL
+       WHERE tenant_id = $1
+         AND id = $2`,
+      [setup.tenantId, setup.branchId]
+    );
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-missing-receiver-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ unitPrice: 3.5 }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const checkout = await request(app)
+      .post(`/v0/orders/${orderId}/checkout`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-missing-receiver-checkout-${uniqueSuffix()}`)
+      .send({
+        paymentMethod: "KHQR",
+        tenderCurrency: "USD",
+      });
+    expect(checkout.status).toBe(200);
+    const saleId = checkout.body.data.id as string;
+
+    const generated = await request(app)
+      .post(`/v0/payments/khqr/sales/${saleId}/generate`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-missing-receiver-generate-${uniqueSuffix()}`)
+      .send({});
+    expect(generated.status).toBe(422);
+    expect(generated.body).toMatchObject({
+      success: false,
+      code: "KHQR_BRANCH_RECEIVER_NOT_CONFIGURED",
+    });
   });
 });
