@@ -135,6 +135,22 @@ const EVIDENCE_SELECT_FIELDS = `
 export class V0KhqrPaymentRepository {
   constructor(private readonly db: Queryable) {}
 
+  async hasOpenCashSession(input: {
+    tenantId: string;
+    branchId: string;
+  }): Promise<boolean> {
+    const result = await this.db.query<{ id: string }>(
+      `SELECT id
+       FROM v0_cash_sessions
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND status = 'OPEN'
+       LIMIT 1`,
+      [input.tenantId, input.branchId]
+    );
+    return Boolean(result.rows[0]);
+  }
+
   async findBranchKhqrReceiver(input: {
     tenantId: string;
     branchId: string;

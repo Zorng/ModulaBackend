@@ -244,6 +244,17 @@ export class V0SaleOrderService {
     if (lines.length === 0) {
       throw new V0SaleOrderError(422, "order has no items", "ORDER_NO_ITEMS");
     }
+    const hasOpenSession = await this.repo.hasOpenCashSession({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+    });
+    if (!hasOpenSession) {
+      throw new V0SaleOrderError(
+        422,
+        "open cash session required to checkout order",
+        "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION"
+      );
+    }
 
     const body = toRecord(input.body);
     const checkout = parseCheckoutBody(body, lines);

@@ -87,5 +87,5 @@ Exit criteria:
 | P0.1 Branch payment account | Completed | Added branch KHQR receiver fields + org endpoint to configure branch receiver account. |
 | P0.2 Backend generation endpoint | Completed | Added `POST /v0/payments/khqr/sales/:saleId/generate` with server-owned receiver resolution and attempt registration. |
 | P0.3 Sale gate tightening | Completed | Existing finalize gate validated by integration flow (generate -> webhook confirm -> finalize). |
-| P1 Real provider adapter | In Progress | Added `bakong`/`bakong_http` HTTP adapter + env-based provider selection; pending live provider endpoint validation. |
+| P1 Real provider adapter | In Progress | Added `bakong`/`bakong_http` HTTP adapter + env-based provider selection; live verify confirmed with real payment (`UNPAID -> CONFIRMED`) and Bakong `responseCode/data` mapping. |
 | P2 Realtime UX signal | Pending | SSE extension after P0/P1 stabilization. |

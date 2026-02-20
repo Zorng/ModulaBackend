@@ -109,6 +109,9 @@ Action key: `order.items.add`
 `POST /v0/orders/:orderId/checkout`  
 Action key: `order.checkout`
 
+Rules:
+- requires open cash session (`SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION`)
+
 #### 4) Update fulfillment status
 `PATCH /v0/orders/:orderId/fulfillment`  
 Action key: `order.fulfillment.status.update`
@@ -185,6 +188,7 @@ Action key: `sale.void.request.read`
 
 - `SALE_NOT_FOUND`
 - `SALE_ALREADY_VOIDED`
+- `SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION`
 - `SALE_FINALIZE_REQUIRES_OPEN_CASH_SESSION`
 - `SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED`
 - `SALE_FINALIZE_KHQR_PROOF_MISMATCH`

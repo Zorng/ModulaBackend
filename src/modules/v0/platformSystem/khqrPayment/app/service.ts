@@ -105,6 +105,17 @@ export class V0KhqrPaymentService {
         "sale is not pending and cannot generate khqr"
       );
     }
+    const hasOpenSession = await this.repo.hasOpenCashSession({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+    });
+    if (!hasOpenSession) {
+      throw new V0KhqrPaymentError(
+        422,
+        "KHQR_GENERATE_REQUIRES_OPEN_CASH_SESSION",
+        "open cash session required to generate khqr"
+      );
+    }
 
     const receiver = await this.resolveBranchKhqrReceiver(scope);
     const expiresAt = resolveAttemptExpiry(input.expiresInSeconds);

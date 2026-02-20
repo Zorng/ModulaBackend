@@ -132,6 +132,7 @@ Errors:
 - `404` `KHQR_SALE_NOT_FOUND`
 - `422` `KHQR_SALE_PAYMENT_METHOD_INVALID`
 - `422` `KHQR_SALE_STATUS_INVALID`
+- `422` `KHQR_GENERATE_REQUIRES_OPEN_CASH_SESSION`
 - `422` `KHQR_BRANCH_RECEIVER_NOT_CONFIGURED`
 - `409` idempotency conflict/in-progress
 
@@ -410,6 +411,9 @@ Notes:
   - `verificationStatus = MISMATCH`
   - `attempt.status = PENDING_CONFIRMATION`
   - `mismatchReasonCode = KHQR_PROOF_MISMATCH`
+- Provider verify response accepts both contracts:
+  - explicit `verificationStatus` response shape
+  - Bakong Open API shape (`responseCode` + `data`) mapped by backend to verification truth
 
 Errors:
 - `401` `KHQR_WEBHOOK_UNAUTHORIZED`

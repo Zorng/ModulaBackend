@@ -291,7 +291,6 @@ class BakongHttpV0KhqrPaymentProvider implements V0KhqrPaymentProvider {
       const headers: Record<string, string> = {
         "content-type": "application/json",
       };
-      const authHeaderKeyUsed = this.config.apiKey ? this.config.apiKeyHeader : null;
       if (this.config.apiKey) {
         const normalizedHeader = this.config.apiKeyHeader.toLowerCase();
         if (normalizedHeader === "authorization") {
@@ -303,37 +302,12 @@ class BakongHttpV0KhqrPaymentProvider implements V0KhqrPaymentProvider {
           headers[this.config.apiKeyHeader] = this.config.apiKey;
         }
       }
-      if (
-        op === "verify"
-        && parseBooleanWithDefault(process.env.V0_KHQR_DEBUG_VERIFY, false)
-      ) {
-        console.info(
-          JSON.stringify({
-            event: "khqr.provider.verify.request",
-            url,
-            authHeaderKey: authHeaderKeyUsed,
-            hasApiKey: Boolean(this.config.apiKey),
-          })
-        );
-      }
       const response = await fetch(url, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
-      if (
-        op === "verify"
-        && parseBooleanWithDefault(process.env.V0_KHQR_DEBUG_VERIFY, false)
-      ) {
-        console.info(
-          JSON.stringify({
-            event: "khqr.provider.verify.response",
-            status: response.status,
-            ok: response.ok,
-          })
-        );
-      }
       const text = await response.text();
       let body: Record<string, unknown> = {};
       try {
@@ -343,20 +317,6 @@ class BakongHttpV0KhqrPaymentProvider implements V0KhqrPaymentProvider {
           503,
           "KHQR_PROVIDER_UNAVAILABLE",
           `provider ${op} response is not valid JSON`
-        );
-      }
-      if (
-        op === "verify"
-        && parseBooleanWithDefault(process.env.V0_KHQR_DEBUG_VERIFY, false)
-      ) {
-        console.info(
-          JSON.stringify({
-            event: "khqr.provider.verify.body",
-            responseCode: body.responseCode ?? null,
-            verificationStatus: body.verificationStatus ?? null,
-            hasData: typeof body.data === "object" && body.data !== null,
-            keys: Object.keys(body),
-          })
         );
       }
       if (!response.ok) {

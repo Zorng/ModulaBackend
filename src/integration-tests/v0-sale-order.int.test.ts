@@ -427,8 +427,41 @@ describe("v0 sale-order integration", () => {
     expect(finalized.body.data.status).toBe("FINALIZED");
   });
 
+  it("rejects order checkout when no active cash session exists", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-no-session-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ unitPrice: 2.5 }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const checkout = await request(app)
+      .post(`/v0/orders/${orderId}/checkout`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-no-session-checkout-${uniqueSuffix()}`)
+      .send({
+        paymentMethod: "CASH",
+        tenderCurrency: "USD",
+      });
+
+    expect(checkout.status).toBe(422);
+    expect(checkout.body).toMatchObject({
+      success: false,
+      code: "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION",
+    });
+  });
+
   it("rejects KHQR checkout when tenderAmount does not match sale grand total", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
 
     const placed = await request(app)
       .post("/v0/orders")
@@ -452,6 +485,56 @@ describe("v0 sale-order integration", () => {
     expect(checkout.body).toMatchObject({
       success: false,
       code: "SALE_KHQR_TENDER_AMOUNT_INVALID",
+    });
+  });
+
+  it("rejects KHQR generation when no active cash session exists", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-no-session-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ unitPrice: 2.5 }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const checkout = await request(app)
+      .post(`/v0/orders/${orderId}/checkout`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-no-session-checkout-${uniqueSuffix()}`)
+      .send({
+        paymentMethod: "KHQR",
+        tenderCurrency: "USD",
+      });
+    expect(checkout.status).toBe(200);
+    const saleId = checkout.body.data.id as string;
+
+    await pool.query(
+      `DELETE FROM v0_cash_sessions
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND status = 'OPEN'`,
+      [setup.tenantId, setup.branchId]
+    );
+
+    const generated = await request(app)
+      .post(`/v0/payments/khqr/sales/${saleId}/generate`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-no-session-generate-${uniqueSuffix()}`)
+      .send({
+        expiresInSeconds: 180,
+      });
+    expect(generated.status).toBe(422);
+    expect(generated.body).toMatchObject({
+      success: false,
+      code: "KHQR_GENERATE_REQUIRES_OPEN_CASH_SESSION",
     });
   });
 
