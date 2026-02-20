@@ -14,6 +14,7 @@ import { imageProxyRouter } from "./platform/http/routes/image-proxy.js";
 import { v0Router } from "./platform/http/routes/v0.js";
 import { startV0CommandOutboxDispatcher } from "./platform/outbox/dispatcher.js";
 import { startV0MediaUploadCleanupDispatcher } from "./platform/media-uploads/cleanup-dispatcher.js";
+import { startV0KhqrReconciliationDispatcher } from "#modules/v0/platformSystem/khqrPayment/index.js";
 
 const app = express();
 const shouldRunOutboxDispatcher = process.env.V0_OUTBOX_DISPATCHER_ENABLED !== "false";
@@ -44,6 +45,25 @@ const mediaCleanupDispatcher = shouldRunMediaCleanup
       pollIntervalMs: mediaCleanupIntervalMs,
       batchSize: mediaCleanupBatchSize,
       pendingAgeMinutes: mediaCleanupPendingAgeMinutes,
+    })
+  : null;
+const shouldRunKhqrReconciliation =
+  process.env.V0_KHQR_RECONCILIATION_ENABLED !== "false";
+const khqrReconciliationIntervalMs = Number(
+  process.env.V0_KHQR_RECONCILIATION_INTERVAL_MS ?? 30_000
+);
+const khqrReconciliationBatchSize = Number(
+  process.env.V0_KHQR_RECONCILIATION_BATCH_SIZE ?? 50
+);
+const khqrReconciliationRecheckWindowMinutes = Number(
+  process.env.V0_KHQR_RECONCILIATION_RECHECK_WINDOW_MINUTES ?? 2
+);
+const khqrReconciliationDispatcher = shouldRunKhqrReconciliation
+  ? startV0KhqrReconciliationDispatcher({
+      db: pool,
+      pollIntervalMs: khqrReconciliationIntervalMs,
+      batchSize: khqrReconciliationBatchSize,
+      recheckWindowMinutes: khqrReconciliationRecheckWindowMinutes,
     })
   : null;
 
@@ -141,11 +161,20 @@ app.listen(PORT, () => {
       reason: "R2_NOT_CONFIGURED",
     });
   }
+  if (shouldRunKhqrReconciliation) {
+    log.info("khqr.reconciliation.started", {
+      event: "khqr.reconciliation.started",
+      pollIntervalMs: khqrReconciliationIntervalMs,
+      batchSize: khqrReconciliationBatchSize,
+      recheckWindowMinutes: khqrReconciliationRecheckWindowMinutes,
+    });
+  }
 });
 
 function shutdown() {
   outboxDispatcher?.stop();
   mediaCleanupDispatcher?.stop();
+  khqrReconciliationDispatcher?.stop();
   process.exit(0);
 }
 

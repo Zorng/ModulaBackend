@@ -1,0 +1,142 @@
+import type { Pool } from "pg";
+import { log } from "#logger";
+import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
+import { buildV0KhqrPaymentProviderFromEnv } from "./payment-provider.js";
+import { V0KhqrPaymentService } from "./service.js";
+import { V0KhqrPaymentRepository } from "../infra/repository.js";
+import { V0_KHQR_PAYMENT_ACTION_KEYS } from "./command-contract.js";
+
+type DispatcherInput = {
+  db: Pool;
+  pollIntervalMs?: number;
+  batchSize?: number;
+  recheckWindowMinutes?: number;
+};
+
+type DispatcherStatus = {
+  pollIntervalMs: number;
+  batchSize: number;
+  recheckWindowMinutes: number;
+  lastTickAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastError: string | null;
+  lastScannedCount: number;
+  lastAppliedCount: number;
+  lastSkippedCount: number;
+  lastFailedCount: number;
+};
+
+export function startV0KhqrReconciliationDispatcher(input: DispatcherInput): {
+  stop: () => void;
+  getStatus: () => DispatcherStatus;
+} {
+  const pollIntervalMs = input.pollIntervalMs ?? 30_000;
+  const batchSize = input.batchSize ?? 50;
+  const recheckWindowMinutes = input.recheckWindowMinutes ?? 2;
+
+  const status: DispatcherStatus = {
+    pollIntervalMs,
+    batchSize,
+    recheckWindowMinutes,
+    lastTickAt: null,
+    lastSuccessAt: null,
+    lastFailureAt: null,
+    lastError: null,
+    lastScannedCount: 0,
+    lastAppliedCount: 0,
+    lastSkippedCount: 0,
+    lastFailedCount: 0,
+  };
+
+  const provider = buildV0KhqrPaymentProviderFromEnv();
+  const txManager = new TransactionManager(input.db);
+
+  const timer = setInterval(async () => {
+    const startedAt = Date.now();
+    status.lastTickAt = new Date(startedAt).toISOString();
+
+    try {
+      const readRepo = new V0KhqrPaymentRepository(input.db);
+      const candidates = await readRepo.listReconciliationCandidates({
+        limit: batchSize,
+        recheckWindowMinutes,
+      });
+
+      let appliedCount = 0;
+      let skippedCount = 0;
+      let failedCount = 0;
+
+      for (const candidate of candidates) {
+        try {
+          const result = await txManager.withTransaction(
+            async (client) => {
+              const service = new V0KhqrPaymentService(
+                new V0KhqrPaymentRepository(client),
+                provider
+              );
+              return service.reconcileAttemptById({
+                attemptId: candidate.id,
+              });
+            },
+            {
+              actionKey: V0_KHQR_PAYMENT_ACTION_KEYS.reconcileScheduler,
+              tenantId: candidate.tenant_id,
+              branchId: candidate.branch_id,
+            }
+          );
+
+          if (result.status === "APPLIED") {
+            appliedCount += 1;
+          } else {
+            skippedCount += 1;
+          }
+        } catch (error) {
+          failedCount += 1;
+          log.error("khqr.reconcile.attempt_failed", {
+            event: "khqr.reconcile.attempt_failed",
+            attemptId: candidate.id,
+            tenantId: candidate.tenant_id,
+            branchId: candidate.branch_id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      status.lastScannedCount = candidates.length;
+      status.lastAppliedCount = appliedCount;
+      status.lastSkippedCount = skippedCount;
+      status.lastFailedCount = failedCount;
+      status.lastSuccessAt = new Date().toISOString();
+      status.lastError = null;
+
+      if (candidates.length > 0 || failedCount > 0) {
+        log.info("khqr.reconcile.tick_completed", {
+          event: "khqr.reconcile.tick_completed",
+          scannedCount: candidates.length,
+          appliedCount,
+          skippedCount,
+          failedCount,
+          durationMs: Date.now() - startedAt,
+        });
+      }
+    } catch (error) {
+      status.lastFailureAt = new Date().toISOString();
+      status.lastError = error instanceof Error ? error.message : String(error);
+      status.lastScannedCount = 0;
+      status.lastAppliedCount = 0;
+      status.lastSkippedCount = 0;
+      status.lastFailedCount = 0;
+      log.error("khqr.reconcile.tick_failed", {
+        event: "khqr.reconcile.tick_failed",
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - startedAt,
+      });
+    }
+  }, pollIntervalMs);
+
+  return {
+    stop: () => clearInterval(timer),
+    getStatus: () => ({ ...status }),
+  };
+}

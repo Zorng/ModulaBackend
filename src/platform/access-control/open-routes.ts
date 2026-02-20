@@ -7,6 +7,7 @@ export const OPEN_ROUTES: OpenRoute[] = [
   { method: "POST", pattern: /^\/auth\/login$/ },
   { method: "POST", pattern: /^\/auth\/refresh$/ },
   { method: "POST", pattern: /^\/auth\/logout$/ },
+  { method: "POST", pattern: /^\/payments\/khqr\/webhooks\/provider$/ },
   { method: "GET", pattern: /^\/health$/ },
 ];
 

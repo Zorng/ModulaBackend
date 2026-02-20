@@ -93,6 +93,30 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
   },
+  "payment.khqr.attempt.register": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "payment.khqr.attempt.read": {
+    scope: "BRANCH",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "payment.khqr.attempt.readByMd5": {
+    scope: "BRANCH",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "payment.khqr.confirm": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
   "menu.items.listAll": {
     scope: "TENANT",
     effect: "READ",

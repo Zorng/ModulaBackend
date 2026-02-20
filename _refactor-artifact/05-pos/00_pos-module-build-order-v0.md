@@ -59,6 +59,9 @@ Completion (2026-02-19):
 - Before each module starts, apply `_refactor-artifact/02-boundary/module-boundary-template-v0.md`.
 - For each write command, enforce atomic `business + audit + outbox` transaction contract.
 - Update `api_contract/*-v0.md` in the same phase as endpoint implementation.
+- KHQR prerequisite for sale-order:
+  - lock/payment foundation under `_refactor-artifact/01-platform/khqr-payment-foundation-rollout-v0.md`
+  - minimum required before KHQR finalize acceptance: `K1-K4`
 
 ## Offline-First Standard Gate (applies to every POS rollout)
 
@@ -97,7 +100,7 @@ Completion (2026-02-19):
 | discount | Completed | phase 1-5 completed (boundary/contract lock, schema/repository, commands/queries + ACL, integration reliability, close-out sync) |
 | cashSession | Completed | Phase 1-5 completed (boundary/contract, schema/repo, command/query/ACL, integration reliability, close-out sync). |
 | inventory | In progress | Phase 0+1 locked (`05_inventory-rollout-v0.md`, `inventory-boundary-v0.md`, `api_contract/inventory-v0.md`) |
-| sale-order | Not started | integrate finalize/void orchestrations |
+| sale-order | In progress | Phase 0 locked in `_refactor-artifact/05-pos/06_sale-order-offline-first-dod-checklist-v0.md`; next is boundary + contract lock. KHQR finalize path is gated by `_refactor-artifact/01-platform/khqr-payment-foundation-rollout-v0.md` (`K1-K4`). |
 | receipt | Not started | consume finalized sale snapshot only |
 | reporting | Not started | read-only aggregation only |
 | pushSync | Not started | queue/replay over stable commands |

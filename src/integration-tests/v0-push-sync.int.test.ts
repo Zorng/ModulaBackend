@@ -112,6 +112,60 @@ async function setupOwnerBranchContext(input: {
   return { branchToken, tenantId, branchId };
 }
 
+async function insertKhqrAttempt(input: {
+  pool: Pool;
+  tenantId: string;
+  branchId: string;
+  saleId: string;
+  md5: string;
+  status: "WAITING_FOR_PAYMENT" | "PAID_CONFIRMED" | "PENDING_CONFIRMATION";
+  lastVerificationStatus?: "CONFIRMED" | "UNPAID" | "MISMATCH" | null;
+}): Promise<void> {
+  const paidConfirmedAt = input.status === "PAID_CONFIRMED" ? new Date() : null;
+  const lastVerificationAt = input.lastVerificationStatus ? new Date() : null;
+
+  await input.pool.query(
+    `INSERT INTO v0_khqr_payment_attempts (
+       tenant_id,
+       branch_id,
+       sale_id,
+       md5,
+       status,
+       expected_amount,
+       expected_currency,
+       expected_to_account_id,
+       paid_confirmed_at,
+       last_verification_status,
+       last_verification_reason_code,
+       last_verification_at
+     )
+     VALUES (
+       $1,
+       $2,
+       $3::UUID,
+       $4,
+       $5,
+       2.50,
+       'USD',
+       'khqr-receiver',
+       $6,
+       $7::VARCHAR(16),
+       CASE WHEN $7::TEXT = 'MISMATCH' THEN 'KHQR_PROOF_MISMATCH' ELSE NULL END,
+       $8::TIMESTAMPTZ
+     )`,
+    [
+      input.tenantId,
+      input.branchId,
+      input.saleId,
+      input.md5,
+      input.status,
+      paidConfirmedAt,
+      input.lastVerificationStatus ?? null,
+      lastVerificationAt,
+    ]
+  );
+}
+
 describe("v0 push sync integration", () => {
   let pool: Pool;
   let app: express.Express;
@@ -130,7 +184,7 @@ describe("v0 push sync integration", () => {
     app.use("/v0/attendance", bootstrapV0AttendanceModule(pool).router);
     app.use("/v0/cash", bootstrapV0CashSessionModule(pool).router);
     const pushSyncModule = bootstrapV0PushSyncModule(pool);
-        app.use("/v0/sync", pushSyncModule.router);
+    app.use("/v0/sync", pushSyncModule.router);
   });
 
   afterAll(async () => {
@@ -621,6 +675,129 @@ describe("v0 push sync integration", () => {
             operationType: "sale.finalize",
             occurredAt,
             payload: {},
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.results[0]).toMatchObject({
+      status: "FAILED",
+      code: "OFFLINE_SYNC_OPERATION_NOT_SUPPORTED",
+      resolution: {
+        category: "PERMANENT",
+        action: "mark_permanent_failed",
+      },
+    });
+  });
+
+  it("rejects KHQR sale.finalize when payment confirmation is missing", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const occurredAt = new Date().toISOString();
+
+    const response = await request(app)
+      .post("/v0/sync/push")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000049",
+            operationType: "sale.finalize",
+            occurredAt,
+            payload: {
+              saleId: "10000000-0000-4000-8000-000000000901",
+              paymentMethod: "KHQR",
+              md5: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            },
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.results[0]).toMatchObject({
+      status: "FAILED",
+      code: "SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED",
+      resolution: {
+        category: "MANUAL",
+        action: "requires_user_intervention",
+      },
+    });
+  });
+
+  it("rejects KHQR sale.finalize when proof is mismatched", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const occurredAt = new Date().toISOString();
+    const saleId = "10000000-0000-4000-8000-000000000902";
+    const md5 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    await insertKhqrAttempt({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      saleId,
+      md5,
+      status: "PENDING_CONFIRMATION",
+      lastVerificationStatus: "MISMATCH",
+    });
+
+    const response = await request(app)
+      .post("/v0/sync/push")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000050",
+            operationType: "sale.finalize",
+            occurredAt,
+            payload: {
+              saleId,
+              paymentMethod: "KHQR",
+              md5,
+            },
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.results[0]).toMatchObject({
+      status: "FAILED",
+      code: "SALE_FINALIZE_KHQR_PROOF_MISMATCH",
+      resolution: {
+        category: "MANUAL",
+        action: "requires_user_intervention",
+      },
+    });
+  });
+
+  it("passes KHQR confirmation gate before unsupported sale.finalize fallback", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const occurredAt = new Date().toISOString();
+    const saleId = "10000000-0000-4000-8000-000000000903";
+    const md5 = "cccccccccccccccccccccccccccccccc";
+
+    await insertKhqrAttempt({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      saleId,
+      md5,
+      status: "PAID_CONFIRMED",
+      lastVerificationStatus: "CONFIRMED",
+    });
+
+    const response = await request(app)
+      .post("/v0/sync/push")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000051",
+            operationType: "sale.finalize",
+            occurredAt,
+            payload: {
+              saleId,
+              paymentMethod: "KHQR",
+              md5,
+            },
           },
         ],
       });

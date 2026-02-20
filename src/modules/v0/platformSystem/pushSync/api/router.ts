@@ -8,6 +8,15 @@ import { V0AttendanceRepository } from "../../../hr/attendance/infra/repository.
 import { V0CashSessionError, V0CashSessionService } from "../../../posOperation/cashSession/app/service.js";
 import { V0CashSessionRepository } from "../../../posOperation/cashSession/infra/repository.js";
 import {
+  V0KhqrPaymentError,
+  V0KhqrPaymentService,
+} from "../../khqrPayment/app/service.js";
+import {
+  buildV0KhqrPaymentProviderFromEnv,
+  type V0KhqrPaymentProvider,
+} from "../../khqrPayment/app/payment-provider.js";
+import { V0KhqrPaymentRepository } from "../../khqrPayment/infra/repository.js";
+import {
   V0_PUSH_SYNC_ACTION_KEYS,
   V0_PUSH_SYNC_OPERATION_TYPES,
   type V0PushSyncOperationType,
@@ -75,6 +84,7 @@ export function createV0PushSyncRouter(input: {
 }): Router {
   const router = Router();
   const operationLeaseMs = resolvePushSyncOperationLeaseMs();
+  const khqrProvider = buildV0KhqrPaymentProviderFromEnv();
 
   const handleReplay = async (req: V0AuthRequest, res: Response) => {
     try {
@@ -103,7 +113,8 @@ export function createV0PushSyncRouter(input: {
               actor,
               operation,
               operationLeaseMs,
-              replayResultByClientOpId
+              replayResultByClientOpId,
+              khqrProvider
             ),
           {
             requestId: req.v0Context?.requestId,
@@ -210,7 +221,8 @@ async function executeOperationInTransaction(
   actor: ActorScope,
   operation: ReplayOperation,
   operationLeaseMs: number,
-  priorResults: ReadonlyMap<string, ReplayResult>
+  priorResults: ReadonlyMap<string, ReplayResult>,
+  khqrProvider: V0KhqrPaymentProvider
 ): Promise<ReplayResult> {
   const service = new V0PushSyncService(new V0PushSyncRepository(client));
   const started = await service.startOperation({
@@ -265,6 +277,7 @@ async function executeOperationInTransaction(
     client,
     actor,
     operation,
+    khqrProvider,
   });
 
   const completed = await service.completeOperation({
@@ -337,18 +350,43 @@ async function applyOperation(input: {
   client: PoolClient;
   actor: ActorScope;
   operation: ReplayOperation;
+  khqrProvider: V0KhqrPaymentProvider;
 }): Promise<ApplyOutcome> {
   const attendanceService = new V0AttendanceService(new V0AttendanceRepository(input.client));
   const cashService = new V0CashSessionService(new V0CashSessionRepository(input.client));
+  const khqrService = new V0KhqrPaymentService(
+    new V0KhqrPaymentRepository(input.client),
+    input.khqrProvider
+  );
 
   try {
     switch (input.operation.operationType) {
-      case "sale.finalize":
+      case "sale.finalize": {
+        const paymentMethod = normalizePaymentMethod(
+          input.operation.payload.paymentMethod ??
+            (input.operation.payload.payment as { method?: unknown } | undefined)?.method
+        );
+        if (paymentMethod === "KHQR") {
+          const saleId = assertUuid(input.operation.payload.saleId, "payload.saleId");
+          const md5 = assertMd5(
+            input.operation.payload.md5 ??
+              input.operation.payload.khqrMd5 ??
+              input.operation.payload.paymentMd5,
+            "payload.md5"
+          );
+          await khqrService.assertFinalizeEligibility({
+            actor: input.actor,
+            saleId,
+            md5,
+          });
+        }
+
         return {
           status: "FAILED",
           failureCode: "OFFLINE_SYNC_OPERATION_NOT_SUPPORTED",
           failureMessage: "sale.finalize replay is not implemented yet",
         };
+      }
       case "attendance.startWork": {
         const occurredAt = getOptionalIsoString(input.operation.payload.occurredAt);
         const record = await attendanceService.checkIn({
@@ -440,6 +478,13 @@ async function applyOperation(input: {
       return {
         status: "FAILED",
         failureCode: error.code ?? "OFFLINE_SYNC_OPERATION_REJECTED",
+        failureMessage: error.message,
+      };
+    }
+    if (error instanceof V0KhqrPaymentError) {
+      return {
+        status: "FAILED",
+        failureCode: error.code,
         failureMessage: error.message,
       };
     }
@@ -678,7 +723,9 @@ function buildResolutionHint(code: string): ReplayResolutionHint {
     normalized === "ENTITLEMENT_READ_ONLY" ||
     normalized === "NO_MEMBERSHIP" ||
     normalized === "NO_BRANCH_ACCESS" ||
-    normalized === "PERMISSION_DENIED"
+    normalized === "PERMISSION_DENIED" ||
+    normalized === "SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED" ||
+    normalized === "SALE_FINALIZE_KHQR_PROOF_MISMATCH"
   ) {
     return {
       category: "MANUAL",
@@ -868,6 +915,29 @@ function assertUuid(value: unknown, fieldName: string): string {
   return normalized;
 }
 
+function assertMd5(value: unknown, fieldName: string): string {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized || !MD5_PATTERN.test(normalized)) {
+    throw new V0PushSyncError(
+      422,
+      "OFFLINE_SYNC_PAYLOAD_INVALID",
+      `${fieldName} must be a valid md5 hash`
+    );
+  }
+  return normalized.toLowerCase();
+}
+
+function normalizePaymentMethod(value: unknown): "KHQR" | "CASH" | "UNKNOWN" {
+  const normalized = normalizeOptionalString(value)?.toUpperCase();
+  if (normalized === "KHQR") {
+    return "KHQR";
+  }
+  if (normalized === "CASH") {
+    return "CASH";
+  }
+  return "UNKNOWN";
+}
+
 function getOptionalIsoString(value: unknown): string | null {
   const normalized = normalizeOptionalString(value);
   if (!normalized) {
@@ -919,3 +989,4 @@ function handleError(res: Response, error: unknown): void {
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MD5_PATTERN = /^[0-9a-f]{32}$/i;

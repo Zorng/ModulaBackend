@@ -1,6 +1,6 @@
 # Sale + Order Module Rollout (v0)
 
-Status: Not started
+Status: In progress
 Owner context: POSOperation
 
 ## Goal
@@ -41,9 +41,25 @@ Template:
 - Convergence tests: replay + pull convergence for sale/order lifecycle.
 - Observability baseline: replay failure/duplicate/applied counters by code.
 
+## Platform prerequisite (KHQR payment foundation)
+
+Sale-order KHQR finalize path depends on:
+- `_refactor-artifact/01-platform/khqr-payment-foundation-rollout-v0.md`
+- Required baseline before KHQR finalize implementation:
+  - `K1` contract lock
+  - `K2` data model + repository
+  - `K3` backend confirmation service
+  - `K4` sale-order integration gate
+
+Scope note:
+- Non-KHQR sale-order paths may continue in parallel.
+- KHQR finalize acceptance is blocked until K1-K4 are completed.
+
 ## Execution phases
 
 ### Phase 0 — Offline-first DoD gate
+- lock sale-order offline-first checklist:
+  - `_refactor-artifact/05-pos/06_sale-order-offline-first-dod-checklist-v0.md`
 - lock replay operation mappings for sale/order writes
 - lock pull entity map for sale/order projections
 - lock conflict code/resolution mapping
@@ -78,7 +94,7 @@ Template:
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 Offline-first DoD gate | Not started | |
+| 0 Offline-first DoD gate | Completed | Locked in `_refactor-artifact/05-pos/06_sale-order-offline-first-dod-checklist-v0.md` (replay surface classification, sync entity map, conflict taxonomy, convergence matrix, and solo/team void semantics). |
 | 1 Boundary + Contract lock | Not started | |
 | 2 Data model + repositories | Not started | |
 | 3 Commands/queries + access control | Not started | |
