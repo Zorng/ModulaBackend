@@ -503,37 +503,41 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
   "order.place": {
     scope: "BRANCH",
     effect: "WRITE",
-    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "order.cancel": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
     entitlementKey: "core.pos",
   },
   "order.items.add": {
     scope: "BRANCH",
     effect: "WRITE",
-    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
     entitlementKey: "core.pos",
   },
   "order.checkout": {
     scope: "BRANCH",
     effect: "WRITE",
-    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
     entitlementKey: "core.pos",
   },
   "order.fulfillment.status.update": {
     scope: "BRANCH",
     effect: "WRITE",
-    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
     entitlementKey: "core.pos",
   },
   "order.list": {
     scope: "BRANCH",
     effect: "READ",
-    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "core.pos",
   },
   "order.read": {
     scope: "BRANCH",
     effect: "READ",
-    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "core.pos",
   },
   "sale.finalize": {

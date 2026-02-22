@@ -166,61 +166,98 @@ export function createV0SaleOrderRouter(input: {
     }
   );
 
-  router.get("/orders", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
-    try {
-      const actor = req.v0Auth;
-      if (!actor) {
-        res.status(401).json({ success: false, error: "authentication required" });
-        return;
+  router.get(
+    "/orders",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const actor = req.v0Auth;
+        if (!actor) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+        const data = await input.service.listOrders({
+          actor,
+          status: asString(req.query?.status),
+          limit: asNumber(req.query?.limit),
+          offset: asNumber(req.query?.offset),
+        });
+        res.status(200).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
       }
-      const data = await input.service.listOrders({
-        actor,
-        status: asString(req.query?.status),
-        limit: asNumber(req.query?.limit),
-        offset: asNumber(req.query?.offset),
-      });
-      res.status(200).json({ success: true, data });
-    } catch (error) {
-      handleError(res, error);
     }
-  });
+  );
 
-  router.get("/orders/:orderId", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
-    try {
-      const actor = req.v0Auth;
-      if (!actor) {
-        res.status(401).json({ success: false, error: "authentication required" });
-        return;
+  router.get(
+    "/orders/:orderId",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const actor = req.v0Auth;
+        if (!actor) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+        const data = await input.service.getOrder({
+          actor,
+          orderId: req.params.orderId,
+        });
+        res.status(200).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
       }
-      const data = await input.service.getOrder({
-        actor,
-        orderId: req.params.orderId,
-      });
-      res.status(200).json({ success: true, data });
-    } catch (error) {
-      handleError(res, error);
     }
-  });
+  );
 
-  router.post("/orders", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
-    await executeWrite({
-      req,
-      res,
-      actionKey: V0_SALE_ORDER_ACTION_KEYS.orderPlace,
-      eventType: V0_SALE_ORDER_EVENT_TYPES.orderTicketPlaced,
-      endpoint: "/v0/orders",
-      entityType: "order_ticket",
-      idempotencyService: input.idempotencyService,
-      transactionManager,
-      khqrProvider: input.khqrProvider,
-      handler: async (service) =>
-        service.placeOrder({
-          actor: req.v0Auth!,
-          body: req.body,
-        }),
-      commandParts: [],
-    });
-  });
+  router.post(
+    "/orders",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      await executeWrite({
+        req,
+        res,
+        actionKey: V0_SALE_ORDER_ACTION_KEYS.orderPlace,
+        eventType: V0_SALE_ORDER_EVENT_TYPES.orderTicketPlaced,
+        endpoint: "/v0/orders",
+        entityType: "order_ticket",
+        idempotencyService: input.idempotencyService,
+        transactionManager,
+        khqrProvider: input.khqrProvider,
+        handler: async (service) =>
+          service.placeOrder({
+            actor: req.v0Auth!,
+            body: req.body,
+          }),
+        commandParts: [],
+      });
+    }
+  );
+
+  router.post(
+    "/orders/:orderId/cancel",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      await executeWrite({
+        req,
+        res,
+        actionKey: V0_SALE_ORDER_ACTION_KEYS.orderCancel,
+        eventType: V0_SALE_ORDER_EVENT_TYPES.orderTicketCancelled,
+        endpoint: "/v0/orders/:orderId/cancel",
+        entityType: "order_ticket",
+        idempotencyService: input.idempotencyService,
+        transactionManager,
+        khqrProvider: input.khqrProvider,
+        handler: async (service) =>
+          service.cancelOrder({
+            actor: req.v0Auth!,
+            orderId: req.params.orderId,
+            body: req.body,
+          }),
+        commandParts: [req.params.orderId],
+      });
+    }
+  );
 
   router.post(
     "/orders/:orderId/items",

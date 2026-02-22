@@ -696,6 +696,13 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "POST",
+    pattern: /^\/orders\/[^/]+\/cancel$/,
+    actionKey: "order.cancel",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "POST",
     pattern: /^\/orders\/[^/]+\/items$/,
     actionKey: "order.items.add",
     tenantSource: "token",

@@ -295,6 +295,21 @@ export class V0SaleOrderRepository {
     return result.rows[0]?.exists === true;
   }
 
+  async isPayLaterEnabledForBranch(input: {
+    tenantId: string;
+    branchId: string;
+  }): Promise<boolean> {
+    const result = await this.db.query<{ sale_allow_pay_later: boolean }>(
+      `SELECT sale_allow_pay_later
+       FROM v0_branch_policies
+       WHERE tenant_id = $1
+         AND branch_id = $2
+       LIMIT 1`,
+      [input.tenantId, input.branchId]
+    );
+    return result.rows[0]?.sale_allow_pay_later === true;
+  }
+
   async getBranchEntitlementEnforcement(input: {
     tenantId: string;
     branchId: string;
@@ -506,6 +521,25 @@ export class V0SaleOrderRepository {
       ]
     );
     return result.rows[0] ?? null;
+  }
+
+  async cancelFulfillmentBatchesByOrder(input: {
+    tenantId: string;
+    branchId: string;
+    orderTicketId: string;
+  }): Promise<number> {
+    const result = await this.db.query<{ id: string }>(
+      `UPDATE v0_order_fulfillment_batches
+       SET status = 'CANCELLED',
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND order_ticket_id = $3
+         AND status <> 'CANCELLED'
+       RETURNING id`,
+      [input.tenantId, input.branchId, input.orderTicketId]
+    );
+    return result.rowCount ?? 0;
   }
 
   async createOrderTicketLine(input: {

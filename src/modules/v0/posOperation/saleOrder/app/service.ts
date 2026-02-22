@@ -153,6 +153,7 @@ export class V0SaleOrderService {
     body: unknown;
   }): Promise<Record<string, unknown>> {
     const actor = assertBranchContext(input.actor);
+    await this.requirePayLaterEnabled(actor);
     await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
     const body = toRecord(input.body);
     const itemDrafts = parseOrderItems(body.items, false);
@@ -198,6 +199,7 @@ export class V0SaleOrderService {
     body: unknown;
   }): Promise<Record<string, unknown>> {
     const actor = assertBranchContext(input.actor);
+    await this.requirePayLaterEnabled(actor);
     const orderId = requireUuid(input.orderId, "orderId");
     const order = await this.repo.getOrderTicketById({
       tenantId: actor.tenantId,
@@ -240,6 +242,79 @@ export class V0SaleOrderService {
       id: order.id,
       status: order.status,
       addedLines: createdLines.map(mapOrderTicketLine),
+    };
+  }
+
+  async cancelOrder(input: {
+    actor: ActorContext;
+    orderId: string;
+    body: unknown;
+  }): Promise<Record<string, unknown>> {
+    const actor = assertBranchContext(input.actor);
+    const orderId = requireUuid(input.orderId, "orderId");
+    const order = await this.repo.getOrderTicketById({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: orderId,
+    });
+    if (!order) {
+      throw new V0SaleOrderError(404, "order not found", "ORDER_NOT_FOUND");
+    }
+    if (order.status === "CANCELLED") {
+      const existingBatches = await this.repo.listFulfillmentBatchesByOrder({
+        tenantId: actor.tenantId,
+        orderTicketId: order.id,
+      });
+      return {
+        ...mapOrderTicket(order),
+        fulfillmentBatches: existingBatches.map(mapFulfillmentBatch),
+      };
+    }
+    if (order.status !== "OPEN") {
+      throw new V0SaleOrderError(
+        409,
+        "only open unpaid order can be cancelled",
+        "ORDER_CANCEL_NOT_ALLOWED"
+      );
+    }
+
+    const body = toRecord(input.body);
+    const reason = normalizeOptionalString(body.reason);
+    if (!reason) {
+      throw new V0SaleOrderError(
+        422,
+        "cancel reason is required",
+        "ORDER_CANCEL_REASON_REQUIRED"
+      );
+    }
+
+    const cancelled = await this.repo.cancelOrderTicket({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+      cancelledByAccountId: actor.accountId,
+      cancelReason: reason,
+    });
+    if (!cancelled) {
+      throw new V0SaleOrderError(
+        409,
+        "order is not cancelable",
+        "ORDER_CANCEL_NOT_ALLOWED"
+      );
+    }
+    await this.repo.cancelFulfillmentBatchesByOrder({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
+    const batches = await this.repo.listFulfillmentBatchesByOrder({
+      tenantId: actor.tenantId,
+      orderTicketId: order.id,
+    });
+
+    return {
+      ...mapOrderTicket(cancelled),
+      fulfillmentBatches: batches.map(mapFulfillmentBatch),
     };
   }
 
@@ -339,8 +414,28 @@ export class V0SaleOrderService {
       throw new V0SaleOrderError(409, "order checkout failed", "ORDER_NOT_UNPAID");
     }
 
+    let saleForResponse = sale;
+    if (checkout.paymentMethod === "CASH") {
+      const finalized = await this.repo.markSaleFinalized({
+        tenantId: actor.tenantId,
+        branchId: actor.branchId,
+        saleId: sale.id,
+        finalizedByAccountId: actor.accountId,
+        paidAmount: checkout.paidAmount,
+        tenderAmount: checkout.tenderAmount,
+        cashReceivedTenderAmount: checkout.cashReceivedTenderAmount,
+        cashChangeTenderAmount: checkout.cashChangeTenderAmount,
+        khqrHash: null,
+        khqrConfirmedAt: null,
+      });
+      if (!finalized) {
+        throw new V0SaleOrderError(409, "sale finalize failed", "SALE_NOT_FOUND");
+      }
+      saleForResponse = finalized;
+    }
+
     return {
-      ...mapSale(sale),
+      ...mapSale(saleForResponse),
       order: mapOrderTicket(checkedOutOrder),
       lines: saleLines.map(mapSaleLine),
     };
@@ -1022,6 +1117,23 @@ export class V0SaleOrderService {
       throw new V0SaleOrderError(422, message, code);
     }
   }
+
+  private async requirePayLaterEnabled(actor: {
+    tenantId: string;
+    branchId: string;
+  }): Promise<void> {
+    const enabled = await this.repo.isPayLaterEnabledForBranch({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+    });
+    if (!enabled) {
+      throw new V0SaleOrderError(
+        422,
+        "pay-later is disabled for this branch",
+        "ORDER_PAY_LATER_DISABLED"
+      );
+    }
+  }
 }
 
 function assertBranchContext(input: ActorContext): { accountId: string; tenantId: string; branchId: string } {
@@ -1297,6 +1409,24 @@ function parseCheckoutBody(body: Record<string, unknown>, lines: V0OrderTicketLi
     );
   }
   const cashReceivedTenderAmount = parseNullableNumber(body.cashReceivedTenderAmount, "cashReceivedTenderAmount");
+  if (paymentMethod === "CASH" && Math.abs(tenderAmount - defaultTenderAmount) > 0.009) {
+    throw new V0SaleOrderError(
+      422,
+      "cash tenderAmount must match sale grand total",
+      "SALE_CASH_TENDER_AMOUNT_INVALID"
+    );
+  }
+  if (
+    paymentMethod === "CASH" &&
+    cashReceivedTenderAmount !== null &&
+    cashReceivedTenderAmount + 0.009 < tenderAmount
+  ) {
+    throw new V0SaleOrderError(
+      422,
+      "cashReceivedTenderAmount must cover tenderAmount",
+      "SALE_CASH_RECEIVED_INSUFFICIENT"
+    );
+  }
   const cashChangeTenderAmount = parseNumberOrDefault(
     body.cashChangeTenderAmount,
     paymentMethod === "CASH" && cashReceivedTenderAmount !== null

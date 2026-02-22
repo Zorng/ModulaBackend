@@ -13,7 +13,7 @@ Implementation status:
   - `POST /v0/checkout/khqr/initiate`
   - `GET /v0/checkout/khqr/intents/:intentId`
   - `POST /v0/checkout/khqr/intents/:intentId/cancel`
-- `/v0/orders*` is now restricted to `OWNER | ADMIN | MANAGER` (cashier uses `/v0/checkout/*`).
+- Pay-later lane remains on `/v0/orders*` (open ticket lifecycle).
 - Push replay remains partial for sale/order writes.
 
 Frontend rollout note:
@@ -27,10 +27,32 @@ Frontend cutover map (online lane):
   - `POST /v0/checkout/khqr/initiate`
   - `GET /v0/checkout/khqr/intents/:intentId`
   - `POST /v0/checkout/khqr/intents/:intentId/cancel`
-- Manager/fulfillment lane (non-cashier only):
+- Pay-later ticket lane:
   - `GET|POST /v0/orders*`
   - `PATCH /v0/orders/:orderId/fulfillment`
-- Cashier must not call `/v0/orders*` (returns `403 PERMISSION_DENIED`).
+  - `POST /v0/orders/:orderId/cancel`
+  - Requires branch policy `saleAllowPayLater = true` for place/add writes
+
+## Checkout Rule (Locked)
+
+Use this rule to avoid ambiguous behavior:
+
+1) **Not pay-later (pay-now checkout)**
+- Source: local cart
+- Endpoints: `/v0/checkout/cash/finalize` or `/v0/checkout/khqr/*`
+- Result: on successful payment commit, backend records a **FINALIZED sale**
+- Order ticket: **not created**
+
+2) **Pay-later**
+- Source: open ticket workflow
+- Endpoints: `/v0/orders`, `/v0/orders/:orderId/items`, `/v0/orders/:orderId/cancel`
+- Result: backend records an **OPEN order ticket** that can be updated before payment
+- Sale: **not created yet**
+
+3) **Pay-later settlement**
+- Endpoint: `/v0/orders/:orderId/checkout` (settlement from an existing open ticket)
+- `paymentMethod = CASH`: checkout settles and returns **FINALIZED sale** in one command
+- `paymentMethod = KHQR`: checkout creates **PENDING sale**; finalize after KHQR confirmation
 
 ---
 
@@ -38,7 +60,7 @@ Frontend cutover map (online lane):
 
 Status:
 - Checkout endpoints listed below are implemented.
-- Full cutover is still pending; `/v0/orders*` remains active only for manager/fulfillment lane.
+- Full cutover is still pending; `/v0/orders*` remains for pay-later order tickets.
 
 Goals:
 - Remove server-side cart as default checkout lane.
@@ -84,6 +106,7 @@ Response `200`:
 Rules:
 - Server reprices from catalog/policy and ignores client price snapshots.
 - Atomic write: sale + sale lines + side effects (inventory/cash movement/outbox).
+- For `paymentMethod = CASH`, `tenderAmount` must match grand total and `cashReceivedTenderAmount` must be `>= tenderAmount`.
 
 #### 2) KHQR checkout initiate
 `POST /v0/checkout/khqr/initiate`  
@@ -300,6 +323,7 @@ Rules:
 - requires open cash session (`ORDER_REQUIRES_OPEN_CASH_SESSION`)
 - server ignores client price/name snapshots and resolves canonical values from menu catalog
 - server validates branch visibility + modifier selections; invalid combos are rejected
+- denied when branch policy `saleAllowPayLater = false` (`ORDER_PAY_LATER_DISABLED`)
 
 ---
 
@@ -349,6 +373,7 @@ Response example (`200`):
 
 Rules:
 - requires open cash session (`ORDER_REQUIRES_OPEN_CASH_SESSION`)
+- denied when branch policy `saleAllowPayLater = false` (`ORDER_PAY_LATER_DISABLED`)
 
 ---
 
@@ -442,10 +467,44 @@ Response example (`200`):
 
 Rules:
 - requires open cash session (`SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION`)
+- `paymentMethod = CASH` settles and returns `sale.status = FINALIZED` in one command
+- `paymentMethod = KHQR` returns `sale.status = PENDING` until KHQR is confirmed
 
 ---
 
-### 4) Update fulfillment status
+### 4) Cancel unpaid order ticket
+`POST /v0/orders/:orderId/cancel`  
+Action key: `order.cancel`
+
+Body example:
+```json
+{
+  "reason": "Customer left before payment"
+}
+```
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+    "status": "CANCELLED",
+    "cancelReason": "Customer left before payment",
+    "cancelledAt": "2026-02-22T10:06:00.000Z",
+    "cancelledByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7"
+  }
+}
+```
+
+Rules:
+- Allowed only for unpaid/open tickets.
+- Requires non-empty `reason`.
+- Retrying cancel on an already cancelled ticket returns success (idempotent no-op).
+
+---
+
+### 5) Update fulfillment status
 `PATCH /v0/orders/:orderId/fulfillment`  
 Action key: `order.fulfillment.status.update`
 
@@ -476,7 +535,7 @@ Response example (`200`):
 
 ---
 
-### 5) List orders
+### 6) List orders
 `GET /v0/orders?status=OPEN&limit=20&offset=0`  
 Action key: `order.list`
 
@@ -497,7 +556,7 @@ Response example (`200`):
 
 ---
 
-### 6) Get order detail
+### 7) Get order detail
 `GET /v0/orders/:orderId`  
 Action key: `order.read`
 
@@ -542,7 +601,7 @@ Response example (`200`):
 
 ## Sales
 
-### 7) Finalize sale
+### 8) Finalize sale
 `POST /v0/sales/:saleId/finalize`  
 Action key: `sale.finalize`
 
@@ -604,7 +663,7 @@ Rules:
 
 ---
 
-### 8) Request void (team mode)
+### 9) Request void (team mode)
 `POST /v0/sales/:saleId/void/request`  
 Action key: `sale.void.request`
 
@@ -639,7 +698,7 @@ Response example (`200`):
 
 ---
 
-### 9) Approve void request (team mode)
+### 10) Approve void request (team mode)
 `POST /v0/sales/:saleId/void/approve`  
 Action key: `sale.void.approve`
 
@@ -674,7 +733,7 @@ Response example (`200`):
 
 ---
 
-### 10) Reject void request (team mode)
+### 11) Reject void request (team mode)
 `POST /v0/sales/:saleId/void/reject`  
 Action key: `sale.void.reject`
 
@@ -709,7 +768,7 @@ Response example (`200`):
 
 ---
 
-### 11) Execute void
+### 12) Execute void
 `POST /v0/sales/:saleId/void/execute`  
 Action key: `sale.void.execute`
 
@@ -766,7 +825,7 @@ Rules:
 
 ---
 
-### 12) List sales
+### 13) List sales
 `GET /v0/sales?status=FINALIZED&limit=20&offset=0`  
 Action key: `sale.list`
 
@@ -793,7 +852,7 @@ Response example (`200`):
 
 ---
 
-### 13) Get sale detail
+### 14) Get sale detail
 `GET /v0/sales/:saleId`  
 Action key: `sale.read`
 
@@ -855,7 +914,7 @@ Response example (`200`):
 
 ---
 
-### 14) Get void request detail
+### 15) Get void request detail
 `GET /v0/sales/:saleId/void-request`  
 Action key: `sale.void.request.read`
 
@@ -910,8 +969,13 @@ Response example (`200`):
 - `SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED`
 - `SALE_FINALIZE_KHQR_PROOF_MISMATCH`
 - `SALE_KHQR_TENDER_AMOUNT_INVALID`
+- `SALE_CASH_TENDER_AMOUNT_INVALID`
+- `SALE_CASH_RECEIVED_INSUFFICIENT`
 - `ORDER_NOT_FOUND`
 - `ORDER_NOT_UNPAID`
+- `ORDER_PAY_LATER_DISABLED`
+- `ORDER_CANCEL_NOT_ALLOWED`
+- `ORDER_CANCEL_REASON_REQUIRED`
 - `VOID_REQUEST_NOT_FOUND`
 - `VOID_REQUEST_ALREADY_RESOLVED`
 - `VOID_APPROVAL_REQUIRED`

@@ -12,6 +12,7 @@ export const V0_SALE_ORDER_ACTION_KEYS = {
   checkoutKhqrIntentCancel: "checkout.khqr.intent.cancel",
 
   orderPlace: "order.place",
+  orderCancel: "order.cancel",
   orderItemsAdd: "order.items.add",
   orderCheckout: "order.checkout",
   orderFulfillmentStatusUpdate: "order.fulfillment.status.update",
@@ -34,6 +35,7 @@ export const V0_SALE_ORDER_EVENT_TYPES = {
   checkoutKhqrIntentCancelled: "CHECKOUT_KHQR_INTENT_CANCELLED",
 
   orderTicketPlaced: "ORDER_TICKET_PLACED",
+  orderTicketCancelled: "ORDER_TICKET_CANCELLED",
   orderItemsAdded: "ORDER_ITEMS_ADDED",
   orderCheckoutCompleted: "ORDER_CHECKOUT_COMPLETED",
   orderFulfillmentStatusUpdated: "ORDER_FULFILLMENT_STATUS_UPDATED",
@@ -50,6 +52,7 @@ export const V0_SALE_ORDER_IDEMPOTENCY_SCOPE = {
     V0_SALE_ORDER_ACTION_KEYS.checkoutKhqrInitiate,
     V0_SALE_ORDER_ACTION_KEYS.checkoutKhqrIntentCancel,
     V0_SALE_ORDER_ACTION_KEYS.orderPlace,
+    V0_SALE_ORDER_ACTION_KEYS.orderCancel,
     V0_SALE_ORDER_ACTION_KEYS.orderItemsAdd,
     V0_SALE_ORDER_ACTION_KEYS.orderCheckout,
     V0_SALE_ORDER_ACTION_KEYS.orderFulfillmentStatusUpdate,

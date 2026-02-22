@@ -91,6 +91,12 @@ async function setupOwnerBranchContext(input: {
     khqrReceiverAccountId: "khqr-receiver",
     khqrReceiverName: "KHQR Receiver",
   });
+  await setBranchPayLaterPolicy({
+    pool: input.pool,
+    tenantId,
+    branchId,
+    enabled: true,
+  });
   await assignActiveBranch({
     pool: input.pool,
     tenantId,
@@ -256,6 +262,22 @@ async function seedMenuItem(input: {
     [input.tenantId, menuItemId, input.branchId]
   );
   return menuItemId;
+}
+
+async function setBranchPayLaterPolicy(input: {
+  pool: Pool;
+  tenantId: string;
+  branchId: string;
+  enabled: boolean;
+}): Promise<void> {
+  await input.pool.query(
+    `UPDATE v0_branch_policies
+     SET sale_allow_pay_later = $3,
+         updated_at = NOW()
+     WHERE tenant_id = $1
+       AND branch_id = $2`,
+    [input.tenantId, input.branchId, input.enabled]
+  );
 }
 
 function buildOrderPayload(input: { menuItemId: string; quantity?: number }) {
@@ -722,7 +744,34 @@ describe("v0 sale-order integration", () => {
     expect(Number(orderCount.rows[0]?.count ?? "0")).toBe(0);
   });
 
-  it("denies cashier on /orders routes while allowing /checkout bridge", async () => {
+  it("rejects cash checkout when cash received is below grand total", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const rejected = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cash-checkout-underpaid-${uniqueSuffix()}`)
+      .send({
+        ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 2 }),
+        paymentMethod: "CASH",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 1,
+      });
+
+    expect(rejected.status).toBe(422);
+    expect(rejected.body).toMatchObject({
+      success: false,
+      code: "SALE_CASH_RECEIVED_INSUFFICIENT",
+    });
+  });
+
+  it("allows cashier to place pay-later order and use checkout bridge", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     await openCashSession({
       pool,
@@ -739,19 +788,19 @@ describe("v0 sale-order integration", () => {
       roleKey: "CASHIER",
     });
 
-    const listDenied = await request(app)
+    const listed = await request(app)
       .get("/v0/orders")
       .set("Authorization", `Bearer ${cashier.branchToken}`);
-    expect(listDenied.status).toBe(403);
-    expect(listDenied.body.code).toBe("PERMISSION_DENIED");
+    expect(listed.status).toBe(200);
+    expect(listed.body.success).toBe(true);
 
-    const placeDenied = await request(app)
+    const placed = await request(app)
       .post("/v0/orders")
       .set("Authorization", `Bearer ${cashier.branchToken}`)
-      .set("Idempotency-Key", `sale-order-cashier-orders-denied-${uniqueSuffix()}`)
+      .set("Idempotency-Key", `sale-order-cashier-orders-allowed-${uniqueSuffix()}`)
       .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
-    expect(placeDenied.status).toBe(403);
-    expect(placeDenied.body.code).toBe("PERMISSION_DENIED");
+    expect(placed.status).toBe(200);
+    expect(placed.body.success).toBe(true);
 
     const finalized = await request(app)
       .post("/v0/checkout/cash/finalize")
@@ -769,6 +818,130 @@ describe("v0 sale-order integration", () => {
     expect(finalized.body.data.paymentMethod).toBe("CASH");
     const saleId = finalized.body.data.id as string;
     expect(typeof saleId).toBe("string");
+  });
+
+  it("cancels unpaid order ticket and keeps retry idempotent", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cancel-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const cancelled = await request(app)
+      .post(`/v0/orders/${orderId}/cancel`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cancel-first-${uniqueSuffix()}`)
+      .send({
+        reason: "Customer left",
+      });
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.success).toBe(true);
+    expect(cancelled.body.data.status).toBe("CANCELLED");
+    expect(cancelled.body.data.cancelReason).toBe("Customer left");
+
+    const replay = await request(app)
+      .post(`/v0/orders/${orderId}/cancel`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cancel-second-${uniqueSuffix()}`)
+      .send({
+        reason: "Customer left again",
+      });
+    expect(replay.status).toBe(200);
+    expect(replay.body.success).toBe(true);
+    expect(replay.body.data.status).toBe("CANCELLED");
+    expect(replay.body.data.cancelReason).toBe("Customer left");
+  });
+
+  it("auto-finalizes sale when checking out pay-later order with cash", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cash-auto-finalize-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const checkedOut = await request(app)
+      .post(`/v0/orders/${orderId}/checkout`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cash-auto-finalize-checkout-${uniqueSuffix()}`)
+      .send({
+        paymentMethod: "CASH",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+      });
+    expect(checkedOut.status).toBe(200);
+    expect(checkedOut.body.success).toBe(true);
+    expect(checkedOut.body.data.status).toBe("FINALIZED");
+    expect(typeof checkedOut.body.data.finalizedAt).toBe("string");
+    expect(checkedOut.body.data.order.status).toBe("CHECKED_OUT");
+    const saleId = checkedOut.body.data.id as string;
+
+    const sale = await request(app)
+      .get(`/v0/sales/${saleId}`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(sale.status).toBe(200);
+    expect(sale.body.success).toBe(true);
+    expect(sale.body.data.status).toBe("FINALIZED");
+    expect(typeof sale.body.data.finalizedAt).toBe("string");
+  });
+
+  it("rejects cancelling a checked-out order ticket", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cancel-checkedout-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const checkedOut = await request(app)
+      .post(`/v0/orders/${orderId}/checkout`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cancel-checkedout-checkout-${uniqueSuffix()}`)
+      .send({
+        paymentMethod: "CASH",
+        tenderCurrency: "USD",
+      });
+    expect(checkedOut.status).toBe(200);
+
+    const cancelled = await request(app)
+      .post(`/v0/orders/${orderId}/cancel`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cancel-checkedout-cancel-${uniqueSuffix()}`)
+      .send({
+        reason: "Should fail",
+      });
+    expect(cancelled.status).toBe(409);
+    expect(cancelled.body).toMatchObject({
+      success: false,
+      code: "ORDER_CANCEL_NOT_ALLOWED",
+    });
   });
 
   it("initiates KHQR intent from local cart and finalizes on confirm", async () => {
@@ -954,6 +1127,69 @@ describe("v0 sale-order integration", () => {
     expect(placed.body).toMatchObject({
       success: false,
       code: "ORDER_REQUIRES_OPEN_CASH_SESSION",
+    });
+  });
+
+  it("rejects placing order ticket when pay-later policy is disabled", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+    await setBranchPayLaterPolicy({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      enabled: false,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-pay-later-disabled-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placed.status).toBe(422);
+    expect(placed.body).toMatchObject({
+      success: false,
+      code: "ORDER_PAY_LATER_DISABLED",
+    });
+  });
+
+  it("rejects adding order items when pay-later policy is disabled", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-pay-later-disabled-add-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    await setBranchPayLaterPolicy({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      enabled: false,
+    });
+
+    const addItems = await request(app)
+      .post(`/v0/orders/${orderId}/items`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-pay-later-disabled-add-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(addItems.status).toBe(422);
+    expect(addItems.body).toMatchObject({
+      success: false,
+      code: "ORDER_PAY_LATER_DISABLED",
     });
   });
 
