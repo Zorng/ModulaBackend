@@ -68,3 +68,8 @@ Source:
 - Pull hydration: `POST /v0/sync/pull`.
 - Feature APIs remain active for online UX and module-level read/write surfaces.
 
+## Related Docs
+
+- `_academic/offline-first-architecture-modula-v0.md`
+- `_academic/idempotency-in-modula-v0.md`
+- `_academic/outbox-pattern-in-modula-v0.md`

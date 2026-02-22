@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 
 type V0AuthClaims = {
   accountId: string;
+  sid?: string | null;
   tenantId?: string | null;
   branchId?: string | null;
   scope?: string;

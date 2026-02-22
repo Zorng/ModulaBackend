@@ -14,6 +14,7 @@ import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
 import { bootstrapV0PullSyncModule } from "../modules/v0/platformSystem/pullSync/index.js";
 import { bootstrapV0KhqrPaymentModule } from "../modules/v0/platformSystem/khqrPayment/index.js";
+import { bootstrapV0CashSessionModule } from "../modules/v0/posOperation/cashSession/index.js";
 import { bootstrapV0SaleOrderModule } from "../modules/v0/posOperation/saleOrder/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 
@@ -123,8 +124,8 @@ async function openCashSession(input: {
   tenantId: string;
   branchId: string;
   accountId: string;
-}): Promise<void> {
-  await input.pool.query(
+}): Promise<string> {
+  const inserted = await input.pool.query<{ id: string }>(
     `INSERT INTO v0_cash_sessions (
        tenant_id,
        branch_id,
@@ -136,9 +137,27 @@ async function openCashSession(input: {
      VALUES ($1, $2, $3, 'OPEN', 50, 0)
      ON CONFLICT (tenant_id, branch_id)
      WHERE status = 'OPEN'
-     DO NOTHING`,
+     DO NOTHING
+     RETURNING id`,
     [input.tenantId, input.branchId, input.accountId]
   );
+  if (inserted.rows[0]?.id) {
+    return inserted.rows[0].id;
+  }
+  const existing = await input.pool.query<{ id: string }>(
+    `SELECT id
+     FROM v0_cash_sessions
+     WHERE tenant_id = $1
+       AND branch_id = $2
+       AND status = 'OPEN'
+     LIMIT 1`,
+    [input.tenantId, input.branchId]
+  );
+  const sessionId = existing.rows[0]?.id;
+  if (!sessionId) {
+    throw new Error("failed to open cash session for test setup");
+  }
+  return sessionId;
 }
 
 function buildOrderPayload(input: { menuItemId?: string; quantity?: number; unitPrice?: number }) {
@@ -172,6 +191,7 @@ describe("v0 sale-order integration", () => {
     app.use("/v0", createAccessControlHook({ db: pool, jwtSecret: process.env.JWT_SECRET }));
     app.use("/v0/auth", bootstrapV0AuthModule(pool).router);
     app.use("/v0/org", bootstrapV0OrgAccountModule(pool).router);
+    app.use("/v0/cash", bootstrapV0CashSessionModule(pool).router);
     app.use("/v0/payments/khqr", bootstrapV0KhqrPaymentModule(pool).router);
     app.use("/v0/sync", bootstrapV0PullSyncModule(pool).router);
     app.use("/v0", bootstrapV0SaleOrderModule(pool).router);
@@ -188,6 +208,12 @@ describe("v0 sale-order integration", () => {
 
   it("rolls back order.place when outbox insert fails", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
     process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "order.place";
 
     const response = await request(app)
@@ -230,6 +256,12 @@ describe("v0 sale-order integration", () => {
 
   it("replays duplicate idempotent order.place and rejects payload conflicts", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
     const idempotencyKey = `sale-order-idem-${uniqueSuffix()}`;
     const menuItemId = randomUUID();
 
@@ -290,6 +322,12 @@ describe("v0 sale-order integration", () => {
 
   it("publishes order.place event and exposes saleOrder pull deltas", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
 
     const created = await request(app)
       .post("/v0/orders")
@@ -350,7 +388,7 @@ describe("v0 sale-order integration", () => {
 
   it("generates KHQR from sale snapshot, confirms payment, and finalizes", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
-    await openCashSession({
+    const cashSessionId = await openCashSession({
       pool,
       tenantId: setup.tenantId,
       branchId: setup.branchId,
@@ -425,9 +463,17 @@ describe("v0 sale-order integration", () => {
     expect(finalized.status).toBe(200);
     expect(finalized.body.success).toBe(true);
     expect(finalized.body.data.status).toBe("FINALIZED");
+
+    const xReport = await request(app)
+      .get(`/v0/cash/sessions/${cashSessionId}/x`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(xReport.status).toBe(200);
+    expect(xReport.body.success).toBe(true);
+    expect(xReport.body.data.totalSalesKhqrUsd).toBe(3.5);
+    expect(xReport.body.data.totalSalesNonCashUsd).toBe(3.5);
   });
 
-  it("rejects order checkout when no active cash session exists", async () => {
+  it("rejects order placement when no active cash session exists", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
 
     const placed = await request(app)
@@ -435,22 +481,98 @@ describe("v0 sale-order integration", () => {
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", `sale-order-no-session-place-${uniqueSuffix()}`)
       .send(buildOrderPayload({ unitPrice: 2.5 }));
+    expect(placed.status).toBe(422);
+    expect(placed.body).toMatchObject({
+      success: false,
+      code: "ORDER_REQUIRES_OPEN_CASH_SESSION",
+    });
+  });
+
+  it("rejects order checkout when active cash session is no longer open", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-checkout-no-session-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ unitPrice: 2.5 }));
     expect(placed.status).toBe(200);
     const orderId = placed.body.data.id as string;
+
+    await pool.query(
+      `DELETE FROM v0_cash_sessions
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND status = 'OPEN'`,
+      [setup.tenantId, setup.branchId]
+    );
 
     const checkout = await request(app)
       .post(`/v0/orders/${orderId}/checkout`)
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
-      .set("Idempotency-Key", `sale-order-no-session-checkout-${uniqueSuffix()}`)
+      .set("Idempotency-Key", `sale-order-checkout-no-session-${uniqueSuffix()}`)
       .send({
         paymentMethod: "CASH",
         tenderCurrency: "USD",
       });
-
     expect(checkout.status).toBe(422);
     expect(checkout.body).toMatchObject({
       success: false,
       code: "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION",
+    });
+  });
+
+  it("rejects adding order items when no active cash session exists", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-add-items-no-session-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ unitPrice: 2.5 }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    await pool.query(
+      `DELETE FROM v0_cash_sessions
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND status = 'OPEN'`,
+      [setup.tenantId, setup.branchId]
+    );
+
+    const addItems = await request(app)
+      .post(`/v0/orders/${orderId}/items`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-add-items-no-session-${uniqueSuffix()}`)
+      .send({
+        items: [
+          {
+            menuItemId: randomUUID(),
+            menuItemNameSnapshot: "Brown Sugar Latte",
+            unitPrice: 3.25,
+            quantity: 1,
+            modifierSnapshot: [],
+            note: null,
+          },
+        ],
+      });
+    expect(addItems.status).toBe(422);
+    expect(addItems.body).toMatchObject({
+      success: false,
+      code: "ORDER_REQUIRES_OPEN_CASH_SESSION",
     });
   });
 

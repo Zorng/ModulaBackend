@@ -131,6 +131,7 @@ export class V0SaleOrderService {
     body: unknown;
   }): Promise<Record<string, unknown>> {
     const actor = assertBranchContext(input.actor);
+    await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
     const body = toRecord(input.body);
     const items = parseOrderItems(body.items, false);
 
@@ -182,6 +183,7 @@ export class V0SaleOrderService {
     if (order.status !== "OPEN") {
       throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
     }
+    await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
 
     const body = toRecord(input.body);
     const items = parseOrderItems(body.items, true);
@@ -244,17 +246,7 @@ export class V0SaleOrderService {
     if (lines.length === 0) {
       throw new V0SaleOrderError(422, "order has no items", "ORDER_NO_ITEMS");
     }
-    const hasOpenSession = await this.repo.hasOpenCashSession({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-    });
-    if (!hasOpenSession) {
-      throw new V0SaleOrderError(
-        422,
-        "open cash session required to checkout order",
-        "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION"
-      );
-    }
+    await this.requireOpenCashSession(actor, "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION");
 
     const body = toRecord(input.body);
     const checkout = parseCheckoutBody(body, lines);
@@ -706,6 +698,22 @@ export class V0SaleOrderService {
       entitlementKey: "module.workforce",
     });
     return enforcement === "ENABLED";
+  }
+
+  private async requireOpenCashSession(
+    actor: { tenantId: string; branchId: string },
+    code: "ORDER_REQUIRES_OPEN_CASH_SESSION" | "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION"
+  ): Promise<void> {
+    const hasOpenSession = await this.repo.hasOpenCashSession({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+    });
+    if (!hasOpenSession) {
+      const message = code === "ORDER_REQUIRES_OPEN_CASH_SESSION"
+        ? "open cash session required to place or edit order"
+        : "open cash session required to checkout order";
+      throw new V0SaleOrderError(422, message, code);
+    }
   }
 }
 

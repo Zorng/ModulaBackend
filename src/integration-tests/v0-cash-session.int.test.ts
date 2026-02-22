@@ -150,6 +150,27 @@ describe("v0 cash session integration", () => {
     await pool.end();
   });
 
+  it("returns null active session when branch has no open cash session", async () => {
+    const setup = await setupOwnerBranchContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Cash Active Empty ${uniqueSuffix()}`,
+    });
+
+    const response = await request(app)
+      .get("/v0/cash/sessions/active")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      data: {
+        session: null,
+      },
+    });
+  });
+
   it("keeps open-session command idempotent (replay+conflict) with single audit/outbox write", async () => {
     const setup = await setupOwnerBranchContext({
       app,

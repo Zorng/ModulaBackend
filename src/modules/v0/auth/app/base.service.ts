@@ -60,24 +60,24 @@ export abstract class V0AuthBaseService {
     accountId: string,
     context: { tenantId: string | null; branchId: string | null }
   ): Promise<{ accessToken: string; refreshToken: string }> {
-    const accessToken = this.generateAccessToken({
-      sub: accountId,
-      accountId,
-      tenantId: context.tenantId,
-      branchId: context.branchId,
-      scope: "v0",
-    });
-
     const refreshToken = crypto.randomBytes(64).toString("hex");
     const refreshTokenHash = sha256(refreshToken);
     const refreshExpiry = new Date(Date.now() + parseExpiryToMs(this.refreshTokenExpiry));
 
-    await this.repo.createSession({
+    const session = await this.repo.createSession({
       accountId,
       refreshTokenHash,
       contextTenantId: context.tenantId,
       contextBranchId: context.branchId,
       expiresAt: refreshExpiry,
+    });
+    const accessToken = this.generateAccessToken({
+      sub: accountId,
+      accountId,
+      sid: session.id,
+      tenantId: context.tenantId,
+      branchId: context.branchId,
+      scope: "v0",
     });
 
     return { accessToken, refreshToken };

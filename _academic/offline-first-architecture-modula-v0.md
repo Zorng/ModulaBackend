@@ -127,5 +127,7 @@ Frontend should trigger pull on:
 - `api_contract/push-sync-v0.md`
 - `api_contract/sync-v0.md`
 - `api_contract/operational-notification-v0.md`
+- `_academic/idempotency-in-modula-v0.md`
+- `_academic/outbox-pattern-in-modula-v0.md`
 - `_implementation_decisions/ADR-20260219-v0-sse-as-sync-pull-trigger.md`
 - `_academic/offline-first-sync-interface-and-industry-notes.md`

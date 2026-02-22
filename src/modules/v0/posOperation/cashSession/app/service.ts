@@ -143,7 +143,7 @@ export class V0CashSessionService {
 
   async readActiveSession(input: {
     actor: ActorContext;
-  }): Promise<{ session: CashSessionDto }> {
+  }): Promise<{ session: CashSessionDto | null }> {
     const actor = await this.assertBranchContext(input.actor);
     const role = await this.resolveActorRole(actor);
     const session = await this.repo.getActiveSessionByBranch({
@@ -151,7 +151,7 @@ export class V0CashSessionService {
       branchId: actor.branchId,
     });
     if (!session) {
-      throw new V0CashSessionError(404, "no active cash session", "CASH_SESSION_NOT_FOUND");
+      return { session: null };
     }
     if (role === "CASHIER" && session.opened_by_account_id !== actor.accountId) {
       throw new V0CashSessionError(

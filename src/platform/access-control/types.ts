@@ -31,6 +31,7 @@ export type ActionMetadata = {
 
 export type V0Claims = {
   accountId: string;
+  sid?: string | null;
   scope?: string;
   tenantId?: string | null;
   branchId?: string | null;

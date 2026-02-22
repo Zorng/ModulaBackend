@@ -214,6 +214,10 @@ Success `200`:
 }
 ```
 
+Notes:
+- Logout revokes the active auth session tied to the provided refresh token.
+- Access tokens issued from that same session are rejected immediately after logout.
+
 Errors:
 - `422` missing refreshToken
 

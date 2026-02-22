@@ -101,9 +101,15 @@ type VoidRequest = {
 `POST /v0/orders`  
 Action key: `order.place`
 
+Rules:
+- requires open cash session (`ORDER_REQUIRES_OPEN_CASH_SESSION`)
+
 #### 2) Add items to open order
 `POST /v0/orders/:orderId/items`  
 Action key: `order.items.add`
+
+Rules:
+- requires open cash session (`ORDER_REQUIRES_OPEN_CASH_SESSION`)
 
 #### 3) Checkout order
 `POST /v0/orders/:orderId/checkout`  
@@ -188,6 +194,7 @@ Action key: `sale.void.request.read`
 
 - `SALE_NOT_FOUND`
 - `SALE_ALREADY_VOIDED`
+- `ORDER_REQUIRES_OPEN_CASH_SESSION`
 - `SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION`
 - `SALE_FINALIZE_REQUIRES_OPEN_CASH_SESSION`
 - `SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED`

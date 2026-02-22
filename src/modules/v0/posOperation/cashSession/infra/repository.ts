@@ -369,26 +369,154 @@ export class V0CashSessionRepository {
     sessionId: string;
   }): Promise<CashMovementTotalsRow> {
     const result = await this.db.query<CashMovementTotalsRow>(
-      `SELECT
-         0::FLOAT8 AS total_sales_non_cash_usd,
-         0::FLOAT8 AS total_sales_non_cash_khr,
-         0::FLOAT8 AS total_sales_khqr_usd,
-         0::FLOAT8 AS total_sales_khqr_khr,
-         COALESCE(SUM(CASE WHEN movement_type = 'SALE_IN' THEN amount_usd_delta ELSE 0 END), 0)::FLOAT8 AS total_sale_in_usd,
-         COALESCE(SUM(CASE WHEN movement_type = 'SALE_IN' THEN amount_khr_delta ELSE 0 END), 0)::FLOAT8 AS total_sale_in_khr,
-         COALESCE(SUM(CASE WHEN movement_type = 'REFUND_CASH' THEN ABS(amount_usd_delta) ELSE 0 END), 0)::FLOAT8 AS total_refund_out_usd,
-         COALESCE(SUM(CASE WHEN movement_type = 'REFUND_CASH' THEN ABS(amount_khr_delta) ELSE 0 END), 0)::FLOAT8 AS total_refund_out_khr,
-         COALESCE(SUM(CASE WHEN movement_type = 'MANUAL_IN' THEN amount_usd_delta ELSE 0 END), 0)::FLOAT8 AS total_manual_in_usd,
-         COALESCE(SUM(CASE WHEN movement_type = 'MANUAL_IN' THEN amount_khr_delta ELSE 0 END), 0)::FLOAT8 AS total_manual_in_khr,
-         COALESCE(SUM(CASE WHEN movement_type = 'MANUAL_OUT' THEN ABS(amount_usd_delta) ELSE 0 END), 0)::FLOAT8 AS total_manual_out_usd,
-         COALESCE(SUM(CASE WHEN movement_type = 'MANUAL_OUT' THEN ABS(amount_khr_delta) ELSE 0 END), 0)::FLOAT8 AS total_manual_out_khr,
-         COALESCE(SUM(CASE WHEN movement_type = 'ADJUSTMENT' THEN amount_usd_delta ELSE 0 END), 0)::FLOAT8 AS total_adjustment_usd,
-         COALESCE(SUM(CASE WHEN movement_type = 'ADJUSTMENT' THEN amount_khr_delta ELSE 0 END), 0)::FLOAT8 AS total_adjustment_khr,
-         COALESCE(SUM(amount_usd_delta), 0)::FLOAT8 AS total_cash_delta_usd,
-         COALESCE(SUM(amount_khr_delta), 0)::FLOAT8 AS total_cash_delta_khr
-       FROM v0_cash_movements
-       WHERE tenant_id = $1
-         AND cash_session_id = $2`,
+      `WITH session_window AS (
+         SELECT tenant_id, branch_id, opened_at, closed_at
+         FROM v0_cash_sessions
+         WHERE tenant_id = $1
+           AND id = $2
+         LIMIT 1
+       )
+       SELECT
+         COALESCE((
+           SELECT SUM(
+             CASE
+               WHEN s.payment_method <> 'CASH' AND s.tender_currency = 'USD'
+                 THEN s.tender_amount
+               ELSE 0
+             END
+           )
+           FROM v0_sales s
+           JOIN session_window w
+             ON w.tenant_id = s.tenant_id
+            AND w.branch_id = s.branch_id
+           WHERE s.status = 'FINALIZED'
+             AND s.finalized_at IS NOT NULL
+             AND s.finalized_at >= w.opened_at
+             AND (w.closed_at IS NULL OR s.finalized_at <= w.closed_at)
+         ), 0)::FLOAT8 AS total_sales_non_cash_usd,
+         COALESCE((
+           SELECT SUM(
+             CASE
+               WHEN s.payment_method <> 'CASH' AND s.tender_currency = 'KHR'
+                 THEN s.tender_amount
+               ELSE 0
+             END
+           )
+           FROM v0_sales s
+           JOIN session_window w
+             ON w.tenant_id = s.tenant_id
+            AND w.branch_id = s.branch_id
+           WHERE s.status = 'FINALIZED'
+             AND s.finalized_at IS NOT NULL
+             AND s.finalized_at >= w.opened_at
+             AND (w.closed_at IS NULL OR s.finalized_at <= w.closed_at)
+         ), 0)::FLOAT8 AS total_sales_non_cash_khr,
+         COALESCE((
+           SELECT SUM(
+             CASE
+               WHEN s.payment_method = 'KHQR' AND s.tender_currency = 'USD'
+                 THEN s.tender_amount
+               ELSE 0
+             END
+           )
+           FROM v0_sales s
+           JOIN session_window w
+             ON w.tenant_id = s.tenant_id
+            AND w.branch_id = s.branch_id
+           WHERE s.status = 'FINALIZED'
+             AND s.finalized_at IS NOT NULL
+             AND s.finalized_at >= w.opened_at
+             AND (w.closed_at IS NULL OR s.finalized_at <= w.closed_at)
+         ), 0)::FLOAT8 AS total_sales_khqr_usd,
+         COALESCE((
+           SELECT SUM(
+             CASE
+               WHEN s.payment_method = 'KHQR' AND s.tender_currency = 'KHR'
+                 THEN s.tender_amount
+               ELSE 0
+             END
+           )
+           FROM v0_sales s
+           JOIN session_window w
+             ON w.tenant_id = s.tenant_id
+            AND w.branch_id = s.branch_id
+           WHERE s.status = 'FINALIZED'
+             AND s.finalized_at IS NOT NULL
+             AND s.finalized_at >= w.opened_at
+             AND (w.closed_at IS NULL OR s.finalized_at <= w.closed_at)
+         ), 0)::FLOAT8 AS total_sales_khqr_khr,
+         COALESCE((
+           SELECT SUM(CASE WHEN movement_type = 'SALE_IN' THEN amount_usd_delta ELSE 0 END)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_sale_in_usd,
+         COALESCE((
+           SELECT SUM(CASE WHEN movement_type = 'SALE_IN' THEN amount_khr_delta ELSE 0 END)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_sale_in_khr,
+         COALESCE((
+           SELECT SUM(CASE WHEN movement_type = 'REFUND_CASH' THEN ABS(amount_usd_delta) ELSE 0 END)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_refund_out_usd,
+         COALESCE((
+           SELECT SUM(CASE WHEN movement_type = 'REFUND_CASH' THEN ABS(amount_khr_delta) ELSE 0 END)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_refund_out_khr,
+         COALESCE((
+           SELECT SUM(CASE WHEN movement_type = 'MANUAL_IN' THEN amount_usd_delta ELSE 0 END)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_manual_in_usd,
+         COALESCE((
+           SELECT SUM(CASE WHEN movement_type = 'MANUAL_IN' THEN amount_khr_delta ELSE 0 END)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_manual_in_khr,
+         COALESCE((
+           SELECT SUM(CASE WHEN movement_type = 'MANUAL_OUT' THEN ABS(amount_usd_delta) ELSE 0 END)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_manual_out_usd,
+         COALESCE((
+           SELECT SUM(CASE WHEN movement_type = 'MANUAL_OUT' THEN ABS(amount_khr_delta) ELSE 0 END)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_manual_out_khr,
+         COALESCE((
+           SELECT SUM(CASE WHEN movement_type = 'ADJUSTMENT' THEN amount_usd_delta ELSE 0 END)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_adjustment_usd,
+         COALESCE((
+           SELECT SUM(CASE WHEN movement_type = 'ADJUSTMENT' THEN amount_khr_delta ELSE 0 END)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_adjustment_khr,
+         COALESCE((
+           SELECT SUM(amount_usd_delta)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_cash_delta_usd,
+         COALESCE((
+           SELECT SUM(amount_khr_delta)
+           FROM v0_cash_movements
+           WHERE tenant_id = $1
+             AND cash_session_id = $2
+         ), 0)::FLOAT8 AS total_cash_delta_khr`,
       [input.tenantId, input.sessionId]
     );
     return result.rows[0];

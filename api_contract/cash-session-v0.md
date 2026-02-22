@@ -6,7 +6,9 @@ Base path: `/v0/cash`
 
 Implementation status:
 - Phase 1-4 completed (contract + schema/repo + command/query/ACL + reliability tests).
-- Note: non-cash totals (`totalSalesNonCash*` / `totalSalesKhqr*`) are contract-locked and currently return zero until sale-order integration starts emitting those aggregates.
+- X/Z totals now include finalized sale aggregates within the session window:
+  - `totalSalesNonCash*` from finalized non-cash sales
+  - `totalSalesKhqr*` from finalized KHQR sales
 
 ## Conventions
 
@@ -151,6 +153,19 @@ Response `200`:
   }
 }
 ```
+
+Response `200` (no active session):
+```json
+{
+  "success": true,
+  "data": {
+    "session": null
+  }
+}
+```
+
+Notes:
+- no active session is a normal state for this query endpoint (`200` with `session: null`)
 
 ---
 

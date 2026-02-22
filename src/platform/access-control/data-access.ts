@@ -43,6 +43,25 @@ export async function getActiveMembership(
   return result.rows[0] ?? null;
 }
 
+export async function hasActiveAuthSession(input: {
+  db: Queryable;
+  accountId: string;
+  sessionId: string;
+}): Promise<boolean> {
+  const result = await input.db.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM v0_auth_sessions s
+       WHERE s.id = $1
+         AND s.account_id = $2
+         AND s.revoked_at IS NULL
+         AND s.expires_at > NOW()
+     ) AS exists`,
+    [input.sessionId, input.accountId]
+  );
+  return result.rows[0]?.exists === true;
+}
+
 export async function getBranchStatus(input: {
   db: Queryable;
   tenantId: string;

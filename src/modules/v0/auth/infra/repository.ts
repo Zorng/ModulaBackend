@@ -403,15 +403,16 @@ export class V0AuthRepository {
     expiresAt: Date;
     contextTenantId?: string | null;
     contextBranchId?: string | null;
-  }): Promise<void> {
-    await this.db.query(
+  }): Promise<{ id: string }> {
+    const result = await this.db.query<{ id: string }>(
       `INSERT INTO v0_auth_sessions (
          account_id,
          refresh_token_hash,
          context_tenant_id,
          context_branch_id,
          expires_at
-       ) VALUES ($1, $2, $3, $4, $5)`,
+       ) VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
       [
         input.accountId,
         input.refreshTokenHash,
@@ -420,6 +421,7 @@ export class V0AuthRepository {
         input.expiresAt,
       ]
     );
+    return result.rows[0];
   }
 
   async findActiveSessionByRefreshTokenHash(

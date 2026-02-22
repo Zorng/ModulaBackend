@@ -3,6 +3,7 @@ import crypto from "crypto";
 export type V0TokenClaims = {
   sub: string;
   accountId: string;
+  sid: string;
   tenantId: string | null;
   branchId: string | null;
   scope: "v0";

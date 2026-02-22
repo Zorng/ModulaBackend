@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { pool } from "#db";
 import { authorizeRoute } from "../../access-control/authorize.js";
 import { getClaimsFromRequest } from "../../access-control/claims.js";
+import { hasActiveAuthSession } from "../../access-control/data-access.js";
 import { isOpenRoute } from "../../access-control/open-routes.js";
 import { matchProtectedRoute } from "../../access-control/route-registry.js";
 import type { Queryable } from "../../access-control/types.js";
@@ -39,6 +40,20 @@ export function createAccessControlHook(deps: HookDeps = {}) {
 
     const claims = getClaimsFromRequest(req, jwtSecret);
     if (!claims) {
+      deny(res, 401, "INVALID_ACCESS_TOKEN");
+      return;
+    }
+    const sessionId = typeof claims.sid === "string" ? claims.sid.trim() : "";
+    if (!sessionId) {
+      deny(res, 401, "INVALID_ACCESS_TOKEN");
+      return;
+    }
+    const activeSession = await hasActiveAuthSession({
+      db,
+      accountId: claims.accountId,
+      sessionId,
+    });
+    if (!activeSession) {
       deny(res, 401, "INVALID_ACCESS_TOKEN");
       return;
     }

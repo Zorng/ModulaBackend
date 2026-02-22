@@ -4,6 +4,7 @@ import request from "supertest";
 import type { Pool } from "pg";
 import { createTestPool } from "../test-utils/db.js";
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
+import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 
 function uniquePhone(): string {
   const now = Date.now().toString().slice(-9);
@@ -26,6 +27,7 @@ describe("v0 auth (phase 1 scaffold)", () => {
 
     app = express();
     app.use(express.json());
+    app.use("/v0", createAccessControlHook({ db: pool, jwtSecret: process.env.JWT_SECRET }));
     const v0AuthModule = bootstrapV0AuthModule(pool);
     app.use("/v0/auth", v0AuthModule.router);
   });
@@ -96,6 +98,7 @@ describe("v0 auth (phase 1 scaffold)", () => {
     expect(typeof refreshRes.body.data.refreshToken).toBe("string");
 
     const rotatedRefreshToken = refreshRes.body.data.refreshToken as string;
+    const rotatedAccessToken = refreshRes.body.data.accessToken as string;
     expect(rotatedRefreshToken).not.toBe(oldRefreshToken);
 
     const oldRefreshReplay = await request(app).post("/v0/auth/refresh").send({
@@ -113,6 +116,12 @@ describe("v0 auth (phase 1 scaffold)", () => {
       refreshToken: rotatedRefreshToken,
     });
     expect(refreshAfterLogout.status).toBe(401);
+
+    const contextAfterLogout = await request(app)
+      .get("/v0/auth/context/tenants")
+      .set("Authorization", `Bearer ${rotatedAccessToken}`);
+    expect(contextAfterLogout.status).toBe(401);
+    expect(contextAfterLogout.body.code).toBe("INVALID_ACCESS_TOKEN");
 
     const auditRows = await pool.query<{ event_key: string; outcome: string }>(
       `SELECT event_key, outcome
