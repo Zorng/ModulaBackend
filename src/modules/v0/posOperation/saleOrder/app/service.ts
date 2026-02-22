@@ -1,5 +1,8 @@
 import { normalizeOptionalString } from "../../../../../shared/utils/string.js";
 import {
+  type V0OrderMenuItemRow,
+  type V0OrderMenuModifierGroupRow,
+  type V0OrderMenuModifierOptionRow,
   V0SaleOrderRepository,
   type V0OrderFulfillmentBatchRow,
   type V0OrderFulfillmentBatchStatus,
@@ -26,6 +29,18 @@ type ItemInput = {
   unitPrice: number;
   quantity: number;
   modifierSnapshot: unknown;
+  note: string | null;
+};
+
+type ModifierSelectionInput = {
+  groupId: string;
+  optionIds: string[];
+};
+
+type ItemDraft = {
+  menuItemId: string;
+  quantity: number;
+  modifierSelections: ModifierSelectionInput[];
   note: string | null;
 };
 
@@ -133,7 +148,12 @@ export class V0SaleOrderService {
     const actor = assertBranchContext(input.actor);
     await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
     const body = toRecord(input.body);
-    const items = parseOrderItems(body.items, false);
+    const itemDrafts = parseOrderItems(body.items, false);
+    const items = await this.hydrateOrderItems({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      itemDrafts,
+    });
 
     const order = await this.repo.createOrderTicket({
       tenantId: actor.tenantId,
@@ -186,7 +206,12 @@ export class V0SaleOrderService {
     await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
 
     const body = toRecord(input.body);
-    const items = parseOrderItems(body.items, true);
+    const itemDrafts = parseOrderItems(body.items, true);
+    const items = await this.hydrateOrderItems({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      itemDrafts,
+    });
     const createdLines: V0OrderTicketLineRow[] = [];
     for (const item of items) {
       const created = await this.repo.createOrderTicketLine({
@@ -678,6 +703,73 @@ export class V0SaleOrderService {
     return mapVoidRequest(latest);
   }
 
+  private async hydrateOrderItems(input: {
+    tenantId: string;
+    branchId: string;
+    itemDrafts: ItemDraft[];
+  }): Promise<ItemInput[]> {
+    if (input.itemDrafts.length === 0) {
+      return [];
+    }
+
+    const menuItemCache = new Map<
+      string,
+      {
+        item: V0OrderMenuItemRow;
+        groups: V0OrderMenuModifierGroupRow[];
+        options: V0OrderMenuModifierOptionRow[];
+      }
+    >();
+    const hydrated: ItemInput[] = [];
+
+    for (const [index, draft] of input.itemDrafts.entries()) {
+      let menuData = menuItemCache.get(draft.menuItemId);
+      if (!menuData) {
+        const item = await this.repo.getActiveMenuItemVisibleInBranch({
+          tenantId: input.tenantId,
+          branchId: input.branchId,
+          menuItemId: draft.menuItemId,
+        });
+        if (!item) {
+          throw new V0SaleOrderError(
+            422,
+            `items[${index}].menuItemId is unavailable in this branch`,
+            "ORDER_ITEM_NOT_AVAILABLE"
+          );
+        }
+        const groups = await this.repo.listActiveModifierGroupsForMenuItem({
+          tenantId: input.tenantId,
+          menuItemId: draft.menuItemId,
+        });
+        const options = await this.repo.listActiveModifierOptionsByGroupIds({
+          tenantId: input.tenantId,
+          groupIds: groups.map((group) => group.id),
+        });
+        menuData = { item, groups, options };
+        menuItemCache.set(draft.menuItemId, menuData);
+      }
+
+      const selection = resolveModifierSelections({
+        itemIndex: index,
+        selections: draft.modifierSelections,
+        groups: menuData.groups,
+        options: menuData.options,
+      });
+      const unitPrice = roundMoney(menuData.item.base_price + selection.totalPriceDelta);
+
+      hydrated.push({
+        menuItemId: draft.menuItemId,
+        menuItemNameSnapshot: menuData.item.name,
+        unitPrice,
+        quantity: draft.quantity,
+        modifierSnapshot: selection.snapshot,
+        note: draft.note,
+      });
+    }
+
+    return hydrated;
+  }
+
   private async requireSale(actor: { tenantId: string; branchId: string }, saleId: string) {
     const id = requireUuid(saleId, "saleId");
     const sale = await this.repo.getSaleById({
@@ -740,7 +832,7 @@ function toRecord(input: unknown): Record<string, unknown> {
   return {};
 }
 
-function parseOrderItems(input: unknown, required: boolean): ItemInput[] {
+function parseOrderItems(input: unknown, required: boolean): ItemDraft[] {
   if (!Array.isArray(input)) {
     if (required) {
       throw new V0SaleOrderError(422, "items must be a non-empty array", "ORDER_ITEMS_INVALID");
@@ -753,23 +845,188 @@ function parseOrderItems(input: unknown, required: boolean): ItemInput[] {
   return input.map((item, index) => {
     const row = toRecord(item);
     const menuItemId = requireUuid(row.menuItemId, `items[${index}].menuItemId`);
-    const menuItemNameSnapshot =
-      normalizeOptionalString(row.menuItemNameSnapshot)
-      ?? normalizeOptionalString(row.menuItemName)
-      ?? `item:${menuItemId}`;
-    const unitPrice = requireNonNegativeNumber(row.unitPrice, `items[${index}].unitPrice`);
     const quantity = requirePositiveNumber(row.quantity, `items[${index}].quantity`);
-    const modifierSnapshot = row.modifierSnapshot ?? [];
     const note = normalizeOptionalString(row.note) ?? null;
+    const modifierSelections = parseModifierSelections(
+      row.modifierSelections,
+      `items[${index}].modifierSelections`
+    );
     return {
       menuItemId,
-      menuItemNameSnapshot,
-      unitPrice,
       quantity,
-      modifierSnapshot,
+      modifierSelections,
       note,
     };
   });
+}
+
+function parseModifierSelections(input: unknown, field: string): ModifierSelectionInput[] {
+  if (input === undefined || input === null) {
+    return [];
+  }
+  if (!Array.isArray(input)) {
+    throw new V0SaleOrderError(
+      422,
+      `${field} must be an array`,
+      "SALE_ORDER_VALIDATION_FAILED"
+    );
+  }
+
+  const parsed = input.map((entry, index) => {
+    const row = toRecord(entry);
+    const groupId = requireUuid(row.groupId, `${field}[${index}].groupId`);
+    if (!Array.isArray(row.optionIds)) {
+      throw new V0SaleOrderError(
+        422,
+        `${field}[${index}].optionIds must be an array`,
+        "SALE_ORDER_VALIDATION_FAILED"
+      );
+    }
+    const optionIds = row.optionIds.map((optionId, optionIndex) =>
+      requireUuid(optionId, `${field}[${index}].optionIds[${optionIndex}]`)
+    );
+    assertNoDuplicateValues(
+      optionIds,
+      `${field}[${index}].optionIds must not contain duplicates`
+    );
+    return {
+      groupId,
+      optionIds,
+    };
+  });
+
+  assertNoDuplicateValues(
+    parsed.map((entry) => entry.groupId),
+    `${field} must not contain duplicate groupId entries`
+  );
+
+  return parsed;
+}
+
+function resolveModifierSelections(input: {
+  itemIndex: number;
+  selections: ModifierSelectionInput[];
+  groups: V0OrderMenuModifierGroupRow[];
+  options: V0OrderMenuModifierOptionRow[];
+}): {
+  totalPriceDelta: number;
+  snapshot: Array<{
+    groupId: string;
+    groupName: string;
+    selectionMode: "SINGLE" | "MULTI";
+    minSelections: number;
+    maxSelections: number;
+    isRequired: boolean;
+    selectedOptions: Array<{
+      optionId: string;
+      label: string;
+      priceDelta: number;
+    }>;
+  }>;
+} {
+  const groupById = new Map(input.groups.map((group) => [group.id, group] as const));
+  const optionById = new Map(input.options.map((option) => [option.id, option] as const));
+  const selectionByGroup = new Map(input.selections.map((entry) => [entry.groupId, entry] as const));
+
+  for (const groupId of selectionByGroup.keys()) {
+    if (!groupById.has(groupId)) {
+      throw new V0SaleOrderError(
+        422,
+        `items[${input.itemIndex}].modifierSelections includes unsupported groupId`,
+        "ORDER_ITEM_MODIFIER_INVALID"
+      );
+    }
+  }
+
+  let totalPriceDelta = 0;
+  const snapshot: Array<{
+    groupId: string;
+    groupName: string;
+    selectionMode: "SINGLE" | "MULTI";
+    minSelections: number;
+    maxSelections: number;
+    isRequired: boolean;
+    selectedOptions: Array<{
+      optionId: string;
+      label: string;
+      priceDelta: number;
+    }>;
+  }> = [];
+
+  for (const group of input.groups) {
+    const selected = selectionByGroup.get(group.id);
+    const optionIds = selected?.optionIds ?? [];
+
+    if (group.selection_mode === "SINGLE" && optionIds.length > 1) {
+      throw new V0SaleOrderError(
+        422,
+        `items[${input.itemIndex}] modifier group ${group.id} allows only one option`,
+        "ORDER_ITEM_MODIFIER_INVALID"
+      );
+    }
+
+    const minimumSelections = Math.max(group.min_selections, group.is_required ? 1 : 0);
+    if (optionIds.length < minimumSelections) {
+      throw new V0SaleOrderError(
+        422,
+        `items[${input.itemIndex}] modifier group ${group.id} requires at least ${minimumSelections} option(s)`,
+        "ORDER_ITEM_MODIFIER_INVALID"
+      );
+    }
+    if (optionIds.length > group.max_selections) {
+      throw new V0SaleOrderError(
+        422,
+        `items[${input.itemIndex}] modifier group ${group.id} allows at most ${group.max_selections} option(s)`,
+        "ORDER_ITEM_MODIFIER_INVALID"
+      );
+    }
+
+    if (optionIds.length === 0) {
+      continue;
+    }
+
+    const selectedOptions = optionIds.map((optionId) => {
+      const option = optionById.get(optionId);
+      if (!option || option.modifier_group_id !== group.id) {
+        throw new V0SaleOrderError(
+          422,
+          `items[${input.itemIndex}] modifier option ${optionId} is invalid for group ${group.id}`,
+          "ORDER_ITEM_MODIFIER_INVALID"
+        );
+      }
+      totalPriceDelta = roundMoney(totalPriceDelta + option.price_delta);
+      return {
+        optionId: option.id,
+        label: option.label,
+        priceDelta: option.price_delta,
+      };
+    });
+
+    snapshot.push({
+      groupId: group.id,
+      groupName: group.name,
+      selectionMode: group.selection_mode,
+      minSelections: group.min_selections,
+      maxSelections: group.max_selections,
+      isRequired: group.is_required,
+      selectedOptions,
+    });
+  }
+
+  return {
+    totalPriceDelta,
+    snapshot,
+  };
+}
+
+function assertNoDuplicateValues(values: readonly string[], message: string): void {
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) {
+      throw new V0SaleOrderError(422, message, "SALE_ORDER_VALIDATION_FAILED");
+    }
+    seen.add(value);
+  }
 }
 
 function parseCheckoutBody(body: Record<string, unknown>, lines: V0OrderTicketLineRow[]): CheckoutInput {
@@ -1023,14 +1280,6 @@ function requirePositiveNumber(input: unknown, field: string): number {
   const value = Number(input);
   if (!Number.isFinite(value) || value <= 0) {
     throw new V0SaleOrderError(422, `${field} must be greater than 0`, "SALE_ORDER_VALIDATION_FAILED");
-  }
-  return roundMoney(value);
-}
-
-function requireNonNegativeNumber(input: unknown, field: string): number {
-  const value = Number(input);
-  if (!Number.isFinite(value) || value < 0) {
-    throw new V0SaleOrderError(422, `${field} must be >= 0`, "SALE_ORDER_VALIDATION_FAILED");
   }
   return roundMoney(value);
 }

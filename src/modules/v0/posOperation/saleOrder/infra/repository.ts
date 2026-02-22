@@ -45,6 +45,31 @@ export type V0OrderTicketLineRow = {
   updated_at: Date;
 };
 
+export type V0OrderMenuItemRow = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  base_price: number;
+};
+
+export type V0OrderMenuModifierGroupRow = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  selection_mode: "SINGLE" | "MULTI";
+  min_selections: number;
+  max_selections: number;
+  is_required: boolean;
+};
+
+export type V0OrderMenuModifierOptionRow = {
+  id: string;
+  tenant_id: string;
+  modifier_group_id: string;
+  label: string;
+  price_delta: number;
+};
+
 export type V0SaleRow = {
   id: string;
   tenant_id: string;
@@ -287,6 +312,81 @@ export class V0SaleOrderRepository {
       [input.tenantId, input.branchId, input.entitlementKey]
     );
     return result.rows[0]?.enforcement ?? "ENABLED";
+  }
+
+  async getActiveMenuItemVisibleInBranch(input: {
+    tenantId: string;
+    branchId: string;
+    menuItemId: string;
+  }): Promise<V0OrderMenuItemRow | null> {
+    const result = await this.db.query<V0OrderMenuItemRow>(
+      `SELECT
+         i.id,
+         i.tenant_id,
+         i.name,
+         i.base_price::FLOAT8 AS base_price
+       FROM v0_menu_items i
+       INNER JOIN v0_menu_item_branch_visibility vis
+         ON vis.tenant_id = i.tenant_id
+        AND vis.menu_item_id = i.id
+       WHERE i.tenant_id = $1
+         AND vis.branch_id = $2
+         AND i.id = $3
+         AND i.status = 'ACTIVE'
+       LIMIT 1`,
+      [input.tenantId, input.branchId, input.menuItemId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async listActiveModifierGroupsForMenuItem(input: {
+    tenantId: string;
+    menuItemId: string;
+  }): Promise<V0OrderMenuModifierGroupRow[]> {
+    const result = await this.db.query<V0OrderMenuModifierGroupRow>(
+      `SELECT
+         g.id,
+         g.tenant_id,
+         g.name,
+         g.selection_mode,
+         g.min_selections,
+         g.max_selections,
+         g.is_required
+       FROM v0_menu_item_modifier_group_links l
+       INNER JOIN v0_menu_modifier_groups g
+         ON g.tenant_id = l.tenant_id
+        AND g.id = l.modifier_group_id
+       WHERE l.tenant_id = $1
+         AND l.menu_item_id = $2
+         AND g.status = 'ACTIVE'
+       ORDER BY l.display_order ASC, g.id ASC`,
+      [input.tenantId, input.menuItemId]
+    );
+    return result.rows;
+  }
+
+  async listActiveModifierOptionsByGroupIds(input: {
+    tenantId: string;
+    groupIds: readonly string[];
+  }): Promise<V0OrderMenuModifierOptionRow[]> {
+    if (input.groupIds.length === 0) {
+      return [];
+    }
+    const result = await this.db.query<V0OrderMenuModifierOptionRow>(
+      `SELECT
+         id,
+         tenant_id,
+         modifier_group_id,
+         label,
+         price_delta::FLOAT8 AS price_delta
+       FROM v0_menu_modifier_options
+       WHERE tenant_id = $1
+         AND modifier_group_id = ANY($2::UUID[])
+         AND status = 'ACTIVE'
+       ORDER BY modifier_group_id ASC, label ASC, id ASC`,
+      [input.tenantId, input.groupIds]
+    );
+    return result.rows;
   }
 
   async createOrderTicket(input: {

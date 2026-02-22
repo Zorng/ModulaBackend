@@ -58,6 +58,8 @@ async function setupOwnerBranchContext(input: {
   tenantId: string;
   branchId: string;
   ownerAccountId: string;
+  defaultMenuItemId: string;
+  defaultMenuItemName: string;
 }> {
   const ownerPhone = uniquePhone();
   const ownerToken = await registerAndLogin(input.app, ownerPhone);
@@ -97,6 +99,14 @@ async function setupOwnerBranchContext(input: {
     membershipId: ownerMembershipId,
   });
   await seedDefaultBranchEntitlements({ pool: input.pool, tenantId, branchId });
+  const defaultMenuItemName = `Iced Latte ${uniqueSuffix()}`;
+  const defaultMenuItemId = await seedMenuItem({
+    pool: input.pool,
+    tenantId,
+    branchId,
+    name: defaultMenuItemName,
+    basePrice: 3.5,
+  });
 
   const tenantSelected = await request(input.app)
     .post("/v0/auth/context/tenant/select")
@@ -116,6 +126,8 @@ async function setupOwnerBranchContext(input: {
     tenantId,
     branchId,
     ownerAccountId: ownerAccountId!,
+    defaultMenuItemId,
+    defaultMenuItemName,
   };
 }
 
@@ -160,15 +172,38 @@ async function openCashSession(input: {
   return sessionId;
 }
 
-function buildOrderPayload(input: { menuItemId?: string; quantity?: number; unitPrice?: number }) {
+async function seedMenuItem(input: {
+  pool: Pool;
+  tenantId: string;
+  branchId: string;
+  name: string;
+  basePrice: number;
+}): Promise<string> {
+  const inserted = await input.pool.query<{ id: string }>(
+    `INSERT INTO v0_menu_items (tenant_id, name, base_price, status)
+     VALUES ($1, $2, $3, 'ACTIVE')
+     RETURNING id`,
+    [input.tenantId, input.name, input.basePrice]
+  );
+  const menuItemId = inserted.rows[0]?.id;
+  if (!menuItemId) {
+    throw new Error("failed to seed menu item");
+  }
+  await input.pool.query(
+    `INSERT INTO v0_menu_item_branch_visibility (tenant_id, menu_item_id, branch_id)
+     VALUES ($1, $2, $3)`,
+    [input.tenantId, menuItemId, input.branchId]
+  );
+  return menuItemId;
+}
+
+function buildOrderPayload(input: { menuItemId: string; quantity?: number }) {
   return {
     items: [
       {
-        menuItemId: input.menuItemId ?? randomUUID(),
-        menuItemNameSnapshot: "Iced Latte",
-        unitPrice: input.unitPrice ?? 2.5,
+        menuItemId: input.menuItemId,
         quantity: input.quantity ?? 1,
-        modifierSnapshot: [],
+        modifierSelections: [],
         note: null,
       },
     ],
@@ -220,7 +255,7 @@ describe("v0 sale-order integration", () => {
       .post("/v0/orders")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", `sale-order-atomic-${uniqueSuffix()}`)
-      .send(buildOrderPayload({}));
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
 
     expect(response.status).toBe(500);
 
@@ -263,7 +298,7 @@ describe("v0 sale-order integration", () => {
       accountId: setup.ownerAccountId,
     });
     const idempotencyKey = `sale-order-idem-${uniqueSuffix()}`;
-    const menuItemId = randomUUID();
+    const menuItemId = setup.defaultMenuItemId;
 
     const created = await request(app)
       .post("/v0/orders")
@@ -320,6 +355,42 @@ describe("v0 sale-order integration", () => {
     expect(Number(outboxCount.rows[0]?.count ?? "0")).toBe(1);
   });
 
+  it("ignores client-provided price/name snapshots and uses server menu data", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const created = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-server-snapshot-${uniqueSuffix()}`)
+      .send({
+        items: [
+          {
+            menuItemId: setup.defaultMenuItemId,
+            menuItemNameSnapshot: "Hacked Name",
+            unitPrice: 0.01,
+            quantity: 2,
+            modifierSnapshot: [{ optionId: randomUUID(), priceDelta: -999 }],
+            modifierSelections: [],
+            note: "tampered payload",
+          },
+        ],
+      });
+
+    expect(created.status).toBe(200);
+    expect(created.body.success).toBe(true);
+    const line = created.body.data.lines?.[0];
+    expect(line.menuItemNameSnapshot).toBe(setup.defaultMenuItemName);
+    expect(line.unitPrice).toBe(3.5);
+    expect(line.quantity).toBe(2);
+    expect(line.lineSubtotal).toBe(7);
+  });
+
   it("publishes order.place event and exposes saleOrder pull deltas", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     await openCashSession({
@@ -333,7 +404,7 @@ describe("v0 sale-order integration", () => {
       .post("/v0/orders")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", `sale-order-pull-${uniqueSuffix()}`)
-      .send(buildOrderPayload({}));
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
     expect(created.status).toBe(200);
     const orderId = created.body.data.id as string;
 
@@ -399,7 +470,7 @@ describe("v0 sale-order integration", () => {
       .post("/v0/orders")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", `sale-order-khqr-place-${uniqueSuffix()}`)
-      .send(buildOrderPayload({ unitPrice: 3.5 }));
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
     expect(placed.status).toBe(200);
     const orderId = placed.body.data.id as string;
 
@@ -480,7 +551,7 @@ describe("v0 sale-order integration", () => {
       .post("/v0/orders")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", `sale-order-no-session-place-${uniqueSuffix()}`)
-      .send(buildOrderPayload({ unitPrice: 2.5 }));
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
     expect(placed.status).toBe(422);
     expect(placed.body).toMatchObject({
       success: false,
@@ -501,7 +572,7 @@ describe("v0 sale-order integration", () => {
       .post("/v0/orders")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", `sale-order-checkout-no-session-place-${uniqueSuffix()}`)
-      .send(buildOrderPayload({ unitPrice: 2.5 }));
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
     expect(placed.status).toBe(200);
     const orderId = placed.body.data.id as string;
 
@@ -541,7 +612,7 @@ describe("v0 sale-order integration", () => {
       .post("/v0/orders")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", `sale-order-add-items-no-session-place-${uniqueSuffix()}`)
-      .send(buildOrderPayload({ unitPrice: 2.5 }));
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
     expect(placed.status).toBe(200);
     const orderId = placed.body.data.id as string;
 
@@ -561,10 +632,8 @@ describe("v0 sale-order integration", () => {
         items: [
           {
             menuItemId: randomUUID(),
-            menuItemNameSnapshot: "Brown Sugar Latte",
-            unitPrice: 3.25,
             quantity: 1,
-            modifierSnapshot: [],
+            modifierSelections: [],
             note: null,
           },
         ],
@@ -589,7 +658,7 @@ describe("v0 sale-order integration", () => {
       .post("/v0/orders")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", `sale-order-khqr-tender-invalid-place-${uniqueSuffix()}`)
-      .send(buildOrderPayload({ unitPrice: 2.5, quantity: 3 }));
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId, quantity: 3 }));
     expect(placed.status).toBe(200);
     const orderId = placed.body.data.id as string;
 
@@ -623,7 +692,7 @@ describe("v0 sale-order integration", () => {
       .post("/v0/orders")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", `sale-order-khqr-no-session-place-${uniqueSuffix()}`)
-      .send(buildOrderPayload({ unitPrice: 2.5 }));
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
     expect(placed.status).toBe(200);
     const orderId = placed.body.data.id as string;
 
@@ -681,7 +750,7 @@ describe("v0 sale-order integration", () => {
       .post("/v0/orders")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", `sale-order-khqr-missing-receiver-place-${uniqueSuffix()}`)
-      .send(buildOrderPayload({ unitPrice: 3.5 }));
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
     expect(placed.status).toBe(200);
     const orderId = placed.body.data.id as string;
 

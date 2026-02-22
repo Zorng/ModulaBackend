@@ -1,20 +1,21 @@
 # Sale + Order Module (`/v0`) — API Contract
 
-This document locks the canonical contract surface for sale/order under `/v0`.
+This document locks the canonical `/v0` sale/order HTTP contract and includes request/response examples.
 
 Base prefixes:
 - `/v0/orders`
 - `/v0/sales`
 
 Implementation status:
-- Phase 1 contract lock completed.
-- Phase 3 online command/query + ACL surface is implemented on `/v0/orders` and `/v0/sales`.
-- Push replay remains partial: current seam only validates KHQR finalize eligibility, then returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED` for `sale.finalize` replay.
+- Online command/query + ACL surface is implemented on `/v0/orders` and `/v0/sales`.
+- Push replay remains partial for sale/order writes.
 
 Frontend rollout note:
 - Treat all listed `/v0/orders` + `/v0/sales` endpoints as online-ready.
 - Always send `Idempotency-Key` for write endpoints.
-- Do not route sale finalize through `pushSync` yet; replay parity for sale/order writes is still partial.
+- Do not route full sale/order flow through `pushSync` yet.
+
+---
 
 ## Conventions
 
@@ -23,12 +24,21 @@ Frontend rollout note:
   - success: `{ "success": true, "data": ... }`
   - failure: `{ "success": false, "error": "...", "code": "..." }`
 - Auth: `Authorization: Bearer <accessToken>`
-- Context model:
-  - `tenantId` + `branchId` are from working-context token only.
-  - no context override in query/body/headers.
+- Working context:
+  - `tenantId` + `branchId` come from token context only
+  - no context override in request body/query/header
 - Idempotency:
-  - all write endpoints require `Idempotency-Key`.
-  - replay returns stored response with `Idempotency-Replayed: true`.
+  - all write endpoints require `Idempotency-Key`
+  - replayed responses include `Idempotency-Replayed: true`
+
+Example write headers:
+```http
+Authorization: Bearer <accessToken>
+Idempotency-Key: 2b0b0f12-84be-4ac2-b9ba-f8a8b8b5f2f0
+Content-Type: application/json
+```
+
+---
 
 ## Types
 
@@ -37,150 +47,677 @@ type OrderStatus = "OPEN" | "CHECKED_OUT" | "CANCELLED";
 type SaleStatus = "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
 type VoidRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
 
-type OrderTicket = {
-  id: string;
-  tenantId: string;
-  branchId: string;
-  status: OrderStatus;
-  createdAt: string;
-  updatedAt: string;
+type OrderItemModifierSelection = {
+  groupId: string;
+  optionIds: string[];
 };
 
-type Sale = {
-  id: string;
-  tenantId: string;
-  branchId: string;
-  orderId: string | null;
-  status: SaleStatus;
-  paymentMethod: "CASH" | "KHQR";
-  tenderCurrency: "USD" | "KHR";
-  tenderAmount: number;
-  cashReceivedTenderAmount: number | null;
-  cashChangeTenderAmount: number;
-  subtotalUsd: number;
-  subtotalKhr: number;
-  discountUsd: number;
-  discountKhr: number;
-  vatUsd: number;
-  vatKhr: number;
-  grandTotalUsd: number;
-  grandTotalKhr: number;
-  saleFxRateKhrPerUsd: number;
-  saleKhrRoundingEnabled: boolean;
-  saleKhrRoundingMode: "NEAREST" | "UP" | "DOWN";
-  saleKhrRoundingGranularity: "100" | "1000";
-  khqrMd5: string | null;
-  khqrHash: string | null;
-  khqrToAccountId: string | null;
-  khqrConfirmedAt: string | null;
-  finalizedAt: string | null;
-  voidedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type VoidRequest = {
-  id: string;
-  saleId: string;
-  tenantId: string;
-  branchId: string;
-  requestedByAccountId: string;
-  reviewedByAccountId: string | null;
-  status: VoidRequestStatus;
-  reason: string;
-  createdAt: string;
-  updatedAt: string;
+type OrderItemInput = {
+  menuItemId: string;
+  quantity: number;
+  modifierSelections?: OrderItemModifierSelection[];
+  note?: string | null;
 };
 ```
 
-## Endpoint Groups
+---
 
-### Orders
+## Orders
 
-#### 1) Place order ticket
+### 1) Place order ticket
 `POST /v0/orders`  
 Action key: `order.place`
 
+Body example:
+```json
+{
+  "items": [
+    {
+      "menuItemId": "a7f5dc8a-02ce-4c88-8f39-6e6ec0c4ed42",
+      "quantity": 2,
+      "modifierSelections": [
+        {
+          "groupId": "2b5f4f4b-3f6c-4900-a4b1-77bb0ee7f47b",
+          "optionIds": [
+            "0b38f877-eed2-47b5-a9be-43f7f04b7e15"
+          ]
+        }
+      ],
+      "note": "Less ice"
+    }
+  ]
+}
+```
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+    "openedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+    "status": "OPEN",
+    "checkedOutAt": null,
+    "checkedOutByAccountId": null,
+    "cancelledAt": null,
+    "cancelledByAccountId": null,
+    "cancelReason": null,
+    "createdAt": "2026-02-22T10:00:00.000Z",
+    "updatedAt": "2026-02-22T10:00:00.000Z",
+    "lines": [
+      {
+        "id": "d04dd5b8-f31c-4b1f-a111-c1314437f4e1",
+        "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+        "menuItemId": "a7f5dc8a-02ce-4c88-8f39-6e6ec0c4ed42",
+        "menuItemNameSnapshot": "Iced Latte",
+        "unitPrice": 2.5,
+        "quantity": 2,
+        "lineSubtotal": 5,
+        "modifierSnapshot": [],
+        "note": "Less ice",
+        "createdAt": "2026-02-22T10:00:00.000Z",
+        "updatedAt": "2026-02-22T10:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
 Rules:
 - requires open cash session (`ORDER_REQUIRES_OPEN_CASH_SESSION`)
+- server ignores client price/name snapshots and resolves canonical values from menu catalog
+- server validates branch visibility + modifier selections; invalid combos are rejected
 
-#### 2) Add items to open order
+---
+
+### 2) Add items to open order
 `POST /v0/orders/:orderId/items`  
 Action key: `order.items.add`
 
+Body example:
+```json
+{
+  "items": [
+    {
+      "menuItemId": "0ce7a7b6-d10f-4f0f-b2be-9f1fc56cf82f",
+      "quantity": 1,
+      "modifierSelections": [],
+      "note": null
+    }
+  ]
+}
+```
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+    "status": "OPEN",
+    "addedLines": [
+      {
+        "id": "38432852-4d11-43e9-b2ec-f5dfce3d8ef8",
+        "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+        "menuItemId": "0ce7a7b6-d10f-4f0f-b2be-9f1fc56cf82f",
+        "menuItemNameSnapshot": "Mocha",
+        "unitPrice": 3,
+        "quantity": 1,
+        "lineSubtotal": 3,
+        "modifierSnapshot": [],
+        "note": null,
+        "createdAt": "2026-02-22T10:03:00.000Z",
+        "updatedAt": "2026-02-22T10:03:00.000Z"
+      }
+    ]
+  }
+}
+```
+
 Rules:
 - requires open cash session (`ORDER_REQUIRES_OPEN_CASH_SESSION`)
 
-#### 3) Checkout order
+---
+
+### 3) Checkout order
 `POST /v0/orders/:orderId/checkout`  
 Action key: `order.checkout`
+
+Body example (KHQR):
+```json
+{
+  "paymentMethod": "KHQR",
+  "tenderCurrency": "USD",
+  "tenderAmount": 8,
+  "subtotalUsd": 8,
+  "discountUsd": 0,
+  "vatUsd": 0,
+  "grandTotalUsd": 8,
+  "saleFxRateKhrPerUsd": 4100
+}
+```
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+    "status": "PENDING",
+    "paymentMethod": "KHQR",
+    "tenderCurrency": "USD",
+    "tenderAmount": 8,
+    "cashReceivedTenderAmount": null,
+    "cashChangeTenderAmount": 0,
+    "subtotalUsd": 8,
+    "subtotalKhr": 32800,
+    "discountUsd": 0,
+    "discountKhr": 0,
+    "vatUsd": 0,
+    "vatKhr": 0,
+    "grandTotalUsd": 8,
+    "grandTotalKhr": 32800,
+    "saleFxRateKhrPerUsd": 4100,
+    "saleKhrRoundingEnabled": true,
+    "saleKhrRoundingMode": "NEAREST",
+    "saleKhrRoundingGranularity": "100",
+    "khqrMd5": null,
+    "khqrToAccountId": null,
+    "khqrHash": null,
+    "khqrConfirmedAt": null,
+    "finalizedAt": null,
+    "voidedAt": null,
+    "voidReason": null,
+    "createdAt": "2026-02-22T10:05:00.000Z",
+    "updatedAt": "2026-02-22T10:05:00.000Z",
+    "order": {
+      "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+      "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+      "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+      "openedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+      "status": "CHECKED_OUT",
+      "checkedOutAt": "2026-02-22T10:05:00.000Z",
+      "checkedOutByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+      "cancelledAt": null,
+      "cancelledByAccountId": null,
+      "cancelReason": null,
+      "createdAt": "2026-02-22T10:00:00.000Z",
+      "updatedAt": "2026-02-22T10:05:00.000Z"
+    },
+    "lines": [
+      {
+        "id": "5c977953-e0ab-4f10-98e0-bce3cf0f44a6",
+        "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+        "orderLineId": "d04dd5b8-f31c-4b1f-a111-c1314437f4e1",
+        "menuItemId": "a7f5dc8a-02ce-4c88-8f39-6e6ec0c4ed42",
+        "menuItemNameSnapshot": "Iced Latte",
+        "unitPrice": 2.5,
+        "quantity": 2,
+        "lineDiscountAmount": 0,
+        "lineTotalAmount": 5,
+        "modifierSnapshot": [],
+        "createdAt": "2026-02-22T10:05:00.000Z",
+        "updatedAt": "2026-02-22T10:05:00.000Z"
+      }
+    ]
+  }
+}
+```
 
 Rules:
 - requires open cash session (`SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION`)
 
-#### 4) Update fulfillment status
+---
+
+### 4) Update fulfillment status
 `PATCH /v0/orders/:orderId/fulfillment`  
 Action key: `order.fulfillment.status.update`
 
-#### 5) List orders
-`GET /v0/orders`  
+Body example:
+```json
+{
+  "status": "PREPARING",
+  "note": "Started by kitchen"
+}
+```
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "11f57e4d-c5fb-4f29-bbc5-4f6f17f99373",
+    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+    "status": "PREPARING",
+    "note": "Started by kitchen",
+    "createdByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+    "completedAt": null,
+    "createdAt": "2026-02-22T10:07:00.000Z",
+    "updatedAt": "2026-02-22T10:07:00.000Z"
+  }
+}
+```
+
+---
+
+### 5) List orders
+`GET /v0/orders?status=OPEN&limit=20&offset=0`  
 Action key: `order.list`
 
-#### 6) Get order detail
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+      "status": "OPEN",
+      "createdAt": "2026-02-22T10:00:00.000Z",
+      "updatedAt": "2026-02-22T10:03:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+### 6) Get order detail
 `GET /v0/orders/:orderId`  
 Action key: `order.read`
 
-### Sales
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+    "openedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+    "status": "OPEN",
+    "checkedOutAt": null,
+    "checkedOutByAccountId": null,
+    "cancelledAt": null,
+    "cancelledByAccountId": null,
+    "cancelReason": null,
+    "createdAt": "2026-02-22T10:00:00.000Z",
+    "updatedAt": "2026-02-22T10:03:00.000Z",
+    "lines": [
+      {
+        "id": "d04dd5b8-f31c-4b1f-a111-c1314437f4e1",
+        "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+        "menuItemId": "a7f5dc8a-02ce-4c88-8f39-6e6ec0c4ed42",
+        "menuItemNameSnapshot": "Iced Latte",
+        "unitPrice": 2.5,
+        "quantity": 2,
+        "lineSubtotal": 5,
+        "modifierSnapshot": [],
+        "note": "Less ice",
+        "createdAt": "2026-02-22T10:00:00.000Z",
+        "updatedAt": "2026-02-22T10:00:00.000Z"
+      }
+    ],
+    "fulfillmentBatches": []
+  }
+}
+```
 
-#### 7) Finalize sale
+---
+
+## Sales
+
+### 7) Finalize sale
 `POST /v0/sales/:saleId/finalize`  
 Action key: `sale.finalize`
+
+Body example (KHQR):
+```json
+{
+  "paidAmount": 8,
+  "khqrMd5": "8b4a2b3a0512451d6d7aab75187998254d517f77c48a151617f75ea77e5e7f64"
+}
+```
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+    "status": "FINALIZED",
+    "paymentMethod": "KHQR",
+    "tenderCurrency": "USD",
+    "tenderAmount": 8,
+    "cashReceivedTenderAmount": null,
+    "cashChangeTenderAmount": 0,
+    "subtotalUsd": 8,
+    "subtotalKhr": 32800,
+    "discountUsd": 0,
+    "discountKhr": 0,
+    "vatUsd": 0,
+    "vatKhr": 0,
+    "grandTotalUsd": 8,
+    "grandTotalKhr": 32800,
+    "saleFxRateKhrPerUsd": 4100,
+    "saleKhrRoundingEnabled": true,
+    "saleKhrRoundingMode": "NEAREST",
+    "saleKhrRoundingGranularity": "100",
+    "khqrMd5": "8b4a2b3a0512451d6d7aab75187998254d517f77c48a151617f75ea77e5e7f64",
+    "khqrToAccountId": "ieangzorng_lim@bkrt",
+    "khqrHash": "db_hash",
+    "khqrConfirmedAt": "2026-02-22T10:10:00.000Z",
+    "finalizedAt": "2026-02-22T10:10:01.000Z",
+    "voidedAt": null,
+    "voidReason": null,
+    "createdAt": "2026-02-22T10:05:00.000Z",
+    "updatedAt": "2026-02-22T10:10:01.000Z"
+  }
+}
+```
 
 Rules:
 - requires open cash session (`SALE_FINALIZE_REQUIRES_OPEN_CASH_SESSION`)
 - KHQR requires backend-confirmed proof:
   - `SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED`
   - `SALE_FINALIZE_KHQR_PROOF_MISMATCH`
-- KHQR generation should use `POST /v0/payments/khqr/sales/:saleId/generate` before waiting for payment confirmation.
+- KHQR generation endpoint:
+  - `POST /v0/payments/khqr/sales/:saleId/generate`
 
-#### 8) Request void (team mode)
+---
+
+### 8) Request void (team mode)
 `POST /v0/sales/:saleId/void/request`  
 Action key: `sale.void.request`
 
-#### 9) Approve void request (team mode)
+Body example:
+```json
+{
+  "reason": "Wrong item prepared"
+}
+```
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "6b89fb1a-b2e9-4698-a7c2-79ea5c187c81",
+    "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+    "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+    "reviewedByAccountId": null,
+    "status": "PENDING",
+    "reason": "Wrong item prepared",
+    "reviewNote": null,
+    "requestedAt": "2026-02-22T10:12:00.000Z",
+    "reviewedAt": null,
+    "createdAt": "2026-02-22T10:12:00.000Z",
+    "updatedAt": "2026-02-22T10:12:00.000Z"
+  }
+}
+```
+
+---
+
+### 9) Approve void request (team mode)
 `POST /v0/sales/:saleId/void/approve`  
 Action key: `sale.void.approve`
 
-#### 10) Reject void request (team mode)
+Body example:
+```json
+{
+  "note": "Approved by manager"
+}
+```
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "6b89fb1a-b2e9-4698-a7c2-79ea5c187c81",
+    "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+    "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+    "reviewedByAccountId": "d2453d8c-0f70-4efd-a522-23ac3d690955",
+    "status": "APPROVED",
+    "reason": "Wrong item prepared",
+    "reviewNote": "Approved by manager",
+    "requestedAt": "2026-02-22T10:12:00.000Z",
+    "reviewedAt": "2026-02-22T10:13:00.000Z",
+    "createdAt": "2026-02-22T10:12:00.000Z",
+    "updatedAt": "2026-02-22T10:13:00.000Z"
+  }
+}
+```
+
+---
+
+### 10) Reject void request (team mode)
 `POST /v0/sales/:saleId/void/reject`  
 Action key: `sale.void.reject`
 
-#### 11) Execute void
+Body example:
+```json
+{
+  "note": "Keep sale record"
+}
+```
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "6b89fb1a-b2e9-4698-a7c2-79ea5c187c81",
+    "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+    "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+    "reviewedByAccountId": "d2453d8c-0f70-4efd-a522-23ac3d690955",
+    "status": "REJECTED",
+    "reason": "Wrong item prepared",
+    "reviewNote": "Keep sale record",
+    "requestedAt": "2026-02-22T10:12:00.000Z",
+    "reviewedAt": "2026-02-22T10:13:30.000Z",
+    "createdAt": "2026-02-22T10:12:00.000Z",
+    "updatedAt": "2026-02-22T10:13:30.000Z"
+  }
+}
+```
+
+---
+
+### 11) Execute void
 `POST /v0/sales/:saleId/void/execute`  
 Action key: `sale.void.execute`
 
+Body example:
+```json
+{
+  "reason": "Operator corrected sale"
+}
+```
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+    "status": "VOIDED",
+    "paymentMethod": "CASH",
+    "tenderCurrency": "USD",
+    "tenderAmount": 8,
+    "cashReceivedTenderAmount": 10,
+    "cashChangeTenderAmount": 2,
+    "subtotalUsd": 8,
+    "subtotalKhr": 32800,
+    "discountUsd": 0,
+    "discountKhr": 0,
+    "vatUsd": 0,
+    "vatKhr": 0,
+    "grandTotalUsd": 8,
+    "grandTotalKhr": 32800,
+    "saleFxRateKhrPerUsd": 4100,
+    "saleKhrRoundingEnabled": true,
+    "saleKhrRoundingMode": "NEAREST",
+    "saleKhrRoundingGranularity": "100",
+    "khqrMd5": null,
+    "khqrToAccountId": null,
+    "khqrHash": null,
+    "khqrConfirmedAt": null,
+    "finalizedAt": "2026-02-22T10:10:00.000Z",
+    "voidedAt": "2026-02-22T10:15:00.000Z",
+    "voidReason": "Operator corrected sale",
+    "createdAt": "2026-02-22T10:05:00.000Z",
+    "updatedAt": "2026-02-22T10:15:00.000Z"
+  }
+}
+```
+
 Rules:
-- workforce OFF: direct execute path (no second-actor approval required)
+- workforce OFF: direct execute path (no second actor approval required)
 - workforce ON: requires approved void request (`VOID_APPROVAL_REQUIRED`)
 
-#### 12) List sales
-`GET /v0/sales`  
+---
+
+### 12) List sales
+`GET /v0/sales?status=FINALIZED&limit=20&offset=0`  
 Action key: `sale.list`
 
-#### 13) Get sale detail
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+      "status": "FINALIZED",
+      "paymentMethod": "KHQR",
+      "tenderCurrency": "USD",
+      "grandTotalUsd": 8,
+      "grandTotalKhr": 32800,
+      "finalizedAt": "2026-02-22T10:10:01.000Z",
+      "voidedAt": null,
+      "createdAt": "2026-02-22T10:05:00.000Z",
+      "updatedAt": "2026-02-22T10:10:01.000Z"
+    }
+  ]
+}
+```
+
+---
+
+### 13) Get sale detail
 `GET /v0/sales/:saleId`  
 Action key: `sale.read`
 
-#### 14) Get void request detail
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+    "status": "FINALIZED",
+    "paymentMethod": "KHQR",
+    "tenderCurrency": "USD",
+    "tenderAmount": 8,
+    "cashReceivedTenderAmount": null,
+    "cashChangeTenderAmount": 0,
+    "subtotalUsd": 8,
+    "subtotalKhr": 32800,
+    "discountUsd": 0,
+    "discountKhr": 0,
+    "vatUsd": 0,
+    "vatKhr": 0,
+    "grandTotalUsd": 8,
+    "grandTotalKhr": 32800,
+    "saleFxRateKhrPerUsd": 4100,
+    "saleKhrRoundingEnabled": true,
+    "saleKhrRoundingMode": "NEAREST",
+    "saleKhrRoundingGranularity": "100",
+    "khqrMd5": "8b4a2b3a0512451d6d7aab75187998254d517f77c48a151617f75ea77e5e7f64",
+    "khqrToAccountId": "ieangzorng_lim@bkrt",
+    "khqrHash": "db_hash",
+    "khqrConfirmedAt": "2026-02-22T10:10:00.000Z",
+    "finalizedAt": "2026-02-22T10:10:01.000Z",
+    "voidedAt": null,
+    "voidReason": null,
+    "createdAt": "2026-02-22T10:05:00.000Z",
+    "updatedAt": "2026-02-22T10:10:01.000Z",
+    "lines": [
+      {
+        "id": "5c977953-e0ab-4f10-98e0-bce3cf0f44a6",
+        "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+        "orderLineId": "d04dd5b8-f31c-4b1f-a111-c1314437f4e1",
+        "menuItemId": "a7f5dc8a-02ce-4c88-8f39-6e6ec0c4ed42",
+        "menuItemNameSnapshot": "Iced Latte",
+        "unitPrice": 2.5,
+        "quantity": 2,
+        "lineDiscountAmount": 0,
+        "lineTotalAmount": 5,
+        "modifierSnapshot": [],
+        "createdAt": "2026-02-22T10:05:00.000Z",
+        "updatedAt": "2026-02-22T10:05:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 14) Get void request detail
 `GET /v0/sales/:saleId/void-request`  
 Action key: `sale.void.request.read`
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "6b89fb1a-b2e9-4698-a7c2-79ea5c187c81",
+    "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+    "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+    "reviewedByAccountId": "d2453d8c-0f70-4efd-a522-23ac3d690955",
+    "status": "APPROVED",
+    "reason": "Wrong item prepared",
+    "reviewNote": "Approved by manager",
+    "requestedAt": "2026-02-22T10:12:00.000Z",
+    "reviewedAt": "2026-02-22T10:13:00.000Z",
+    "createdAt": "2026-02-22T10:12:00.000Z",
+    "updatedAt": "2026-02-22T10:13:00.000Z"
+  }
+}
+```
+
+---
 
 ## Push Sync + Pull Sync Notes
 
 - Replay-enabled target operations:
   - `sale.finalize`
   - `sale.void.execute`
-- Online-only operations (replay should return `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`):
+- Online-only operations (replay returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`):
   - `order.place`
   - `order.items.add`
   - `order.checkout`
@@ -188,7 +725,9 @@ Action key: `sale.void.request.read`
   - `sale.void.request`
   - `sale.void.approve`
   - `sale.void.reject`
-- Sale/order writes must append `moduleKey = saleOrder` pull deltas in the same transaction.
+- Sale/order writes append `moduleKey = saleOrder` pull deltas in same transaction.
+
+---
 
 ## Locked Error Codes
 
@@ -208,7 +747,9 @@ Action key: `sale.void.request.read`
 - `VOID_NOT_ALLOWED_FOR_PAYMENT_METHOD`
 - standard idempotency/access-control/entitlement denials
 
+---
+
 ## Notification Lock
 
-- ON-01 ("void requires attention") is emitted on `VoidRequest(status=PENDING)` creation.
+- ON-01 (`void requires attention`) is emitted on `VoidRequest(status=PENDING)` creation.
 - Do not emit ON-01 from `sale.status=VOID_PENDING` transition alone.
