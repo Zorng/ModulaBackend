@@ -7,6 +7,7 @@ export type V0KhqrAttemptStatus =
   | "PAID_CONFIRMED"
   | "EXPIRED"
   | "SUPERSEDED"
+  | "CANCELLED"
   | "PENDING_CONFIRMATION";
 
 export type V0KhqrVerificationStatus =
@@ -18,12 +19,45 @@ export type V0KhqrVerificationStatus =
 
 export type V0KhqrCurrency = "USD" | "KHR";
 export type V0KhqrProvider = "BAKONG" | "STUB";
+export type V0PaymentIntentStatus =
+  | "WAITING_FOR_PAYMENT"
+  | "PAID_CONFIRMED"
+  | "FINALIZED"
+  | "EXPIRED"
+  | "CANCELLED"
+  | "FAILED_PROOF";
+
+export type V0PaymentIntentRow = {
+  id: string;
+  tenant_id: string;
+  branch_id: string;
+  sale_id: string | null;
+  status: V0PaymentIntentStatus;
+  payment_method: "KHQR" | "CASH";
+  tender_currency: V0KhqrCurrency;
+  tender_amount: number;
+  expected_to_account_id: string | null;
+  expires_at: Date | null;
+  paid_confirmed_at: Date | null;
+  finalized_at: Date | null;
+  cancelled_at: Date | null;
+  reason_code: string | null;
+  active_attempt_id: string | null;
+  checkout_lines_snapshot: unknown;
+  checkout_totals_snapshot: unknown;
+  pricing_snapshot: unknown;
+  metadata_snapshot: unknown;
+  created_by_account_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
 
 export type V0KhqrPaymentAttemptRow = {
   id: string;
   tenant_id: string;
   branch_id: string;
-  sale_id: string;
+  payment_intent_id: string;
+  sale_id: string | null;
   md5: string;
   status: V0KhqrAttemptStatus;
   expected_amount: number;
@@ -82,16 +116,32 @@ export type V0SaleKhqrSnapshotRow = {
   payment_method: "CASH" | "KHQR";
   tender_currency: V0KhqrCurrency;
   tender_amount: number;
+  paid_amount: number;
   grand_total_usd: number;
   grand_total_khr: number;
   khqr_md5: string | null;
   khqr_to_account_id: string | null;
+  khqr_hash: string | null;
+  khqr_confirmed_at: Date | null;
+  finalized_at: Date | null;
+  finalized_by_account_id: string | null;
+};
+
+export type V0SaleKhqrLineSnapshotInput = {
+  menuItemId: string;
+  menuItemNameSnapshot: string;
+  unitPrice: number;
+  quantity: number;
+  lineDiscountAmount: number;
+  lineTotalAmount: number;
+  modifierSnapshot: unknown;
 };
 
 const ATTEMPT_SELECT_FIELDS = `
   id,
   tenant_id,
   branch_id,
+  payment_intent_id,
   sale_id::TEXT AS sale_id,
   md5,
   status,
@@ -109,6 +159,31 @@ const ATTEMPT_SELECT_FIELDS = `
   provider_confirmed_currency,
   provider_confirmed_to_account_id,
   provider_confirmed_at,
+  created_by_account_id,
+  created_at,
+  updated_at
+`;
+
+const PAYMENT_INTENT_SELECT_FIELDS = `
+  id,
+  tenant_id,
+  branch_id,
+  sale_id::TEXT AS sale_id,
+  status,
+  payment_method,
+  tender_currency,
+  tender_amount::FLOAT8 AS tender_amount,
+  expected_to_account_id,
+  expires_at,
+  paid_confirmed_at,
+  finalized_at,
+  cancelled_at,
+  reason_code,
+  active_attempt_id,
+  checkout_lines_snapshot,
+  checkout_totals_snapshot,
+  pricing_snapshot,
+  metadata_snapshot,
   created_by_account_id,
   created_at,
   updated_at
@@ -182,10 +257,15 @@ export class V0KhqrPaymentRepository {
          payment_method,
          tender_currency,
          tender_amount::FLOAT8 AS tender_amount,
+         paid_amount::FLOAT8 AS paid_amount,
          grand_total_usd::FLOAT8 AS grand_total_usd,
          grand_total_khr::FLOAT8 AS grand_total_khr,
          khqr_md5,
-         khqr_to_account_id
+         khqr_to_account_id,
+         khqr_hash,
+         khqr_confirmed_at,
+         finalized_at,
+         finalized_by_account_id
        FROM v0_sales
        WHERE tenant_id = $1
          AND branch_id = $2
@@ -223,6 +303,558 @@ export class V0KhqrPaymentRepository {
         input.khqrHash,
       ]
     );
+  }
+
+  async markSaleFinalizedFromKhqr(input: {
+    tenantId: string;
+    branchId: string;
+    saleId: string;
+    md5: string;
+    toAccountId: string;
+    khqrHash: string | null;
+    khqrConfirmedAt: Date | null;
+    finalizedByAccountId: string | null;
+  }): Promise<V0SaleKhqrSnapshotRow | null> {
+    const result = await this.db.query<V0SaleKhqrSnapshotRow>(
+      `UPDATE v0_sales
+       SET status = 'FINALIZED',
+           khqr_md5 = COALESCE(khqr_md5, $4),
+           khqr_to_account_id = COALESCE(khqr_to_account_id, $5),
+           khqr_hash = COALESCE($6, khqr_hash),
+           khqr_confirmed_at = COALESCE($7, khqr_confirmed_at),
+           finalized_at = COALESCE(finalized_at, NOW()),
+           finalized_by_account_id = COALESCE(finalized_by_account_id, $8),
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3
+         AND status <> 'VOIDED'
+       RETURNING
+         id,
+         tenant_id,
+         branch_id,
+         status,
+         payment_method,
+         tender_currency,
+         tender_amount::FLOAT8 AS tender_amount,
+         paid_amount::FLOAT8 AS paid_amount,
+         grand_total_usd::FLOAT8 AS grand_total_usd,
+         grand_total_khr::FLOAT8 AS grand_total_khr,
+         khqr_md5,
+         khqr_to_account_id,
+         khqr_hash,
+         khqr_confirmed_at,
+         finalized_at,
+         finalized_by_account_id`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.saleId,
+        input.md5,
+        input.toAccountId,
+        input.khqrHash,
+        input.khqrConfirmedAt,
+        input.finalizedByAccountId,
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async createPendingSaleForKhqrIntent(input: {
+    tenantId: string;
+    branchId: string;
+    tenderCurrency: V0KhqrCurrency;
+    tenderAmount: number;
+    khqrMd5: string;
+    khqrToAccountId: string;
+    khqrHash: string | null;
+    khqrConfirmedAt: Date | null;
+    subtotalUsd: number;
+    subtotalKhr: number;
+    discountUsd: number;
+    discountKhr: number;
+    vatUsd: number;
+    vatKhr: number;
+    grandTotalUsd: number;
+    grandTotalKhr: number;
+    saleFxRateKhrPerUsd: number;
+    saleKhrRoundingEnabled: boolean;
+    saleKhrRoundingMode: "NEAREST" | "UP" | "DOWN";
+    saleKhrRoundingGranularity: 100 | 1000;
+    paidAmount: number;
+  }): Promise<V0SaleKhqrSnapshotRow> {
+    const result = await this.db.query<V0SaleKhqrSnapshotRow>(
+      `INSERT INTO v0_sales (
+         tenant_id,
+         branch_id,
+         order_ticket_id,
+         status,
+         payment_method,
+         tender_currency,
+         tender_amount,
+         cash_received_tender_amount,
+         cash_change_tender_amount,
+         khqr_md5,
+         khqr_to_account_id,
+         khqr_hash,
+         khqr_confirmed_at,
+         subtotal_usd,
+         subtotal_khr,
+         discount_usd,
+         discount_khr,
+         vat_usd,
+         vat_khr,
+         grand_total_usd,
+         grand_total_khr,
+         sale_fx_rate_khr_per_usd,
+         sale_khr_rounding_enabled,
+         sale_khr_rounding_mode,
+         sale_khr_rounding_granularity,
+         subtotal_amount,
+         discount_amount,
+         vat_amount,
+         total_amount,
+         paid_amount
+       )
+       VALUES (
+         $1,
+         $2,
+         NULL,
+         'PENDING',
+         'KHQR',
+         $3,
+         $4::NUMERIC(14,2),
+         NULL,
+         0::NUMERIC(14,2),
+         $5,
+         $6,
+         $7,
+         $8,
+         $9::NUMERIC(14,2),
+         $10::NUMERIC(14,2),
+         $11::NUMERIC(14,2),
+         $12::NUMERIC(14,2),
+         $13::NUMERIC(14,2),
+         $14::NUMERIC(14,2),
+         $15::NUMERIC(14,2),
+         $16::NUMERIC(14,2),
+         $17::NUMERIC(14,4),
+         $18,
+         $19,
+         $20,
+         $9::NUMERIC(14,2),
+         $11::NUMERIC(14,2),
+         $13::NUMERIC(14,2),
+         $15::NUMERIC(14,2),
+         $21::NUMERIC(14,2)
+       )
+       RETURNING
+         id,
+         tenant_id,
+         branch_id,
+         status,
+         payment_method,
+         tender_currency,
+         tender_amount::FLOAT8 AS tender_amount,
+         paid_amount::FLOAT8 AS paid_amount,
+         grand_total_usd::FLOAT8 AS grand_total_usd,
+         grand_total_khr::FLOAT8 AS grand_total_khr,
+         khqr_md5,
+         khqr_to_account_id,
+         khqr_hash,
+         khqr_confirmed_at,
+         finalized_at,
+         finalized_by_account_id`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.tenderCurrency,
+        input.tenderAmount,
+        input.khqrMd5,
+        input.khqrToAccountId,
+        input.khqrHash,
+        input.khqrConfirmedAt,
+        input.subtotalUsd,
+        input.subtotalKhr,
+        input.discountUsd,
+        input.discountKhr,
+        input.vatUsd,
+        input.vatKhr,
+        input.grandTotalUsd,
+        input.grandTotalKhr,
+        input.saleFxRateKhrPerUsd,
+        input.saleKhrRoundingEnabled,
+        input.saleKhrRoundingMode,
+        input.saleKhrRoundingGranularity,
+        input.paidAmount,
+      ]
+    );
+    return result.rows[0];
+  }
+
+  async createSaleLineForKhqrIntent(input: {
+    tenantId: string;
+    branchId: string;
+    saleId: string;
+    line: V0SaleKhqrLineSnapshotInput;
+  }): Promise<void> {
+    await this.db.query(
+      `INSERT INTO v0_sale_lines (
+         tenant_id,
+         branch_id,
+         sale_id,
+         order_ticket_line_id,
+         menu_item_id,
+         menu_item_name_snapshot,
+         unit_price,
+         quantity,
+         line_discount_amount,
+         line_total_amount,
+         modifier_snapshot
+       )
+       VALUES (
+         $1,
+         $2,
+         $3,
+         NULL,
+         $4::UUID,
+         $5,
+         $6::NUMERIC(14,2),
+         $7::NUMERIC(12,3),
+         $8::NUMERIC(14,2),
+         $9::NUMERIC(14,2),
+         $10::JSONB
+       )`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.saleId,
+        input.line.menuItemId,
+        input.line.menuItemNameSnapshot,
+        input.line.unitPrice,
+        input.line.quantity,
+        input.line.lineDiscountAmount,
+        input.line.lineTotalAmount,
+        JSON.stringify(input.line.modifierSnapshot ?? []),
+      ]
+    );
+  }
+
+  async markPaymentIntentFinalized(input: {
+    tenantId: string;
+    branchId: string;
+    paymentIntentId: string;
+    saleId: string;
+  }): Promise<V0PaymentIntentRow | null> {
+    const result = await this.db.query<V0PaymentIntentRow>(
+      `UPDATE v0_payment_intents
+       SET status = 'FINALIZED',
+           sale_id = COALESCE(sale_id, $4::UUID),
+           finalized_at = COALESCE(finalized_at, NOW()),
+           reason_code = NULL,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3
+       RETURNING
+         ${PAYMENT_INTENT_SELECT_FIELDS}`,
+      [input.tenantId, input.branchId, input.paymentIntentId, input.saleId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async lockPaymentIntentByIdForUpdate(input: {
+    tenantId: string;
+    branchId: string;
+    paymentIntentId: string;
+  }): Promise<V0PaymentIntentRow | null> {
+    const result = await this.db.query<V0PaymentIntentRow>(
+      `SELECT
+         ${PAYMENT_INTENT_SELECT_FIELDS}
+       FROM v0_payment_intents
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3
+       LIMIT 1
+       FOR UPDATE`,
+      [input.tenantId, input.branchId, input.paymentIntentId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async ensurePaymentIntentForSale(input: {
+    tenantId: string;
+    branchId: string;
+    saleId: string;
+    tenderAmount: number;
+    tenderCurrency: V0KhqrCurrency;
+    expectedToAccountId: string;
+    expiresAt: Date | null;
+    createdByAccountId: string | null;
+  }): Promise<V0PaymentIntentRow> {
+    const result = await this.db.query<V0PaymentIntentRow>(
+      `INSERT INTO v0_payment_intents (
+         tenant_id,
+         branch_id,
+         sale_id,
+         status,
+         payment_method,
+         tender_currency,
+         tender_amount,
+         expected_to_account_id,
+         expires_at,
+         created_by_account_id
+       )
+       VALUES (
+         $1,
+         $2,
+         $3::UUID,
+         'WAITING_FOR_PAYMENT',
+         'KHQR',
+         $4,
+         $5::NUMERIC(14,2),
+         $6,
+         $7,
+         $8
+       )
+       ON CONFLICT (tenant_id, branch_id, sale_id)
+       DO UPDATE
+       SET tender_currency = EXCLUDED.tender_currency,
+           tender_amount = EXCLUDED.tender_amount,
+           expected_to_account_id = EXCLUDED.expected_to_account_id,
+           expires_at = EXCLUDED.expires_at,
+           status = CASE
+             WHEN v0_payment_intents.status IN ('FINALIZED', 'PAID_CONFIRMED')
+               THEN v0_payment_intents.status
+             ELSE 'WAITING_FOR_PAYMENT'
+           END,
+           reason_code = CASE
+             WHEN v0_payment_intents.status IN ('FINALIZED', 'PAID_CONFIRMED')
+               THEN v0_payment_intents.reason_code
+             ELSE NULL
+           END,
+           cancelled_at = CASE
+             WHEN v0_payment_intents.status IN ('FINALIZED', 'PAID_CONFIRMED')
+               THEN v0_payment_intents.cancelled_at
+             ELSE NULL
+           END,
+           updated_at = NOW()
+       RETURNING
+         ${PAYMENT_INTENT_SELECT_FIELDS}`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.saleId,
+        input.tenderCurrency,
+        input.tenderAmount,
+        input.expectedToAccountId,
+        input.expiresAt,
+        input.createdByAccountId,
+      ]
+    );
+    return result.rows[0];
+  }
+
+  async createPaymentIntentForCheckout(input: {
+    tenantId: string;
+    branchId: string;
+    paymentMethod: "KHQR" | "CASH";
+    tenderCurrency: V0KhqrCurrency;
+    tenderAmount: number;
+    expectedToAccountId: string | null;
+    expiresAt: Date | null;
+    checkoutLinesSnapshot: unknown;
+    checkoutTotalsSnapshot: unknown;
+    pricingSnapshot: unknown;
+    metadataSnapshot: unknown;
+    createdByAccountId: string | null;
+  }): Promise<V0PaymentIntentRow> {
+    const result = await this.db.query<V0PaymentIntentRow>(
+      `INSERT INTO v0_payment_intents (
+         tenant_id,
+         branch_id,
+         sale_id,
+         status,
+         payment_method,
+         tender_currency,
+         tender_amount,
+         expected_to_account_id,
+         expires_at,
+         checkout_lines_snapshot,
+         checkout_totals_snapshot,
+         pricing_snapshot,
+         metadata_snapshot,
+         created_by_account_id
+       )
+       VALUES (
+         $1,
+         $2,
+         NULL,
+         'WAITING_FOR_PAYMENT',
+         $3,
+         $4,
+         $5::NUMERIC(14,2),
+         $6,
+         $7,
+         $8::JSONB,
+         $9::JSONB,
+         $10::JSONB,
+         $11::JSONB,
+         $12
+       )
+       RETURNING
+         ${PAYMENT_INTENT_SELECT_FIELDS}`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.paymentMethod,
+        input.tenderCurrency,
+        input.tenderAmount,
+        input.expectedToAccountId,
+        input.expiresAt,
+        JSON.stringify(input.checkoutLinesSnapshot ?? []),
+        JSON.stringify(input.checkoutTotalsSnapshot ?? {}),
+        JSON.stringify(input.pricingSnapshot ?? {}),
+        JSON.stringify(input.metadataSnapshot ?? {}),
+        input.createdByAccountId,
+      ]
+    );
+    return result.rows[0];
+  }
+
+  async findPaymentIntentById(input: {
+    tenantId: string;
+    branchId: string;
+    paymentIntentId: string;
+  }): Promise<V0PaymentIntentRow | null> {
+    const result = await this.db.query<V0PaymentIntentRow>(
+      `SELECT
+         ${PAYMENT_INTENT_SELECT_FIELDS}
+       FROM v0_payment_intents
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3
+       LIMIT 1`,
+      [input.tenantId, input.branchId, input.paymentIntentId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async setPaymentIntentActiveAttempt(input: {
+    tenantId: string;
+    branchId: string;
+    paymentIntentId: string;
+    activeAttemptId: string;
+  }): Promise<V0PaymentIntentRow | null> {
+    const result = await this.db.query<V0PaymentIntentRow>(
+      `UPDATE v0_payment_intents
+       SET active_attempt_id = $4,
+           status = CASE
+             WHEN status IN ('FINALIZED', 'PAID_CONFIRMED') THEN status
+             ELSE 'WAITING_FOR_PAYMENT'
+           END,
+           reason_code = CASE
+             WHEN status IN ('FINALIZED', 'PAID_CONFIRMED') THEN reason_code
+             ELSE NULL
+           END,
+           cancelled_at = CASE
+             WHEN status IN ('FINALIZED', 'PAID_CONFIRMED') THEN cancelled_at
+             ELSE NULL
+           END,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3
+       RETURNING
+         ${PAYMENT_INTENT_SELECT_FIELDS}`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.paymentIntentId,
+        input.activeAttemptId,
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async recordPaymentIntentVerificationOutcome(input: {
+    tenantId: string;
+    branchId: string;
+    paymentIntentId: string;
+    verificationStatus: V0KhqrVerificationStatus;
+    reasonCode: string | null;
+    providerConfirmedAt: Date | null;
+  }): Promise<V0PaymentIntentRow | null> {
+    const result = await this.db.query<V0PaymentIntentRow>(
+      `UPDATE v0_payment_intents
+       SET status = CASE
+             WHEN status IN ('FINALIZED', 'CANCELLED') THEN status
+             WHEN $4 = 'CONFIRMED' THEN 'PAID_CONFIRMED'
+             WHEN $4 = 'MISMATCH' THEN 'FAILED_PROOF'
+             WHEN $4 = 'EXPIRED' THEN 'EXPIRED'
+             ELSE status
+           END,
+           paid_confirmed_at = CASE
+             WHEN status IN ('FINALIZED', 'CANCELLED') THEN paid_confirmed_at
+             WHEN $4 = 'CONFIRMED' THEN COALESCE($6, NOW())
+             ELSE paid_confirmed_at
+           END,
+           reason_code = CASE
+             WHEN status IN ('FINALIZED', 'CANCELLED') THEN reason_code
+             WHEN $4 = 'CONFIRMED' THEN NULL
+             ELSE COALESCE($5, reason_code)
+           END,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3
+       RETURNING
+         ${PAYMENT_INTENT_SELECT_FIELDS}`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.paymentIntentId,
+        input.verificationStatus,
+        input.reasonCode,
+        input.providerConfirmedAt,
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async cancelPaymentIntent(input: {
+    tenantId: string;
+    branchId: string;
+    paymentIntentId: string;
+    reasonCode: string | null;
+  }): Promise<V0PaymentIntentRow | null> {
+    const result = await this.db.query<V0PaymentIntentRow>(
+      `UPDATE v0_payment_intents
+       SET status = CASE
+             WHEN status IN ('FINALIZED', 'PAID_CONFIRMED') THEN status
+             ELSE 'CANCELLED'
+           END,
+           cancelled_at = CASE
+             WHEN status IN ('FINALIZED', 'PAID_CONFIRMED') THEN cancelled_at
+             ELSE COALESCE(cancelled_at, NOW())
+           END,
+           reason_code = CASE
+             WHEN status IN ('FINALIZED', 'PAID_CONFIRMED') THEN reason_code
+             ELSE COALESCE($4, reason_code, 'KHQR_ATTEMPT_CANCELLED')
+           END,
+           active_attempt_id = CASE
+             WHEN status IN ('FINALIZED', 'PAID_CONFIRMED') THEN active_attempt_id
+             ELSE NULL
+           END,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3
+       RETURNING
+         ${PAYMENT_INTENT_SELECT_FIELDS}`,
+      [input.tenantId, input.branchId, input.paymentIntentId, input.reasonCode]
+    );
+    return result.rows[0] ?? null;
   }
 
   async listReconciliationCandidates(input: {
@@ -265,7 +897,8 @@ export class V0KhqrPaymentRepository {
   async createAttempt(input: {
     tenantId: string;
     branchId: string;
-    saleId: string;
+    paymentIntentId: string;
+    saleId?: string | null;
     md5: string;
     expectedAmount: number;
     expectedCurrency: V0KhqrCurrency;
@@ -277,6 +910,7 @@ export class V0KhqrPaymentRepository {
       `INSERT INTO v0_khqr_payment_attempts (
          tenant_id,
          branch_id,
+         payment_intent_id,
          sale_id,
          md5,
          status,
@@ -286,13 +920,14 @@ export class V0KhqrPaymentRepository {
          expires_at,
          created_by_account_id
        )
-       VALUES ($1, $2, $3::UUID, $4, 'WAITING_FOR_PAYMENT', $5::NUMERIC(14,2), $6, $7, $8, $9)
+       VALUES ($1, $2, $3::UUID, $4::UUID, $5, 'WAITING_FOR_PAYMENT', $6::NUMERIC(14,2), $7, $8, $9, $10)
        RETURNING
          ${ATTEMPT_SELECT_FIELDS}`,
       [
         input.tenantId,
         input.branchId,
-        input.saleId,
+        input.paymentIntentId,
+        input.saleId ?? null,
         input.md5,
         input.expectedAmount,
         input.expectedCurrency,
@@ -302,6 +937,29 @@ export class V0KhqrPaymentRepository {
       ]
     );
     return result.rows[0];
+  }
+
+  async assignSaleToIntentAttempts(input: {
+    tenantId: string;
+    branchId: string;
+    paymentIntentId: string;
+    saleId: string;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `WITH updated AS (
+         UPDATE v0_khqr_payment_attempts
+         SET sale_id = COALESCE(sale_id, $4::UUID),
+             updated_at = NOW()
+         WHERE tenant_id = $1
+           AND branch_id = $2
+           AND payment_intent_id = $3::UUID
+         RETURNING id
+       )
+       SELECT COUNT(*)::TEXT AS count
+       FROM updated`,
+      [input.tenantId, input.branchId, input.paymentIntentId, input.saleId]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async findAttemptById(input: {
@@ -362,7 +1020,7 @@ export class V0KhqrPaymentRepository {
   async markOtherActiveAttemptsAsSuperseded(input: {
     tenantId: string;
     branchId: string;
-    saleId: string;
+    paymentIntentId: string;
     supersededByAttemptId: string;
   }): Promise<number> {
     const result = await this.db.query<{ count: string }>(
@@ -373,14 +1031,48 @@ export class V0KhqrPaymentRepository {
              updated_at = NOW()
          WHERE tenant_id = $1
            AND branch_id = $2
-           AND sale_id = $3::UUID
+           AND payment_intent_id = $3::UUID
            AND id <> $4
            AND status IN ('WAITING_FOR_PAYMENT', 'PENDING_CONFIRMATION')
          RETURNING id
        )
        SELECT COUNT(*)::TEXT AS count
        FROM updated`,
-      [input.tenantId, input.branchId, input.saleId, input.supersededByAttemptId]
+      [
+        input.tenantId,
+        input.branchId,
+        input.paymentIntentId,
+        input.supersededByAttemptId,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
+  async markAttemptsCancelledForIntent(input: {
+    tenantId: string;
+    branchId: string;
+    paymentIntentId: string;
+    reasonCode: string | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `WITH updated AS (
+         UPDATE v0_khqr_payment_attempts
+         SET status = 'CANCELLED',
+             last_verification_reason_code = COALESCE(
+               $4,
+               last_verification_reason_code,
+               'KHQR_ATTEMPT_CANCELLED'
+             ),
+             updated_at = NOW()
+         WHERE tenant_id = $1
+           AND branch_id = $2
+           AND payment_intent_id = $3::UUID
+           AND status IN ('WAITING_FOR_PAYMENT', 'PENDING_CONFIRMATION')
+         RETURNING id
+       )
+       SELECT COUNT(*)::TEXT AS count
+       FROM updated`,
+      [input.tenantId, input.branchId, input.paymentIntentId, input.reasonCode]
     );
     return Number(result.rows[0]?.count ?? "0");
   }
@@ -401,7 +1093,7 @@ export class V0KhqrPaymentRepository {
     const result = await this.db.query<V0KhqrPaymentAttemptRow>(
       `UPDATE v0_khqr_payment_attempts
        SET status = CASE
-             WHEN status = 'SUPERSEDED' THEN status
+             WHEN status IN ('SUPERSEDED', 'CANCELLED') THEN status
              WHEN $4 = 'CONFIRMED' THEN 'PAID_CONFIRMED'
              WHEN $4 = 'EXPIRED' THEN 'EXPIRED'
              WHEN $4 = 'MISMATCH' THEN 'PENDING_CONFIRMATION'

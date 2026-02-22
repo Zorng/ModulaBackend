@@ -123,11 +123,55 @@ async function insertKhqrAttempt(input: {
 }): Promise<void> {
   const paidConfirmedAt = input.status === "PAID_CONFIRMED" ? new Date() : null;
   const lastVerificationAt = input.lastVerificationStatus ? new Date() : null;
+  const paymentIntentStatus =
+    input.status === "PAID_CONFIRMED"
+      ? "PAID_CONFIRMED"
+      : input.status === "PENDING_CONFIRMATION"
+        ? "FAILED_PROOF"
+        : "WAITING_FOR_PAYMENT";
+
+  const intentResult = await input.pool.query<{ id: string }>(
+    `INSERT INTO v0_payment_intents (
+       tenant_id,
+       branch_id,
+       sale_id,
+       status,
+       payment_method,
+       tender_currency,
+       tender_amount,
+       expected_to_account_id,
+       paid_confirmed_at
+     )
+     VALUES (
+       $1,
+       $2,
+       $3::UUID,
+       $4,
+       'KHQR',
+       'USD',
+       2.50,
+       'khqr-receiver',
+       $5
+     )
+     RETURNING id`,
+    [
+      input.tenantId,
+      input.branchId,
+      input.saleId,
+      paymentIntentStatus,
+      paidConfirmedAt,
+    ]
+  );
+  const paymentIntentId = intentResult.rows[0]?.id;
+  if (!paymentIntentId) {
+    throw new Error("failed to seed payment intent for khqr attempt");
+  }
 
   await input.pool.query(
     `INSERT INTO v0_khqr_payment_attempts (
        tenant_id,
        branch_id,
+       payment_intent_id,
        sale_id,
        md5,
        status,
@@ -143,19 +187,21 @@ async function insertKhqrAttempt(input: {
        $1,
        $2,
        $3::UUID,
-       $4,
+       $4::UUID,
        $5,
+       $6,
        2.50,
        'USD',
        'khqr-receiver',
-       $6,
-       $7::VARCHAR(16),
-       CASE WHEN $7::TEXT = 'MISMATCH' THEN 'KHQR_PROOF_MISMATCH' ELSE NULL END,
-       $8::TIMESTAMPTZ
+       $7,
+       $8::VARCHAR(16),
+       CASE WHEN $8::TEXT = 'MISMATCH' THEN 'KHQR_PROOF_MISMATCH' ELSE NULL END,
+       $9::TIMESTAMPTZ
      )`,
     [
       input.tenantId,
       input.branchId,
+      paymentIntentId,
       input.saleId,
       input.md5,
       input.status,

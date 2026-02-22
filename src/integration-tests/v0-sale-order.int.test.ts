@@ -131,6 +131,67 @@ async function setupOwnerBranchContext(input: {
   };
 }
 
+async function setupMemberBranchContext(input: {
+  app: express.Express;
+  pool: Pool;
+  tenantId: string;
+  branchId: string;
+  roleKey: "ADMIN" | "MANAGER" | "CASHIER";
+}): Promise<{
+  accountId: string;
+  branchToken: string;
+}> {
+  const phone = uniquePhone();
+  const token = await registerAndLogin(input.app, phone);
+  const accountQuery = await input.pool.query<{ id: string }>(
+    `SELECT id FROM accounts WHERE phone = $1 LIMIT 1`,
+    [phone]
+  );
+  const accountId = accountQuery.rows[0]?.id;
+  expect(accountId).toBeTruthy();
+
+  const membershipQuery = await input.pool.query<{ id: string }>(
+    `INSERT INTO v0_tenant_memberships (
+       tenant_id,
+       account_id,
+       role_key,
+       status,
+       accepted_at
+     )
+     VALUES ($1, $2, $3, 'ACTIVE', NOW())
+     RETURNING id`,
+    [input.tenantId, accountId, input.roleKey]
+  );
+  const membershipId = membershipQuery.rows[0]?.id;
+  expect(membershipId).toBeTruthy();
+
+  await assignActiveBranch({
+    pool: input.pool,
+    tenantId: input.tenantId,
+    branchId: input.branchId,
+    accountId: accountId!,
+    membershipId: membershipId!,
+  });
+
+  const tenantSelected = await request(input.app)
+    .post("/v0/auth/context/tenant/select")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ tenantId: input.tenantId });
+  expect(tenantSelected.status).toBe(200);
+  const tenantToken = tenantSelected.body.data.accessToken as string;
+
+  const branchSelected = await request(input.app)
+    .post("/v0/auth/context/branch/select")
+    .set("Authorization", `Bearer ${tenantToken}`)
+    .send({ branchId: input.branchId });
+  expect(branchSelected.status).toBe(200);
+
+  return {
+    accountId: accountId!,
+    branchToken: branchSelected.body.data.accessToken as string,
+  };
+}
+
 async function openCashSession(input: {
   pool: Pool;
   tenantId: string;
@@ -210,6 +271,19 @@ function buildOrderPayload(input: { menuItemId: string; quantity?: number }) {
   };
 }
 
+function buildCheckoutCartPayload(input: { menuItemId: string; quantity?: number }) {
+  return {
+    items: [
+      {
+        menuItemId: input.menuItemId,
+        quantity: input.quantity ?? 1,
+        modifierSelections: [],
+        note: null,
+      },
+    ],
+  };
+}
+
 describe("v0 sale-order integration", () => {
   let pool: Pool;
   let app: express.Express;
@@ -234,10 +308,12 @@ describe("v0 sale-order integration", () => {
 
   afterEach(() => {
     process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "";
+    delete process.env.V0_KHQR_STUB_VERIFICATION_STATUS;
   });
 
   afterAll(async () => {
     process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "";
+    delete process.env.V0_KHQR_STUB_VERIFICATION_STATUS;
     await pool.end();
   });
 
@@ -457,7 +533,7 @@ describe("v0 sale-order integration", () => {
     ).toBe(true);
   });
 
-  it("generates KHQR from sale snapshot, confirms payment, and finalizes", async () => {
+  it("generates KHQR from sale snapshot and auto-finalizes on confirmed webhook", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     const cashSessionId = await openCashSession({
       pool,
@@ -523,17 +599,16 @@ describe("v0 sale-order integration", () => {
       });
     expect(webhook.status).toBe(200);
     expect(webhook.body.data.attempt.status).toBe("PAID_CONFIRMED");
+    expect(webhook.body.data.saleFinalized).toBe(true);
+    expect(webhook.body.data.sale.status).toBe("FINALIZED");
 
-    const finalized = await request(app)
-      .post(`/v0/sales/${saleId}/finalize`)
+    const finalizedSale = await request(app)
+      .get(`/v0/sales/${saleId}`)
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
-      .set("Idempotency-Key", `sale-order-khqr-finalize-${uniqueSuffix()}`)
-      .send({
-        khqrMd5: md5,
-      });
-    expect(finalized.status).toBe(200);
-    expect(finalized.body.success).toBe(true);
-    expect(finalized.body.data.status).toBe("FINALIZED");
+      .set("Idempotency-Key", `sale-order-khqr-finalized-read-${uniqueSuffix()}`);
+    expect(finalizedSale.status).toBe(200);
+    expect(finalizedSale.body.success).toBe(true);
+    expect(finalizedSale.body.data.status).toBe("FINALIZED");
 
     const xReport = await request(app)
       .get(`/v0/cash/sessions/${cashSessionId}/x`)
@@ -542,6 +617,329 @@ describe("v0 sale-order integration", () => {
     expect(xReport.body.success).toBe(true);
     expect(xReport.body.data.totalSalesKhqrUsd).toBe(3.5);
     expect(xReport.body.data.totalSalesNonCashUsd).toBe(3.5);
+  });
+
+  it("auto-finalizes KHQR sale via manual confirm fallback", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-manual-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const checkout = await request(app)
+      .post(`/v0/orders/${orderId}/checkout`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-manual-checkout-${uniqueSuffix()}`)
+      .send({
+        paymentMethod: "KHQR",
+        tenderCurrency: "USD",
+      });
+    expect(checkout.status).toBe(200);
+    const saleId = checkout.body.data.id as string;
+
+    const generated = await request(app)
+      .post(`/v0/payments/khqr/sales/${saleId}/generate`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-manual-generate-${uniqueSuffix()}`)
+      .send({
+        expiresInSeconds: 180,
+      });
+    expect(generated.status).toBe(201);
+    const md5 = generated.body.data.attempt.md5 as string;
+
+    const previousStubStatus = process.env.V0_KHQR_STUB_VERIFICATION_STATUS;
+    process.env.V0_KHQR_STUB_VERIFICATION_STATUS = "CONFIRMED";
+    try {
+      const confirmed = await request(app)
+        .post("/v0/payments/khqr/confirm")
+        .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+        .set("Idempotency-Key", `sale-order-khqr-manual-confirm-${uniqueSuffix()}`)
+        .send({ md5 });
+      expect(confirmed.status).toBe(200);
+      expect(confirmed.body.success).toBe(true);
+      expect(confirmed.body.data.verificationStatus).toBe("CONFIRMED");
+      expect(confirmed.body.data.saleFinalized).toBe(true);
+      expect(confirmed.body.data.sale.saleId).toBe(saleId);
+      expect(confirmed.body.data.sale.status).toBe("FINALIZED");
+    } finally {
+      if (previousStubStatus === undefined) {
+        delete process.env.V0_KHQR_STUB_VERIFICATION_STATUS;
+      } else {
+        process.env.V0_KHQR_STUB_VERIFICATION_STATUS = previousStubStatus;
+      }
+    }
+
+    const finalizedSale = await request(app)
+      .get(`/v0/sales/${saleId}`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(finalizedSale.status).toBe(200);
+    expect(finalizedSale.body.data.status).toBe("FINALIZED");
+  });
+
+  it("finalizes cash checkout directly from local cart without order ticket", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const finalized = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cash-checkout-${uniqueSuffix()}`)
+      .send({
+        ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 2 }),
+        paymentMethod: "CASH",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+      });
+
+    expect(finalized.status).toBe(200);
+    expect(finalized.body.success).toBe(true);
+    expect(finalized.body.data.status).toBe("FINALIZED");
+    expect(finalized.body.data.paymentMethod).toBe("CASH");
+    expect(finalized.body.data.orderId).toBeNull();
+
+    const orderCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_order_tickets
+       WHERE tenant_id = $1
+         AND branch_id = $2`,
+      [setup.tenantId, setup.branchId]
+    );
+    expect(Number(orderCount.rows[0]?.count ?? "0")).toBe(0);
+  });
+
+  it("denies cashier on /orders routes while allowing /checkout bridge", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const cashier = await setupMemberBranchContext({
+      app,
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+    });
+
+    const listDenied = await request(app)
+      .get("/v0/orders")
+      .set("Authorization", `Bearer ${cashier.branchToken}`);
+    expect(listDenied.status).toBe(403);
+    expect(listDenied.body.code).toBe("PERMISSION_DENIED");
+
+    const placeDenied = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${cashier.branchToken}`)
+      .set("Idempotency-Key", `sale-order-cashier-orders-denied-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placeDenied.status).toBe(403);
+    expect(placeDenied.body.code).toBe("PERMISSION_DENIED");
+
+    const finalized = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${cashier.branchToken}`)
+      .set("Idempotency-Key", `sale-order-cashier-checkout-allowed-${uniqueSuffix()}`)
+      .send({
+        ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 1 }),
+        paymentMethod: "CASH",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+      });
+    expect(finalized.status).toBe(200);
+    expect(finalized.body.success).toBe(true);
+    expect(finalized.body.data.status).toBe("FINALIZED");
+    expect(finalized.body.data.paymentMethod).toBe("CASH");
+    const saleId = finalized.body.data.id as string;
+    expect(typeof saleId).toBe("string");
+  });
+
+  it("initiates KHQR intent from local cart and finalizes on confirm", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const initiated = await request(app)
+      .post("/v0/checkout/khqr/initiate")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-checkout-init-${uniqueSuffix()}`)
+      .send({
+        ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 1 }),
+        tenderCurrency: "USD",
+        expiresInSeconds: 180,
+      });
+
+    expect(initiated.status).toBe(200);
+    expect(initiated.body.success).toBe(true);
+    expect(initiated.body.data.intent.status).toBe("WAITING_FOR_PAYMENT");
+    expect(initiated.body.data.attempt.status).toBe("WAITING_FOR_PAYMENT");
+    expect(initiated.body.data.attempt.saleId).toBeNull();
+    const paymentIntentId = initiated.body.data.intent.paymentIntentId as string;
+    const md5 = initiated.body.data.attempt.md5 as string;
+
+    process.env.V0_KHQR_STUB_VERIFICATION_STATUS = "CONFIRMED";
+    const confirmed = await request(app)
+      .post("/v0/payments/khqr/confirm")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-checkout-confirm-${uniqueSuffix()}`)
+      .send({ md5 });
+
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.success).toBe(true);
+    expect(confirmed.body.data.verificationStatus).toBe("CONFIRMED");
+    expect(confirmed.body.data.saleFinalized).toBe(true);
+    expect(confirmed.body.data.sale.status).toBe("FINALIZED");
+
+    const finalizedIntent = await pool.query<{ status: string; saleId: string | null }>(
+      `SELECT status, sale_id AS "saleId"
+       FROM v0_payment_intents
+       WHERE id = $1`,
+      [paymentIntentId]
+    );
+    expect(finalizedIntent.rows[0]?.status).toBe("FINALIZED");
+    expect(typeof finalizedIntent.rows[0]?.saleId).toBe("string");
+  });
+
+  it("cancels KHQR intent from local cart and blocks finalization", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const initiated = await request(app)
+      .post("/v0/checkout/khqr/initiate")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-checkout-cancel-init-${uniqueSuffix()}`)
+      .send({
+        ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 1 }),
+        tenderCurrency: "USD",
+      });
+    expect(initiated.status).toBe(200);
+    const paymentIntentId = initiated.body.data.intent.paymentIntentId as string;
+    const md5 = initiated.body.data.attempt.md5 as string;
+
+    const cancelled = await request(app)
+      .post(`/v0/checkout/khqr/intents/${paymentIntentId}/cancel`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-checkout-cancel-${uniqueSuffix()}`)
+      .send({
+        reasonCode: "KHQR_CANCELLED_BY_CASHIER",
+      });
+
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.success).toBe(true);
+    expect(cancelled.body.data.status).toBe("CANCELLED");
+
+    process.env.V0_KHQR_STUB_VERIFICATION_STATUS = "CONFIRMED";
+    const confirmed = await request(app)
+      .post("/v0/payments/khqr/confirm")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-checkout-cancel-confirm-${uniqueSuffix()}`)
+      .send({ md5 });
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.success).toBe(true);
+    expect(confirmed.body.data.saleFinalized).toBe(false);
+    expect(confirmed.body.data.attempt.status).toBe("CANCELLED");
+
+    const intentRead = await request(app)
+      .get(`/v0/checkout/khqr/intents/${paymentIntentId}`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(intentRead.status).toBe(200);
+    expect(intentRead.body.data.status).toBe("CANCELLED");
+    expect(intentRead.body.data.saleId).toBeNull();
+  });
+
+  it("does not finalize KHQR sale after attempt cancellation", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-cancel-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const checkout = await request(app)
+      .post(`/v0/orders/${orderId}/checkout`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-cancel-checkout-${uniqueSuffix()}`)
+      .send({
+        paymentMethod: "KHQR",
+        tenderCurrency: "USD",
+      });
+    expect(checkout.status).toBe(200);
+    const saleId = checkout.body.data.id as string;
+
+    const generated = await request(app)
+      .post(`/v0/payments/khqr/sales/${saleId}/generate`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-cancel-generate-${uniqueSuffix()}`)
+      .send({
+        expiresInSeconds: 180,
+      });
+    expect(generated.status).toBe(201);
+    const attemptId = generated.body.data.attempt.attemptId as string;
+    const md5 = generated.body.data.attempt.md5 as string;
+
+    const cancelled = await request(app)
+      .post(`/v0/payments/khqr/attempts/${attemptId}/cancel`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-cancel-attempt-${uniqueSuffix()}`)
+      .send({ reasonCode: "KHQR_CANCELLED_BY_CASHIER" });
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.success).toBe(true);
+    expect(cancelled.body.data.attempt.status).toBe("CANCELLED");
+    expect(cancelled.body.data.paymentIntent.status).toBe("CANCELLED");
+
+    process.env.V0_KHQR_STUB_VERIFICATION_STATUS = "CONFIRMED";
+    const confirmed = await request(app)
+      .post("/v0/payments/khqr/confirm")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-cancel-confirm-${uniqueSuffix()}`)
+      .send({ md5 });
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.success).toBe(true);
+    expect(confirmed.body.data.verificationStatus).toBe("CONFIRMED");
+    expect(confirmed.body.data.saleFinalized).toBe(false);
+    expect(confirmed.body.data.attempt.status).toBe("CANCELLED");
+
+    const sale = await request(app)
+      .get(`/v0/sales/${saleId}`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(sale.status).toBe(200);
+    expect(sale.body.success).toBe(true);
+    expect(sale.body.data.status).toBe("PENDING");
   });
 
   it("rejects order placement when no active cash session exists", async () => {

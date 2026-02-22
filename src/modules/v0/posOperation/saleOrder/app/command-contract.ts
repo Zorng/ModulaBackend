@@ -6,6 +6,11 @@ import {
 export type SaleOrderCommandOutcome = CommandOutcome;
 
 export const V0_SALE_ORDER_ACTION_KEYS = {
+  checkoutCashFinalize: "checkout.cash.finalize",
+  checkoutKhqrInitiate: "checkout.khqr.initiate",
+  checkoutKhqrIntentRead: "checkout.khqr.intent.read",
+  checkoutKhqrIntentCancel: "checkout.khqr.intent.cancel",
+
   orderPlace: "order.place",
   orderItemsAdd: "order.items.add",
   orderCheckout: "order.checkout",
@@ -24,6 +29,10 @@ export const V0_SALE_ORDER_ACTION_KEYS = {
 } as const;
 
 export const V0_SALE_ORDER_EVENT_TYPES = {
+  checkoutCashFinalized: "CHECKOUT_CASH_FINALIZED",
+  checkoutKhqrInitiated: "CHECKOUT_KHQR_INITIATED",
+  checkoutKhqrIntentCancelled: "CHECKOUT_KHQR_INTENT_CANCELLED",
+
   orderTicketPlaced: "ORDER_TICKET_PLACED",
   orderItemsAdded: "ORDER_ITEMS_ADDED",
   orderCheckoutCompleted: "ORDER_CHECKOUT_COMPLETED",
@@ -37,6 +46,9 @@ export const V0_SALE_ORDER_EVENT_TYPES = {
 
 export const V0_SALE_ORDER_IDEMPOTENCY_SCOPE = {
   branchWriteActions: [
+    V0_SALE_ORDER_ACTION_KEYS.checkoutCashFinalize,
+    V0_SALE_ORDER_ACTION_KEYS.checkoutKhqrInitiate,
+    V0_SALE_ORDER_ACTION_KEYS.checkoutKhqrIntentCancel,
     V0_SALE_ORDER_ACTION_KEYS.orderPlace,
     V0_SALE_ORDER_ACTION_KEYS.orderItemsAdd,
     V0_SALE_ORDER_ACTION_KEYS.orderCheckout,

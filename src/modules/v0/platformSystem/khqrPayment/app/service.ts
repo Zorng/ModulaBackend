@@ -2,6 +2,9 @@ import type { V0AuthRequest } from "../../../auth/api/middleware.js";
 import type {
   V0KhqrCurrency,
   V0KhqrPaymentAttemptRow,
+  V0PaymentIntentRow,
+  V0SaleKhqrLineSnapshotInput,
+  V0SaleKhqrSnapshotRow,
   V0KhqrVerificationStatus,
 } from "../infra/repository.js";
 import { V0KhqrPaymentRepository } from "../infra/repository.js";
@@ -12,6 +15,37 @@ import type {
 } from "./payment-provider.js";
 
 type ActorScope = NonNullable<V0AuthRequest["v0Auth"]>;
+
+type V0CheckoutIntentLineSnapshot = {
+  menuItemId: string;
+  menuItemNameSnapshot: string;
+  unitPrice: number;
+  quantity: number;
+  lineSubtotal: number;
+  lineDiscountAmount: number;
+  lineTotalAmount: number;
+  modifierSnapshot: unknown;
+  note: string | null;
+};
+
+type V0CheckoutIntentTotalsSnapshot = {
+  subtotalUsd: number;
+  subtotalKhr: number;
+  discountUsd: number;
+  discountKhr: number;
+  vatUsd: number;
+  vatKhr: number;
+  grandTotalUsd: number;
+  grandTotalKhr: number;
+  paidAmountUsd: number;
+};
+
+type V0CheckoutIntentPricingSnapshot = {
+  saleFxRateKhrPerUsd: number;
+  saleKhrRoundingEnabled: boolean;
+  saleKhrRoundingMode: "NEAREST" | "UP" | "DOWN";
+  saleKhrRoundingGranularity: 100 | 1000;
+};
 
 export class V0KhqrPaymentError extends Error {
   constructor(
@@ -52,9 +86,21 @@ export class V0KhqrPaymentService {
       };
     }
 
+    const paymentIntent = await this.repo.ensurePaymentIntentForSale({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      saleId: input.saleId,
+      tenderAmount: input.amount,
+      tenderCurrency: input.currency,
+      expectedToAccountId: receiver.toAccountId,
+      expiresAt: input.expiresAt,
+      createdByAccountId: scope.accountId,
+    });
+
     const created = await this.repo.createAttempt({
       tenantId: scope.tenantId,
       branchId: scope.branchId,
+      paymentIntentId: paymentIntent.id,
       saleId: input.saleId,
       md5: input.md5,
       expectedAmount: input.amount,
@@ -67,8 +113,14 @@ export class V0KhqrPaymentService {
     await this.repo.markOtherActiveAttemptsAsSuperseded({
       tenantId: scope.tenantId,
       branchId: scope.branchId,
-      saleId: input.saleId,
+      paymentIntentId: paymentIntent.id,
       supersededByAttemptId: created.id,
+    });
+    await this.repo.setPaymentIntentActiveAttempt({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      paymentIntentId: paymentIntent.id,
+      activeAttemptId: created.id,
     });
 
     return {
@@ -192,12 +244,258 @@ export class V0KhqrPaymentService {
     return mapAttempt(found);
   }
 
+  async initiateCheckoutIntent(input: {
+    actor: ActorScope;
+    tenderAmount: number;
+    tenderCurrency: V0KhqrCurrency;
+    expiresInSeconds: number | null;
+    checkoutLinesSnapshot: unknown;
+    checkoutTotalsSnapshot: unknown;
+    pricingSnapshot: unknown;
+    metadataSnapshot: unknown;
+  }): Promise<{
+    intent: V0KhqrPaymentIntentView;
+    attempt: V0KhqrPaymentAttemptView;
+    paymentRequest: V0KhqrGenerateResult["paymentRequest"];
+  }> {
+    const scope = assertBranchScope(input.actor);
+    const receiver = await this.resolveBranchKhqrReceiver(scope);
+    const expiresAt = resolveAttemptExpiry(input.expiresInSeconds);
+
+    const paymentIntent = await this.repo.createPaymentIntentForCheckout({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      paymentMethod: "KHQR",
+      tenderCurrency: input.tenderCurrency,
+      tenderAmount: input.tenderAmount,
+      expectedToAccountId: receiver.toAccountId,
+      expiresAt,
+      checkoutLinesSnapshot: input.checkoutLinesSnapshot,
+      checkoutTotalsSnapshot: input.checkoutTotalsSnapshot,
+      pricingSnapshot: input.pricingSnapshot,
+      metadataSnapshot: input.metadataSnapshot,
+      createdByAccountId: scope.accountId,
+    });
+
+    const generated = await this.provider.createPaymentRequest({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      saleId: paymentIntent.id,
+      amount: input.tenderAmount,
+      currency: input.tenderCurrency,
+      toAccountId: receiver.toAccountId,
+      receiverName: receiver.receiverName,
+      expiresAt,
+    });
+
+    const attempt = await this.repo.createAttempt({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      paymentIntentId: paymentIntent.id,
+      saleId: null,
+      md5: generated.md5,
+      expectedAmount: input.tenderAmount,
+      expectedCurrency: input.tenderCurrency,
+      expectedToAccountId: receiver.toAccountId,
+      expiresAt,
+      createdByAccountId: scope.accountId,
+    });
+
+    const updatedIntent = await this.repo.setPaymentIntentActiveAttempt({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      paymentIntentId: paymentIntent.id,
+      activeAttemptId: attempt.id,
+    });
+    if (!updatedIntent) {
+      throw new V0KhqrPaymentError(404, "PAYMENT_INTENT_NOT_FOUND", "payment intent not found");
+    }
+
+    return {
+      intent: mapPaymentIntent(updatedIntent),
+      attempt: mapAttempt(attempt),
+      paymentRequest: mapGeneratedRequest({
+        generated,
+        amount: input.tenderAmount,
+        currency: input.tenderCurrency,
+        toAccountId: receiver.toAccountId,
+        expiresAt,
+      }),
+    };
+  }
+
+  async getPaymentIntentById(input: {
+    actor: ActorScope;
+    paymentIntentId: string;
+  }): Promise<V0KhqrPaymentIntentView> {
+    const scope = assertBranchScope(input.actor);
+    const found = await this.repo.findPaymentIntentById({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      paymentIntentId: input.paymentIntentId,
+    });
+    if (!found) {
+      throw new V0KhqrPaymentError(404, "PAYMENT_INTENT_NOT_FOUND", "payment intent not found");
+    }
+    return mapPaymentIntent(found);
+  }
+
+  async cancelPaymentIntent(input: {
+    actor: ActorScope;
+    paymentIntentId: string;
+    reasonCode: string | null;
+  }): Promise<V0KhqrPaymentIntentView> {
+    const scope = assertBranchScope(input.actor);
+    const lockedIntent = await this.repo.lockPaymentIntentByIdForUpdate({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      paymentIntentId: input.paymentIntentId,
+    });
+    if (!lockedIntent) {
+      throw new V0KhqrPaymentError(404, "PAYMENT_INTENT_NOT_FOUND", "payment intent not found");
+    }
+    if (lockedIntent.status === "FINALIZED") {
+      throw new V0KhqrPaymentError(
+        409,
+        "PAYMENT_INTENT_ALREADY_FINALIZED",
+        "payment intent is already finalized"
+      );
+    }
+    if (lockedIntent.status === "PAID_CONFIRMED") {
+      throw new V0KhqrPaymentError(
+        409,
+        "PAYMENT_INTENT_NOT_CANCELLABLE",
+        "payment intent is already confirmed"
+      );
+    }
+
+    const normalizedReasonCode =
+      normalizeOptionalString(input.reasonCode) ?? "KHQR_INTENT_CANCELLED";
+    const cancelledIntent =
+      lockedIntent.status === "CANCELLED"
+        ? lockedIntent
+        : await this.repo.cancelPaymentIntent({
+            tenantId: scope.tenantId,
+            branchId: scope.branchId,
+            paymentIntentId: lockedIntent.id,
+            reasonCode: normalizedReasonCode,
+          });
+    if (!cancelledIntent) {
+      throw new V0KhqrPaymentError(404, "PAYMENT_INTENT_NOT_FOUND", "payment intent not found");
+    }
+
+    await this.repo.markAttemptsCancelledForIntent({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      paymentIntentId: cancelledIntent.id,
+      reasonCode: normalizedReasonCode,
+    });
+
+    return mapPaymentIntent(cancelledIntent);
+  }
+
+  async cancelAttempt(input: {
+    actor: ActorScope;
+    attemptId: string;
+    reasonCode: string | null;
+  }): Promise<{
+    cancelled: boolean;
+    attempt: V0KhqrPaymentAttemptView;
+    paymentIntent: V0KhqrPaymentIntentView;
+  }> {
+    const scope = assertBranchScope(input.actor);
+    const lockedAttempt = await this.repo.lockAttemptByIdForUpdate({
+      attemptId: input.attemptId,
+    });
+    if (
+      !lockedAttempt ||
+      lockedAttempt.tenant_id !== scope.tenantId ||
+      lockedAttempt.branch_id !== scope.branchId
+    ) {
+      throw new V0KhqrPaymentError(404, "KHQR_ATTEMPT_NOT_FOUND", "khqr attempt not found");
+    }
+
+    if (
+      lockedAttempt.status === "PAID_CONFIRMED" ||
+      lockedAttempt.status === "EXPIRED" ||
+      lockedAttempt.status === "SUPERSEDED"
+    ) {
+      throw new V0KhqrPaymentError(
+        409,
+        "KHQR_ATTEMPT_NOT_CANCELLABLE",
+        "khqr attempt is already terminal"
+      );
+    }
+
+    const lockedIntent = await this.repo.lockPaymentIntentByIdForUpdate({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      paymentIntentId: lockedAttempt.payment_intent_id,
+    });
+    if (!lockedIntent) {
+      throw new V0KhqrPaymentError(404, "PAYMENT_INTENT_NOT_FOUND", "payment intent not found");
+    }
+    if (lockedIntent.status === "FINALIZED") {
+      throw new V0KhqrPaymentError(
+        409,
+        "PAYMENT_INTENT_ALREADY_FINALIZED",
+        "payment intent is already finalized"
+      );
+    }
+    if (lockedIntent.status === "PAID_CONFIRMED") {
+      throw new V0KhqrPaymentError(
+        409,
+        "PAYMENT_INTENT_NOT_CANCELLABLE",
+        "payment intent is already confirmed"
+      );
+    }
+
+    const normalizedReasonCode =
+      normalizeOptionalString(input.reasonCode) ?? "KHQR_ATTEMPT_CANCELLED";
+    const cancelledIntent =
+      lockedIntent.status === "CANCELLED"
+        ? lockedIntent
+        : await this.repo.cancelPaymentIntent({
+            tenantId: scope.tenantId,
+            branchId: scope.branchId,
+            paymentIntentId: lockedIntent.id,
+            reasonCode: normalizedReasonCode,
+          });
+    if (!cancelledIntent) {
+      throw new V0KhqrPaymentError(404, "PAYMENT_INTENT_NOT_FOUND", "payment intent not found");
+    }
+
+    await this.repo.markAttemptsCancelledForIntent({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      paymentIntentId: cancelledIntent.id,
+      reasonCode: normalizedReasonCode,
+    });
+
+    const cancelledAttempt = await this.repo.findAttemptById({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      attemptId: lockedAttempt.id,
+    });
+    if (!cancelledAttempt) {
+      throw new V0KhqrPaymentError(404, "KHQR_ATTEMPT_NOT_FOUND", "khqr attempt not found");
+    }
+
+    return {
+      cancelled: true,
+      attempt: mapAttempt(cancelledAttempt),
+      paymentIntent: mapPaymentIntent(cancelledIntent),
+    };
+  }
+
   async confirmByMd5(input: {
     actor: ActorScope;
     md5: string;
   }): Promise<{
     verificationStatus: V0KhqrVerificationStatus;
     attempt: V0KhqrPaymentAttemptView;
+    sale: V0KhqrFinalizedSaleView | null;
+    saleFinalized: boolean;
     mismatchReasonCode: string | null;
   }> {
     const scope = assertBranchScope(input.actor);
@@ -233,10 +531,16 @@ export class V0KhqrPaymentService {
       providerEventId: verification.providerEventId,
       providerTxHash: verification.providerTxHash,
     });
+    const saleFinalize = await this.finalizeSaleFromConfirmedAttempt({
+      attempt: updatedAttempt,
+      finalizedByAccountId: scope.accountId,
+    });
 
     return {
       verificationStatus: verification.verificationStatus,
       attempt: mapAttempt(updatedAttempt),
+      sale: saleFinalize.sale ? mapFinalizedSale(saleFinalize.sale) : null,
+      saleFinalized: saleFinalize.newlyFinalized,
       mismatchReasonCode:
         verification.verificationStatus === "MISMATCH"
           ? verification.reasonCode ?? "KHQR_PROOF_MISMATCH"
@@ -390,6 +694,8 @@ export class V0KhqrPaymentService {
               ? existingEvidence.reason_code ?? "KHQR_PROOF_MISMATCH"
               : null,
           attempt: existingAttempt ? mapAttempt(existingAttempt) : null,
+          sale: null,
+          saleFinalized: false,
           providerEventId: existingEvidence.provider_event_id,
         };
       }
@@ -406,6 +712,8 @@ export class V0KhqrPaymentService {
         verificationStatus: null,
         mismatchReasonCode: null,
         attempt: null,
+        sale: null,
+        saleFinalized: false,
         providerEventId: eventId,
       };
     }
@@ -428,6 +736,21 @@ export class V0KhqrPaymentService {
     if (!updatedAttempt) {
       throw new V0KhqrPaymentError(404, "KHQR_ATTEMPT_NOT_FOUND", "khqr attempt not found");
     }
+
+    if (updatedAttempt.status !== "SUPERSEDED") {
+      await this.repo.recordPaymentIntentVerificationOutcome({
+        tenantId: input.event.tenantId,
+        branchId: input.event.branchId,
+        paymentIntentId: lockedAttempt.payment_intent_id,
+        verificationStatus: webhookVerification.verificationStatus,
+        reasonCode: webhookVerification.reasonCode,
+        providerConfirmedAt: input.event.occurredAt,
+      });
+    }
+    const saleFinalize = await this.finalizeSaleFromConfirmedAttempt({
+      attempt: updatedAttempt,
+      finalizedByAccountId: null,
+    });
 
     const evidenceInserted = await this.repo.insertConfirmationEvidenceIfAbsent({
       tenantId: input.event.tenantId,
@@ -453,6 +776,8 @@ export class V0KhqrPaymentService {
             ? webhookVerification.reasonCode ?? "KHQR_PROOF_MISMATCH"
             : null,
         attempt: mapAttempt(updatedAttempt),
+        sale: saleFinalize.sale ? mapFinalizedSale(saleFinalize.sale) : null,
+        saleFinalized: false,
         providerEventId: eventId,
       };
     }
@@ -465,6 +790,8 @@ export class V0KhqrPaymentService {
           ? webhookVerification.reasonCode ?? "KHQR_PROOF_MISMATCH"
           : null,
       attempt: mapAttempt(updatedAttempt),
+      sale: saleFinalize.sale ? mapFinalizedSale(saleFinalize.sale) : null,
+      saleFinalized: saleFinalize.newlyFinalized,
       providerEventId: eventId,
     };
   }
@@ -501,6 +828,17 @@ export class V0KhqrPaymentService {
       throw new V0KhqrPaymentError(404, "KHQR_ATTEMPT_NOT_FOUND", "khqr attempt not found");
     }
 
+    if (updatedAttempt.status !== "SUPERSEDED") {
+      await this.repo.recordPaymentIntentVerificationOutcome({
+        tenantId: input.attempt.tenant_id,
+        branchId: input.attempt.branch_id,
+        paymentIntentId: input.attempt.payment_intent_id,
+        verificationStatus: input.verificationStatus,
+        reasonCode: input.reasonCode,
+        providerConfirmedAt: input.providerConfirmedAt,
+      });
+    }
+
     await this.repo.insertConfirmationEvidence({
       tenantId: input.attempt.tenant_id,
       branchId: input.attempt.branch_id,
@@ -518,6 +856,183 @@ export class V0KhqrPaymentService {
     });
 
     return updatedAttempt;
+  }
+
+  private async finalizeSaleFromConfirmedAttempt(input: {
+    attempt: V0KhqrPaymentAttemptRow;
+    finalizedByAccountId: string | null;
+  }): Promise<{
+    sale: V0SaleKhqrSnapshotRow | null;
+    newlyFinalized: boolean;
+  }> {
+    if (input.attempt.status !== "PAID_CONFIRMED") {
+      return { sale: null, newlyFinalized: false };
+    }
+
+    const lockedIntent = await this.repo.lockPaymentIntentByIdForUpdate({
+      tenantId: input.attempt.tenant_id,
+      branchId: input.attempt.branch_id,
+      paymentIntentId: input.attempt.payment_intent_id,
+    });
+    if (!lockedIntent) {
+      return { sale: null, newlyFinalized: false };
+    }
+    if (lockedIntent.status === "CANCELLED") {
+      return { sale: null, newlyFinalized: false };
+    }
+
+    const saleId = input.attempt.sale_id ?? lockedIntent.sale_id;
+    if (!saleId) {
+      const createdSale = await this.createFinalizedSaleFromIntent({
+        intent: lockedIntent,
+        attempt: input.attempt,
+        finalizedByAccountId:
+          input.finalizedByAccountId ?? input.attempt.created_by_account_id ?? null,
+      });
+      if (!createdSale) {
+        return { sale: null, newlyFinalized: false };
+      }
+      return { sale: createdSale, newlyFinalized: true };
+    }
+
+    const lockedSale = await this.repo.lockSaleForKhqrGeneration({
+      tenantId: input.attempt.tenant_id,
+      branchId: input.attempt.branch_id,
+      saleId,
+    });
+    if (!lockedSale) {
+      return { sale: null, newlyFinalized: false };
+    }
+
+    if (lockedSale.status === "FINALIZED") {
+      await this.repo.markPaymentIntentFinalized({
+        tenantId: input.attempt.tenant_id,
+        branchId: input.attempt.branch_id,
+        paymentIntentId: input.attempt.payment_intent_id,
+        saleId: lockedSale.id,
+      });
+      return { sale: lockedSale, newlyFinalized: false };
+    }
+
+    if (lockedSale.status === "VOIDED") {
+      return { sale: lockedSale, newlyFinalized: false };
+    }
+
+    if (lockedSale.payment_method !== "KHQR") {
+      throw new V0KhqrPaymentError(
+        422,
+        "KHQR_SALE_PAYMENT_METHOD_INVALID",
+        "sale payment method must be KHQR"
+      );
+    }
+
+    const finalizedSale = await this.repo.markSaleFinalizedFromKhqr({
+      tenantId: input.attempt.tenant_id,
+      branchId: input.attempt.branch_id,
+      saleId: lockedSale.id,
+      md5: input.attempt.md5,
+      toAccountId: input.attempt.expected_to_account_id,
+      khqrHash: input.attempt.provider_reference,
+      khqrConfirmedAt: input.attempt.provider_confirmed_at ?? input.attempt.paid_confirmed_at,
+      finalizedByAccountId:
+        input.finalizedByAccountId ?? input.attempt.created_by_account_id ?? null,
+    });
+    if (!finalizedSale) {
+      return { sale: null, newlyFinalized: false };
+    }
+    await this.repo.markPaymentIntentFinalized({
+      tenantId: input.attempt.tenant_id,
+      branchId: input.attempt.branch_id,
+      paymentIntentId: input.attempt.payment_intent_id,
+      saleId: finalizedSale.id,
+    });
+    await this.repo.assignSaleToIntentAttempts({
+      tenantId: input.attempt.tenant_id,
+      branchId: input.attempt.branch_id,
+      paymentIntentId: input.attempt.payment_intent_id,
+      saleId: finalizedSale.id,
+    });
+    return { sale: finalizedSale, newlyFinalized: true };
+  }
+
+  private async createFinalizedSaleFromIntent(input: {
+    intent: V0PaymentIntentRow;
+    attempt: V0KhqrPaymentAttemptRow;
+    finalizedByAccountId: string | null;
+  }): Promise<V0SaleKhqrSnapshotRow | null> {
+    const lines = parseCheckoutIntentLinesSnapshot(input.intent.checkout_lines_snapshot);
+    if (lines.length === 0) {
+      throw new V0KhqrPaymentError(
+        422,
+        "PAYMENT_INTENT_NOT_FINALIZABLE",
+        "payment intent has no checkout lines"
+      );
+    }
+    const totals = parseCheckoutIntentTotalsSnapshot(
+      input.intent.checkout_totals_snapshot,
+      input.intent
+    );
+    const pricing = parseCheckoutIntentPricingSnapshot(input.intent.pricing_snapshot);
+
+    const createdSale = await this.repo.createPendingSaleForKhqrIntent({
+      tenantId: input.intent.tenant_id,
+      branchId: input.intent.branch_id,
+      tenderCurrency: input.intent.tender_currency,
+      tenderAmount: input.intent.tender_amount,
+      khqrMd5: input.attempt.md5,
+      khqrToAccountId: input.attempt.expected_to_account_id,
+      khqrHash: input.attempt.provider_reference,
+      khqrConfirmedAt: input.attempt.provider_confirmed_at ?? input.attempt.paid_confirmed_at,
+      subtotalUsd: totals.subtotalUsd,
+      subtotalKhr: totals.subtotalKhr,
+      discountUsd: totals.discountUsd,
+      discountKhr: totals.discountKhr,
+      vatUsd: totals.vatUsd,
+      vatKhr: totals.vatKhr,
+      grandTotalUsd: totals.grandTotalUsd,
+      grandTotalKhr: totals.grandTotalKhr,
+      saleFxRateKhrPerUsd: pricing.saleFxRateKhrPerUsd,
+      saleKhrRoundingEnabled: pricing.saleKhrRoundingEnabled,
+      saleKhrRoundingMode: pricing.saleKhrRoundingMode,
+      saleKhrRoundingGranularity: pricing.saleKhrRoundingGranularity,
+      paidAmount: totals.paidAmountUsd,
+    });
+
+    for (const line of lines) {
+      await this.repo.createSaleLineForKhqrIntent({
+        tenantId: input.intent.tenant_id,
+        branchId: input.intent.branch_id,
+        saleId: createdSale.id,
+        line,
+      });
+    }
+
+    const finalizedSale = await this.repo.markSaleFinalizedFromKhqr({
+      tenantId: input.intent.tenant_id,
+      branchId: input.intent.branch_id,
+      saleId: createdSale.id,
+      md5: input.attempt.md5,
+      toAccountId: input.attempt.expected_to_account_id,
+      khqrHash: input.attempt.provider_reference,
+      khqrConfirmedAt: input.attempt.provider_confirmed_at ?? input.attempt.paid_confirmed_at,
+      finalizedByAccountId: input.finalizedByAccountId,
+    });
+    if (!finalizedSale) {
+      return null;
+    }
+    await this.repo.markPaymentIntentFinalized({
+      tenantId: input.intent.tenant_id,
+      branchId: input.intent.branch_id,
+      paymentIntentId: input.intent.id,
+      saleId: finalizedSale.id,
+    });
+    await this.repo.assignSaleToIntentAttempts({
+      tenantId: input.intent.tenant_id,
+      branchId: input.intent.branch_id,
+      paymentIntentId: input.intent.id,
+      saleId: finalizedSale.id,
+    });
+    return finalizedSale;
   }
 
   private async resolveBranchKhqrReceiver(scope: {
@@ -548,7 +1063,8 @@ export class V0KhqrPaymentService {
 
 export type V0KhqrPaymentAttemptView = {
   attemptId: string;
-  saleId: string;
+  paymentIntentId: string;
+  saleId: string | null;
   md5: string;
   status: string;
   amount: number;
@@ -561,11 +1077,31 @@ export type V0KhqrPaymentAttemptView = {
   updatedAt: string;
 };
 
+export type V0KhqrPaymentIntentView = {
+  paymentIntentId: string;
+  saleId: string | null;
+  status: string;
+  paymentMethod: "KHQR" | "CASH";
+  tenderCurrency: V0KhqrCurrency;
+  tenderAmount: number;
+  expectedToAccountId: string | null;
+  activeAttemptId: string | null;
+  expiresAt: string | null;
+  paidConfirmedAt: string | null;
+  finalizedAt: string | null;
+  cancelledAt: string | null;
+  reasonCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type V0KhqrWebhookIngestResult = {
   status: "APPLIED" | "DUPLICATE" | "IGNORED";
   verificationStatus: V0KhqrVerificationStatus | null;
   mismatchReasonCode: string | null;
   attempt: V0KhqrPaymentAttemptView | null;
+  sale: V0KhqrFinalizedSaleView | null;
+  saleFinalized: boolean;
   providerEventId: string | null;
 };
 
@@ -593,9 +1129,27 @@ export type V0KhqrGenerateResult = {
   };
 };
 
+export type V0KhqrFinalizedSaleView = {
+  saleId: string;
+  status: "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
+  paymentMethod: "CASH" | "KHQR";
+  tenderCurrency: V0KhqrCurrency;
+  tenderAmount: number;
+  paidAmount: number;
+  grandTotalUsd: number;
+  grandTotalKhr: number;
+  khqrMd5: string | null;
+  khqrToAccountId: string | null;
+  khqrHash: string | null;
+  khqrConfirmedAt: string | null;
+  finalizedAt: string | null;
+  finalizedByAccountId: string | null;
+};
+
 function mapAttempt(row: V0KhqrPaymentAttemptRow): V0KhqrPaymentAttemptView {
   return {
     attemptId: row.id,
+    paymentIntentId: row.payment_intent_id,
     saleId: row.sale_id,
     md5: row.md5,
     status: row.status,
@@ -605,6 +1159,45 @@ function mapAttempt(row: V0KhqrPaymentAttemptRow): V0KhqrPaymentAttemptView {
     expiresAt: row.expires_at ? row.expires_at.toISOString() : null,
     paidConfirmedAt: row.paid_confirmed_at ? row.paid_confirmed_at.toISOString() : null,
     supersededByAttemptId: row.superseded_by_attempt_id,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function mapFinalizedSale(row: V0SaleKhqrSnapshotRow): V0KhqrFinalizedSaleView {
+  return {
+    saleId: row.id,
+    status: row.status,
+    paymentMethod: row.payment_method,
+    tenderCurrency: row.tender_currency,
+    tenderAmount: row.tender_amount,
+    paidAmount: row.paid_amount,
+    grandTotalUsd: row.grand_total_usd,
+    grandTotalKhr: row.grand_total_khr,
+    khqrMd5: row.khqr_md5,
+    khqrToAccountId: row.khqr_to_account_id,
+    khqrHash: row.khqr_hash,
+    khqrConfirmedAt: row.khqr_confirmed_at ? row.khqr_confirmed_at.toISOString() : null,
+    finalizedAt: row.finalized_at ? row.finalized_at.toISOString() : null,
+    finalizedByAccountId: row.finalized_by_account_id,
+  };
+}
+
+function mapPaymentIntent(row: V0PaymentIntentRow): V0KhqrPaymentIntentView {
+  return {
+    paymentIntentId: row.id,
+    saleId: row.sale_id,
+    status: row.status,
+    paymentMethod: row.payment_method,
+    tenderCurrency: row.tender_currency,
+    tenderAmount: row.tender_amount,
+    expectedToAccountId: row.expected_to_account_id,
+    activeAttemptId: row.active_attempt_id,
+    expiresAt: row.expires_at ? row.expires_at.toISOString() : null,
+    paidConfirmedAt: row.paid_confirmed_at ? row.paid_confirmed_at.toISOString() : null,
+    finalizedAt: row.finalized_at ? row.finalized_at.toISOString() : null,
+    cancelledAt: row.cancelled_at ? row.cancelled_at.toISOString() : null,
+    reasonCode: row.reason_code,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -664,7 +1257,12 @@ function defaultReasonCode(status: V0KhqrVerificationStatus): string | null {
 }
 
 function isTerminalAttemptStatus(status: string): boolean {
-  return status === "PAID_CONFIRMED" || status === "SUPERSEDED" || status === "EXPIRED";
+  return (
+    status === "PAID_CONFIRMED" ||
+    status === "SUPERSEDED" ||
+    status === "EXPIRED" ||
+    status === "CANCELLED"
+  );
 }
 
 function resolveDefaultKhqrProviderName(): "BAKONG" | "STUB" {
@@ -694,6 +1292,119 @@ function mapGeneratedRequest(input: {
     provider: input.generated.provider,
     providerReference: input.generated.providerReference,
   };
+}
+
+function parseCheckoutIntentLinesSnapshot(value: unknown): V0SaleKhqrLineSnapshotInput[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const lines: V0SaleKhqrLineSnapshotInput[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const menuItemId = normalizeOptionalString(record.menuItemId);
+    const menuItemNameSnapshot = normalizeOptionalString(record.menuItemNameSnapshot);
+    const unitPrice = toFiniteNumber(record.unitPrice);
+    const quantity = toFiniteNumber(record.quantity);
+    const lineSubtotal = toFiniteNumber(record.lineSubtotal);
+    const lineDiscountAmount = toFiniteNumber(record.lineDiscountAmount ?? 0);
+    const lineTotalAmount = toFiniteNumber(record.lineTotalAmount ?? lineSubtotal);
+    if (
+      !menuItemId ||
+      !menuItemNameSnapshot ||
+      unitPrice === null ||
+      quantity === null ||
+      lineSubtotal === null ||
+      lineTotalAmount === null
+    ) {
+      continue;
+    }
+    lines.push({
+      menuItemId,
+      menuItemNameSnapshot,
+      unitPrice,
+      quantity,
+      lineDiscountAmount: lineDiscountAmount ?? 0,
+      lineTotalAmount,
+      modifierSnapshot: record.modifierSnapshot ?? [],
+    });
+  }
+  return lines;
+}
+
+function parseCheckoutIntentTotalsSnapshot(
+  value: unknown,
+  intent: V0PaymentIntentRow
+): V0CheckoutIntentTotalsSnapshot {
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
+  const subtotalUsd = toFiniteNumber(record.subtotalUsd) ?? intent.tender_amount;
+  const subtotalKhr = toFiniteNumber(record.subtotalKhr) ?? subtotalUsd * 4100;
+  const discountUsd = toFiniteNumber(record.discountUsd) ?? 0;
+  const discountKhr = toFiniteNumber(record.discountKhr) ?? 0;
+  const vatUsd = toFiniteNumber(record.vatUsd) ?? 0;
+  const vatKhr = toFiniteNumber(record.vatKhr) ?? 0;
+  const grandTotalUsd = toFiniteNumber(record.grandTotalUsd) ?? intent.tender_amount;
+  const grandTotalKhr = toFiniteNumber(record.grandTotalKhr) ?? grandTotalUsd * 4100;
+  const paidAmountUsd = toFiniteNumber(record.paidAmountUsd) ?? grandTotalUsd;
+
+  return {
+    subtotalUsd,
+    subtotalKhr,
+    discountUsd,
+    discountKhr,
+    vatUsd,
+    vatKhr,
+    grandTotalUsd,
+    grandTotalKhr,
+    paidAmountUsd,
+  };
+}
+
+function parseCheckoutIntentPricingSnapshot(value: unknown): V0CheckoutIntentPricingSnapshot {
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
+  const saleFxRateKhrPerUsd = toFiniteNumber(record.saleFxRateKhrPerUsd) ?? 4100;
+  const saleKhrRoundingEnabled =
+    typeof record.saleKhrRoundingEnabled === "boolean"
+      ? record.saleKhrRoundingEnabled
+      : true;
+
+  const rawMode = normalizeOptionalString(record.saleKhrRoundingMode)?.toUpperCase();
+  const saleKhrRoundingMode =
+    rawMode === "UP" || rawMode === "DOWN" || rawMode === "NEAREST"
+      ? rawMode
+      : "NEAREST";
+
+  const rawGranularity = Number(record.saleKhrRoundingGranularity);
+  const saleKhrRoundingGranularity = rawGranularity === 1000 ? 1000 : 100;
+
+  return {
+    saleFxRateKhrPerUsd,
+    saleKhrRoundingEnabled,
+    saleKhrRoundingMode,
+    saleKhrRoundingGranularity,
+  };
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return null;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Math.round(numeric * 100) / 100;
 }
 
 function resolveAttemptExpiry(expiresInSeconds: number | null): Date | null {

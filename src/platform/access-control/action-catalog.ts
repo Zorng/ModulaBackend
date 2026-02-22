@@ -105,6 +105,12 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
     entitlementKey: "core.pos",
   },
+  "payment.khqr.attempt.cancel": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
   "payment.khqr.generate": {
     scope: "BRANCH",
     effect: "WRITE",
@@ -470,38 +476,64 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     entitlementKey: "core.pos",
   },
-  "order.place": {
+  "checkout.cash.finalize": {
     scope: "BRANCH",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "checkout.khqr.initiate": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "checkout.khqr.intent.read": {
+    scope: "BRANCH",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "checkout.khqr.intent.cancel": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "order.place": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "core.pos",
   },
   "order.items.add": {
     scope: "BRANCH",
     effect: "WRITE",
-    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "core.pos",
   },
   "order.checkout": {
     scope: "BRANCH",
     effect: "WRITE",
-    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "core.pos",
   },
   "order.fulfillment.status.update": {
     scope: "BRANCH",
     effect: "WRITE",
-    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "core.pos",
   },
   "order.list": {
     scope: "BRANCH",
     effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "core.pos",
   },
   "order.read": {
     scope: "BRANCH",
     effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "core.pos",
   },
   "sale.finalize": {

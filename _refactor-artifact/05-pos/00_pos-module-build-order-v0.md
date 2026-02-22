@@ -100,7 +100,7 @@ Completion (2026-02-19):
 | discount | Completed | phase 1-5 completed (boundary/contract lock, schema/repository, commands/queries + ACL, integration reliability, close-out sync) |
 | cashSession | Completed | Phase 1-5 completed (boundary/contract, schema/repo, command/query/ACL, integration reliability, close-out sync). |
 | inventory | In progress | Phase 0+1 locked (`05_inventory-rollout-v0.md`, `inventory-boundary-v0.md`, `api_contract/inventory-v0.md`) |
-| sale-order | In progress | Phase 0-2 completed (`06_sale-order-offline-first-dod-checklist-v0.md`, `02-boundary/sale-order-boundary-v0.md`, `api_contract/sale-order-v0.md`, `migrations/035_create_v0_sale_order_tables.sql`, `migrations/036_v0_sale_dual_currency_snapshot.sql`, `src/modules/v0/posOperation/saleOrder/*`). Next: command/query + access-control wiring (Phase 3). KHQR foundation prerequisite completed (`K1-K6`). |
+| sale-order | In progress (remodel) | Legacy server-cart rollout artifacts were archived under `_refactor-artifact/05-pos/_archived/`. Active tracker is `_refactor-artifact/05-pos/06_sale-order-rollout-v0.md` with source-of-truth remodel spec `_refactor-artifact/05-pos/06_sale-order-checkout-remodel-spec-v0.md` and pending remodel contract sections in `api_contract/sale-order-v0.md` + `api_contract/khqr-payment-v0.md`. |
 | receipt | Not started | consume finalized sale snapshot only |
 | reporting | Not started | read-only aggregation only |
 | pushSync | Not started | queue/replay over stable commands |

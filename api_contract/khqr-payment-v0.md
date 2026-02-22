@@ -6,8 +6,85 @@ Base path: `/v0/payments/khqr`
 
 Implementation status:
 - K1-K6 completed (`K5` webhook ingest + `K6` reconciliation scheduler baseline).
-- Endpoints below are implemented for KHQR generation, attempt registration/read, confirm-by-md5, and webhook ingestion.
+- Endpoints below are implemented for KHQR generation, attempt registration/read/cancel, confirm-by-md5, and webhook ingestion.
 - Sale finalize gate is enforced on online `/v0/sales/:saleId/finalize`.
+
+---
+
+## Pending Remodel Draft (Not Implemented)
+
+Status:
+- Design draft only. This section defines webhook-first KHQR settlement behavior for checkout remodel and is not implemented yet.
+
+Primary confirmation path:
+
+### 1) Provider webhook (primary)
+`POST /v0/payments/khqr/webhooks/provider`
+
+Target behavior:
+- Verify webhook proof.
+- If confirmed: reconcile + finalize sale atomically (idempotent).
+- If duplicate webhook delivery: return idempotent success without duplicate finalization.
+
+Secondary confirmation path:
+
+### 2) Manual confirm by cashier (fallback)
+`POST /v0/payments/khqr/confirm`  
+Action key: `payment.khqr.confirm`
+
+Body:
+```json
+{
+  "md5": "khqr-md5"
+}
+```
+
+Target response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "verificationStatus": "CONFIRMED",
+    "intent": {
+      "id": "uuid",
+      "status": "FINALIZED",
+      "saleId": "uuid"
+    },
+    "sale": {
+      "id": "uuid",
+      "status": "FINALIZED"
+    }
+  }
+}
+```
+
+Rules:
+- If webhook never arrives but manual confirm succeeds, backend must reconcile + finalize.
+- Endpoint remains available for frontend as secondary/manual action.
+- Late webhook is accepted and must converge idempotently.
+
+Intent lifecycle (target):
+```ts
+type PaymentIntentStatus =
+  | "WAITING_FOR_PAYMENT"
+  | "PAID_CONFIRMED"
+  | "FINALIZED"
+  | "EXPIRED"
+  | "CANCELLED"
+  | "FAILED_PROOF";
+```
+
+Locked outcomes:
+- Unpaid/expired/cancelled intent never creates `sale`.
+- Finalization path is shared/idempotent for both webhook and manual confirm.
+
+---
+
+## Current Implemented Contract (Live)
+
+The sections below (`Conventions`, `Types`, and `Endpoints`) describe the current implemented `/v0/payments/khqr` behavior.
+
+---
 
 ## Conventions
 
@@ -35,6 +112,7 @@ type KhqrAttemptStatus =
   | "PAID_CONFIRMED"
   | "EXPIRED"
   | "SUPERSEDED"
+  | "CANCELLED"
   | "PENDING_CONFIRMATION";
 
 type KhqrVerificationStatus =
@@ -46,7 +124,8 @@ type KhqrVerificationStatus =
 
 type KhqrAttempt = {
   attemptId: string;
-  saleId: string;
+  paymentIntentId: string;
+  saleId: string | null;
   md5: string;
   status: KhqrAttemptStatus;
   amount: number;
@@ -89,6 +168,7 @@ Success `201`:
   "data": {
     "attempt": {
       "attemptId": "uuid",
+      "paymentIntentId": "uuid",
       "saleId": "uuid",
       "md5": "khqr-md5",
       "status": "WAITING_FOR_PAYMENT",
@@ -164,6 +244,7 @@ Success `201`:
   "success": true,
   "data": {
     "attemptId": "uuid",
+    "paymentIntentId": "uuid",
     "saleId": "uuid",
     "md5": "khqr-md5",
     "status": "WAITING_FOR_PAYMENT",
@@ -183,10 +264,77 @@ Notes:
 - Registering a new active attempt for same sale marks older active attempt as `SUPERSEDED`.
 - This endpoint only records attempt truth; it does not finalize sale.
 - `toAccountId` is resolved by backend from current branch KHQR receiver configuration.
+- `saleId` can be `null` for checkout-intent initiated KHQR flows until payment confirmation finalizes sale.
 
 Errors:
 - `422` validation errors (`KHQR_ATTEMPT_PAYLOAD_INVALID`)
 - `409` `KHQR_ATTEMPT_ALREADY_TERMINAL` (if sale already finalized/voided when integrated)
+- `409` idempotency conflict/in-progress
+
+#### 2.1) Cancel KHQR payment attempt
+
+`POST /v0/payments/khqr/attempts/:attemptId/cancel`
+
+Action key: `payment.khqr.attempt.cancel`
+
+Headers:
+- `Idempotency-Key: <client key>`
+
+Body (optional):
+```json
+{
+  "reasonCode": "KHQR_CANCELLED_BY_CASHIER"
+}
+```
+
+Success `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "cancelled": true,
+    "attempt": {
+      "attemptId": "uuid",
+      "paymentIntentId": "uuid",
+      "saleId": "uuid",
+      "md5": "khqr-md5",
+      "status": "CANCELLED",
+      "amount": 2.5,
+      "currency": "USD",
+      "toAccountId": "bakong-account-id",
+      "expiresAt": "2026-02-21T10:30:00.000Z",
+      "paidConfirmedAt": null,
+      "supersededByAttemptId": null,
+      "createdAt": "2026-02-21T10:00:00.000Z",
+      "updatedAt": "2026-02-21T10:01:00.000Z"
+    },
+    "paymentIntent": {
+      "paymentIntentId": "uuid",
+      "saleId": "uuid",
+      "status": "CANCELLED",
+      "paymentMethod": "KHQR",
+      "tenderCurrency": "USD",
+      "tenderAmount": 2.5,
+      "expectedToAccountId": "bakong-account-id",
+      "activeAttemptId": null,
+      "expiresAt": "2026-02-21T10:30:00.000Z",
+      "paidConfirmedAt": null,
+      "finalizedAt": null,
+      "cancelledAt": "2026-02-21T10:01:00.000Z",
+      "reasonCode": "KHQR_CANCELLED_BY_CASHIER",
+      "createdAt": "2026-02-21T10:00:00.000Z",
+      "updatedAt": "2026-02-21T10:01:00.000Z"
+    }
+  }
+}
+```
+
+Errors:
+- `404` `KHQR_ATTEMPT_NOT_FOUND`
+- `404` `PAYMENT_INTENT_NOT_FOUND`
+- `409` `KHQR_ATTEMPT_NOT_CANCELLABLE`
+- `409` `PAYMENT_INTENT_ALREADY_FINALIZED`
+- `409` `PAYMENT_INTENT_NOT_CANCELLABLE`
 - `409` idempotency conflict/in-progress
 
 #### 3) Get KHQR payment attempt by id
@@ -201,6 +349,7 @@ Success `200`:
   "success": true,
   "data": {
     "attemptId": "uuid",
+    "paymentIntentId": "uuid",
     "saleId": "uuid",
     "md5": "khqr-md5",
     "status": "WAITING_FOR_PAYMENT",
@@ -251,8 +400,10 @@ Success `200` (proof confirmed):
   "success": true,
   "data": {
     "verificationStatus": "CONFIRMED",
+    "saleFinalized": true,
     "attempt": {
       "attemptId": "uuid",
+      "paymentIntentId": "uuid",
       "saleId": "uuid",
       "md5": "khqr-md5",
       "status": "PAID_CONFIRMED",
@@ -264,6 +415,10 @@ Success `200` (proof confirmed):
       "supersededByAttemptId": null,
       "createdAt": "2026-02-21T10:00:00.000Z",
       "updatedAt": "2026-02-21T10:02:10.000Z"
+    },
+    "sale": {
+      "saleId": "uuid",
+      "status": "FINALIZED"
     }
   }
 }
@@ -275,8 +430,10 @@ Success `200` (not yet paid):
   "success": true,
   "data": {
     "verificationStatus": "UNPAID",
+    "saleFinalized": false,
     "attempt": {
       "attemptId": "uuid",
+      "paymentIntentId": "uuid",
       "saleId": "uuid",
       "md5": "khqr-md5",
       "status": "WAITING_FOR_PAYMENT",
@@ -288,7 +445,8 @@ Success `200` (not yet paid):
       "supersededByAttemptId": null,
       "createdAt": "2026-02-21T10:00:00.000Z",
       "updatedAt": "2026-02-21T10:00:00.000Z"
-    }
+    },
+    "sale": null
   }
 }
 ```
@@ -299,8 +457,10 @@ Success `200` (proof mismatch):
   "success": true,
   "data": {
     "verificationStatus": "MISMATCH",
+    "saleFinalized": false,
     "attempt": {
       "attemptId": "uuid",
+      "paymentIntentId": "uuid",
       "saleId": "uuid",
       "md5": "khqr-md5",
       "status": "PENDING_CONFIRMATION",
@@ -313,6 +473,7 @@ Success `200` (proof mismatch):
       "createdAt": "2026-02-21T10:00:00.000Z",
       "updatedAt": "2026-02-21T10:02:10.000Z"
     },
+    "sale": null,
     "mismatchReasonCode": "KHQR_PROOF_MISMATCH"
   }
 }
@@ -358,9 +519,11 @@ Success `200` (applied):
     "status": "APPLIED",
     "verificationStatus": "CONFIRMED",
     "mismatchReasonCode": null,
+    "saleFinalized": true,
     "providerEventId": "evt-123",
     "attempt": {
       "attemptId": "uuid",
+      "paymentIntentId": "uuid",
       "saleId": "uuid",
       "md5": "khqr-md5",
       "status": "PAID_CONFIRMED",
@@ -372,6 +535,10 @@ Success `200` (applied):
       "supersededByAttemptId": null,
       "createdAt": "2026-02-21T10:00:00.000Z",
       "updatedAt": "2026-02-21T10:05:00.000Z"
+    },
+    "sale": {
+      "saleId": "uuid",
+      "status": "FINALIZED"
     }
   }
 }
@@ -385,8 +552,10 @@ Success `200` (duplicate provider event id):
     "status": "DUPLICATE",
     "verificationStatus": "CONFIRMED",
     "mismatchReasonCode": null,
+    "saleFinalized": false,
     "providerEventId": "evt-123",
-    "attempt": { "attemptId": "uuid" }
+    "attempt": { "attemptId": "uuid", "paymentIntentId": "uuid" },
+    "sale": null
   }
 }
 ```
@@ -399,8 +568,10 @@ Success `202` (attempt not found for provided md5/context):
     "status": "IGNORED",
     "verificationStatus": null,
     "mismatchReasonCode": null,
+    "saleFinalized": false,
     "providerEventId": "evt-123",
-    "attempt": null
+    "attempt": null,
+    "sale": null
   }
 }
 ```

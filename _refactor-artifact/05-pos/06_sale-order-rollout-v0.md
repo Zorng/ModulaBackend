@@ -1,104 +1,58 @@
-# Sale + Order Module Rollout (v0)
+# Sale + Order Rollout (v0) — Checkout Remodel Track
 
-Status: Completed
-Owner context: POSOperation
+Status: Active (remodel planning)  
+Owner context: POSOperation + PlatformSystem(KHQR)
 
-## Goal
+## Why this tracker exists
 
-Implement this module on `/v0` with boundary-safe ownership, atomic command contract (`business + audit + outbox`), and canonical API contracts in `api_contract/`.
+Previous sale-order rollout closed against a server-cart-first model.
+That model is now superseded by checkout remodel goals:
+- client-local cart,
+- sale written only on payment commit,
+- webhook-first KHQR settlement.
 
-## Primary KB references
+Legacy artifacts are archived:
+- `_refactor-artifact/05-pos/_archived/06_sale-order-rollout-v0-legacy.md`
+- `_refactor-artifact/05-pos/_archived/06_sale-order-offline-first-dod-checklist-v0.md`
 
-- `knowledge_base/BusinessLogic/5_modSpec/40_POSOperation/sale_module_patched.md`
-- `knowledge_base/BusinessLogic/2_domain/40_POSOperation/order_domain_patched.md`
-- `knowledge_base/BusinessLogic/_maps/sale_story_coverage_map.md`
-- `knowledge_base/BusinessLogic/4_process/30_POSOperation/10_finalize_sale_orch.md`
-- `knowledge_base/BusinessLogic/4_process/30_POSOperation/20_void_sale_orch.md`
-- `knowledge_base/BusinessLogic/4_process/30_POSOperation/06_place_order_open_ticket_process.md`
-- `knowledge_base/BusinessLogic/4_process/30_POSOperation/07_add_items_to_open_ticket_process.md`
-- `knowledge_base/BusinessLogic/4_process/30_POSOperation/08_checkout_open_ticket_process.md`
-- `knowledge_base/BusinessLogic/3_contract/10_edgecases/pos_operation_edge_case_sweep_patched.md`
+## Source-of-truth spec
 
-## Locked policy update (KB sync 2026-02-19)
+- `_refactor-artifact/05-pos/06_sale-order-checkout-remodel-spec-v0.md`
+- `api_contract/sale-order-v0.md` (`Pending Remodel Draft`)
+- `api_contract/khqr-payment-v0.md` (`Pending Remodel Draft`)
 
-- Void behavior is mode-aware:
-  - Workforce OFF (solo): direct void (no separate approval actor required)
-  - Workforce ON (team): request/approve workflow
-- `VOID_PENDING` must not be interpreted as "awaiting approval" in all cases.
-  - It can also represent in-progress reversal execution.
-- Notification trigger rule:
-  - ON-01 is emitted on `VoidRequest(status=PENDING)` creation only.
-  - Do not emit ON-01 from `sale.status=VOID_PENDING` transitions.
+## Execution phases (remodel)
 
-## Offline-first DoD gates (standardized)
+### R1 — Spec + contract lock
+- lock state machine (`payment_intent`, `sale`)
+- lock endpoint cutover map
+- lock error taxonomy
 
-Template:
-- `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md`
+### R2 — Data model remodel
+- add/lock payment-intent schema
+- rewire KHQR attempt/evidence ownership to payment intent
+- define immutable checkout snapshot shape
 
-- Replay parity: all sale/order write commands must have `pushSync` operation mapping.
-- Pull deltas: finalize/void/order mutations must emit `saleOrder`-scoped sync changes.
-- Conflict taxonomy: deterministic codes + `resolution` for retry/manual/permanent handling.
-- Convergence tests: replay + pull convergence for sale/order lifecycle.
-- Observability baseline: replay failure/duplicate/applied counters by code.
+### R3 — KHQR settlement path
+- implement webhook-first finalize path
+- implement manual confirm fallback to same finalize routine
+- enforce idempotent convergence for duplicate/late events
 
-## Platform prerequisite (KHQR payment foundation)
+### R4 — Cash checkout finalize path
+- add direct cash finalize endpoint from local cart payload
+- server-side repricing + atomic sale write
 
-Sale-order KHQR finalize path depends on:
-- `_refactor-artifact/01-platform/khqr-payment-foundation-rollout-v0.md`
-- Required baseline before KHQR finalize implementation:
-  - `K1` contract lock
-  - `K2` data model + repository
-  - `K3` backend confirmation service
-  - `K4` sale-order integration gate
-  - `K5` webhook ingestion integration
-  - `K6` reconciliation scheduler
-
-Scope note:
-- Non-KHQR sale-order paths may continue in parallel.
-- KHQR finalize acceptance is blocked until K1-K4 are completed.
-
-## Execution phases
-
-### Phase 0 — Offline-first DoD gate
-- lock sale-order offline-first checklist:
-  - `_refactor-artifact/05-pos/06_sale-order-offline-first-dod-checklist-v0.md`
-- lock replay operation mappings for sale/order writes
-- lock pull entity map for sale/order projections
-- lock conflict code/resolution mapping
-- lock convergence test matrix
-
-### Phase 1 — Boundary + Contract lock
-- confirm owned facts vs consumed facts
-- define canonical route prefix + action keys + event names
-- draft/lock `api_contract/sale-order-v0.md`
-
-### Phase 2 — Data model + repositories
-- migrations for owned tables/projections
-- repo methods only for owned tables
-- idempotency anchor definitions for write commands
-
-### Phase 3 — Commands/queries + access control
-- command handlers with transaction boundaries
-- query handlers with branch/tenant scoping
-- access-control route registry + action catalog mappings
-
-### Phase 4 — Integration + reliability
-- atomic rollback coverage (`business + audit + outbox`)
-- idempotency duplicate/conflict coverage
-- cross-module event publish/subscribe coverage
-
-### Phase 5 — Close-out
-- update rollout tracker status
-- update `_refactor-artifact/01-platform/v0-command-outbox-event-catalog.md` (if producer/subscriber changed)
-- update frontend rollout notes in `api_contract/`
+### R5 — Cutover + deprecation
+- remove cashier dependency on `/v0/orders*`
+- keep/order-scope endpoints only if explicit fulfillment lane is retained
+- update frontend integration notes
 
 ## Tracking
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 Offline-first DoD gate | Completed | Locked in `_refactor-artifact/05-pos/06_sale-order-offline-first-dod-checklist-v0.md` (replay surface classification, sync entity map, conflict taxonomy, convergence matrix, and solo/team void semantics). |
-| 1 Boundary + Contract lock | Completed | Locked module boundary in `_refactor-artifact/02-boundary/sale-order-boundary-v0.md` and drafted canonical contract in `api_contract/sale-order-v0.md` (orders/sales route groups, action keys, replay policy, error taxonomy, and solo/team void split). |
-| 2 Data model + repositories | Completed | Added baseline owned-table schema in `migrations/035_create_v0_sale_order_tables.sql`, then aligned sale payment snapshot to KB dual-currency/tender model in `migrations/036_v0_sale_dual_currency_snapshot.sql`; repository + idempotency anchor contract in `src/modules/v0/posOperation/saleOrder/infra/repository.ts` and `src/modules/v0/posOperation/saleOrder/app/command-contract.ts`. |
-| 3 Commands/queries + access control | Completed | Implemented command/query handlers in `src/modules/v0/posOperation/saleOrder/app/service.ts`, mounted API routes in `src/modules/v0/posOperation/saleOrder/api/router.ts` and `src/platform/http/routes/v0.ts`, and registered action/route ACL mappings in `src/platform/access-control/action-catalog.ts` + `src/platform/access-control/route-registry.ts`. |
-| 4 Integration + reliability | Completed | Added integration reliability coverage in `src/integration-tests/v0-sale-order.int.test.ts` for (1) atomic rollback on forced outbox failure (`order.place`), (2) idempotency replay/conflict behavior, and (3) outbox publish + pull-sync delta exposure for `saleOrder` module. |
-| 5 Close-out | Completed | Finalized rollout tracker state, updated outbox event catalog with sale/order producer events, and added frontend rollout note for online-vs-replay support in `api_contract/sale-order-v0.md`. |
+| R1 Spec + contract lock | In progress | Remodel spec drafted and pending contract sections added. |
+| R2 Data model remodel | Completed | Added `038_create_v0_payment_intents.sql`; KHQR attempts now owned by `payment_intent_id`; payment-intent verification status is persisted alongside attempt verification. |
+| R3 KHQR settlement path | Completed | Webhook-first + manual-confirm fallback converge on shared finalize; supports local-cart intent initiate/read/cancel on `/v0/checkout/khqr/*`; cancellation blocks later finalize; duplicate/late events stay idempotent. |
+| R4 Cash checkout finalize path | Completed | Added direct local-cart cash finalize at `POST /v0/checkout/cash/finalize` with server-side repricing and atomic sale write. |
+| R5 Cutover + deprecation | In progress | `/v0/checkout/*` bridge is live; backend now denies cashier on `/v0/orders*` and keeps `/v0/orders*` for manager/fulfillment lane. Frontend cutover map is documented in `api_contract/sale-order-v0.md`; remaining work is app-side route migration. |

@@ -32,6 +32,13 @@ type ItemInput = {
   note: string | null;
 };
 
+type CheckoutPreparation = {
+  actor: { accountId: string; tenantId: string; branchId: string };
+  body: Record<string, unknown>;
+  items: ItemInput[];
+  checkout: CheckoutInput;
+};
+
 type ModifierSelectionInput = {
   groupId: string;
   optionIds: string[];
@@ -703,6 +710,214 @@ export class V0SaleOrderService {
     return mapVoidRequest(latest);
   }
 
+  async cashFinalizeFromLocalCart(input: {
+    actor: ActorContext;
+    body: unknown;
+  }): Promise<Record<string, unknown>> {
+    const prepared = await this.prepareCheckoutFromLocalCart({
+      actor: input.actor,
+      body: input.body,
+      forcedPaymentMethod: "CASH",
+    });
+
+    const sale = await this.repo.createSale({
+      tenantId: prepared.actor.tenantId,
+      branchId: prepared.actor.branchId,
+      orderTicketId: null,
+      paymentMethod: "CASH",
+      tenderCurrency: prepared.checkout.tenderCurrency,
+      tenderAmount: prepared.checkout.tenderAmount,
+      cashReceivedTenderAmount: prepared.checkout.cashReceivedTenderAmount,
+      cashChangeTenderAmount: prepared.checkout.cashChangeTenderAmount,
+      khqrMd5: null,
+      khqrToAccountId: null,
+      khqrHash: null,
+      khqrConfirmedAt: null,
+      subtotalUsd: prepared.checkout.subtotalUsd,
+      subtotalKhr: prepared.checkout.subtotalKhr,
+      discountUsd: prepared.checkout.discountUsd,
+      discountKhr: prepared.checkout.discountKhr,
+      vatUsd: prepared.checkout.vatUsd,
+      vatKhr: prepared.checkout.vatKhr,
+      grandTotalUsd: prepared.checkout.grandTotalUsd,
+      grandTotalKhr: prepared.checkout.grandTotalKhr,
+      saleFxRateKhrPerUsd: prepared.checkout.saleFxRateKhrPerUsd,
+      saleKhrRoundingEnabled: prepared.checkout.saleKhrRoundingEnabled,
+      saleKhrRoundingMode: prepared.checkout.saleKhrRoundingMode,
+      saleKhrRoundingGranularity: prepared.checkout.saleKhrRoundingGranularity,
+      paidAmount: prepared.checkout.paidAmount,
+    });
+
+    const saleLines: V0SaleLineRow[] = [];
+    for (const item of prepared.items) {
+      const lineSubtotal = roundMoney(item.unitPrice * item.quantity);
+      const saleLine = await this.repo.createSaleLine({
+        tenantId: prepared.actor.tenantId,
+        branchId: prepared.actor.branchId,
+        saleId: sale.id,
+        orderTicketLineId: null,
+        menuItemId: item.menuItemId,
+        menuItemNameSnapshot: item.menuItemNameSnapshot,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        lineDiscountAmount: 0,
+        lineTotalAmount: lineSubtotal,
+        modifierSnapshot: item.modifierSnapshot,
+      });
+      saleLines.push(saleLine);
+    }
+
+    const finalized = await this.repo.markSaleFinalized({
+      tenantId: prepared.actor.tenantId,
+      branchId: prepared.actor.branchId,
+      saleId: sale.id,
+      finalizedByAccountId: prepared.actor.accountId,
+      paidAmount: prepared.checkout.paidAmount,
+      tenderAmount: prepared.checkout.tenderAmount,
+      cashReceivedTenderAmount: prepared.checkout.cashReceivedTenderAmount,
+      cashChangeTenderAmount: prepared.checkout.cashChangeTenderAmount,
+      khqrHash: null,
+      khqrConfirmedAt: null,
+    });
+    if (!finalized) {
+      throw new V0SaleOrderError(409, "sale finalize failed", "SALE_NOT_FOUND");
+    }
+
+    return {
+      ...mapSale(finalized),
+      lines: saleLines.map(mapSaleLine),
+    };
+  }
+
+  async prepareKhqrCheckoutIntent(input: {
+    actor: ActorContext;
+    body: unknown;
+  }): Promise<{
+    tenderAmount: number;
+    tenderCurrency: V0TenderCurrency;
+    expiresInSeconds: number | null;
+    checkoutLinesSnapshot: unknown;
+    checkoutTotalsSnapshot: unknown;
+    pricingSnapshot: unknown;
+    metadataSnapshot: unknown;
+    preview: {
+      itemCount: number;
+      grandTotalUsd: number;
+      grandTotalKhr: number;
+    };
+  }> {
+    const prepared = await this.prepareCheckoutFromLocalCart({
+      actor: input.actor,
+      body: input.body,
+      forcedPaymentMethod: "KHQR",
+    });
+
+    const checkoutLinesSnapshot = prepared.items.map((item) => {
+      const lineSubtotal = roundMoney(item.unitPrice * item.quantity);
+      return {
+        menuItemId: item.menuItemId,
+        menuItemNameSnapshot: item.menuItemNameSnapshot,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        lineSubtotal,
+        lineDiscountAmount: 0,
+        lineTotalAmount: lineSubtotal,
+        modifierSnapshot: item.modifierSnapshot,
+        note: item.note,
+      };
+    });
+
+    return {
+      tenderAmount: prepared.checkout.tenderAmount,
+      tenderCurrency: prepared.checkout.tenderCurrency,
+      expiresInSeconds: parseOptionalPositiveInteger(
+        prepared.body.expiresInSeconds,
+        "expiresInSeconds"
+      ),
+      checkoutLinesSnapshot,
+      checkoutTotalsSnapshot: {
+        subtotalUsd: prepared.checkout.subtotalUsd,
+        subtotalKhr: prepared.checkout.subtotalKhr,
+        discountUsd: prepared.checkout.discountUsd,
+        discountKhr: prepared.checkout.discountKhr,
+        vatUsd: prepared.checkout.vatUsd,
+        vatKhr: prepared.checkout.vatKhr,
+        grandTotalUsd: prepared.checkout.grandTotalUsd,
+        grandTotalKhr: prepared.checkout.grandTotalKhr,
+        paidAmountUsd: prepared.checkout.paidAmount,
+      },
+      pricingSnapshot: {
+        saleFxRateKhrPerUsd: prepared.checkout.saleFxRateKhrPerUsd,
+        saleKhrRoundingEnabled: prepared.checkout.saleKhrRoundingEnabled,
+        saleKhrRoundingMode: prepared.checkout.saleKhrRoundingMode,
+        saleKhrRoundingGranularity: prepared.checkout.saleKhrRoundingGranularity,
+      },
+      metadataSnapshot: {
+        source: "checkout.khqr.initiate",
+        itemCount: checkoutLinesSnapshot.length,
+      },
+      preview: {
+        itemCount: checkoutLinesSnapshot.length,
+        grandTotalUsd: prepared.checkout.grandTotalUsd,
+        grandTotalKhr: prepared.checkout.grandTotalKhr,
+      },
+    };
+  }
+
+  private async prepareCheckoutFromLocalCart(input: {
+    actor: ActorContext;
+    body: unknown;
+    forcedPaymentMethod: V0SalePaymentMethod;
+  }): Promise<CheckoutPreparation> {
+    const actor = assertBranchContext(input.actor);
+    await this.requireOpenCashSession(actor, "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION");
+    const body = toRecord(input.body);
+    const itemDrafts = parseOrderItems(body.items, true);
+    const items = await this.hydrateOrderItems({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      itemDrafts,
+    });
+
+    const virtualLines: V0OrderTicketLineRow[] = items.map((item, index) => ({
+      id: `local-line-${index + 1}`,
+      tenant_id: actor.tenantId,
+      branch_id: actor.branchId,
+      order_ticket_id: "00000000-0000-0000-0000-000000000000",
+      menu_item_id: item.menuItemId,
+      menu_item_name_snapshot: item.menuItemNameSnapshot,
+      unit_price: item.unitPrice,
+      quantity: item.quantity,
+      line_subtotal: roundMoney(item.unitPrice * item.quantity),
+      modifier_snapshot: item.modifierSnapshot,
+      note: item.note,
+      created_at: new Date(0),
+      updated_at: new Date(0),
+    }));
+
+    const checkout = parseCheckoutBody(
+      {
+        ...body,
+        paymentMethod: input.forcedPaymentMethod,
+      },
+      virtualLines
+    );
+    if (checkout.paymentMethod !== input.forcedPaymentMethod) {
+      throw new V0SaleOrderError(
+        422,
+        `paymentMethod must be ${input.forcedPaymentMethod}`,
+        "SALE_PAYMENT_METHOD_INVALID"
+      );
+    }
+
+    return {
+      actor,
+      body,
+      items,
+      checkout,
+    };
+  }
+
   private async hydrateOrderItems(input: {
     tenantId: string;
     branchId: string;
@@ -1254,6 +1469,21 @@ function parseNullableNumber(input: unknown, field: string): number | null {
     throw new V0SaleOrderError(422, `${field} must be a finite number`, "SALE_NUMBER_INVALID");
   }
   return roundMoney(value);
+}
+
+function parseOptionalPositiveInteger(input: unknown, field: string): number | null {
+  if (input === undefined || input === null || input === "") {
+    return null;
+  }
+  const value = Number(input);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new V0SaleOrderError(
+      422,
+      `${field} must be a positive integer`,
+      "SALE_ORDER_VALIDATION_FAILED"
+    );
+  }
+  return Math.floor(value);
 }
 
 function requireUuid(input: unknown, field: string): string {

@@ -42,6 +42,130 @@ export function createV0SaleOrderRouter(input: {
   const router = Router();
   const transactionManager = new TransactionManager(input.db);
 
+  router.post(
+    "/checkout/cash/finalize",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      await executeWrite({
+        req,
+        res,
+        actionKey: V0_SALE_ORDER_ACTION_KEYS.checkoutCashFinalize,
+        eventType: V0_SALE_ORDER_EVENT_TYPES.checkoutCashFinalized,
+        endpoint: "/v0/checkout/cash/finalize",
+        entityType: "sale",
+        idempotencyService: input.idempotencyService,
+        transactionManager,
+        khqrProvider: input.khqrProvider,
+        handler: async (service) =>
+          service.cashFinalizeFromLocalCart({
+            actor: req.v0Auth!,
+            body: req.body,
+          }),
+        commandParts: [],
+      });
+    }
+  );
+
+  router.post(
+    "/checkout/khqr/initiate",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      await executeWrite({
+        req,
+        res,
+        actionKey: V0_SALE_ORDER_ACTION_KEYS.checkoutKhqrInitiate,
+        eventType: V0_SALE_ORDER_EVENT_TYPES.checkoutKhqrInitiated,
+        endpoint: "/v0/checkout/khqr/initiate",
+        entityType: "payment_intent",
+        idempotencyService: input.idempotencyService,
+        transactionManager,
+        khqrProvider: input.khqrProvider,
+        handler: async (service, _idempotencyKey, khqrService) => {
+          const prepared = await service.prepareKhqrCheckoutIntent({
+            actor: req.v0Auth!,
+            body: req.body,
+          });
+          const initiated = await khqrService.initiateCheckoutIntent({
+            actor: req.v0Auth!,
+            tenderAmount: prepared.tenderAmount,
+            tenderCurrency: prepared.tenderCurrency,
+            expiresInSeconds: prepared.expiresInSeconds,
+            checkoutLinesSnapshot: prepared.checkoutLinesSnapshot,
+            checkoutTotalsSnapshot: prepared.checkoutTotalsSnapshot,
+            pricingSnapshot: prepared.pricingSnapshot,
+            metadataSnapshot: prepared.metadataSnapshot,
+          });
+          return {
+            id: initiated.intent.paymentIntentId,
+            intent: initiated.intent,
+            attempt: initiated.attempt,
+            paymentRequest: initiated.paymentRequest,
+            preview: prepared.preview,
+          };
+        },
+        commandParts: [],
+      });
+    }
+  );
+
+  router.get(
+    "/checkout/khqr/intents/:intentId",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const actor = req.v0Auth;
+        if (!actor) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+        const intentId = req.params.intentId;
+        const service = new V0KhqrPaymentService(
+          new V0KhqrPaymentRepository(input.db),
+          input.khqrProvider
+        );
+        const data = await service.getPaymentIntentById({
+          actor,
+          paymentIntentId: intentId,
+        });
+        res.status(200).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
+      }
+    }
+  );
+
+  router.post(
+    "/checkout/khqr/intents/:intentId/cancel",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      await executeWrite({
+        req,
+        res,
+        actionKey: V0_SALE_ORDER_ACTION_KEYS.checkoutKhqrIntentCancel,
+        eventType: V0_SALE_ORDER_EVENT_TYPES.checkoutKhqrIntentCancelled,
+        endpoint: "/v0/checkout/khqr/intents/:intentId/cancel",
+        entityType: "payment_intent",
+        idempotencyService: input.idempotencyService,
+        transactionManager,
+        khqrProvider: input.khqrProvider,
+        handler: async (_service, _idempotencyKey, khqrService) => {
+          const body = toRecord(req.body);
+          const reasonCode = asString(body.reasonCode) ?? null;
+          const cancelled = await khqrService.cancelPaymentIntent({
+            actor: req.v0Auth!,
+            paymentIntentId: req.params.intentId,
+            reasonCode,
+          });
+          return {
+            id: cancelled.paymentIntentId,
+            ...cancelled,
+          };
+        },
+        commandParts: [req.params.intentId],
+      });
+    }
+  );
+
   router.get("/orders", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
       const actor = req.v0Auth;

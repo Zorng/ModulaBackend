@@ -8,12 +8,183 @@ Base prefixes:
 
 Implementation status:
 - Online command/query + ACL surface is implemented on `/v0/orders` and `/v0/sales`.
+- Local-cart checkout bridge is implemented on `/v0/checkout/*`:
+  - `POST /v0/checkout/cash/finalize`
+  - `POST /v0/checkout/khqr/initiate`
+  - `GET /v0/checkout/khqr/intents/:intentId`
+  - `POST /v0/checkout/khqr/intents/:intentId/cancel`
+- `/v0/orders*` is now restricted to `OWNER | ADMIN | MANAGER` (cashier uses `/v0/checkout/*`).
 - Push replay remains partial for sale/order writes.
 
 Frontend rollout note:
 - Treat all listed `/v0/orders` + `/v0/sales` endpoints as online-ready.
 - Always send `Idempotency-Key` for write endpoints.
 - Do not route full sale/order flow through `pushSync` yet.
+
+Frontend cutover map (online lane):
+- Cashier checkout:
+  - `POST /v0/checkout/cash/finalize`
+  - `POST /v0/checkout/khqr/initiate`
+  - `GET /v0/checkout/khqr/intents/:intentId`
+  - `POST /v0/checkout/khqr/intents/:intentId/cancel`
+- Manager/fulfillment lane (non-cashier only):
+  - `GET|POST /v0/orders*`
+  - `PATCH /v0/orders/:orderId/fulfillment`
+- Cashier must not call `/v0/orders*` (returns `403 PERMISSION_DENIED`).
+
+---
+
+## Checkout Remodel Draft (Partially Implemented)
+
+Status:
+- Checkout endpoints listed below are implemented.
+- Full cutover is still pending; `/v0/orders*` remains active only for manager/fulfillment lane.
+
+Goals:
+- Remove server-side cart as default checkout lane.
+- Record `sale` only when payment is committed.
+- Use KHQR webhook as primary confirmation path.
+- Keep manual confirm as fallback action for cashier.
+
+### Checkout (client-local cart)
+
+#### 1) Cash checkout finalize
+`POST /v0/checkout/cash/finalize`  
+Action key: `checkout.cash.finalize`
+
+Body:
+```json
+{
+  "items": [
+    {
+      "menuItemId": "uuid",
+      "quantity": 2,
+      "modifierSelections": [
+        { "groupId": "uuid", "optionIds": ["uuid"] }
+      ],
+      "note": "Less ice"
+    }
+  ],
+  "tenderCurrency": "USD",
+  "cashReceivedTenderAmount": 10
+}
+```
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "sale": { "id": "uuid", "status": "FINALIZED" },
+    "lines": []
+  }
+}
+```
+
+Rules:
+- Server reprices from catalog/policy and ignores client price snapshots.
+- Atomic write: sale + sale lines + side effects (inventory/cash movement/outbox).
+
+#### 2) KHQR checkout initiate
+`POST /v0/checkout/khqr/initiate`  
+Action key: `checkout.khqr.initiate`
+
+Body:
+```json
+{
+  "items": [
+    {
+      "menuItemId": "uuid",
+      "quantity": 2,
+      "modifierSelections": [],
+      "note": null
+    }
+  ],
+  "expiresInSeconds": 180
+}
+```
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "intent": {
+      "paymentIntentId": "uuid",
+      "status": "WAITING_FOR_PAYMENT",
+      "saleId": null
+    },
+    "attempt": {
+      "attemptId": "uuid",
+      "paymentIntentId": "uuid",
+      "saleId": null,
+      "md5": "khqr-md5",
+      "status": "WAITING_FOR_PAYMENT"
+    },
+    "paymentRequest": {
+      "md5": "khqr-md5",
+      "payload": "....",
+      "payloadType": "EMV_KHQR_STRING"
+    },
+    "preview": {
+      "itemCount": 1,
+      "grandTotalUsd": 3.5,
+      "grandTotalKhr": 14350
+    }
+  }
+}
+```
+
+Rules:
+- No `sale` row is created at initiate.
+- Intent stores immutable checkout snapshot for later finalization.
+
+#### 3) Read intent status
+`GET /v0/checkout/khqr/intents/:intentId`
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "paymentIntentId": "uuid",
+    "status": "WAITING_FOR_PAYMENT",
+    "saleId": null,
+    "reasonCode": null
+  }
+}
+```
+
+#### 4) Cancel intent
+`POST /v0/checkout/khqr/intents/:intentId/cancel`  
+Action key: `checkout.khqr.intent.cancel`
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "paymentIntentId": "uuid",
+    "status": "CANCELLED"
+  }
+}
+```
+
+Rules:
+- Allowed only when not finalized.
+- Cancelled/expired intent does not create sale.
+
+### Sale lifecycle (target)
+```ts
+type SaleStatus = "FINALIZED" | "VOID_PENDING" | "VOIDED";
+```
+
+---
+
+## Current Implemented Contract (Live)
+
+The sections below (`Conventions`, `Types`, `Orders`, `Sales`, sync notes, and errors) describe the current implemented `/v0` behavior.
 
 ---
 

@@ -243,7 +243,7 @@ Body (any subset; at least 1 field required):
 ```json
 {
   "name": "Whole Milk",
-  "categoryId": "uuid",
+  "categoryId": "uuid", 
   "imageUrl": "https://...",
   "lowStockThreshold": 1200
 }

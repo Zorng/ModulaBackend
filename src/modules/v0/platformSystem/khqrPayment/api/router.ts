@@ -1,7 +1,9 @@
 import { Router, type Response } from "express";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { requireV0Auth, type V0AuthRequest } from "../../../auth/api/middleware.js";
 import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
+import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
+import { V0PullSyncRepository } from "../../pullSync/infra/repository.js";
 import {
   getIdempotencyKeyFromHeader,
   V0IdempotencyError,
@@ -11,10 +13,13 @@ import { V0_KHQR_PAYMENT_ACTION_KEYS } from "../app/command-contract.js";
 import {
   V0KhqrPaymentError,
   V0KhqrPaymentService,
+  type V0KhqrFinalizedSaleView,
 } from "../app/service.js";
 import { V0KhqrProviderError } from "../app/payment-provider.js";
 import { V0KhqrPaymentRepository } from "../infra/repository.js";
 import type { V0KhqrPaymentProvider } from "../app/payment-provider.js";
+import { V0AuditRepository } from "../../../audit/infra/repository.js";
+import { V0AuditService } from "../../../audit/app/service.js";
 
 type KhqrResponseBody =
   | {
@@ -49,7 +54,23 @@ export function createV0KhqrPaymentRouter(input: {
           new V0KhqrPaymentRepository(client),
           input.provider
         );
-        return txService.ingestWebhookEvent({ event });
+        const ingest = await txService.ingestWebhookEvent({ event });
+        if (ingest.saleFinalized && ingest.sale) {
+          await appendSaleFinalizedSideEffects({
+            client,
+            tenantId: event.tenantId,
+            branchId: event.branchId,
+            actorAccountId: null,
+            actorType: "SYSTEM",
+            sale: ingest.sale,
+            metadata: {
+              source: "khqr.webhook",
+              providerEventId: ingest.providerEventId,
+              verificationStatus: ingest.verificationStatus,
+            },
+          });
+        }
+        return ingest;
       });
 
       res.status(result.status === "IGNORED" ? 202 : 200).json({
@@ -175,6 +196,64 @@ export function createV0KhqrPaymentRouter(input: {
     }
   });
 
+  router.post(
+    "/attempts/:attemptId/cancel",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      const actor = req.v0Auth;
+      const idempotencyKey = getIdempotencyKeyFromHeader(req.headers);
+      const actionKey = V0_KHQR_PAYMENT_ACTION_KEYS.attemptCancel;
+
+      try {
+        if (!actor) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+
+        const attemptId = assertUuid(req.params.attemptId, "attemptId");
+        const body = parseCancelBody(req.body);
+        const tenantId = normalizeOptionalString(actor.tenantId);
+        const branchId = normalizeOptionalString(actor.branchId);
+
+        const result = await input.idempotencyService.execute<KhqrResponseBody>({
+          idempotencyKey,
+          actionKey,
+          scope: "BRANCH",
+          tenantId,
+          branchId,
+          payload: { attemptId, body },
+          handler: async () => {
+            const data = await transactionManager.withTransaction(async (client) => {
+              const txService = new V0KhqrPaymentService(
+                new V0KhqrPaymentRepository(client),
+                input.provider
+              );
+              return txService.cancelAttempt({
+                actor,
+                attemptId,
+                reasonCode: body.reasonCode,
+              });
+            });
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data,
+              },
+            };
+          },
+        });
+
+        if (result.replayed) {
+          res.setHeader("Idempotency-Replayed", "true");
+        }
+        res.status(result.statusCode).json(result.body);
+      } catch (error) {
+        handleError(res, error);
+      }
+    }
+  );
+
   router.get("/attempts/:attemptId", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
       const actor = req.v0Auth;
@@ -244,10 +323,25 @@ export function createV0KhqrPaymentRouter(input: {
               new V0KhqrPaymentRepository(client),
               input.provider
             );
-            return txService.confirmByMd5({
+            const confirmed = await txService.confirmByMd5({
               actor,
               md5: body.md5,
             });
+            if (confirmed.saleFinalized && confirmed.sale) {
+              await appendSaleFinalizedSideEffects({
+                client,
+                tenantId: actor.tenantId ?? "",
+                branchId: actor.branchId ?? "",
+                actorAccountId: actor.accountId,
+                actorType: "ACCOUNT",
+                sale: confirmed.sale,
+                metadata: {
+                  source: "khqr.manual_confirm",
+                  verificationStatus: confirmed.verificationStatus,
+                },
+              });
+            }
+            return confirmed;
           });
 
           return {
@@ -257,6 +351,8 @@ export function createV0KhqrPaymentRouter(input: {
               data: {
                 verificationStatus: data.verificationStatus,
                 attempt: data.attempt,
+                sale: data.sale,
+                saleFinalized: data.saleFinalized,
                 ...(data.mismatchReasonCode
                   ? { mismatchReasonCode: data.mismatchReasonCode }
                   : {}),
@@ -276,6 +372,89 @@ export function createV0KhqrPaymentRouter(input: {
   });
 
   return router;
+}
+
+async function appendSaleFinalizedSideEffects(input: {
+  client: PoolClient;
+  tenantId: string;
+  branchId: string;
+  actorAccountId: string | null;
+  actorType: "ACCOUNT" | "SYSTEM";
+  sale: V0KhqrFinalizedSaleView;
+  metadata: Record<string, unknown>;
+}): Promise<void> {
+  const tenantId = normalizeOptionalString(input.tenantId);
+  const branchId = normalizeOptionalString(input.branchId);
+  if (!tenantId || !branchId) {
+    return;
+  }
+
+  const occurredAt = new Date();
+  const actionKey = "sale.finalize";
+  const eventType = "SALE_FINALIZED";
+  const dedupeKey = `sale.finalize:khqr:${input.sale.saleId}`;
+
+  const auditService = new V0AuditService(new V0AuditRepository(input.client));
+  const outboxRepo = new V0CommandOutboxRepository(input.client);
+  const syncRepo = new V0PullSyncRepository(input.client);
+
+  await auditService.recordEvent({
+    tenantId,
+    branchId,
+    actorAccountId: input.actorAccountId,
+    actionKey,
+    outcome: "SUCCESS",
+    reasonCode: null,
+    entityType: "sale",
+    entityId: input.sale.saleId,
+    dedupeKey,
+    metadata: input.metadata,
+  });
+
+  const outbox = await outboxRepo.insertEvent({
+    tenantId,
+    branchId,
+    actionKey,
+    eventType,
+    actorType: input.actorType,
+    actorId: input.actorAccountId,
+    entityType: "sale",
+    entityId: input.sale.saleId,
+    outcome: "SUCCESS",
+    dedupeKey,
+    payload: input.metadata,
+    occurredAt,
+  });
+
+  if (outbox.inserted && outbox.row) {
+    await syncRepo.appendChange({
+      tenantId,
+      branchId,
+      moduleKey: "saleOrder",
+      entityType: "sale",
+      entityId: input.sale.saleId,
+      operation: "UPSERT",
+      revision: `saleOrder:${outbox.row.id}`,
+      data: {
+        id: input.sale.saleId,
+        status: input.sale.status,
+        paymentMethod: input.sale.paymentMethod,
+        tenderCurrency: input.sale.tenderCurrency,
+        tenderAmount: input.sale.tenderAmount,
+        paidAmount: input.sale.paidAmount,
+        grandTotalUsd: input.sale.grandTotalUsd,
+        grandTotalKhr: input.sale.grandTotalKhr,
+        khqrMd5: input.sale.khqrMd5,
+        khqrToAccountId: input.sale.khqrToAccountId,
+        khqrHash: input.sale.khqrHash,
+        khqrConfirmedAt: input.sale.khqrConfirmedAt,
+        finalizedAt: input.sale.finalizedAt,
+        finalizedByAccountId: input.sale.finalizedByAccountId,
+      },
+      changedAt: outbox.row.occurred_at,
+      sourceOutboxId: outbox.row.id,
+    });
+  }
 }
 
 function parseRegisterBody(body: unknown): {
@@ -304,6 +483,13 @@ function parseConfirmBody(body: unknown): { md5: string } {
   const record = asRecord(body);
   return {
     md5: assertMd5(record.md5, "md5"),
+  };
+}
+
+function parseCancelBody(body: unknown): { reasonCode: string | null } {
+  const record = asRecord(body ?? {});
+  return {
+    reasonCode: normalizeOptionalString(record.reasonCode),
   };
 }
 

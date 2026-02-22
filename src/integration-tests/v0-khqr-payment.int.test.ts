@@ -122,7 +122,7 @@ async function registerAttempt(input: {
   amount?: number;
   currency?: "USD" | "KHR";
   toAccountId?: string;
-}): Promise<void> {
+}): Promise<{ attemptId: string; paymentIntentId: string }> {
   const response = await request(input.app)
     .post("/v0/payments/khqr/attempts")
     .set("Authorization", `Bearer ${input.branchToken}`)
@@ -137,6 +137,10 @@ async function registerAttempt(input: {
 
   expect(response.status).toBe(201);
   expect(response.body.data.status).toBe("WAITING_FOR_PAYMENT");
+  return {
+    attemptId: response.body.data.attemptId as string,
+    paymentIntentId: response.body.data.paymentIntentId as string,
+  };
 }
 
 async function waitForAttemptStatus(input: {
@@ -335,6 +339,44 @@ describe("v0 khqr payment webhook integration", () => {
     } finally {
       dispatcher.stop();
     }
+  });
+
+  it("cancels waiting attempts and prevents later sale finalization", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const saleId = "10000000-0000-4000-8000-000000000a05";
+    const md5 = "dddddddddddddddddddddddddddddddd";
+    const attempt = await registerAttempt({ app, branchToken: setup.branchToken, saleId, md5 });
+
+    const cancelled = await request(app)
+      .post(`/v0/payments/khqr/attempts/${attempt.attemptId}/cancel`)
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .set("Idempotency-Key", `test-khqr-cancel-${md5}`)
+      .send({
+        reasonCode: "KHQR_CANCELLED_BY_CASHIER",
+      });
+
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.success).toBe(true);
+    expect(cancelled.body.data.cancelled).toBe(true);
+    expect(cancelled.body.data.attempt.status).toBe("CANCELLED");
+    expect(cancelled.body.data.paymentIntent.status).toBe("CANCELLED");
+
+    const confirmed = await request(app)
+      .post("/v0/payments/khqr/confirm")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .set("Idempotency-Key", `test-khqr-confirm-after-cancel-${md5}`)
+      .send({ md5 });
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.success).toBe(true);
+    expect(confirmed.body.data.verificationStatus).toBe("UNPAID");
+    expect(confirmed.body.data.saleFinalized).toBe(false);
+    expect(confirmed.body.data.attempt.status).toBe("CANCELLED");
+
+    const read = await request(app)
+      .get(`/v0/payments/khqr/attempts/by-md5/${md5}`)
+      .set("Authorization", `Bearer ${setup.branchToken}`);
+    expect(read.status).toBe(200);
+    expect(read.body.data.status).toBe("CANCELLED");
   });
 
   it("rejects webhook with invalid secret", async () => {

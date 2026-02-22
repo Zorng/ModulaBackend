@@ -1,6 +1,7 @@
 export const V0_KHQR_PAYMENT_ACTION_KEYS = {
   generate: "payment.khqr.generate",
   attemptRegister: "payment.khqr.attempt.register",
+  attemptCancel: "payment.khqr.attempt.cancel",
   attemptRead: "payment.khqr.attempt.read",
   attemptReadByMd5: "payment.khqr.attempt.readByMd5",
   confirm: "payment.khqr.confirm",
