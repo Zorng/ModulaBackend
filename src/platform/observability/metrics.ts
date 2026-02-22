@@ -24,9 +24,50 @@ type HistogramSeries = {
   sum: number;
 };
 
+export type KhqrWebhookDiagnostics = {
+  lastIgnoredReason: "NO_MATCH" | "AMBIGUOUS_MD5" | null;
+  lastReceivedAt: string | null;
+  lastAppliedAt: string | null;
+  lastDuplicateAt: string | null;
+  lastIgnoredAt: string | null;
+  lastUnauthorizedAt: string | null;
+  lastInvalidPayloadAt: string | null;
+  lastFailedAt: string | null;
+  lastError: string | null;
+  totalReceived: number;
+  totalApplied: number;
+  totalDuplicate: number;
+  totalIgnored: number;
+  totalIgnoredNoMatch: number;
+  totalIgnoredAmbiguousMd5: number;
+  totalUnauthorized: number;
+  totalInvalidPayload: number;
+  totalFailed: number;
+};
+
 const counters = new Map<string, CounterSeries>();
 const gauges = new Map<string, GaugeSeries>();
 const histograms = new Map<string, HistogramSeries>();
+const khqrWebhookDiagnostics: KhqrWebhookDiagnostics = {
+  lastIgnoredReason: null,
+  lastReceivedAt: null,
+  lastAppliedAt: null,
+  lastDuplicateAt: null,
+  lastIgnoredAt: null,
+  lastUnauthorizedAt: null,
+  lastInvalidPayloadAt: null,
+  lastFailedAt: null,
+  lastError: null,
+  totalReceived: 0,
+  totalApplied: 0,
+  totalDuplicate: 0,
+  totalIgnored: 0,
+  totalIgnoredNoMatch: 0,
+  totalIgnoredAmbiguousMd5: 0,
+  totalUnauthorized: 0,
+  totalInvalidPayload: 0,
+  totalFailed: 0,
+};
 
 const DURATION_BUCKETS_MS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
 
@@ -211,6 +252,80 @@ export function recordOutboxEventProcessed(input: {
 
 export function setOutboxBacklogCount(count: number): void {
   setGauge("outbox_backlog_count", "Current outbox backlog count", {}, count);
+}
+
+export function recordKhqrWebhookEvent(input: {
+  outcome:
+    | "received"
+    | "applied"
+    | "duplicate"
+    | "ignored"
+    | "unauthorized"
+    | "invalid_payload"
+    | "failed";
+  errorCode?: string | null;
+  ignoredReason?: "NO_MATCH" | "AMBIGUOUS_MD5" | null;
+}): void {
+  const now = new Date().toISOString();
+  const labels =
+    input.outcome === "ignored"
+      ? normalizeLabels({
+          outcome: input.outcome,
+          ignored_reason: input.ignoredReason ?? "NO_MATCH",
+        })
+      : normalizeLabels({ outcome: input.outcome });
+  incCounter(
+    "khqr_webhook_events_total",
+    "Total KHQR webhook events processed by outcome",
+    labels,
+    1
+  );
+
+  switch (input.outcome) {
+    case "received":
+      khqrWebhookDiagnostics.totalReceived += 1;
+      khqrWebhookDiagnostics.lastReceivedAt = now;
+      return;
+    case "applied":
+      khqrWebhookDiagnostics.totalApplied += 1;
+      khqrWebhookDiagnostics.lastAppliedAt = now;
+      return;
+    case "duplicate":
+      khqrWebhookDiagnostics.totalDuplicate += 1;
+      khqrWebhookDiagnostics.lastDuplicateAt = now;
+      return;
+    case "ignored":
+      khqrWebhookDiagnostics.lastIgnoredReason = input.ignoredReason ?? "NO_MATCH";
+      khqrWebhookDiagnostics.totalIgnored += 1;
+      khqrWebhookDiagnostics.lastIgnoredAt = now;
+      if ((input.ignoredReason ?? "NO_MATCH") === "AMBIGUOUS_MD5") {
+        khqrWebhookDiagnostics.totalIgnoredAmbiguousMd5 += 1;
+      } else {
+        khqrWebhookDiagnostics.totalIgnoredNoMatch += 1;
+      }
+      return;
+    case "unauthorized":
+      khqrWebhookDiagnostics.totalUnauthorized += 1;
+      khqrWebhookDiagnostics.lastUnauthorizedAt = now;
+      khqrWebhookDiagnostics.lastError = input.errorCode ?? "KHQR_WEBHOOK_UNAUTHORIZED";
+      return;
+    case "invalid_payload":
+      khqrWebhookDiagnostics.totalInvalidPayload += 1;
+      khqrWebhookDiagnostics.lastInvalidPayloadAt = now;
+      khqrWebhookDiagnostics.lastError = input.errorCode ?? "KHQR_WEBHOOK_PAYLOAD_INVALID";
+      return;
+    case "failed":
+      khqrWebhookDiagnostics.totalFailed += 1;
+      khqrWebhookDiagnostics.lastFailedAt = now;
+      khqrWebhookDiagnostics.lastError = input.errorCode ?? "KHQR_WEBHOOK_INGEST_FAILED";
+      return;
+    default:
+      return;
+  }
+}
+
+export function getKhqrWebhookDiagnostics(): KhqrWebhookDiagnostics {
+  return { ...khqrWebhookDiagnostics };
 }
 
 export function renderPrometheusMetrics(): string {

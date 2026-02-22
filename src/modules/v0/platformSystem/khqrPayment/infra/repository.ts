@@ -328,7 +328,7 @@ export class V0KhqrPaymentRepository {
        WHERE tenant_id = $1
          AND branch_id = $2
          AND id = $3
-         AND status <> 'VOIDED'
+         AND status = 'PENDING'
        RETURNING
          id,
          tenant_id,
@@ -1015,6 +1015,33 @@ export class V0KhqrPaymentRepository {
       [input.tenantId, input.branchId, input.md5]
     );
     return result.rows[0] ?? null;
+  }
+
+  async lockUniqueAttemptByMd5ForUpdate(input: {
+    md5: string;
+  }): Promise<{
+    attempt: V0KhqrPaymentAttemptRow | null;
+    ambiguous: boolean;
+  }> {
+    const result = await this.db.query<V0KhqrPaymentAttemptRow>(
+      `SELECT
+         ${ATTEMPT_SELECT_FIELDS}
+       FROM v0_khqr_payment_attempts
+       WHERE md5 = $1
+       ORDER BY created_at DESC
+       LIMIT 2
+       FOR UPDATE`,
+      [input.md5]
+    );
+
+    if (result.rows.length === 0) {
+      return { attempt: null, ambiguous: false };
+    }
+    if (result.rows.length > 1) {
+      return { attempt: null, ambiguous: true };
+    }
+
+    return { attempt: result.rows[0], ambiguous: false };
   }
 
   async markOtherActiveAttemptsAsSuperseded(input: {

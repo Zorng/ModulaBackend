@@ -673,21 +673,61 @@ export class V0KhqrPaymentService {
     event: V0KhqrWebhookEvent;
   }): Promise<V0KhqrWebhookIngestResult> {
     const eventId = normalizeOptionalString(input.event.providerEventId);
+
+    const strictScopedAttempt = await this.repo.lockAttemptByMd5ForUpdate({
+      tenantId: input.event.tenantId,
+      branchId: input.event.branchId,
+      md5: input.event.md5,
+    });
+    let lockedAttempt = strictScopedAttempt;
+    if (!lockedAttempt) {
+      const fallbackLookup = await this.repo.lockUniqueAttemptByMd5ForUpdate({
+        md5: input.event.md5,
+      });
+      if (fallbackLookup.ambiguous) {
+        return {
+          status: "IGNORED",
+          ignoredReason: "AMBIGUOUS_MD5",
+          verificationStatus: null,
+          mismatchReasonCode: null,
+          attempt: null,
+          sale: null,
+          saleFinalized: false,
+          providerEventId: eventId,
+        };
+      }
+      lockedAttempt = fallbackLookup.attempt;
+    }
+
+    if (!lockedAttempt) {
+      return {
+        status: "IGNORED",
+        ignoredReason: "NO_MATCH",
+        verificationStatus: null,
+        mismatchReasonCode: null,
+        attempt: null,
+        sale: null,
+        saleFinalized: false,
+        providerEventId: eventId,
+      };
+    }
+
     if (eventId) {
       const existingEvidence = await this.repo.findConfirmationEvidenceByProviderEvent({
-        tenantId: input.event.tenantId,
-        branchId: input.event.branchId,
+        tenantId: lockedAttempt.tenant_id,
+        branchId: lockedAttempt.branch_id,
         provider: input.event.provider,
         providerEventId: eventId,
       });
       if (existingEvidence) {
         const existingAttempt = await this.repo.findAttemptById({
-          tenantId: input.event.tenantId,
-          branchId: input.event.branchId,
+          tenantId: lockedAttempt.tenant_id,
+          branchId: lockedAttempt.branch_id,
           attemptId: existingEvidence.attempt_id,
         });
         return {
           status: "DUPLICATE",
+          ignoredReason: null,
           verificationStatus: existingEvidence.verification_status,
           mismatchReasonCode:
             existingEvidence.verification_status === "MISMATCH"
@@ -701,28 +741,11 @@ export class V0KhqrPaymentService {
       }
     }
 
-    const lockedAttempt = await this.repo.lockAttemptByMd5ForUpdate({
-      tenantId: input.event.tenantId,
-      branchId: input.event.branchId,
-      md5: input.event.md5,
-    });
-    if (!lockedAttempt) {
-      return {
-        status: "IGNORED",
-        verificationStatus: null,
-        mismatchReasonCode: null,
-        attempt: null,
-        sale: null,
-        saleFinalized: false,
-        providerEventId: eventId,
-      };
-    }
-
     const webhookVerification = resolveWebhookVerificationOutcome(lockedAttempt, input.event);
     const verifiedAt = new Date();
     const updatedAttempt = await this.repo.recordVerificationOutcome({
-      tenantId: input.event.tenantId,
-      branchId: input.event.branchId,
+      tenantId: lockedAttempt.tenant_id,
+      branchId: lockedAttempt.branch_id,
       attemptId: lockedAttempt.id,
       verificationStatus: webhookVerification.verificationStatus,
       reasonCode: webhookVerification.reasonCode,
@@ -739,8 +762,8 @@ export class V0KhqrPaymentService {
 
     if (updatedAttempt.status !== "SUPERSEDED") {
       await this.repo.recordPaymentIntentVerificationOutcome({
-        tenantId: input.event.tenantId,
-        branchId: input.event.branchId,
+        tenantId: lockedAttempt.tenant_id,
+        branchId: lockedAttempt.branch_id,
         paymentIntentId: lockedAttempt.payment_intent_id,
         verificationStatus: webhookVerification.verificationStatus,
         reasonCode: webhookVerification.reasonCode,
@@ -753,8 +776,8 @@ export class V0KhqrPaymentService {
     });
 
     const evidenceInserted = await this.repo.insertConfirmationEvidenceIfAbsent({
-      tenantId: input.event.tenantId,
-      branchId: input.event.branchId,
+      tenantId: lockedAttempt.tenant_id,
+      branchId: lockedAttempt.branch_id,
       attemptId: lockedAttempt.id,
       provider: input.event.provider,
       verificationStatus: webhookVerification.verificationStatus,
@@ -770,6 +793,7 @@ export class V0KhqrPaymentService {
     if (!evidenceInserted.inserted) {
       return {
         status: "DUPLICATE",
+        ignoredReason: null,
         verificationStatus: webhookVerification.verificationStatus,
         mismatchReasonCode:
           webhookVerification.verificationStatus === "MISMATCH"
@@ -784,6 +808,7 @@ export class V0KhqrPaymentService {
 
     return {
       status: "APPLIED",
+      ignoredReason: null,
       verificationStatus: webhookVerification.verificationStatus,
       mismatchReasonCode:
         webhookVerification.verificationStatus === "MISMATCH"
@@ -1097,6 +1122,7 @@ export type V0KhqrPaymentIntentView = {
 
 export type V0KhqrWebhookIngestResult = {
   status: "APPLIED" | "DUPLICATE" | "IGNORED";
+  ignoredReason: "NO_MATCH" | "AMBIGUOUS_MD5" | null;
   verificationStatus: V0KhqrVerificationStatus | null;
   mismatchReasonCode: string | null;
   attempt: V0KhqrPaymentAttemptView | null;

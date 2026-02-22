@@ -231,6 +231,56 @@ describe("v0 khqr payment webhook integration", () => {
     expect(read.body.data.status).toBe("PAID_CONFIRMED");
   });
 
+  it("applies webhook by md5 fallback when tenant or branch in payload is stale", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const saleId = "10000000-0000-4000-8000-000000000a06";
+    const md5 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    const providerEventId = `evt-${uniqueSuffix()}`;
+
+    await registerAttempt({ app, branchToken: setup.branchToken, saleId, md5 });
+
+    const webhook = await request(app)
+      .post("/v0/payments/khqr/webhooks/provider")
+      .set("x-khqr-webhook-secret", webhookSecret)
+      .send({
+        tenantId: "10000000-0000-4000-8000-0000000000aa",
+        branchId: "10000000-0000-4000-8000-0000000000bb",
+        md5,
+        providerEventId,
+        verificationStatus: "CONFIRMED",
+        confirmedAmount: 2.5,
+        confirmedCurrency: "USD",
+        confirmedToAccountId: "khqr-receiver",
+      });
+
+    expect(webhook.status).toBe(200);
+    expect(webhook.body.data).toMatchObject({
+      status: "APPLIED",
+      verificationStatus: "CONFIRMED",
+      attempt: {
+        md5,
+        saleId,
+        status: "PAID_CONFIRMED",
+      },
+    });
+
+    const read = await request(app)
+      .get(`/v0/payments/khqr/attempts/by-md5/${md5}`)
+      .set("Authorization", `Bearer ${setup.branchToken}`);
+    expect(read.status).toBe(200);
+    expect(read.body.data.status).toBe("PAID_CONFIRMED");
+
+    const evidence = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_khqr_payment_confirmation_evidences
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND provider_event_id = $3`,
+      [setup.tenantId, setup.branchId, providerEventId]
+    );
+    expect(Number(evidence.rows[0]?.count ?? "0")).toBe(1);
+  });
+
   it("deduplicates webhook by providerEventId", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     const saleId = "10000000-0000-4000-8000-000000000a02";
@@ -307,11 +357,71 @@ describe("v0 khqr payment webhook integration", () => {
     expect(webhook.status).toBe(200);
     expect(webhook.body.data).toMatchObject({
       status: "APPLIED",
+      ignoredReason: null,
       verificationStatus: "MISMATCH",
       mismatchReasonCode: "KHQR_PROOF_MISMATCH",
       attempt: {
         status: "PENDING_CONFIRMATION",
       },
+    });
+  });
+
+  it("reports ignored reason NO_MATCH when md5 cannot be resolved", async () => {
+    const webhook = await request(app)
+      .post("/v0/payments/khqr/webhooks/provider")
+      .set("x-khqr-webhook-secret", webhookSecret)
+      .send({
+        tenantId: "10000000-0000-4000-8000-0000000000aa",
+        branchId: "10000000-0000-4000-8000-0000000000bb",
+        md5: "11111111111111111111111111111111",
+        providerEventId: `evt-${uniqueSuffix()}`,
+        verificationStatus: "UNPAID",
+      });
+
+    expect(webhook.status).toBe(202);
+    expect(webhook.body.data).toMatchObject({
+      status: "IGNORED",
+      ignoredReason: "NO_MATCH",
+      verificationStatus: null,
+      attempt: null,
+    });
+  });
+
+  it("reports ignored reason AMBIGUOUS_MD5 when fallback md5 matches multiple attempts", async () => {
+    const setupA = await setupOwnerBranchContext({ app, pool });
+    const setupB = await setupOwnerBranchContext({ app, pool });
+    const md5 = "ffffffffffffffffffffffffffffffff";
+
+    await registerAttempt({
+      app,
+      branchToken: setupA.branchToken,
+      saleId: "10000000-0000-4000-8000-000000000a07",
+      md5,
+    });
+    await registerAttempt({
+      app,
+      branchToken: setupB.branchToken,
+      saleId: "10000000-0000-4000-8000-000000000a08",
+      md5,
+    });
+
+    const webhook = await request(app)
+      .post("/v0/payments/khqr/webhooks/provider")
+      .set("x-khqr-webhook-secret", webhookSecret)
+      .send({
+        tenantId: "10000000-0000-4000-8000-0000000000aa",
+        branchId: "10000000-0000-4000-8000-0000000000bb",
+        md5,
+        providerEventId: `evt-${uniqueSuffix()}`,
+        verificationStatus: "UNPAID",
+      });
+
+    expect(webhook.status).toBe(202);
+    expect(webhook.body.data).toMatchObject({
+      status: "IGNORED",
+      ignoredReason: "AMBIGUOUS_MD5",
+      verificationStatus: null,
+      attempt: null,
     });
   });
 

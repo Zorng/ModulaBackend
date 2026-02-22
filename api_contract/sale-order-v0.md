@@ -980,6 +980,8 @@ Response example (`200`):
 - `VOID_REQUEST_ALREADY_RESOLVED`
 - `VOID_APPROVAL_REQUIRED`
 - `VOID_NOT_ALLOWED_FOR_PAYMENT_METHOD`
+- `VOID_NOT_ALLOWED_FOR_STATUS`
+- `SALE_VOID_STATE_CONFLICT`
 - standard idempotency/access-control/entitlement denials
 
 ---

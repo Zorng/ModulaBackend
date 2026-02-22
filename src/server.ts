@@ -2,7 +2,10 @@ import cors from "cors";
 import express from "express";
 import { ping, pool } from "#db";
 import { log } from "#logger";
-import { renderPrometheusMetrics } from "./platform/observability/metrics.js";
+import {
+  getKhqrWebhookDiagnostics,
+  renderPrometheusMetrics,
+} from "./platform/observability/metrics.js";
 import {
   errorHandler,
   notFoundHandler,
@@ -18,6 +21,7 @@ import {
   stopRuntimeDispatchers,
 } from "./platform/server/runtime-dispatchers.js";
 import {
+  resolveKhqrWebhookHealth,
   resolveKhqrReconciliationHealth,
   resolveMediaCleanupHealth,
   resolveOutboxHealth,
@@ -59,6 +63,9 @@ app.get("/health", async (_req, res) => {
       status: dispatchers.khqrReconciliation.dispatcher?.getStatus() ?? null,
       staleAfterMs: dispatchers.khqrReconciliation.healthStaleMs,
     });
+    const khqrWebhookStatus = resolveKhqrWebhookHealth({
+      diagnostics: getKhqrWebhookDiagnostics(),
+    });
     res.json({
       status:
         outboxStatus.status === "degraded"
@@ -74,6 +81,7 @@ app.get("/health", async (_req, res) => {
         outbox: outboxStatus,
         mediaCleanup: mediaCleanupStatus,
         khqrReconciliation: khqrReconciliationStatus,
+        khqrWebhook: khqrWebhookStatus,
       },
     });
   } catch (error) {

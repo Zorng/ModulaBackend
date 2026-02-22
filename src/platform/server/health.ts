@@ -173,3 +173,51 @@ export function resolveKhqrReconciliationHealth(input: {
     lastFailedCount: input.status.lastFailedCount,
   };
 }
+
+export function resolveKhqrWebhookHealth(input: {
+  diagnostics: {
+    lastIgnoredReason: "NO_MATCH" | "AMBIGUOUS_MD5" | null;
+    lastReceivedAt: string | null;
+    lastAppliedAt: string | null;
+    lastDuplicateAt: string | null;
+    lastIgnoredAt: string | null;
+    lastUnauthorizedAt: string | null;
+    lastInvalidPayloadAt: string | null;
+    lastFailedAt: string | null;
+    lastError: string | null;
+    totalReceived: number;
+    totalApplied: number;
+    totalDuplicate: number;
+    totalIgnored: number;
+    totalIgnoredNoMatch: number;
+    totalIgnoredAmbiguousMd5: number;
+    totalUnauthorized: number;
+    totalInvalidPayload: number;
+    totalFailed: number;
+  };
+}): {
+  status: "ok";
+  lastIgnoredReason: "NO_MATCH" | "AMBIGUOUS_MD5" | null;
+  lastReceivedAt: string | null;
+  lastAppliedAt: string | null;
+  lastDuplicateAt: string | null;
+  lastIgnoredAt: string | null;
+  lastUnauthorizedAt: string | null;
+  lastInvalidPayloadAt: string | null;
+  lastFailedAt: string | null;
+  lastError: string | null;
+  totalReceived: number;
+  totalApplied: number;
+  totalDuplicate: number;
+  totalIgnored: number;
+  totalIgnoredNoMatch: number;
+  totalIgnoredAmbiguousMd5: number;
+  totalUnauthorized: number;
+  totalInvalidPayload: number;
+  totalFailed: number;
+} {
+  return {
+    status: "ok",
+    ...input.diagnostics,
+  };
+}

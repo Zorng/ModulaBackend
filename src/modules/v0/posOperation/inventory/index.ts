@@ -2,12 +2,14 @@ import type { Pool } from "pg";
 import { V0IdempotencyRepository } from "../../../../platform/idempotency/repository.js";
 import { V0IdempotencyService } from "../../../../platform/idempotency/service.js";
 import { createV0InventoryRouter } from "./api/router.js";
+import { registerInventorySubscribers } from "./app/subscribers.js";
 import { V0InventoryService } from "./app/service.js";
 import { V0InventoryRepository } from "./infra/repository.js";
 
 export function bootstrapV0InventoryModule(pool: Pool) {
   const repo = new V0InventoryRepository(pool);
   const service = new V0InventoryService(repo);
+  registerInventorySubscribers(pool);
   const idempotencyRepo = new V0IdempotencyRepository(pool);
   const idempotencyService = new V0IdempotencyService(idempotencyRepo);
   const router = createV0InventoryRouter({

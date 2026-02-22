@@ -597,6 +597,13 @@ export class V0SaleOrderService {
         "VOID_NOT_ALLOWED_FOR_PAYMENT_METHOD"
       );
     }
+    if (sale.status !== "FINALIZED") {
+      throw new V0SaleOrderError(
+        422,
+        "void request requires a finalized sale",
+        "VOID_NOT_ALLOWED_FOR_STATUS"
+      );
+    }
 
     if (!(await this.isWorkforceEnabled(actor))) {
       throw new V0SaleOrderError(
@@ -733,6 +740,13 @@ export class V0SaleOrderService {
         "VOID_NOT_ALLOWED_FOR_PAYMENT_METHOD"
       );
     }
+    if (sale.status !== "FINALIZED" && sale.status !== "VOID_PENDING") {
+      throw new V0SaleOrderError(
+        422,
+        "void execution requires a finalized sale",
+        "VOID_NOT_ALLOWED_FOR_STATUS"
+      );
+    }
 
     const workforceEnabled = await this.isWorkforceEnabled(actor);
     const latestRequest = await this.repo.getLatestVoidRequestBySale({
@@ -764,11 +778,14 @@ export class V0SaleOrderService {
       });
     }
 
-    await this.repo.markSaleVoidPending({
+    const pendingMarked = await this.repo.markSaleVoidPending({
       tenantId: actor.tenantId,
       branchId: actor.branchId,
       saleId: sale.id,
     });
+    if (!pendingMarked) {
+      throw new V0SaleOrderError(409, "sale is not voidable in current state", "SALE_VOID_STATE_CONFLICT");
+    }
     const body = toRecord(input.body);
     const voidReason =
       normalizeOptionalString(body.reason)
@@ -1408,7 +1425,13 @@ function parseCheckoutBody(body: Record<string, unknown>, lines: V0OrderTicketLi
       "SALE_KHQR_TENDER_AMOUNT_INVALID"
     );
   }
-  const cashReceivedTenderAmount = parseNullableNumber(body.cashReceivedTenderAmount, "cashReceivedTenderAmount");
+  const parsedCashReceivedTenderAmount = parseNullableNumber(
+    body.cashReceivedTenderAmount,
+    "cashReceivedTenderAmount"
+  );
+  const cashReceivedTenderAmount = paymentMethod === "CASH"
+    ? (parsedCashReceivedTenderAmount ?? tenderAmount)
+    : parsedCashReceivedTenderAmount;
   if (paymentMethod === "CASH" && Math.abs(tenderAmount - defaultTenderAmount) > 0.009) {
     throw new V0SaleOrderError(
       422,

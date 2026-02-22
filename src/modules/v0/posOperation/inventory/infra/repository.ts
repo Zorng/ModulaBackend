@@ -661,6 +661,74 @@ export class V0InventoryRepository {
     return result.rows[0];
   }
 
+  async appendJournalEntryIfAbsent(input: {
+    tenantId: string;
+    branchId: string;
+    stockItemId: string;
+    direction: InventoryDirection;
+    quantityInBaseUnit: number;
+    reasonCode: InventoryReasonCode;
+    sourceType: InventorySourceType;
+    sourceId: string;
+    idempotencyKey: string;
+    occurredAt: Date;
+    actorAccountId: string | null;
+    note: string | null;
+  }): Promise<{ inserted: boolean; row: InventoryJournalEntryRow | null }> {
+    const result = await this.db.query<InventoryJournalEntryRow>(
+      `INSERT INTO v0_inventory_journal_entries (
+         tenant_id,
+         branch_id,
+         stock_item_id,
+         direction,
+         quantity_in_base_unit,
+         reason_code,
+         source_type,
+         source_id,
+         idempotency_key,
+         occurred_at,
+         actor_account_id,
+         note
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       ON CONFLICT (tenant_id, branch_id, idempotency_key)
+       DO NOTHING
+       RETURNING
+         id,
+         tenant_id,
+         branch_id,
+         stock_item_id,
+         direction,
+         quantity_in_base_unit::FLOAT8 AS quantity_in_base_unit,
+         reason_code,
+         source_type,
+         source_id,
+         idempotency_key,
+         occurred_at,
+         actor_account_id,
+         note,
+         created_at`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.stockItemId,
+        input.direction,
+        input.quantityInBaseUnit,
+        input.reasonCode,
+        input.sourceType,
+        input.sourceId,
+        input.idempotencyKey,
+        input.occurredAt,
+        input.actorAccountId,
+        input.note,
+      ]
+    );
+    if (result.rows[0]) {
+      return { inserted: true, row: result.rows[0] };
+    }
+    return { inserted: false, row: null };
+  }
+
   async listJournal(input: {
     tenantId: string;
     branchId: string;

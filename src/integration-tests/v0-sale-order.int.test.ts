@@ -15,8 +15,10 @@ import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
 import { bootstrapV0PullSyncModule } from "../modules/v0/platformSystem/pullSync/index.js";
 import { bootstrapV0KhqrPaymentModule } from "../modules/v0/platformSystem/khqrPayment/index.js";
 import { bootstrapV0CashSessionModule } from "../modules/v0/posOperation/cashSession/index.js";
+import { bootstrapV0InventoryModule } from "../modules/v0/posOperation/inventory/index.js";
 import { bootstrapV0SaleOrderModule } from "../modules/v0/posOperation/saleOrder/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
+import { eventBus } from "../platform/events/index.js";
 
 function uniquePhone(): string {
   const now = Date.now().toString().slice(-9);
@@ -264,6 +266,60 @@ async function seedMenuItem(input: {
   return menuItemId;
 }
 
+async function seedTrackedBaseComponent(input: {
+  pool: Pool;
+  tenantId: string;
+  branchId: string;
+  menuItemId: string;
+  quantityInBaseUnit: number;
+  initialOnHandInBaseUnit: number;
+}): Promise<{ stockItemId: string }> {
+  const createdStockItem = await input.pool.query<{ id: string }>(
+    `INSERT INTO v0_inventory_stock_items (
+       tenant_id,
+       category_id,
+       name,
+       base_unit,
+       image_url,
+       low_stock_threshold,
+       status
+     )
+     VALUES ($1, NULL, $2, 'unit', NULL, NULL, 'ACTIVE')
+     RETURNING id`,
+    [input.tenantId, `Beans ${uniqueSuffix()}`]
+  );
+  const stockItemId = createdStockItem.rows[0]?.id;
+  if (!stockItemId) {
+    throw new Error("failed to seed stock item");
+  }
+
+  await input.pool.query(
+    `INSERT INTO v0_menu_item_base_components (
+       tenant_id,
+       menu_item_id,
+       stock_item_id,
+       quantity_in_base_unit,
+       tracking_mode
+     )
+     VALUES ($1, $2, $3, $4, 'TRACKED')`,
+    [input.tenantId, input.menuItemId, stockItemId, input.quantityInBaseUnit]
+  );
+
+  await input.pool.query(
+    `INSERT INTO v0_inventory_branch_stock (
+       tenant_id,
+       branch_id,
+       stock_item_id,
+       on_hand_in_base_unit,
+       last_movement_at
+     )
+     VALUES ($1, $2, $3, $4, NOW())`,
+    [input.tenantId, input.branchId, stockItemId, input.initialOnHandInBaseUnit]
+  );
+
+  return { stockItemId };
+}
+
 async function setBranchPayLaterPolicy(input: {
   pool: Pool;
   tenantId: string;
@@ -323,6 +379,7 @@ describe("v0 sale-order integration", () => {
     app.use("/v0/auth", bootstrapV0AuthModule(pool).router);
     app.use("/v0/org", bootstrapV0OrgAccountModule(pool).router);
     app.use("/v0/cash", bootstrapV0CashSessionModule(pool).router);
+    app.use("/v0/inventory", bootstrapV0InventoryModule(pool).router);
     app.use("/v0/payments/khqr", bootstrapV0KhqrPaymentModule(pool).router);
     app.use("/v0/sync", bootstrapV0PullSyncModule(pool).router);
     app.use("/v0", bootstrapV0SaleOrderModule(pool).router);
@@ -487,6 +544,99 @@ describe("v0 sale-order integration", () => {
     expect(line.unitPrice).toBe(3.5);
     expect(line.quantity).toBe(2);
     expect(line.lineSubtotal).toBe(7);
+  });
+
+  it("deducts tracked inventory on finalized cash sale checkout", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const initialOnHandInBaseUnit = 20;
+    const quantityInBaseUnitPerSaleUnit = 1;
+    const saleQuantity = 2;
+    const seededComponent = await seedTrackedBaseComponent({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      menuItemId: setup.defaultMenuItemId,
+      quantityInBaseUnit: quantityInBaseUnitPerSaleUnit,
+      initialOnHandInBaseUnit,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-inventory-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId, quantity: saleQuantity }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const checkedOut = await request(app)
+      .post(`/v0/orders/${orderId}/checkout`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-inventory-checkout-${uniqueSuffix()}`)
+      .send({
+        paymentMethod: "CASH",
+        tenderCurrency: "USD",
+      });
+    expect(checkedOut.status).toBe(200);
+    const saleId = checkedOut.body.data.id as string;
+
+    await eventBus.publish({
+      type: "ORDER_CHECKOUT_COMPLETED",
+      outboxId: randomUUID(),
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      entityType: "sale",
+      entityId: saleId,
+      occurredAt: new Date().toISOString(),
+    } as never);
+
+    const stock = await pool.query<{ on_hand_in_base_unit: number }>(
+      `SELECT on_hand_in_base_unit::FLOAT8 AS on_hand_in_base_unit
+       FROM v0_inventory_branch_stock
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND stock_item_id = $3
+       LIMIT 1`,
+      [setup.tenantId, setup.branchId, seededComponent.stockItemId]
+    );
+    expect(stock.rows[0]?.on_hand_in_base_unit).toBe(
+      initialOnHandInBaseUnit - quantityInBaseUnitPerSaleUnit * saleQuantity
+    );
+
+    const journal = await pool.query<{
+      quantity_in_base_unit: number;
+      source_id: string;
+      reason_code: string;
+      direction: string;
+    }>(
+      `SELECT
+         quantity_in_base_unit::FLOAT8 AS quantity_in_base_unit,
+         source_id,
+         reason_code,
+         direction
+       FROM v0_inventory_journal_entries
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND stock_item_id = $3
+         AND source_type = 'SALE_ORDER'
+         AND source_id = $4
+         AND reason_code = 'SALE_DEDUCTION'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [setup.tenantId, setup.branchId, seededComponent.stockItemId, saleId]
+    );
+
+    expect(journal.rows[0]).toBeDefined();
+    expect(journal.rows[0]?.direction).toBe("OUT");
+    expect(journal.rows[0]?.reason_code).toBe("SALE_DEDUCTION");
+    expect(journal.rows[0]?.source_id).toBe(saleId);
+    expect(journal.rows[0]?.quantity_in_base_unit).toBe(2);
   });
 
   it("publishes order.place event and exposes saleOrder pull deltas", async () => {

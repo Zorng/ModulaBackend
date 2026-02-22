@@ -483,6 +483,7 @@ export class V0SaleOrderRepository {
        WHERE tenant_id = $1
          AND branch_id = $2
          AND id = $3
+         AND status = 'OPEN'
        RETURNING ${ORDER_TICKET_SELECT}`,
       [
         input.tenantId,
@@ -511,6 +512,7 @@ export class V0SaleOrderRepository {
        WHERE tenant_id = $1
          AND branch_id = $2
          AND id = $3
+         AND status = 'OPEN'
        RETURNING ${ORDER_TICKET_SELECT}`,
       [
         input.tenantId,
@@ -821,6 +823,7 @@ export class V0SaleOrderRepository {
        WHERE tenant_id = $1
          AND branch_id = $2
          AND id = $3
+         AND status = 'PENDING'
        RETURNING ${SALE_SELECT}`,
       [
         input.tenantId,
@@ -850,6 +853,7 @@ export class V0SaleOrderRepository {
        WHERE tenant_id = $1
          AND branch_id = $2
          AND id = $3
+         AND status IN ('FINALIZED', 'VOID_PENDING')
        RETURNING ${SALE_SELECT}`,
       [input.tenantId, input.branchId, input.saleId]
     );
@@ -873,6 +877,7 @@ export class V0SaleOrderRepository {
        WHERE tenant_id = $1
          AND branch_id = $2
          AND id = $3
+         AND status = 'VOID_PENDING'
        RETURNING ${SALE_SELECT}`,
       [
         input.tenantId,

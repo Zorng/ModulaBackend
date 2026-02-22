@@ -4,6 +4,8 @@ import { requireV0Auth, type V0AuthRequest } from "../../../auth/api/middleware.
 import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
 import { V0PullSyncRepository } from "../../pullSync/infra/repository.js";
+import { log } from "#logger";
+import { recordKhqrWebhookEvent } from "../../../../../platform/observability/metrics.js";
 import {
   getIdempotencyKeyFromHeader,
   V0IdempotencyError,
@@ -42,6 +44,14 @@ export function createV0KhqrPaymentRouter(input: {
   const transactionManager = new TransactionManager(input.db);
 
   router.post("/webhooks/provider", async (req, res) => {
+    const requestId = req.v0Context?.requestId ?? null;
+    recordKhqrWebhookEvent({ outcome: "received" });
+    log.info("khqr.webhook.received", {
+      event: "khqr.webhook.received",
+      requestId,
+      route: "/v0/payments/khqr/webhooks/provider",
+    });
+
     try {
       const body = asRecord(req.body);
       const event = input.provider.parseWebhookEvent({
@@ -73,11 +83,45 @@ export function createV0KhqrPaymentRouter(input: {
         return ingest;
       });
 
+      const webhookOutcome =
+        result.status === "APPLIED"
+          ? "applied"
+          : result.status === "DUPLICATE"
+            ? "duplicate"
+            : "ignored";
+      recordKhqrWebhookEvent({
+        outcome: webhookOutcome,
+        ignoredReason: result.status === "IGNORED" ? result.ignoredReason : null,
+      });
+      log.info("khqr.webhook.processed", {
+        event: "khqr.webhook.processed",
+        requestId,
+        resultStatus: result.status,
+        ignoredReason: result.ignoredReason,
+        verificationStatus: result.verificationStatus,
+        saleFinalized: result.saleFinalized,
+        tenantId: event.tenantId,
+        branchId: event.branchId,
+        providerEventId: result.providerEventId,
+      });
+
       res.status(result.status === "IGNORED" ? 202 : 200).json({
         success: true,
         data: result,
       });
     } catch (error) {
+      const classified = classifyWebhookError(error);
+      recordKhqrWebhookEvent({
+        outcome: classified.outcome,
+        errorCode: classified.errorCode,
+      });
+      log[classified.logLevel]("khqr.webhook.failed", {
+        event: "khqr.webhook.failed",
+        requestId,
+        outcome: classified.outcome,
+        errorCode: classified.errorCode,
+        error: error instanceof Error ? error.message : String(error),
+      });
       handleError(res, error);
     }
   });
@@ -587,6 +631,43 @@ function parseOptionalIsoDate(value: unknown, fieldName: string): Date | null {
 function normalizeOptionalString(value: unknown): string | null {
   const normalized = String(value ?? "").trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function classifyWebhookError(error: unknown): {
+  outcome: "unauthorized" | "invalid_payload" | "failed";
+  errorCode: string;
+  logLevel: "warn" | "error";
+} {
+  if (error instanceof V0KhqrProviderError || error instanceof V0KhqrPaymentError) {
+    const errorCode = error.code ?? "KHQR_WEBHOOK_INGEST_FAILED";
+    if (errorCode === "KHQR_WEBHOOK_UNAUTHORIZED") {
+      return {
+        outcome: "unauthorized",
+        errorCode,
+        logLevel: "warn",
+      };
+    }
+    if (
+      errorCode === "KHQR_WEBHOOK_PAYLOAD_INVALID"
+      || errorCode === "KHQR_ATTEMPT_PAYLOAD_INVALID"
+    ) {
+      return {
+        outcome: "invalid_payload",
+        errorCode,
+        logLevel: "warn",
+      };
+    }
+    return {
+      outcome: "failed",
+      errorCode,
+      logLevel: "error",
+    };
+  }
+  return {
+    outcome: "failed",
+    errorCode: "KHQR_WEBHOOK_INGEST_FAILED",
+    logLevel: "error",
+  };
 }
 
 function handleError(res: Response, error: unknown): void {
