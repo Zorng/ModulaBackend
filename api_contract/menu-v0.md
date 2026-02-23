@@ -401,9 +401,18 @@ Action key: `menu.modifierOptions.archive`
 Headers:
 - `Idempotency-Key: <client key>`
 
+#### 21) Restore modifier option
+
+`POST /v0/menu/modifier-groups/:groupId/options/:optionId/restore`
+
+Action key: `menu.modifierOptions.restore`
+
+Headers:
+- `Idempotency-Key: <client key>`
+
 ### Composition
 
-#### 21) Upsert menu item composition
+#### 22) Upsert menu item composition
 
 `PUT /v0/menu/items/:menuItemId/composition`
 
@@ -437,7 +446,7 @@ Errors:
 - `403` `INVENTORY_ENTITLEMENT_REQUIRED_FOR_TRACKED_COMPONENTS`
 - `422` `MENU_COMPOSITION_INVALID` / `MENU_COMPONENT_NEGATIVE_QUANTITY`
 
-#### 22) Evaluate composition (read-only)
+#### 23) Evaluate composition (read-only)
 
 `POST /v0/menu/items/:menuItemId/composition/evaluate`
 

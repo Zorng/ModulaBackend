@@ -517,6 +517,30 @@ export function createV0MenuRouter(input: {
     }
   );
 
+  router.post(
+    "/modifier-groups/:groupId/options/:optionId/restore",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      await executeWrite({
+        req,
+        res,
+        idempotencyService: input.idempotencyService,
+        actionKey: V0_MENU_ACTION_KEYS.restoreModifierOption,
+        scope: "TENANT",
+        eventType: V0_MENU_EVENT_TYPES.modifierOptionRestored,
+        entityType: "modifier_option",
+        endpoint: "/v0/menu/modifier-groups/:groupId/options/:optionId/restore",
+        transactionManager,
+        handler: async (txService) =>
+          txService.restoreModifierOption({
+            actor: req.v0Auth!,
+            groupId: req.params.groupId,
+            optionId: req.params.optionId,
+          }),
+      });
+    }
+  );
+
   router.put(
     "/items/:menuItemId/composition",
     requireV0Auth,

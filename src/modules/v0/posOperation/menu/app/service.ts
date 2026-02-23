@@ -701,6 +701,40 @@ export class V0MenuService {
     };
   }
 
+  async restoreModifierOption(input: {
+    actor: ActorContext;
+    groupId: string;
+    optionId: string;
+  }) {
+    const scope = assertTenantContext(input.actor);
+    const groupId = requireUuid(input.groupId, "groupId");
+    const optionId = requireUuid(input.optionId, "optionId");
+
+    const existing = await this.repo.getModifierOptionById({
+      tenantId: scope.tenantId,
+      optionId,
+    });
+    if (!existing || existing.modifier_group_id !== groupId) {
+      throw new V0MenuError(404, "modifier option not found", "MODIFIER_OPTION_NOT_FOUND");
+    }
+
+    const restored = await this.repo.updateModifierOptionStatus({
+      tenantId: scope.tenantId,
+      optionId,
+      status: "ACTIVE",
+    });
+    if (!restored) {
+      throw new V0MenuError(404, "modifier option not found", "MODIFIER_OPTION_NOT_FOUND");
+    }
+
+    return {
+      id: restored.id,
+      groupId: restored.modifier_group_id,
+      status: restored.status,
+      updatedAt: restored.updated_at.toISOString(),
+    };
+  }
+
   async createMenuItem(input: {
     actor: ActorContext;
     body: unknown;

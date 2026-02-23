@@ -380,6 +380,12 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     tenantSource: "token",
   },
   {
+    method: "POST",
+    pattern: /^\/menu\/modifier-groups\/[^/]+\/options\/[^/]+\/restore$/,
+    actionKey: "menu.modifierOptions.restore",
+    tenantSource: "token",
+  },
+  {
     method: "PUT",
     pattern: /^\/menu\/items\/[^/]+\/composition$/,
     actionKey: "menu.composition.upsert",
