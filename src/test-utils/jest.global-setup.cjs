@@ -75,14 +75,12 @@ async function runMigrations(pool) {
 function loadEnvironment(defaultNodeEnv = "test") {
   const nodeEnv = String(process.env.NODE_ENV || "").trim() || defaultNodeEnv;
   process.env.NODE_ENV = nodeEnv;
+  const lockedKeys = new Set(Object.keys(process.env));
 
   const baseFiles = [".env", `.env.${nodeEnv}`];
   for (const fileName of baseFiles) {
     const filePath = path.resolve(process.cwd(), fileName);
-    if (!fs.existsSync(filePath)) {
-      continue;
-    }
-    dotenv.config({ path: filePath, override: false });
+    applyEnvFile(filePath, lockedKeys);
   }
 
   const scopedLocal = `.env.${nodeEnv}.local`;
@@ -97,7 +95,20 @@ function loadEnvironment(defaultNodeEnv = "test") {
   }
 
   if (hasScopedLocal) {
-    dotenv.config({ path: scopedLocalPath, override: false });
+    applyEnvFile(scopedLocalPath, lockedKeys);
+  }
+}
+
+function applyEnvFile(filePath, lockedKeys) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+  const parsed = dotenv.parse(fs.readFileSync(filePath, "utf8"));
+  for (const [key, value] of Object.entries(parsed)) {
+    if (lockedKeys.has(key)) {
+      continue;
+    }
+    process.env[key] = value;
   }
 }
 

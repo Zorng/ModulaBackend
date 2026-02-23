@@ -17,12 +17,13 @@ export function loadEnvironment(defaultNodeEnv = "development"): LoadEnvironment
 
   const nodeEnv = normalizeNodeEnv(process.env.NODE_ENV, defaultNodeEnv);
   process.env.NODE_ENV = nodeEnv;
+  const lockedKeys = new Set(Object.keys(process.env));
 
   const loadedFiles: string[] = [];
 
   const baseFiles = [".env", `.env.${nodeEnv}`];
   for (const fileName of baseFiles) {
-    if (!loadEnvFileIfExists(fileName)) {
+    if (!loadEnvFileIfExists(fileName, lockedKeys)) {
       continue;
     }
     loadedFiles.push(fileName);
@@ -33,7 +34,7 @@ export function loadEnvironment(defaultNodeEnv = "development"): LoadEnvironment
   assertLegacyLocalNotPresent(nodeEnv);
 
   if (hasScopedLocal) {
-    loadEnvFileIfExists(scopedLocal);
+    loadEnvFileIfExists(scopedLocal, lockedKeys);
     loadedFiles.push(scopedLocal);
   }
 
@@ -57,15 +58,19 @@ function normalizeNodeEnv(rawNodeEnv: string | undefined, fallback: string): str
   return fallback;
 }
 
-function loadEnvFileIfExists(fileName: string): boolean {
+function loadEnvFileIfExists(fileName: string, lockedKeys: Set<string>): boolean {
   const envPath = resolveEnvPath(fileName);
   if (!fs.existsSync(envPath)) {
     return false;
   }
-  dotenv.config({
-    path: envPath,
-    override: false,
-  });
+  const content = fs.readFileSync(envPath, "utf8");
+  const parsed = dotenv.parse(content);
+  for (const [key, value] of Object.entries(parsed)) {
+    if (lockedKeys.has(key)) {
+      continue;
+    }
+    process.env[key] = value;
+  }
   return true;
 }
 
