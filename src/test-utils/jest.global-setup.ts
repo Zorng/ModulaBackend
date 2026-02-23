@@ -1,8 +1,8 @@
-import dotenvFlow from "dotenv-flow";
 import { createTestPool, runMigrations } from "./db.js";
+import { loadEnvironment } from "../platform/config/env.js";
 
 export default async function globalSetup(): Promise<void> {
-  dotenvFlow.config({ node_env: process.env.NODE_ENV || "test" });
+  loadEnvironment("test");
 
   const pool = createTestPool();
   try {
@@ -11,4 +11,3 @@ export default async function globalSetup(): Promise<void> {
     await pool.end();
   }
 }
-

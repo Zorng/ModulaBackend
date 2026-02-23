@@ -25,6 +25,16 @@ pnpm dev
 
 The setup wizard handles everything: environment config, database creation, and migrations.
 
+## 🔧 Environment File Policy
+
+To avoid ambiguity, use env-scoped local files:
+
+- development: `.env.development.local`
+- test: `.env.test.local`
+- production (if file-based): `.env.production.local`
+
+`.env.local` is no longer supported and should be removed.
+
 ## 📖 API Documentation
 
 **Interactive API docs available at:** <http://localhost:3000/api-docs>

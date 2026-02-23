@@ -8,7 +8,9 @@
 
 - [Quick Setup (3 Commands)](#quick-setup-3-commands)
 - [Prerequisites](#prerequisites)
+- [Environment File Policy](#environment-file-policy)
 - [First Time Setup](#first-time-setup)
+- [External Integrations Setup](#external-integrations-setup)
 - [Adding Database Migrations](#adding-database-migrations)
 - [Daily Commands](#daily-commands)
 - [Troubleshooting](#troubleshooting)
@@ -37,6 +39,16 @@ Before you begin, install these:
 - **pnpm** - Install with: `npm install -g pnpm`
 - **PostgreSQL** (v14 or higher) - [Download](https://www.postgresql.org/download/)
 
+## Environment File Policy
+
+Use env-scoped local files so runtime behavior is explicit:
+
+- `NODE_ENV=development` -> `.env.development.local`
+- `NODE_ENV=test` -> `.env.test.local`
+- `NODE_ENV=production` -> `.env.production.local` (optional; process env is preferred)
+
+`.env.local` is no longer supported and must be removed.
+
 ---
 
 ## First Time Setup
@@ -61,7 +73,7 @@ The wizard will ask you:
 
 It will automatically:
 
-- ✅ Create your `.env.local` configuration file
+- ✅ Create your `.env.development.local` configuration file
 - ✅ Create the PostgreSQL database
 - ✅ Run all migrations
 - ✅ Set up JWT secrets
@@ -85,10 +97,10 @@ If you prefer to set up manually:
 2. **Copy environment file:**
 
    ```bash
-   cp .env.example .env.local
+   cp .env.example .env.development.local
    ```
 
-3. **Edit `.env.local`:**
+3. **Edit `.env.development.local`:**
 
    ```env
    DATABASE_URL=postgres://postgres:your-password@localhost:5432/modula
@@ -109,6 +121,89 @@ If you prefer to set up manually:
    ```bash
    pnpm dev
    ```
+
+---
+
+## External Integrations Setup
+
+Use this section when you need media upload, KHQR payment, or public exposure for local testing.
+
+### 1) Object Storage (Cloudflare R2)
+
+Get these values from your tech lead (do not commit real secrets):
+
+- `R2_ACCOUNT_ID`
+- `R2_BUCKET_NAME`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_PUBLIC_URL` (optional but recommended for direct public image URLs)
+- `API_BASE_URL` (optional; used when `R2_PUBLIC_URL` is not set, e.g., for `/images/...` proxy URLs)
+
+Example (`.env.development.local`):
+
+```env
+R2_ACCOUNT_ID=...
+R2_BUCKET_NAME=modula-dev
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_PUBLIC_URL=https://pub-xxxx.r2.dev
+API_BASE_URL=http://localhost:3000
+```
+
+Notes:
+
+- Missing R2 keys will cause image upload routes to return storage-not-configured/upload errors.
+- Keep keys only in local env files or secret manager.
+
+### 2) Bakong KHQR (Provider Mode)
+
+Get Bakong credentials/base URL from your tech lead:
+
+- `V0_KHQR_PROVIDER=bakong`
+- `V0_KHQR_PROVIDER_BASE_URL` (for current integration, usually `https://api-bakong.nbc.gov.kh/v1`)
+- `V0_KHQR_PROVIDER_API_KEY`
+- `V0_KHQR_PROVIDER_API_KEY_HEADER=authorization`
+
+Recommended baseline:
+
+```env
+V0_KHQR_PROVIDER=bakong
+V0_KHQR_PROVIDER_BASE_URL=https://api-bakong.nbc.gov.kh/v1
+V0_KHQR_PROVIDER_API_KEY=...
+V0_KHQR_PROVIDER_API_KEY_HEADER=authorization
+V0_KHQR_PROVIDER_TIMEOUT_MS=5000
+V0_KHQR_RECONCILIATION_ENABLED=true
+V0_KHQR_RECONCILIATION_INTERVAL_MS=3000
+V0_KHQR_RECONCILIATION_RECHECK_WINDOW_MINUTES=0
+```
+
+Notes:
+
+- In this repo, KHQR settlement convergence is primarily via reconciliation polling.
+- For pure local development without Bakong, use `V0_KHQR_PROVIDER=stub`.
+
+### 3) Public Expose via ngrok (Local Backend Reachability)
+
+Use ngrok when local backend must be reachable from outside your machine (e.g., remote mobile device testing).
+
+```bash
+ngrok http 3000
+```
+
+Use the generated public URL for client testing (example):
+
+- API base URL in frontend/Postman: `https://<your-ngrok-domain>`
+- optional backend URL generation hint:
+
+```env
+API_BASE_URL=https://<your-ngrok-domain>
+```
+
+Webhook note:
+
+- If an external system needs inbound callback to your local backend, route to:
+  - `https://<your-ngrok-domain>/v0/payments/khqr/webhooks/provider`
+- Current Bakong flow in this codebase does not require provider push callback for confirmation; polling is used for reconciliation.
 
 ---
 
@@ -234,7 +329,7 @@ sudo systemctl start postgresql
 
 When you run `pnpm setup`, enter the correct PostgreSQL password.
 
-Or manually edit `.env.local`:
+Or manually edit `.env.development.local`:
 
 ```env
 DATABASE_URL=postgres://postgres:YOUR_PASSWORD@localhost:5432/modula
@@ -400,7 +495,7 @@ pnpm dev
 | Issue | Fix |
 |-------|-----|
 | PostgreSQL not running | Services → Start PostgreSQL |
-| Wrong password | Edit `.env.local` |
+| Wrong password | Edit `.env.development.local` |
 | Fresh database needed | `pnpm setup` (say yes to recreate) |
 | pnpm not found | `npm install -g pnpm` |
 

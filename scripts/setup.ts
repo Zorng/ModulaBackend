@@ -69,16 +69,16 @@ function prompt(question: string): Promise<string> {
 async function createEnvFile() {
     header("Step 1: Environment Configuration");
 
-    const envLocalPath = path.join(ROOT_DIR, ".env.local");
+    const envLocalPath = path.join(ROOT_DIR, ".env.development.local");
     const envExamplePath = path.join(ROOT_DIR, ".env.example");
 
     if (fs.existsSync(envLocalPath)) {
-        warning(".env.local already exists.");
+        warning(".env.development.local already exists.");
         const overwrite = await prompt(
             "Do you want to overwrite it? (y/N): "
         );
         if (overwrite.toLowerCase() !== "y") {
-            info("Keeping existing .env.local file.");
+            info("Keeping existing .env.development.local file.");
             return;
         }
     }
@@ -113,14 +113,22 @@ async function createEnvFile() {
 
     // Replace values in env content
     envContent = envContent
-        .replace(/postgres:your-password@localhost:5432\/modula/g, 
-                 `postgres:${password}@localhost:${port}/${database}`)
-        .replace(/your-secret-key-change-in-production/g, jwtSecret)
-        .replace(/your-refresh-secret-key-change-in-production/g, jwtRefreshSecret);
+        .replace(
+            /^DATABASE_URL=.*$/m,
+            `DATABASE_URL=postgres://postgres:${password}@localhost:${port}/${database}`
+        )
+        .replace(
+            /^JWT_SECRET=.*$/m,
+            `JWT_SECRET=${jwtSecret}`
+        )
+        .replace(
+            /^JWT_REFRESH_SECRET=.*$/m,
+            `JWT_REFRESH_SECRET=${jwtRefreshSecret}`
+        );
 
     // Write the file
     fs.writeFileSync(envLocalPath, envContent);
-    success(".env.local created successfully!");
+    success(".env.development.local created successfully!");
 
     return { password, database, port };
 }

@@ -1,20 +1,28 @@
-import dotenvFlow from 'dotenv-flow';
-dotenvFlow.config({ node_env: process.env.NODE_ENV || 'development' });
+import { expectedLocalEnvFilename, loadEnvironment } from "./env.js";
+
+const { nodeEnv } = loadEnvironment("development");
+const expectedLocalEnvFile = expectedLocalEnvFilename(nodeEnv);
 
 // (optional but recommended) validate presence so it fails fast
 // Skip validation in test environment to allow mocking
-const isTestEnv = process.env.NODE_ENV === 'test';
+const isTestEnv = nodeEnv === "test";
 
 if (!isTestEnv && !process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL is missing. Add it to .env.local at project root.');
+    throw new Error(
+      `DATABASE_URL is missing. Add it to ${expectedLocalEnvFile} at project root (or set it in process env).`
+    );
 }
 
 if (!isTestEnv && !process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET is missing. Add it to .env.local at project root.');
+    throw new Error(
+      `JWT_SECRET is missing. Add it to ${expectedLocalEnvFile} at project root (or set it in process env).`
+    );
 }
 
 if (!isTestEnv && !process.env.JWT_REFRESH_SECRET) {
-    throw new Error('JWT_REFRESH_SECRET is missing. Add it to .env.local at project root.');
+    throw new Error(
+      `JWT_REFRESH_SECRET is missing. Add it to ${expectedLocalEnvFile} at project root (or set it in process env).`
+    );
 }
 
 export const config = {

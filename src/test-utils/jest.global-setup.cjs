@@ -1,4 +1,4 @@
-const dotenvFlow = require("dotenv-flow");
+const dotenv = require("dotenv");
 const { Pool } = require("pg");
 const fs = require("fs");
 const path = require("path");
@@ -72,8 +72,37 @@ async function runMigrations(pool) {
   }
 }
 
+function loadEnvironment(defaultNodeEnv = "test") {
+  const nodeEnv = String(process.env.NODE_ENV || "").trim() || defaultNodeEnv;
+  process.env.NODE_ENV = nodeEnv;
+
+  const baseFiles = [".env", `.env.${nodeEnv}`];
+  for (const fileName of baseFiles) {
+    const filePath = path.resolve(process.cwd(), fileName);
+    if (!fs.existsSync(filePath)) {
+      continue;
+    }
+    dotenv.config({ path: filePath, override: false });
+  }
+
+  const scopedLocal = `.env.${nodeEnv}.local`;
+  const scopedLocalPath = path.resolve(process.cwd(), scopedLocal);
+  const hasScopedLocal = fs.existsSync(scopedLocalPath);
+  const legacyLocal = ".env.local";
+  const legacyLocalPath = path.resolve(process.cwd(), legacyLocal);
+  if (fs.existsSync(legacyLocalPath)) {
+    throw new Error(
+      `[env] "${legacyLocal}" is no longer supported. Move values into ".env.${nodeEnv}.local" and remove "${legacyLocal}".`
+    );
+  }
+
+  if (hasScopedLocal) {
+    dotenv.config({ path: scopedLocalPath, override: false });
+  }
+}
+
 module.exports = async () => {
-  dotenvFlow.config({ node_env: process.env.NODE_ENV || "test" });
+  loadEnvironment("test");
 
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {

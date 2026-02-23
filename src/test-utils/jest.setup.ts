@@ -1,4 +1,3 @@
-import dotenvFlow from "dotenv-flow";
+import { loadEnvironment } from "../platform/config/env.js";
 
-dotenvFlow.config({ node_env: process.env.NODE_ENV || "test" });
-
+loadEnvironment("test");

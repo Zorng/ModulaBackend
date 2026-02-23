@@ -1,15 +1,16 @@
 import fs from "fs";
 import path from "path";
-import dotenvFlow from "dotenv-flow";
 import { Pool } from "pg";
+import { expectedLocalEnvFilename, loadEnvironment } from "../config/env.js";
 
-dotenvFlow.config({ node_env: process.env.NODE_ENV || "development" });
+const { nodeEnv } = loadEnvironment("development");
+const expectedLocalEnvFile = expectedLocalEnvFilename(nodeEnv);
 
 async function seedDev() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error(
-      "DATABASE_URL is required to seed dev data. Add it to .env.local."
+      `DATABASE_URL is required to seed dev data. Add it to ${expectedLocalEnvFile}.`
     );
   }
 
@@ -40,4 +41,3 @@ if (process.argv[1].includes("seed-dev")) {
 }
 
 export { seedDev };
-
