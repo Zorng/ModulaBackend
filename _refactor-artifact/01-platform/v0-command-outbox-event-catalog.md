@@ -362,6 +362,22 @@ Verification note:
 - command atomicity/idempotency/pull-delta integration coverage is in `src/integration-tests/v0-sale-order.int.test.ts`.
 - no sale/order event subscribers are wired yet; events are currently producer-only.
 
+### Receipt
+- `RECEIPT_PRINT_REQUESTED`
+  - actionKey: `receipt.print`
+  - outcome: `SUCCESS`
+  - entityType: `receipt`
+  - canonical endpoint metadata: `/v0/receipts/:receiptId/print`
+- `RECEIPT_REPRINT_REQUESTED`
+  - actionKey: `receipt.reprint`
+  - outcome: `SUCCESS`
+  - entityType: `receipt`
+  - canonical endpoint metadata: `/v0/receipts/:receiptId/reprint`
+
+Verification note:
+- print/reprint command outbox coverage is in `src/modules/v0/posOperation/receipt/api/router.ts`.
+- receipt module no longer emits `RECEIPT_CREATED`; receipt payload is sale-derived (`receiptId == saleId`) and delivered inline on sale finalize/KHQR confirm responses.
+
 ### Offline Sync (foundation behavior note)
 - `pushSync.apply` is a replay orchestrator action and does not currently emit dedicated outbox event types.
 - it routes to underlying command handlers; domain events are emitted by those underlying commands when applicable.

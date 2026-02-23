@@ -419,6 +419,27 @@ Success `200` (proof confirmed):
     "sale": {
       "saleId": "uuid",
       "status": "FINALIZED"
+    },
+    "receipt": {
+      "receiptId": "uuid",
+      "saleId": "uuid",
+      "statusDisplay": "NORMAL",
+      "issuedAt": "2026-02-21T10:02:10.000Z",
+      "saleSnapshot": {
+        "paymentMethod": "KHQR",
+        "tenderCurrency": "USD",
+        "subtotalUsd": 2.5,
+        "subtotalKhr": 10250,
+        "discountUsd": 0,
+        "discountKhr": 0,
+        "vatUsd": 0,
+        "vatKhr": 0,
+        "grandTotalUsd": 2.5,
+        "grandTotalKhr": 10250,
+        "tenderAmount": 2.5,
+        "paidAmount": 2.5
+      },
+      "lines": []
     }
   }
 }

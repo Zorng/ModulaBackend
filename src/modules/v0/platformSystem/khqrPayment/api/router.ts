@@ -22,6 +22,8 @@ import { V0KhqrPaymentRepository } from "../infra/repository.js";
 import type { V0KhqrPaymentProvider } from "../app/payment-provider.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
 import { V0AuditService } from "../../../audit/app/service.js";
+import { V0SaleOrderRepository } from "../../../posOperation/saleOrder/infra/repository.js";
+import { buildSaleReceiptPreview } from "../../../posOperation/receipt/app/preview.js";
 
 type KhqrResponseBody =
   | {
@@ -371,6 +373,7 @@ export function createV0KhqrPaymentRouter(input: {
               actor,
               md5: body.md5,
             });
+            let receipt: ReturnType<typeof buildSaleReceiptPreview> | null = null;
             if (confirmed.saleFinalized && confirmed.sale) {
               await appendSaleFinalizedSideEffects({
                 client,
@@ -384,8 +387,28 @@ export function createV0KhqrPaymentRouter(input: {
                   verificationStatus: confirmed.verificationStatus,
                 },
               });
+
+              const txSaleRepo = new V0SaleOrderRepository(client);
+              const saleRow = await txSaleRepo.getSaleById({
+                tenantId: actor.tenantId ?? "",
+                branchId: actor.branchId ?? "",
+                saleId: confirmed.sale.saleId,
+              });
+              if (saleRow) {
+                const saleLines = await txSaleRepo.listSaleLines({
+                  tenantId: actor.tenantId ?? "",
+                  saleId: saleRow.id,
+                });
+                receipt = buildSaleReceiptPreview({
+                  sale: saleRow,
+                  lines: saleLines,
+                });
+              }
             }
-            return confirmed;
+            return {
+              ...confirmed,
+              receipt,
+            };
           });
 
           return {
@@ -397,6 +420,7 @@ export function createV0KhqrPaymentRouter(input: {
                 attempt: data.attempt,
                 sale: data.sale,
                 saleFinalized: data.saleFinalized,
+                ...(data.receipt ? { receipt: data.receipt } : {}),
                 ...(data.mismatchReasonCode
                   ? { mismatchReasonCode: data.mismatchReasonCode }
                   : {}),
@@ -638,7 +662,10 @@ function classifyWebhookError(error: unknown): {
   errorCode: string;
   logLevel: "warn" | "error";
 } {
-  if (error instanceof V0KhqrProviderError || error instanceof V0KhqrPaymentError) {
+  if (
+    error instanceof V0KhqrProviderError ||
+    error instanceof V0KhqrPaymentError
+  ) {
     const errorCode = error.code ?? "KHQR_WEBHOOK_INGEST_FAILED";
     if (errorCode === "KHQR_WEBHOOK_UNAUTHORIZED") {
       return {

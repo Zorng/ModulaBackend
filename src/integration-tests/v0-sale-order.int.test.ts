@@ -789,6 +789,7 @@ describe("v0 sale-order integration", () => {
     expect(xReport.body.success).toBe(true);
     expect(xReport.body.data.totalSalesKhqrUsd).toBe(3.5);
     expect(xReport.body.data.totalSalesNonCashUsd).toBe(3.5);
+
   });
 
   it("auto-finalizes KHQR sale via manual confirm fallback", async () => {
@@ -843,6 +844,10 @@ describe("v0 sale-order integration", () => {
       expect(confirmed.body.data.saleFinalized).toBe(true);
       expect(confirmed.body.data.sale.saleId).toBe(saleId);
       expect(confirmed.body.data.sale.status).toBe("FINALIZED");
+      expect(confirmed.body.data.receipt.saleId).toBe(saleId);
+      expect(confirmed.body.data.receipt.statusDisplay).toBe("NORMAL");
+      expect(Array.isArray(confirmed.body.data.receipt.lines)).toBe(true);
+      expect(confirmed.body.data.receipt.lines.length).toBe(1);
     } finally {
       if (previousStubStatus === undefined) {
         delete process.env.V0_KHQR_STUB_VERIFICATION_STATUS;
@@ -856,6 +861,7 @@ describe("v0 sale-order integration", () => {
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
     expect(finalizedSale.status).toBe(200);
     expect(finalizedSale.body.data.status).toBe("FINALIZED");
+
   });
 
   it("finalizes cash checkout directly from local cart without order ticket", async () => {
@@ -892,6 +898,74 @@ describe("v0 sale-order integration", () => {
       [setup.tenantId, setup.branchId]
     );
     expect(Number(orderCount.rows[0]?.count ?? "0")).toBe(0);
+  });
+
+  it("returns receipt-ready payload on finalized cash checkout response", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const finalized = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-receipt-create-${uniqueSuffix()}`)
+      .send({
+        ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 2 }),
+        paymentMethod: "CASH",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+      });
+
+    expect(finalized.status).toBe(200);
+    expect(finalized.body.success).toBe(true);
+    const saleId = finalized.body.data.id as string;
+
+    expect(finalized.body.data.receipt.saleId).toBe(saleId);
+    expect(finalized.body.data.receipt.statusDisplay).toBe("NORMAL");
+    expect(finalized.body.data.receipt.saleSnapshot.paymentMethod).toBe("CASH");
+    expect(finalized.body.data.receipt.saleSnapshot.tenderCurrency).toBe("USD");
+    expect(Array.isArray(finalized.body.data.receipt.lines)).toBe(true);
+    expect(finalized.body.data.receipt.lines.length).toBe(1);
+  });
+
+  it("does not emit legacy receipt.snapshot.create outbox action on checkout.cash.finalize", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const finalized = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-receipt-nonblocking-${uniqueSuffix()}`)
+      .send({
+        ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 1 }),
+        paymentMethod: "CASH",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+      });
+
+    expect(finalized.status).toBe(200);
+    expect(finalized.body.success).toBe(true);
+    expect(finalized.body.data.status).toBe("FINALIZED");
+    expect(finalized.body.data.receipt.statusDisplay).toBe("NORMAL");
+
+    const outboxCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_command_outbox
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND action_key = 'receipt.snapshot.create'`,
+      [setup.tenantId, setup.branchId]
+    );
+    expect(Number(outboxCount.rows[0]?.count ?? "0")).toBe(0);
   });
 
   it("rejects cash checkout when cash received is below grand total", async () => {
@@ -1042,6 +1116,8 @@ describe("v0 sale-order integration", () => {
     expect(checkedOut.body.data.status).toBe("FINALIZED");
     expect(typeof checkedOut.body.data.finalizedAt).toBe("string");
     expect(checkedOut.body.data.order.status).toBe("CHECKED_OUT");
+    expect(checkedOut.body.data.receipt.statusDisplay).toBe("NORMAL");
+    expect(checkedOut.body.data.receipt.saleSnapshot.paymentMethod).toBe("CASH");
     const saleId = checkedOut.body.data.id as string;
 
     const sale = await request(app)

@@ -1,5 +1,5 @@
 import { Router, type Response } from "express";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { requireV0Auth, type V0AuthRequest } from "../../../auth/api/middleware.js";
 import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
 import {
@@ -14,6 +14,7 @@ import { V0AuditRepository } from "../../../audit/infra/repository.js";
 import { V0KhqrPaymentService } from "../../../platformSystem/khqrPayment/app/service.js";
 import { V0KhqrPaymentRepository } from "../../../platformSystem/khqrPayment/infra/repository.js";
 import type { V0KhqrPaymentProvider } from "../../../platformSystem/khqrPayment/app/payment-provider.js";
+import { buildSaleReceiptPreview } from "../../receipt/app/preview.js";
 import {
   buildSaleOrderCommandDedupeKey,
   V0_SALE_ORDER_ACTION_KEYS,
@@ -671,7 +672,15 @@ export function createV0SaleOrderRouter(input: {
               }
             }
 
-            return commandData;
+            const responseData = await maybeAttachReceiptPreviewToResponse({
+              client,
+              tenantId,
+              branchId,
+              actionKey: inputWrite.actionKey,
+              commandData,
+            });
+
+            return responseData;
           });
           return {
             statusCode: 200,
@@ -769,6 +778,58 @@ function collectEntity(
     return;
   }
   extra.push({ entityType, entityId: id, data: record });
+}
+
+async function maybeAttachReceiptPreviewToResponse(input: {
+  client: PoolClient;
+  tenantId: string;
+  branchId: string;
+  actionKey: string;
+  commandData: unknown;
+}): Promise<unknown> {
+  if (
+    input.actionKey !== V0_SALE_ORDER_ACTION_KEYS.checkoutCashFinalize &&
+    input.actionKey !== V0_SALE_ORDER_ACTION_KEYS.orderCheckout &&
+    input.actionKey !== V0_SALE_ORDER_ACTION_KEYS.saleFinalize
+  ) {
+    return input.commandData;
+  }
+
+  if (!input.commandData || typeof input.commandData !== "object" || Array.isArray(input.commandData)) {
+    return input.commandData;
+  }
+
+  const record = input.commandData as Record<string, unknown>;
+  const status = typeof record.status === "string" ? record.status.toUpperCase() : "";
+  if (status !== "FINALIZED") {
+    return input.commandData;
+  }
+
+  const saleId = typeof record.id === "string" ? record.id.trim() : "";
+  if (!saleId) {
+    return input.commandData;
+  }
+
+  const saleRepo = new V0SaleOrderRepository(input.client);
+  const sale = await saleRepo.getSaleById({
+    tenantId: input.tenantId,
+    branchId: input.branchId,
+    saleId,
+  });
+  if (!sale) {
+    return input.commandData;
+  }
+  const lines = await saleRepo.listSaleLines({
+    tenantId: input.tenantId,
+    saleId: sale.id,
+  });
+  return {
+    ...record,
+    receipt: buildSaleReceiptPreview({
+      sale,
+      lines,
+    }),
+  };
 }
 
 function handleError(res: Response, error: unknown): void {

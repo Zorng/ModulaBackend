@@ -27,13 +27,23 @@
 | OrgAccount | OrgAccount Overhaul + POS Readiness | In Progress | `_refactor-artifact/03-orgaccount/orgaccount-overhaul-pos-readiness.md` |
 | OrgAccount | Branch Billable Workspaces Rollout v0 | Completed | `_refactor-artifact/03-orgaccount/branch-billable-workspaces-rollout-v0.md` |
 | Auth | SaaS Multi-Tenant Overhaul | Completed | `_refactor-artifact/04-auth/saas-multi-tenant-overhaul.md` |
-| POS | POS Module Build Order v0 | Active planning | `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md` |
+| POS | POS Module Build Order v0 | Active execution | `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md` |
 | POS | Offline-First DoD Template v0 | Template | `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md` |
+| POS | Policy Rollout v0 | Completed | `_refactor-artifact/05-pos/01_policy-rollout-v0.md` |
+| POS | Menu Rollout v0 | Completed | `_refactor-artifact/05-pos/02_menu-rollout-v0.md` |
+| POS | Discount Rollout v0 | Completed | `_refactor-artifact/05-pos/03_discount-rollout-v0.md` |
+| POS | Cash Session Rollout v0 | Completed | `_refactor-artifact/05-pos/04_cash-session-rollout-v0.md` |
+| POS | Inventory Rollout v0 | In progress | `_refactor-artifact/05-pos/05_inventory-rollout-v0.md` |
+| POS | Sale-Order Rollout v0 | Active (remodel planning) | `_refactor-artifact/05-pos/06_sale-order-rollout-v0.md` |
+| POS | Receipt Rollout v0 | Completed | `_refactor-artifact/05-pos/07_receipt-rollout-v0.md` |
+| POS | Reporting Rollout v0 | Not started | `_refactor-artifact/05-pos/08_reporting-rollout-v0.md` |
+| POS | Push Sync Rollout v0 | Not started | `_refactor-artifact/05-pos/09_push-sync-rollout-v0.md` |
+| POS | Printing Rollout v0 | Not started | `_refactor-artifact/05-pos/10_printing-rollout-v0.md` |
 
 ## Next Recommended Artifact
 
-- Continue inventory rollout execution at Phase 2 in `_refactor-artifact/05-pos/05_inventory-rollout-v0.md`.
-- Continue full offline-first architecture from `_refactor-artifact/01-platform/offline-first-rollout-v0.md` (OF6 implementation steps).
+- Continue sale-order remodel execution in `_refactor-artifact/05-pos/06_sale-order-rollout-v0.md` with `_refactor-artifact/05-pos/06_sale-order-checkout-remodel-spec-v0.md` as source-of-truth.
+- Start reporting rollout boundary/phase work in `_refactor-artifact/05-pos/08_reporting-rollout-v0.md` after sale-order remodel checkpoints are locked.
 
 ## Filename Redirects
 

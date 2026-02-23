@@ -1,6 +1,6 @@
 # Receipt Module Rollout (v0)
 
-Status: Not started
+Status: Completed
 Owner context: POSOperation
 
 ## Goal
@@ -20,7 +20,7 @@ Template:
 
 - Replay parity: receipt-producing writes (from sale finalize pipeline) must be replay-safe.
 - Pull deltas: receipt projection updates must emit sync changes for receipt hydration.
-- Conflict taxonomy: deterministic failure codes for receipt snapshot generation dependencies.
+- Conflict taxonomy: deterministic failure codes for sale-state availability and print dispatch.
 - Convergence tests: replayed finalize operations produce receipt data visible via pull.
 - Observability baseline: replay outcome counters by code.
 
@@ -61,9 +61,9 @@ Template:
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 Offline-first DoD gate | Not started | |
-| 1 Boundary + Contract lock | Not started | |
-| 2 Data model + repositories | Not started | |
-| 3 Commands/queries + access control | Not started | |
-| 4 Integration + reliability | Not started | |
-| 5 Close-out | Not started | |
+| 0 Offline-first DoD gate | Completed | Receipt reads are projection-only from sale truth; replay parity and pull deltas are covered by sale-order finalize commands. Receipt write surface is print/reprint only (idempotent observational effects). |
+| 1 Boundary + Contract lock | Completed | Locked module boundary in `_refactor-artifact/02-boundary/receipt-boundary-v0.md`; drafted canonical API contract in `api_contract/receipt-v0.md` with route prefix `/v0/receipts`, action/event naming, sale-derived receipt projection rules, and print/reprint effect semantics. |
+| 2 Data model + repositories | Completed | Implemented sale-derived receipt repository reads under `src/modules/v0/posOperation/receipt/infra/repository.ts` (from `v0_sales` + `v0_sale_lines`) and command-contract scaffolding under `src/modules/v0/posOperation/receipt/app/command-contract.ts` for print/reprint writes. |
+| 3 Commands/queries + access control | Completed | Implemented `V0ReceiptService` command/query surface and `createV0ReceiptRouter` endpoints on `/v0/receipts` (`GET /sales/:saleId`, `GET /:receiptId`, `POST /:receiptId/print`, `POST /:receiptId/reprint`) with idempotent write transactions (`business + audit + outbox`). Wired module bootstrap/mount and access-control metadata + protected route registrations for `receipt.*` actions. |
+| 4 Integration + reliability | Completed | Shifted receipt handling to a non-blocking adapter model: finalized sale responses now include a receipt-ready payload (`data.receipt`) for immediate local print without extra round-trip; finalize paths do not write receipt-owned tables. Added integration coverage in `src/integration-tests/v0-sale-order.int.test.ts` for receipt payload presence on cash finalize/pay-later cash checkout/KHQR confirm and for absence of legacy `receipt.snapshot.create` outbox actions. |
+| 5 Close-out | Completed | Marked receipt rollout complete, synced outbox catalog with active receipt events (`RECEIPT_PRINT_REQUESTED`, `RECEIPT_REPRINT_REQUESTED`), and refreshed frontend notes in `api_contract/receipt-v0.md` to sale-derived receipt IDs (`receiptId == saleId`). |

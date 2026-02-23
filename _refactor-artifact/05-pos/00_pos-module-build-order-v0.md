@@ -29,7 +29,7 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 4. `cashSession` (drawer lifecycle + movement ledger)
 5. `inventory` (ledger + projections; self-contained first)
 6. `sale-order` (finalize orchestration integrating policy/menu/discount/cash/inventory)
-7. `receipt` (immutable receipt snapshot from finalized sale)
+7. `receipt` (sale-derived receipt projection from finalized sale)
 8. `reporting` (read-only management projections)
 9. `pushSync` (queue + replay for allowed operations)
 10. `printing` (operational effects; best-effort)
@@ -37,7 +37,7 @@ This artifact locks a dependency-first build order and assigns a dedicated track
 ## Why this order
 
 - `sale-order` is integration-heavy and depends on policy/menu/discount/cash/inventory seams.
-- `receipt` must render sale snapshots, so it follows sale snapshot finalization rules.
+- `receipt` is derived from sale truth, so it follows sale finalization/void lifecycle rules.
 - `reporting` must aggregate stable facts from prior modules, so it follows write models.
 - `pushSync` and `printing` are resilience/effect layers and should bind to stable command/event contracts.
 
@@ -101,7 +101,7 @@ Completion (2026-02-19):
 | cashSession | Completed | Phase 1-5 completed (boundary/contract, schema/repo, command/query/ACL, integration reliability, close-out sync). |
 | inventory | In progress | Phase 0+1 locked (`05_inventory-rollout-v0.md`, `inventory-boundary-v0.md`, `api_contract/inventory-v0.md`) |
 | sale-order | In progress (remodel) | Legacy server-cart rollout artifacts were archived under `_refactor-artifact/05-pos/_archived/`. Active tracker is `_refactor-artifact/05-pos/06_sale-order-rollout-v0.md` with source-of-truth remodel spec `_refactor-artifact/05-pos/06_sale-order-checkout-remodel-spec-v0.md` and pending remodel contract sections in `api_contract/sale-order-v0.md` + `api_contract/khqr-payment-v0.md`. |
-| receipt | Not started | consume finalized sale snapshot only |
+| receipt | Completed | Phase 0-5 completed (`07_receipt-rollout-v0.md`, `receipt-boundary-v0.md`, `api_contract/receipt-v0.md`, receipt service/router + ACL mappings, sale-derived receipt reads, receipt-ready finalize response payload + reliability tests, close-out sync). |
 | reporting | Not started | read-only aggregation only |
 | pushSync | Not started | queue/replay over stable commands |
 | printing | Not started | best-effort operational effects |

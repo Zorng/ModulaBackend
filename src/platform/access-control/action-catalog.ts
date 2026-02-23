@@ -591,6 +591,28 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     entitlementKey: "core.pos",
   },
+  "receipt.read": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "receipt.readBySale": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
+  "receipt.print": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "receipt.reprint": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
   "operationalNotification.inbox.list": {
     scope: "BRANCH",
     effect: "READ",

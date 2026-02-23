@@ -98,7 +98,28 @@ Response `200`:
   "success": true,
   "data": {
     "sale": { "id": "uuid", "status": "FINALIZED" },
-    "lines": []
+    "lines": [],
+    "receipt": {
+      "receiptId": "uuid",
+      "saleId": "uuid",
+      "statusDisplay": "NORMAL",
+      "issuedAt": "2026-02-23T18:00:00.000Z",
+      "saleSnapshot": {
+        "paymentMethod": "CASH",
+        "tenderCurrency": "USD",
+        "subtotalUsd": 8,
+        "subtotalKhr": 32800,
+        "discountUsd": 0,
+        "discountKhr": 0,
+        "vatUsd": 0,
+        "vatKhr": 0,
+        "grandTotalUsd": 8,
+        "grandTotalKhr": 32800,
+        "tenderAmount": 8,
+        "paidAmount": 8
+      },
+      "lines": []
+    }
   }
 }
 ```
@@ -107,6 +128,7 @@ Rules:
 - Server reprices from catalog/policy and ignores client price snapshots.
 - Atomic write: sale + sale lines + side effects (inventory/cash movement/outbox).
 - For `paymentMethod = CASH`, `tenderAmount` must match grand total and `cashReceivedTenderAmount` must be `>= tenderAmount`.
+- Finalized responses include `data.receipt` for local immediate print (no extra receipt API call required).
 
 #### 2) KHQR checkout initiate
 `POST /v0/checkout/khqr/initiate`  
@@ -649,6 +671,28 @@ Response example (`200`):
     "voidReason": null,
     "createdAt": "2026-02-22T10:05:00.000Z",
     "updatedAt": "2026-02-22T10:10:01.000Z"
+    ,
+    "receipt": {
+      "receiptId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+      "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+      "statusDisplay": "NORMAL",
+      "issuedAt": "2026-02-22T10:10:01.000Z",
+      "saleSnapshot": {
+        "paymentMethod": "KHQR",
+        "tenderCurrency": "USD",
+        "subtotalUsd": 8,
+        "subtotalKhr": 32800,
+        "discountUsd": 0,
+        "discountKhr": 0,
+        "vatUsd": 0,
+        "vatKhr": 0,
+        "grandTotalUsd": 8,
+        "grandTotalKhr": 32800,
+        "tenderAmount": 8,
+        "paidAmount": 8
+      },
+      "lines": []
+    }
   }
 }
 ```
