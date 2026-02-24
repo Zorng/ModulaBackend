@@ -1,6 +1,6 @@
 # Shift Module Rollout (v0)
 
-Status: Not started  
+Status: In progress (Phase 2 baseline scaffolded)  
 Owner context: HR
 
 ## Goal
@@ -56,9 +56,9 @@ Implement shift planning as a first-class HR module for planned work expectation
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 Offline-first DoD gate | Not started | |
-| 1 Boundary + Contract lock | Not started | |
-| 2 Data model + repositories | Not started | |
+| 0 Offline-first DoD gate | In progress | Write replay mapping and pull-sync/tombstone entity plan are still pending implementation-phase lock. |
+| 1 Boundary + Contract lock | Completed | Locked in `_refactor-artifact/02-boundary/shift-boundary-v0.md` and `api_contract/shift-v0.md`. |
+| 2 Data model + repositories | In progress (baseline scaffolded) | Added `migrations/042_create_v0_shift_tables.sql` and `src/modules/v0/hr/shift/infra/repository.ts` as initial data-model + repository baseline. |
 | 3 Commands/queries + access control | Not started | |
 | 4 Integration + reliability | Not started | |
 | 5 Close-out | Not started | |

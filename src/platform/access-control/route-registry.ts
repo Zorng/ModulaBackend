@@ -104,6 +104,24 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
     tenantSource: "path.membershipId",
   },
   {
+    method: "GET",
+    pattern: /^\/hr\/staff$/,
+    actionKey: "hr.staff.list",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/hr\/staff\/memberships\/[^/]+\/branches$/,
+    actionKey: "hr.staff.branch.list",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/hr\/staff\/[^/]+$/,
+    actionKey: "hr.staff.read",
+    tenantSource: "token",
+  },
+  {
     method: "POST",
     pattern: /^\/auth\/tenants$/,
     actionKey: "org.tenant.provision",

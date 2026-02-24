@@ -70,7 +70,7 @@ This artifact locks an implementation order so HR can be finished before additio
 
 | Module | Status | Notes |
 |---|---|---|
-| staffManagement | In progress (baseline live) | Write endpoint + projection lifecycle exist; canonical module contract/read APIs still missing. |
+| staffManagement | In progress (Phase 3 baseline) | Write + baseline read/query surfaces are live with ACL mappings; remaining gaps are pull-sync parity and reliability matrix close-out. |
 | attendance | In progress (baseline live) | Check-in/out + own history live; manager/admin flows + force checkout + shift-aware parity not yet implemented. |
-| shift | Not started | Domain defined in KB, module not yet implemented. |
+| shift | In progress (Phase 2 scaffolded) | Boundary + contract locked, base shift tables and repository scaffold added; commands/queries + ACL wiring pending. |
 | workReview | Not started | Domain defined in KB, module not yet implemented. |

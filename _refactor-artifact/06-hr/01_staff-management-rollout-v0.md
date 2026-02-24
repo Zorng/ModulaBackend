@@ -26,8 +26,8 @@ Complete StaffManagement as the canonical owner of staff profile + branch assign
 
 ## Main gaps to close
 
-- No dedicated `api_contract/staff-management-v0.md`.
-- Read APIs are missing (staff directory / assignment queries).
+- Dedicated contract is published; continue evolving endpoint depth as workflows expand.
+- Baseline read APIs are now available (`/v0/hr/staff`, `/v0/hr/staff/:membershipId`, `/v0/hr/staff/memberships/:membershipId/branches`).
 - Pull-sync scope does not yet expose staff-management module changes as first-class HR feed.
 - Event surface is narrow (`HR_STAFF_BRANCHES_ASSIGNED` only).
 
@@ -67,9 +67,9 @@ Complete StaffManagement as the canonical owner of staff profile + branch assign
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 Offline-first DoD gate | Not started | |
-| 1 Boundary + Contract lock | In progress | Boundary was partially locked during B3; dedicated module contract not yet published. |
+| 0 Offline-first DoD gate | In progress | Replay and deterministic write semantics are locked for the canonical branch-assignment command; pull-sync expansion for future read/query surfaces remains open. |
+| 1 Boundary + Contract lock | Completed | Locked canonical boundary in `_refactor-artifact/02-boundary/staff-management-boundary-v0.md` and published canonical API contract `api_contract/staff-management-v0.md` (with deprecated auth alias noted). |
 | 2 Data model + repositories | Completed (baseline) | Core projection tables and repositories exist. |
-| 3 Commands/queries + access control | In progress | Assignment write route is live; query/read surface remains incomplete. |
-| 4 Integration + reliability | In progress | Workforce provisioning integration coverage exists; dedicated module-level matrix still missing. |
+| 3 Commands/queries + access control | Completed (baseline) | Added canonical read endpoints and access-control mappings for `hr.staff.list`, `hr.staff.read`, and `hr.staff.branch.list` while retaining assignment write + compatibility alias. |
+| 4 Integration + reliability | In progress | Workforce provisioning integration now covers read/query flows; pull-sync and broader denial matrix coverage still pending. |
 | 5 Close-out | Not started | |

@@ -1,4 +1,7 @@
-import { V0StaffManagementRepository } from "../infra/repository.js";
+import {
+  V0StaffManagementRepository,
+  type V0StaffMembershipStatus,
+} from "../infra/repository.js";
 
 export class V0StaffManagementError extends Error {
   constructor(
@@ -13,6 +16,7 @@ export class V0StaffManagementError extends Error {
 
 export class V0StaffManagementService {
   private readonly privilegedRoles = new Set(["OWNER", "ADMIN"]);
+  private readonly readRoles = new Set(["OWNER", "ADMIN", "MANAGER"]);
 
   constructor(private readonly repo: V0StaffManagementRepository) {}
 
@@ -90,6 +94,162 @@ export class V0StaffManagementService {
     );
   }
 
+  async listStaffMembers(input: {
+    actor: {
+      accountId: string;
+      tenantId: string | null;
+      branchId: string | null;
+    };
+    status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<
+    Array<{
+      membershipId: string;
+      tenantId: string;
+      accountId: string;
+      roleKey: string;
+      membershipStatus: V0StaffMembershipStatus;
+      phone: string;
+      firstName: string | null;
+      lastName: string | null;
+      staffProfileStatus: "ACTIVE" | "REVOKED" | null;
+      invitedAt: string;
+      acceptedAt: string | null;
+      rejectedAt: string | null;
+      revokedAt: string | null;
+      pendingBranchIds: string[];
+      activeBranchIds: string[];
+    }>
+  > {
+    const scope = assertTenantContext(input.actor);
+    const requesterMembership = await this.repo.findActiveMembershipForAccountInTenant({
+      accountId: scope.accountId,
+      tenantId: scope.tenantId,
+    });
+    if (!requesterMembership || !this.readRoles.has(requesterMembership.role_key)) {
+      throw new V0StaffManagementError(403, "requester role cannot view staff");
+    }
+
+    const status = normalizeOptionalMembershipStatus(input.status);
+    const search = normalizeOptionalString(input.search);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+
+    const rows = await this.repo.listMembershipProfilesForTenant({
+      tenantId: scope.tenantId,
+      status,
+      search,
+      limit,
+      offset,
+    });
+
+    return Promise.all(
+      rows.map(async (row) => {
+        const [pendingBranchIds, activeBranchIds] = await Promise.all([
+          this.repo.listPendingBranchIdsForMembership(row.membership_id),
+          this.repo.listActiveBranchIdsForMembership(row.membership_id),
+        ]);
+        return mapMembershipProfile(row, pendingBranchIds, activeBranchIds);
+      })
+    );
+  }
+
+  async getStaffMember(input: {
+    actor: {
+      accountId: string;
+      tenantId: string | null;
+      branchId: string | null;
+    };
+    membershipId: string;
+  }): Promise<{
+    membershipId: string;
+    tenantId: string;
+    accountId: string;
+    roleKey: string;
+    membershipStatus: V0StaffMembershipStatus;
+    phone: string;
+    firstName: string | null;
+    lastName: string | null;
+    staffProfileStatus: "ACTIVE" | "REVOKED" | null;
+    invitedAt: string;
+    acceptedAt: string | null;
+    rejectedAt: string | null;
+    revokedAt: string | null;
+    pendingBranchIds: string[];
+    activeBranchIds: string[];
+  }> {
+    const scope = assertTenantContext(input.actor);
+    const requesterMembership = await this.repo.findActiveMembershipForAccountInTenant({
+      accountId: scope.accountId,
+      tenantId: scope.tenantId,
+    });
+    if (!requesterMembership || !this.readRoles.has(requesterMembership.role_key)) {
+      throw new V0StaffManagementError(403, "requester role cannot view staff");
+    }
+
+    const row = await this.repo.findMembershipProfileForTenant({
+      tenantId: scope.tenantId,
+      membershipId: input.membershipId,
+    });
+    if (!row) {
+      throw new V0StaffManagementError(404, "membership not found");
+    }
+
+    const [pendingBranchIds, activeBranchIds] = await Promise.all([
+      this.repo.listPendingBranchIdsForMembership(row.membership_id),
+      this.repo.listActiveBranchIdsForMembership(row.membership_id),
+    ]);
+
+    return mapMembershipProfile(row, pendingBranchIds, activeBranchIds);
+  }
+
+  async getMembershipBranchAssignments(input: {
+    actor: {
+      accountId: string;
+      tenantId: string | null;
+      branchId: string | null;
+    };
+    membershipId: string;
+  }): Promise<{
+    membershipId: string;
+    tenantId: string;
+    membershipStatus: V0StaffMembershipStatus;
+    pendingBranchIds: string[];
+    activeBranchIds: string[];
+  }> {
+    const scope = assertTenantContext(input.actor);
+    const requesterMembership = await this.repo.findActiveMembershipForAccountInTenant({
+      accountId: scope.accountId,
+      tenantId: scope.tenantId,
+    });
+    if (!requesterMembership || !this.readRoles.has(requesterMembership.role_key)) {
+      throw new V0StaffManagementError(403, "requester role cannot view staff");
+    }
+
+    const row = await this.repo.findMembershipProfileForTenant({
+      tenantId: scope.tenantId,
+      membershipId: input.membershipId,
+    });
+    if (!row) {
+      throw new V0StaffManagementError(404, "membership not found");
+    }
+
+    const [pendingBranchIds, activeBranchIds] = await Promise.all([
+      this.repo.listPendingBranchIdsForMembership(row.membership_id),
+      this.repo.listActiveBranchIdsForMembership(row.membership_id),
+    ]);
+
+    return {
+      membershipId: row.membership_id,
+      tenantId: row.tenant_id,
+      membershipStatus: row.membership_status,
+      pendingBranchIds,
+      activeBranchIds,
+    };
+  }
+
   async activateMembershipBranchAssignments(input: { membershipId: string }): Promise<{
     membershipId: string;
     tenantId: string;
@@ -159,6 +319,97 @@ function normalizeRequiredId(value: unknown, message: string): string {
     throw new V0StaffManagementError(422, message);
   }
   return normalized;
+}
+
+function assertTenantContext(actor: {
+  accountId: string;
+  tenantId: string | null;
+  branchId: string | null;
+}): {
+  accountId: string;
+  tenantId: string;
+} {
+  const accountId = String(actor.accountId ?? "").trim();
+  const tenantId = String(actor.tenantId ?? "").trim();
+
+  if (!accountId) {
+    throw new V0StaffManagementError(401, "authentication required");
+  }
+  if (!tenantId) {
+    throw new V0StaffManagementError(403, "tenant context required");
+  }
+
+  return { accountId, tenantId };
+}
+
+function normalizeOptionalMembershipStatus(status: string | undefined): V0StaffMembershipStatus | null {
+  const value = normalizeOptionalString(status)?.toUpperCase();
+  if (!value || value === "ALL") {
+    return null;
+  }
+  if (value === "INVITED" || value === "ACTIVE" || value === "REVOKED") {
+    return value;
+  }
+  throw new V0StaffManagementError(422, "status must be INVITED | ACTIVE | REVOKED | ALL");
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeLimit(limit: number | undefined): number {
+  const value = Number(limit ?? 50);
+  if (!Number.isFinite(value) || value <= 0) {
+    return 50;
+  }
+  return Math.min(Math.floor(value), 200);
+}
+
+function normalizeOffset(offset: number | undefined): number {
+  const value = Number(offset ?? 0);
+  if (!Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+  return Math.floor(value);
+}
+
+function mapMembershipProfile(
+  row: {
+    membership_id: string;
+    tenant_id: string;
+    account_id: string;
+    role_key: string;
+    membership_status: V0StaffMembershipStatus;
+    invited_at: Date;
+    accepted_at: Date | null;
+    rejected_at: Date | null;
+    revoked_at: Date | null;
+    phone: string;
+    first_name: string | null;
+    last_name: string | null;
+    staff_profile_status: "ACTIVE" | "REVOKED" | null;
+  },
+  pendingBranchIds: string[],
+  activeBranchIds: string[]
+) {
+  return {
+    membershipId: row.membership_id,
+    tenantId: row.tenant_id,
+    accountId: row.account_id,
+    roleKey: row.role_key,
+    membershipStatus: row.membership_status,
+    phone: row.phone,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    staffProfileStatus: row.staff_profile_status,
+    invitedAt: row.invited_at.toISOString(),
+    acceptedAt: row.accepted_at ? row.accepted_at.toISOString() : null,
+    rejectedAt: row.rejected_at ? row.rejected_at.toISOString() : null,
+    revokedAt: row.revoked_at ? row.revoked_at.toISOString() : null,
+    pendingBranchIds,
+    activeBranchIds,
+  };
 }
 
 function normalizeUniqueBranchIds(branchIds: unknown): string[] {

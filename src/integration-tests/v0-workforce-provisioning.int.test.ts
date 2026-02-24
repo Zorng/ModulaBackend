@@ -84,6 +84,13 @@ describe("v0 workforce provisioning (phase 4 scaffold)", () => {
     );
     const secondBranchId = secondBranchInsert.rows[0].id;
 
+    const ownerTenantContext = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${ownerAccessToken}`)
+      .send({ tenantId });
+    expect(ownerTenantContext.status).toBe(200);
+    const ownerTenantToken = ownerTenantContext.body.data.accessToken as string;
+
     const inviteRes = await request(app)
       .post("/v0/auth/memberships/invite")
       .set("Authorization", `Bearer ${ownerAccessToken}`)
@@ -97,11 +104,34 @@ describe("v0 workforce provisioning (phase 4 scaffold)", () => {
 
     const pendingAssignRes = await request(app)
       .post(`/v0/hr/staff/memberships/${inviteMembershipId}/branches`)
-      .set("Authorization", `Bearer ${ownerAccessToken}`)
+      .set("Authorization", `Bearer ${ownerTenantToken}`)
       .send({ branchIds: [firstBranchId] });
     expect(pendingAssignRes.status).toBe(200);
     expect(pendingAssignRes.body.data.membershipStatus).toBe("INVITED");
     expect(pendingAssignRes.body.data.pendingBranchIds).toEqual([firstBranchId]);
+
+    const listInvited = await request(app)
+      .get("/v0/hr/staff?status=INVITED")
+      .set("Authorization", `Bearer ${ownerTenantToken}`);
+    expect(listInvited.status).toBe(200);
+    expect(
+      listInvited.body.data.some(
+        (row: { membershipId: string; membershipStatus: string }) =>
+          row.membershipId === inviteMembershipId && row.membershipStatus === "INVITED"
+      )
+    ).toBe(true);
+
+    const invitedDetail = await request(app)
+      .get(`/v0/hr/staff/${inviteMembershipId}`)
+      .set("Authorization", `Bearer ${ownerTenantToken}`);
+    expect(invitedDetail.status).toBe(200);
+    expect(invitedDetail.body.data.pendingBranchIds).toEqual([firstBranchId]);
+
+    const invitedBranches = await request(app)
+      .get(`/v0/hr/staff/memberships/${inviteMembershipId}/branches`)
+      .set("Authorization", `Bearer ${ownerTenantToken}`);
+    expect(invitedBranches.status).toBe(200);
+    expect(invitedBranches.body.data.pendingBranchIds).toEqual([firstBranchId]);
 
     const inviteeRegister = await request(app).post("/v0/auth/register").send({
       phone: inviteePhone,
@@ -146,11 +176,20 @@ describe("v0 workforce provisioning (phase 4 scaffold)", () => {
 
     const activeAssignRes = await request(app)
       .post(`/v0/auth/memberships/${inviteMembershipId}/branches`)
-      .set("Authorization", `Bearer ${ownerAccessToken}`)
+      .set("Authorization", `Bearer ${ownerTenantToken}`)
       .send({ branchIds: [secondBranchId] });
     expect(activeAssignRes.status).toBe(200);
     expect(activeAssignRes.body.data.membershipStatus).toBe("ACTIVE");
     expect(activeAssignRes.body.data.activeBranchIds).toEqual(
+      expect.arrayContaining([firstBranchId, secondBranchId])
+    );
+
+    const activeBranches = await request(app)
+      .get(`/v0/hr/staff/memberships/${inviteMembershipId}/branches`)
+      .set("Authorization", `Bearer ${ownerTenantToken}`);
+    expect(activeBranches.status).toBe(200);
+    expect(activeBranches.body.data.membershipStatus).toBe("ACTIVE");
+    expect(activeBranches.body.data.activeBranchIds).toEqual(
       expect.arrayContaining([firstBranchId, secondBranchId])
     );
 
