@@ -12,8 +12,11 @@ describe("v0 sync service", () => {
       "policy",
       "menu",
       "discount",
+      "inventory",
       "cashSession",
+      "saleOrder",
       "attendance",
+      "shift",
       "operationalNotification",
     ]);
 

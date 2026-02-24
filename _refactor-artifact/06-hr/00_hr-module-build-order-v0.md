@@ -72,5 +72,5 @@ This artifact locks an implementation order so HR can be finished before additio
 |---|---|---|
 | staffManagement | In progress (Phase 3 baseline) | Write + baseline read/query surfaces are live with ACL mappings; remaining gaps are pull-sync parity and reliability matrix close-out. |
 | attendance | In progress (baseline live) | Check-in/out + own history live; manager/admin flows + force checkout + shift-aware parity not yet implemented. |
-| shift | In progress (Phase 2 scaffolded) | Boundary + contract locked, base shift tables and repository scaffold added; commands/queries + ACL wiring pending. |
-| workReview | Not started | Domain defined in KB, module not yet implemented. |
+| shift | Completed (v0 online baseline) | Canonical routes + ACL are live; rejected-outcome persistence, rollback coverage, pull-sync convergence checks, and work-review trigger events are wired. Offline push-sync parity is explicitly deferred to push-sync expansion. |
+| workReview | In progress (Phase 1 locked) | Boundary and API contract are locked (`work-review-boundary-v0.md`, `work-review-v0.md`); implementation phases (2-5) remain. |

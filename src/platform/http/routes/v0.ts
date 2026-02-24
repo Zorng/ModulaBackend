@@ -2,6 +2,7 @@ import { Router } from "express";
 import { ping, pool } from "#db";
 import { bootstrapV0AuthModule } from "#modules/v0/auth/index.js";
 import { bootstrapV0AttendanceModule } from "#modules/v0/hr/attendance/index.js";
+import { bootstrapV0ShiftModule } from "#modules/v0/hr/shift/index.js";
 import { bootstrapV0OrgAccountModule } from "#modules/v0/orgAccount/index.js";
 import { bootstrapV0SubscriptionModule } from "#modules/v0/subscription/index.js";
 import { bootstrapV0AuditModule } from "#modules/v0/audit/index.js";
@@ -22,6 +23,7 @@ import { bootstrapV0ReceiptModule } from "#modules/v0/posOperation/receipt/index
 export const v0Router = Router();
 const v0AuthModule = bootstrapV0AuthModule(pool);
 const v0AttendanceModule = bootstrapV0AttendanceModule(pool);
+const v0ShiftModule = bootstrapV0ShiftModule(pool);
 const v0OrgAccountModule = bootstrapV0OrgAccountModule(pool);
 const v0SubscriptionModule = bootstrapV0SubscriptionModule(pool);
 const v0AuditModule = bootstrapV0AuditModule(pool);
@@ -41,6 +43,7 @@ const v0ReceiptModule = bootstrapV0ReceiptModule(pool);
 
 v0Router.use("/auth", v0AuthModule.router);
 v0Router.use("/attendance", v0AttendanceModule.router);
+v0Router.use("/hr", v0ShiftModule.router);
 v0Router.use("/org", v0OrgAccountModule.router);
 v0Router.use("/subscription", v0SubscriptionModule.router);
 v0Router.use("/audit", v0AuditModule.router);

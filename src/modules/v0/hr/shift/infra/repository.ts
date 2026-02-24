@@ -9,6 +9,7 @@ export type V0TenantMembershipRow = {
   id: string;
   tenant_id: string;
   account_id: string;
+  role_key: string;
   status: "INVITED" | "ACTIVE" | "REVOKED";
 };
 
@@ -59,16 +60,62 @@ export type V0ShiftInstanceRow = {
 export class V0ShiftRepository {
   constructor(private readonly db: Queryable) {}
 
+  async findActiveMembershipForAccountInTenant(input: {
+    accountId: string;
+    tenantId: string;
+  }): Promise<V0TenantMembershipRow | null> {
+    const result = await this.db.query<V0TenantMembershipRow>(
+      `SELECT id, tenant_id, account_id, role_key, status
+       FROM v0_tenant_memberships
+       WHERE account_id = $1
+         AND tenant_id = $2
+         AND status = 'ACTIVE'`,
+      [input.accountId, input.tenantId]
+    );
+    return result.rows[0] ?? null;
+  }
+
   async findMembershipByIdInTenant(input: {
     membershipId: string;
     tenantId: string;
   }): Promise<V0TenantMembershipRow | null> {
     const result = await this.db.query<V0TenantMembershipRow>(
-      `SELECT id, tenant_id, account_id, status
+      `SELECT id, tenant_id, account_id, role_key, status
        FROM v0_tenant_memberships
        WHERE id = $1
          AND tenant_id = $2`,
       [input.membershipId, input.tenantId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async hasActiveBranchAssignmentForMembership(input: {
+    membershipId: string;
+    branchId: string;
+  }): Promise<boolean> {
+    const result = await this.db.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM v0_branch_assignments
+         WHERE membership_id = $1
+           AND branch_id = $2
+           AND status = 'ACTIVE'
+       ) AS exists`,
+      [input.membershipId, input.branchId]
+    );
+    return result.rows[0]?.exists ?? false;
+  }
+
+  async findBranchByIdInTenant(input: {
+    branchId: string;
+    tenantId: string;
+  }): Promise<V0BranchRow | null> {
+    const result = await this.db.query<V0BranchRow>(
+      `SELECT id, tenant_id, status
+       FROM branches
+       WHERE id = $1
+         AND tenant_id = $2`,
+      [input.branchId, input.tenantId]
     );
     return result.rows[0] ?? null;
   }

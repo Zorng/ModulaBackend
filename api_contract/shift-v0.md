@@ -1,12 +1,17 @@
-# Shift Module (`/v0`) — API Contract (Phase 1 Lock)
+# Shift Module (`/v0`) — API Contract
 
-This document locks the planned `/v0/hr/shifts` HTTP contract for v0 implementation.
+This document describes the `/v0/hr/shifts` HTTP contract for v0.
 
 Base path: `/v0/hr/shifts`
 
 Implementation status:
-- Phase 1 boundary + contract lock completed.
-- Endpoints below are planned and not yet shipped.
+- Phase 4 reliability baseline shipped:
+  - commands + queries + access-control wiring
+  - rejected write outcomes are persisted and idempotency-replayable
+  - rollback safety verified for forced outbox failure path
+  - shift pull-sync convergence checks are covered in integration tests
+- Phase 5 close-out complete for v0 online lane.
+- Offline push-sync command mapping remains pending in Shift Phase 0 gate.
 
 ## Conventions
 
@@ -20,8 +25,9 @@ Implementation status:
   - no tenant/branch override in query/body.
 - Idempotency:
   - all write commands require `Idempotency-Key`.
+  - write rejections are persisted as outbox/audit `REJECTED` outcomes (`HR_SHIFT_COMMAND_REJECTED`).
 
-## Access Control (planned)
+## Access Control
 
 - Write roles: `OWNER | ADMIN | MANAGER`
 - Read roles: `OWNER | ADMIN | MANAGER`
@@ -68,7 +74,7 @@ type ShiftInstance = {
 };
 ```
 
-## Endpoints (planned)
+## Endpoints
 
 ### Patterns
 
@@ -242,7 +248,15 @@ Response `200`: `ShiftInstance`
 
 Action key: `hr.shift.schedule.read`
 
-## Planned reason codes
+## Frontend Integration Notes (v0 baseline)
+
+- Send `Idempotency-Key` on every write request.
+- If response header `Idempotency-Replayed: true` is present, frontend should treat the response as replayed successful/failed outcome for the same intent.
+- Validation/business rejections are deterministic and idempotent (for example `SHIFT_TIME_RANGE_INVALID`, `SHIFT_OVERLAP_CONFLICT`).
+- For offline hydration, use `/v0/sync/pull` with `moduleScopes: ["shift"]` to receive `shift_pattern` and `shift_instance` changes.
+- Shift writes emit work-review trigger outbox event `HR_WORK_REVIEW_EVALUATION_REQUESTED`; this is backend-internal and not required for direct frontend invocation.
+
+## Reason codes (current baseline)
 
 - `SHIFT_PATTERN_NOT_FOUND`
 - `SHIFT_INSTANCE_NOT_FOUND`
@@ -254,4 +268,3 @@ Action key: `hr.shift.schedule.read`
 - `IDEMPOTENCY_KEY_REQUIRED`
 - `IDEMPOTENCY_CONFLICT`
 - `IDEMPOTENCY_IN_PROGRESS`
-

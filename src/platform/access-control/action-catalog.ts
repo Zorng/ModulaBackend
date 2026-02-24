@@ -43,6 +43,41 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
   },
+  "hr.shift.pattern.create": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+  },
+  "hr.shift.pattern.update": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+  },
+  "hr.shift.pattern.deactivate": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+  },
+  "hr.shift.instance.create": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+  },
+  "hr.shift.instance.update": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+  },
+  "hr.shift.instance.cancel": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+  },
+  "hr.shift.schedule.read": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+  },
   "org.tenant.provision": { scope: "GLOBAL", effect: "WRITE" },
   "tenant.provision": { scope: "GLOBAL", effect: "WRITE" }, // compatibility alias
   "attendance.checkIn": {

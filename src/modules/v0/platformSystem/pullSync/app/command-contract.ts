@@ -6,6 +6,7 @@ export const V0_PULL_SYNC_MODULE_KEYS = [
   "cashSession",
   "saleOrder",
   "attendance",
+  "shift",
   "operationalNotification",
 ] as const;
 

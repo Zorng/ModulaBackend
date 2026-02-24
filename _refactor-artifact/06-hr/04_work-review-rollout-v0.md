@@ -1,6 +1,6 @@
 # Work Review Module Rollout (v0)
 
-Status: Not started  
+Status: In progress (Phase 1 locked, Phase 0 deferred)  
 Owner context: HR
 
 ## Goal
@@ -20,6 +20,11 @@ Implement derived HR insight module that compares planned shifts and actual atte
 - Query surfaces for staff/branch/tenant review windows
 - Classification/summarization contract (late, absent, overtime, incomplete, etc.)
 - Reporting-module handoff-ready read model
+
+## Phase 1 lock outputs
+
+- Boundary lock: `_refactor-artifact/02-boundary/work-review-boundary-v0.md`
+- API contract lock: `api_contract/work-review-v0.md`
 
 ## Execution phases
 
@@ -57,8 +62,8 @@ Implement derived HR insight module that compares planned shifts and actual atte
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 Offline-first DoD gate | Not started | |
-| 1 Boundary + Contract lock | Not started | |
+| 0 Offline-first DoD gate | Deferred | v0 baseline treats Work Review as query/evaluation read model with no public write replay surface; push-sync parity is deferred until/if external recompute commands are introduced. |
+| 1 Boundary + Contract lock | Completed | Canonical route/action/event names are locked in boundary + API contract docs. |
 | 2 Data model + repositories | Not started | |
 | 3 Commands/queries + access control | Not started | |
 | 4 Integration + reliability | Not started | |

@@ -23,6 +23,7 @@
 | Boundary | Menu Boundary v0 | Active (rolled out module boundary) | `_refactor-artifact/02-boundary/menu-boundary-v0.md` |
 | Boundary | StaffManagement Boundary v0 | Locked (Phase 1) | `_refactor-artifact/02-boundary/staff-management-boundary-v0.md` |
 | Boundary | Shift Boundary v0 | Locked (Phase 1) | `_refactor-artifact/02-boundary/shift-boundary-v0.md` |
+| Boundary | Work Review Boundary v0 | Locked (Phase 1) | `_refactor-artifact/02-boundary/work-review-boundary-v0.md` |
 | Boundary | Operational Notification Boundary v0 | Locked (N1) | `_refactor-artifact/02-boundary/operational-notification-boundary-v0.md` |
 | Boundary | Push Sync Boundary v0 | Locked (S1) | `_refactor-artifact/02-boundary/push-sync-boundary-v0.md` |
 | Boundary | Inventory Boundary v0 | Locked (Phase 1) | `_refactor-artifact/02-boundary/inventory-boundary-v0.md` |
@@ -32,8 +33,8 @@
 | HR | HR Module Build Order v0 | Active execution | `_refactor-artifact/06-hr/00_hr-module-build-order-v0.md` |
 | HR | StaffManagement Rollout v0 | In progress (Phase 3 baseline) | `_refactor-artifact/06-hr/01_staff-management-rollout-v0.md` |
 | HR | Attendance Rollout v0 | In progress (baseline live) | `_refactor-artifact/06-hr/02_attendance-rollout-v0.md` |
-| HR | Shift Rollout v0 | In progress (Phase 2 scaffolded) | `_refactor-artifact/06-hr/03_shift-rollout-v0.md` |
-| HR | Work Review Rollout v0 | Not started | `_refactor-artifact/06-hr/04_work-review-rollout-v0.md` |
+| HR | Shift Rollout v0 | Completed (v0 online baseline, Phase 0 deferred) | `_refactor-artifact/06-hr/03_shift-rollout-v0.md` |
+| HR | Work Review Rollout v0 | In progress (Phase 1 locked, Phase 0 deferred) | `_refactor-artifact/06-hr/04_work-review-rollout-v0.md` |
 | POS | POS Module Build Order v0 | Active execution | `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md` |
 | POS | Offline-First DoD Template v0 | Template | `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md` |
 | POS | Policy Rollout v0 | Completed | `_refactor-artifact/05-pos/01_policy-rollout-v0.md` |
@@ -51,7 +52,8 @@
 
 - Continue `_refactor-artifact/06-hr/01_staff-management-rollout-v0.md` from Phase 4 (reliability + pull-sync parity matrix) using `_refactor-artifact/02-boundary/staff-management-boundary-v0.md` and `api_contract/staff-management-v0.md` as locked references.
 - Continue attendance expansion in `_refactor-artifact/06-hr/02_attendance-rollout-v0.md` after staff-management reads are in place.
-- Continue shift rollout from Phase 2 scaffold (`migrations/042_create_v0_shift_tables.sql`, `src/modules/v0/hr/shift/infra/repository.ts`) toward Phase 3 command/query + ACL wiring.
+- Shift rollout close-out is completed for v0 online lane; offline push-sync command parity remains deferred to push-sync expansion.
+- Continue `_refactor-artifact/06-hr/04_work-review-rollout-v0.md` from Phase 2 (derived model + repositories) using locked boundary and API contract.
 - Keep POS sale-order remodel work paused/parallelized until HR command/event surfaces needed by notifications are stabilized.
 
 ## Filename Redirects

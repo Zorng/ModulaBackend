@@ -44,6 +44,49 @@ type V0CommandOutboxEvent = {
   - canonical endpoint metadata: `/v0/hr/staff/memberships/:membershipId/branches`
   - compatibility alias (temporary): `/v0/auth/memberships/:membershipId/branches`
 
+### HR / Shift
+- `HR_SHIFT_PATTERN_CREATED`
+  - actionKey: `hr.shift.pattern.create`
+  - outcome: `SUCCESS`
+  - entityType: `shift_pattern`
+  - canonical endpoint metadata: `/v0/hr/shifts/patterns`
+- `HR_SHIFT_PATTERN_UPDATED`
+  - actionKey: `hr.shift.pattern.update`
+  - outcome: `SUCCESS`
+  - entityType: `shift_pattern`
+  - canonical endpoint metadata: `/v0/hr/shifts/patterns/:patternId`
+- `HR_SHIFT_PATTERN_DEACTIVATED`
+  - actionKey: `hr.shift.pattern.deactivate`
+  - outcome: `SUCCESS`
+  - entityType: `shift_pattern`
+  - canonical endpoint metadata: `/v0/hr/shifts/patterns/:patternId/deactivate`
+- `HR_SHIFT_INSTANCE_CREATED`
+  - actionKey: `hr.shift.instance.create`
+  - outcome: `SUCCESS`
+  - entityType: `shift_instance`
+  - canonical endpoint metadata: `/v0/hr/shifts/instances`
+- `HR_SHIFT_INSTANCE_UPDATED`
+  - actionKey: `hr.shift.instance.update`
+  - outcome: `SUCCESS`
+  - entityType: `shift_instance`
+  - canonical endpoint metadata: `/v0/hr/shifts/instances/:instanceId`
+- `HR_SHIFT_INSTANCE_CANCELLED`
+  - actionKey: `hr.shift.instance.cancel`
+  - outcome: `SUCCESS`
+  - entityType: `shift_instance`
+  - canonical endpoint metadata: `/v0/hr/shifts/instances/:instanceId/cancel`
+- `HR_SHIFT_COMMAND_REJECTED`
+  - actionKey: `hr.shift.*`
+  - outcome: `REJECTED`
+  - entityType: `shift_pattern` or `shift_instance`
+  - reasonCode mirrors shift error code (for example `SHIFT_TIME_RANGE_INVALID`, `SHIFT_OVERLAP_CONFLICT`)
+- `HR_WORK_REVIEW_EVALUATION_REQUESTED`
+  - actionKey: originating `hr.shift.*` command
+  - outcome: `SUCCESS`
+  - entityType: `work_review_evaluation_trigger`
+  - payload carries shift membership/branch/date context for downstream shift-vs-attendance evaluation orchestration
+  - producer + reliability path is covered in `src/integration-tests/v0-shift.int.test.ts`
+
 ### OrgAccount / Branch
 - `ORG_BRANCH_ACTIVATION_INITIATED`
   - actionKey: `org.branch.activation.initiate`

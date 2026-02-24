@@ -11,7 +11,7 @@ Implementation status:
   - sync change/checkpoint schema migrations
   - cursor progression and scope validation.
   - producer integrations live for:
-    - branch-wide: `policy`, `cashSession`, `menu`, `discount`, `inventory`
+    - branch-wide: `policy`, `cashSession`, `menu`, `discount`, `inventory`, `saleOrder`, `shift`
     - account-scoped: `attendance`, `operationalNotification`
   - tenant-wide menu writes are fanned out to all active branch streams.
   - tenant-wide inventory catalog writes are fanned out to all active branch streams.
@@ -47,7 +47,9 @@ type SyncModuleKey =
   | "discount"
   | "inventory"
   | "cashSession"
+  | "saleOrder"
   | "attendance"
+  | "shift"
   | "operationalNotification";
 
 type SyncOperation = "UPSERT" | "TOMBSTONE";

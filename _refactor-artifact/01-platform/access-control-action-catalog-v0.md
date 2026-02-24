@@ -28,6 +28,13 @@ Legend:
 | `hr.staff.list` | TENANT | READ | OWNER, ADMIN, MANAGER | - |
 | `hr.staff.read` | TENANT | READ | OWNER, ADMIN, MANAGER | - |
 | `hr.staff.branch.list` | TENANT | READ | OWNER, ADMIN, MANAGER | - |
+| `hr.shift.pattern.create` | TENANT | WRITE | OWNER, ADMIN, MANAGER | - |
+| `hr.shift.pattern.update` | TENANT | WRITE | OWNER, ADMIN, MANAGER | - |
+| `hr.shift.pattern.deactivate` | TENANT | WRITE | OWNER, ADMIN, MANAGER | - |
+| `hr.shift.instance.create` | TENANT | WRITE | OWNER, ADMIN, MANAGER | - |
+| `hr.shift.instance.update` | TENANT | WRITE | OWNER, ADMIN, MANAGER | - |
+| `hr.shift.instance.cancel` | TENANT | WRITE | OWNER, ADMIN, MANAGER | - |
+| `hr.shift.schedule.read` | TENANT | READ | OWNER, ADMIN, MANAGER | - |
 | `org.tenant.provision` | GLOBAL | WRITE | - | - |
 | `tenant.provision` (compat alias) | GLOBAL | WRITE | - | - |
 | `attendance.checkIn` | BRANCH | WRITE | - | `module.workforce` |
@@ -99,6 +106,15 @@ Legend:
 | GET | `/hr/staff` | `hr.staff.list` | `token` | - |
 | GET | `/hr/staff/:id` | `hr.staff.read` | `token` | - |
 | GET | `/hr/staff/memberships/:id/branches` | `hr.staff.branch.list` | `token` | - |
+| GET | `/hr/shifts/schedule` | `hr.shift.schedule.read` | `token` | - |
+| GET | `/hr/shifts/memberships/:id` | `hr.shift.schedule.read` | `token` | - |
+| GET | `/hr/shifts/instances/:id` | `hr.shift.schedule.read` | `token` | - |
+| POST | `/hr/shifts/patterns` | `hr.shift.pattern.create` | `token` | - |
+| PATCH | `/hr/shifts/patterns/:id` | `hr.shift.pattern.update` | `token` | - |
+| POST | `/hr/shifts/patterns/:id/deactivate` | `hr.shift.pattern.deactivate` | `token` | - |
+| POST | `/hr/shifts/instances` | `hr.shift.instance.create` | `token` | - |
+| PATCH | `/hr/shifts/instances/:id` | `hr.shift.instance.update` | `token` | - |
+| POST | `/hr/shifts/instances/:id/cancel` | `hr.shift.instance.cancel` | `token` | - |
 | POST | `/auth/tenants` | `org.tenant.provision` | - | - |
 | POST | `/org/tenants` | `org.tenant.provision` | - | - |
 | POST | `/attendance/check-in` | `attendance.checkIn` | `token` | `token` |

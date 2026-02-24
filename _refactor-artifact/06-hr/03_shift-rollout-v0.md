@@ -1,6 +1,6 @@
 # Shift Module Rollout (v0)
 
-Status: In progress (Phase 2 baseline scaffolded)  
+Status: Completed (v0 online lane baseline, Phase 0 deferred)  
 Owner context: HR
 
 ## Goal
@@ -56,9 +56,9 @@ Implement shift planning as a first-class HR module for planned work expectation
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 Offline-first DoD gate | In progress | Write replay mapping and pull-sync/tombstone entity plan are still pending implementation-phase lock. |
+| 0 Offline-first DoD gate | Deferred | Offline push-sync command mapping for shift (`/v0/sync/push`) is deferred to push-sync expansion; pull-sync entity exposure is already live for `shift_pattern` and `shift_instance`. |
 | 1 Boundary + Contract lock | Completed | Locked in `_refactor-artifact/02-boundary/shift-boundary-v0.md` and `api_contract/shift-v0.md`. |
-| 2 Data model + repositories | In progress (baseline scaffolded) | Added `migrations/042_create_v0_shift_tables.sql` and `src/modules/v0/hr/shift/infra/repository.ts` as initial data-model + repository baseline. |
-| 3 Commands/queries + access control | Not started | |
-| 4 Integration + reliability | Not started | |
-| 5 Close-out | Not started | |
+| 2 Data model + repositories | Completed (baseline) | Added `migrations/042_create_v0_shift_tables.sql` and repository baseline in `src/modules/v0/hr/shift/infra/repository.ts`. |
+| 3 Commands/queries + access control | Completed (baseline) | Added canonical `/v0/hr/shifts/*` write/query routes, idempotent write contract, outbox/audit/sync append, and access-control action/route mappings. |
+| 4 Integration + reliability | Completed (baseline) | Added deterministic rejected-outcome persistence (`HR_SHIFT_COMMAND_REJECTED`), rollback coverage for outbox failure, shift pull-sync convergence checks, and work-review trigger outbox emission (`HR_WORK_REVIEW_EVALUATION_REQUESTED`). |
+| 5 Close-out | Completed | Outbox catalog updated for shift event family and API/frontend notes finalized in `api_contract/shift-v0.md`. |

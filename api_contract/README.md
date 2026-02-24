@@ -28,6 +28,7 @@ This folder contains the **frontend-facing HTTP API contracts** for this backend
 - `api_contract/staff-management-v0.md`
 - `api_contract/attendance-v0.md`
 - `api_contract/shift-v0.md`
+- `api_contract/work-review-v0.md`
 - `api_contract/tenant-v0.md`
 - `api_contract/branch-v0.md`
 - `api_contract/access-control-v0.md`
