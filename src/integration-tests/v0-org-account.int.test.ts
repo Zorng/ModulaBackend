@@ -173,6 +173,42 @@ describe("v0 org account (phase F1 scaffold)", () => {
       khqrReceiverName: "Main Branch Receiver",
     });
 
+    const configuredAttendanceLocation = await request(app)
+      .patch("/v0/org/branch/current/attendance-location")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .send({
+        attendanceLocationVerificationMode: "checkin_only",
+        workplaceLocation: {
+          latitude: 11.5564,
+          longitude: 104.9282,
+          radiusMeters: 120,
+        },
+      });
+    expect(configuredAttendanceLocation.status).toBe(200);
+    expect(configuredAttendanceLocation.body.data).toMatchObject({
+      branchId,
+      attendanceLocationVerificationMode: "checkin_only",
+      workplaceLocation: {
+        latitude: 11.5564,
+        longitude: 104.9282,
+        radiusMeters: 120,
+      },
+    });
+
+    const branchProfileAfterLocationUpdate = await request(app)
+      .get("/v0/org/branch/current")
+      .set("Authorization", `Bearer ${branchToken}`);
+    expect(branchProfileAfterLocationUpdate.status).toBe(200);
+    expect(branchProfileAfterLocationUpdate.body.data).toMatchObject({
+      branchId,
+      attendanceLocationVerificationMode: "checkin_only",
+      workplaceLocation: {
+        latitude: 11.5564,
+        longitude: 104.9282,
+        radiusMeters: 120,
+      },
+    });
+
     await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
   });
 

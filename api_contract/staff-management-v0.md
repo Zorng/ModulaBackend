@@ -53,7 +53,7 @@ type StaffMembershipBranchAssignmentResult = {
 Path params:
 - `membershipId` (UUID)
 
-Body:
+Body:m
 
 ```json
 {

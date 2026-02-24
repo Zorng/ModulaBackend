@@ -79,6 +79,29 @@ export function createV0BranchRouter(input: {
     }
   );
 
+  router.patch(
+    "/branch/current/attendance-location",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const actor = req.v0Auth;
+        if (!actor) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+        const body = asRecord(req.body);
+        const data = await input.service.setCurrentBranchAttendanceLocationSettings({
+          actor,
+          attendanceLocationVerificationMode: body.attendanceLocationVerificationMode,
+          workplaceLocation: body.workplaceLocation,
+        });
+        res.status(200).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
+      }
+    }
+  );
+
   router.post(
     "/branches/activation/initiate",
     requireV0Auth,

@@ -1,6 +1,6 @@
 import { V0OrgAccountError, type OrgActorContext } from "../../common/error.js";
 import type { FirstBranchPaymentVerifier } from "./payment-verifier.js";
-import { V0BranchRepository } from "../infra/repository.js";
+import { V0BranchRepository, type BranchProfileRow } from "../infra/repository.js";
 
 export class V0BranchService {
   private readonly branchCountPerTenantHard = parsePositiveInt(
@@ -33,16 +33,7 @@ export class V0BranchService {
       tenantId: scope.tenantId,
     });
 
-    return branches.map((branch) => ({
-      branchId: branch.id,
-      tenantId: branch.tenant_id,
-      branchName: branch.name,
-      branchAddress: branch.address,
-      contactNumber: branch.contact_phone,
-      khqrReceiverAccountId: branch.khqr_receiver_account_id,
-      khqrReceiverName: branch.khqr_receiver_name,
-      status: branch.status,
-    }));
+    return branches.map((branch) => mapBranchProfile(branch));
   }
 
   async getCurrentBranchProfile(input: { actor: OrgActorContext }) {
@@ -64,16 +55,7 @@ export class V0BranchService {
       throw new V0OrgAccountError(404, "branch not found");
     }
 
-    return {
-      branchId: branch.id,
-      tenantId: branch.tenant_id,
-      branchName: branch.name,
-      branchAddress: branch.address,
-      contactNumber: branch.contact_phone,
-      khqrReceiverAccountId: branch.khqr_receiver_account_id,
-      khqrReceiverName: branch.khqr_receiver_name,
-      status: branch.status,
-    };
+    return mapBranchProfile(branch);
   }
 
   async setCurrentBranchKhqrReceiver(input: {
@@ -111,16 +93,40 @@ export class V0BranchService {
       throw new V0OrgAccountError(404, "branch not found");
     }
 
-    return {
-      branchId: updated.id,
-      tenantId: updated.tenant_id,
-      branchName: updated.name,
-      branchAddress: updated.address,
-      contactNumber: updated.contact_phone,
-      khqrReceiverAccountId: updated.khqr_receiver_account_id,
-      khqrReceiverName: updated.khqr_receiver_name,
-      status: updated.status,
-    };
+    return mapBranchProfile(updated);
+  }
+
+  async setCurrentBranchAttendanceLocationSettings(input: {
+    actor: OrgActorContext;
+    attendanceLocationVerificationMode: unknown;
+    workplaceLocation: unknown;
+  }) {
+    const scope = assertBranchContext(input.actor);
+    const hasAccess = await this.repo.hasActiveBranchAssignment({
+      accountId: scope.accountId,
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+    });
+    if (!hasAccess) {
+      throw new V0OrgAccountError(403, "no active branch assignment for branch");
+    }
+
+    const mode = parseAttendanceLocationVerificationMode(input.attendanceLocationVerificationMode);
+    const workplace = parseWorkplaceLocation(input.workplaceLocation);
+
+    const updated = await this.repo.setBranchAttendanceLocationSettings({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      attendanceLocationVerificationMode: mode,
+      workplaceLatitude: workplace?.latitude ?? null,
+      workplaceLongitude: workplace?.longitude ?? null,
+      workplaceRadiusMeters: workplace?.radiusMeters ?? null,
+    });
+    if (!updated) {
+      throw new V0OrgAccountError(404, "branch not found");
+    }
+
+    return mapBranchProfile(updated);
   }
 
   async initiateFirstBranchActivation(input: {
@@ -395,6 +401,30 @@ function mapPendingDraft(
   };
 }
 
+function mapBranchProfile(branch: BranchProfileRow) {
+  return {
+    branchId: branch.id,
+    tenantId: branch.tenant_id,
+    branchName: branch.name,
+    branchAddress: branch.address,
+    contactNumber: branch.contact_phone,
+    khqrReceiverAccountId: branch.khqr_receiver_account_id,
+    khqrReceiverName: branch.khqr_receiver_name,
+    attendanceLocationVerificationMode: branch.attendance_location_verification_mode,
+    workplaceLocation:
+      branch.workplace_latitude !== null &&
+      branch.workplace_longitude !== null &&
+      branch.workplace_radius_meters !== null
+        ? {
+            latitude: branch.workplace_latitude,
+            longitude: branch.workplace_longitude,
+            radiusMeters: branch.workplace_radius_meters,
+          }
+        : null,
+    status: branch.status,
+  };
+}
+
 function resolveBranchActivationAmountUsd(
   activationType: "FIRST_BRANCH" | "ADDITIONAL_BRANCH"
 ): string {
@@ -439,6 +469,103 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
 function normalizeOptionalString(value: unknown): string | null {
   const normalized = String(value ?? "").trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function parseAttendanceLocationVerificationMode(
+  input: unknown
+): "disabled" | "checkin_only" | "checkin_and_checkout" {
+  const normalized = String(input ?? "")
+    .trim()
+    .toLowerCase();
+  if (
+    normalized !== "disabled" &&
+    normalized !== "checkin_only" &&
+    normalized !== "checkin_and_checkout"
+  ) {
+    throw new V0OrgAccountError(
+      422,
+      "attendanceLocationVerificationMode must be disabled|checkin_only|checkin_and_checkout",
+      "ORG_BRANCH_ATTENDANCE_LOCATION_MODE_INVALID"
+    );
+  }
+  return normalized;
+}
+
+function parseWorkplaceLocation(input: unknown): {
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+} | null {
+  if (input === null || input === undefined) {
+    return null;
+  }
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new V0OrgAccountError(
+      422,
+      "workplaceLocation must be an object or null",
+      "ORG_BRANCH_WORKPLACE_LOCATION_INVALID"
+    );
+  }
+
+  const body = input as Record<string, unknown>;
+  const latitude = parseCoordinate(
+    body.latitude,
+    -90,
+    90,
+    "workplaceLocation.latitude must be in range [-90, 90]"
+  );
+  const longitude = parseCoordinate(
+    body.longitude,
+    -180,
+    180,
+    "workplaceLocation.longitude must be in range [-180, 180]"
+  );
+  const radiusMeters = parsePositiveIntegerInRange(
+    body.radiusMeters,
+    5,
+    5000,
+    "workplaceLocation.radiusMeters must be in range [5, 5000]"
+  );
+
+  return {
+    latitude,
+    longitude,
+    radiusMeters,
+  };
+}
+
+function parseCoordinate(
+  value: unknown,
+  min: number,
+  max: number,
+  message: string
+): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    throw new V0OrgAccountError(
+      422,
+      message,
+      "ORG_BRANCH_WORKPLACE_COORDINATE_INVALID"
+    );
+  }
+  return parsed;
+}
+
+function parsePositiveIntegerInRange(
+  value: unknown,
+  min: number,
+  max: number,
+  message: string
+): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new V0OrgAccountError(
+      422,
+      message,
+      "ORG_BRANCH_WORKPLACE_RADIUS_INVALID"
+    );
+  }
+  return parsed;
 }
 
 function assertTenantContext(actor: OrgActorContext): {

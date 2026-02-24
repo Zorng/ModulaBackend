@@ -20,6 +20,10 @@ Implement shift planning as a first-class HR module for planned work expectation
 - Read models for branch/team schedule views
 - Events and contracts needed by work-review evaluation
 
+## Current capability note
+
+- `_refactor-artifact/06-hr/03_shift-capability-and-limitations-v0.md`
+
 ## Execution phases
 
 ### Phase 0 — Offline-first DoD gate

@@ -95,6 +95,24 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     entitlementKey: "module.workforce",
   },
+  "attendance.forceEnd": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "module.workforce",
+  },
+  "attendance.listBranch": {
+    scope: "BRANCH",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "module.workforce",
+  },
+  "attendance.listTenant": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN"],
+    entitlementKey: "module.workforce",
+  },
   "org.tenant.current.read": { scope: "TENANT", effect: "READ" },
   "org.branches.accessible.read": { scope: "TENANT", effect: "READ" },
   "org.branch.current.read": { scope: "BRANCH", effect: "READ" },
@@ -103,6 +121,11 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
     entitlementKey: "core.pos",
+  },
+  "org.branch.current.attendanceLocation.update": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
   },
   "org.branch.activation.initiate": {
     scope: "TENANT",

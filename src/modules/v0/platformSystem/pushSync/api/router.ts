@@ -392,6 +392,7 @@ async function applyOperation(input: {
         const record = await attendanceService.checkIn({
           actor: input.actor,
           occurredAt: occurredAt ?? undefined,
+          location: input.operation.payload.location,
         });
         return { status: "APPLIED", resultRefId: record.id };
       }
@@ -400,6 +401,7 @@ async function applyOperation(input: {
         const record = await attendanceService.checkOut({
           actor: input.actor,
           occurredAt: occurredAt ?? undefined,
+          location: input.operation.payload.location,
         });
         return { status: "APPLIED", resultRefId: record.id };
       }

@@ -10,6 +10,13 @@ export type BranchProfileRow = {
   contact_phone: string | null;
   khqr_receiver_account_id: string | null;
   khqr_receiver_name: string | null;
+  attendance_location_verification_mode:
+    | "disabled"
+    | "checkin_only"
+    | "checkin_and_checkout";
+  workplace_latitude: number | null;
+  workplace_longitude: number | null;
+  workplace_radius_meters: number | null;
   status: string;
 };
 
@@ -103,6 +110,10 @@ export class V0BranchRepository {
          contact_phone,
          khqr_receiver_account_id,
          khqr_receiver_name,
+         attendance_location_verification_mode,
+         workplace_latitude::FLOAT8 AS workplace_latitude,
+         workplace_longitude::FLOAT8 AS workplace_longitude,
+         workplace_radius_meters,
          status`,
       [input.tenantId, input.branchName]
     );
@@ -379,6 +390,10 @@ export class V0BranchRepository {
          contact_phone,
          khqr_receiver_account_id,
          khqr_receiver_name,
+         attendance_location_verification_mode,
+         workplace_latitude::FLOAT8 AS workplace_latitude,
+         workplace_longitude::FLOAT8 AS workplace_longitude,
+         workplace_radius_meters,
          status
        FROM branches
        WHERE id = $1
@@ -409,12 +424,58 @@ export class V0BranchRepository {
          contact_phone,
          khqr_receiver_account_id,
          khqr_receiver_name,
+         attendance_location_verification_mode,
+         workplace_latitude::FLOAT8 AS workplace_latitude,
+         workplace_longitude::FLOAT8 AS workplace_longitude,
+         workplace_radius_meters,
          status`,
       [
         input.branchId,
         input.tenantId,
         input.khqrReceiverAccountId,
         input.khqrReceiverName,
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async setBranchAttendanceLocationSettings(input: {
+    tenantId: string;
+    branchId: string;
+    attendanceLocationVerificationMode: "disabled" | "checkin_only" | "checkin_and_checkout";
+    workplaceLatitude: number | null;
+    workplaceLongitude: number | null;
+    workplaceRadiusMeters: number | null;
+  }): Promise<BranchProfileRow | null> {
+    const result = await this.db.query<BranchProfileRow>(
+      `UPDATE branches
+       SET attendance_location_verification_mode = $3,
+           workplace_latitude = $4::NUMERIC,
+           workplace_longitude = $5::NUMERIC,
+           workplace_radius_meters = $6,
+           updated_at = NOW()
+       WHERE id = $1
+         AND tenant_id = $2
+       RETURNING
+         id,
+         tenant_id,
+         name,
+         address,
+         contact_phone,
+         khqr_receiver_account_id,
+         khqr_receiver_name,
+         attendance_location_verification_mode,
+         workplace_latitude::FLOAT8 AS workplace_latitude,
+         workplace_longitude::FLOAT8 AS workplace_longitude,
+         workplace_radius_meters,
+         status`,
+      [
+        input.branchId,
+        input.tenantId,
+        input.attendanceLocationVerificationMode,
+        input.workplaceLatitude,
+        input.workplaceLongitude,
+        input.workplaceRadiusMeters,
       ]
     );
     return result.rows[0] ?? null;
@@ -456,6 +517,10 @@ export class V0BranchRepository {
          b.contact_phone,
          b.khqr_receiver_account_id,
          b.khqr_receiver_name,
+         b.attendance_location_verification_mode,
+         b.workplace_latitude::FLOAT8 AS workplace_latitude,
+         b.workplace_longitude::FLOAT8 AS workplace_longitude,
+         b.workplace_radius_meters,
          b.status
        FROM v0_branch_assignments ba
        JOIN v0_tenant_memberships m ON m.id = ba.membership_id

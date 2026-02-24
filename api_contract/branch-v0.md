@@ -32,6 +32,12 @@ type BranchProfile = {
   contactNumber: string | null;
   khqrReceiverAccountId: string | null;
   khqrReceiverName: string | null;
+  attendanceLocationVerificationMode: "disabled" | "checkin_only" | "checkin_and_checkout";
+  workplaceLocation: {
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+  } | null;
   status: BranchStatus;
 };
 ```
@@ -66,6 +72,8 @@ Success `200`:
       "contactNumber": "+85512000009",
       "khqrReceiverAccountId": "khqr-receiver",
       "khqrReceiverName": "Main Branch Receiver",
+      "attendanceLocationVerificationMode": "disabled",
+      "workplaceLocation": null,
       "status": "ACTIVE"
     }
   ]
@@ -98,6 +106,8 @@ Success `200`:
     "contactNumber": "+85512000009",
     "khqrReceiverAccountId": "khqr-receiver",
     "khqrReceiverName": "Main Branch Receiver",
+    "attendanceLocationVerificationMode": "disabled",
+    "workplaceLocation": null,
     "status": "FROZEN"
   }
 }
@@ -137,6 +147,8 @@ Success `200`:
     "contactNumber": "+85512000009",
     "khqrReceiverAccountId": "bakong-account-id",
     "khqrReceiverName": "Main Branch Receiver",
+    "attendanceLocationVerificationMode": "disabled",
+    "workplaceLocation": null,
     "status": "ACTIVE"
   }
 }
@@ -148,7 +160,63 @@ Errors:
 - `422` `ORG_BRANCH_KHQR_RECEIVER_INVALID`
 - `404` branch not found
 
-### 4) Initiate branch activation draft (payment pending)
+### 4) Set current branch attendance location settings
+
+`PATCH /v0/org/branch/current/attendance-location`
+
+Body:
+```json
+{
+  "attendanceLocationVerificationMode": "checkin_only",
+  "workplaceLocation": {
+    "latitude": 11.5564,
+    "longitude": 104.9282,
+    "radiusMeters": 100
+  }
+}
+```
+
+Notes:
+- Branch context in token is required.
+- `attendanceLocationVerificationMode` accepts:
+  - `disabled`
+  - `checkin_only`
+  - `checkin_and_checkout`
+- `workplaceLocation` can be set to `null` to clear workplace geofence coordinates/radius.
+
+Success `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "branchId": "uuid",
+    "tenantId": "uuid",
+    "branchName": "Olympic",
+    "branchAddress": "Street 2004",
+    "contactNumber": "+85512000009",
+    "khqrReceiverAccountId": "bakong-account-id",
+    "khqrReceiverName": "Main Branch Receiver",
+    "attendanceLocationVerificationMode": "checkin_only",
+    "workplaceLocation": {
+      "latitude": 11.5564,
+      "longitude": 104.9282,
+      "radiusMeters": 100
+    },
+    "status": "ACTIVE"
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` `BRANCH_CONTEXT_REQUIRED` or `NO_BRANCH_ACCESS`
+- `422` `ORG_BRANCH_ATTENDANCE_LOCATION_MODE_INVALID`
+- `422` `ORG_BRANCH_WORKPLACE_LOCATION_INVALID`
+- `422` `ORG_BRANCH_WORKPLACE_COORDINATE_INVALID`
+- `422` `ORG_BRANCH_WORKPLACE_RADIUS_INVALID`
+- `404` branch not found
+
+### 5) Initiate branch activation draft (payment pending)
 
 `POST /v0/org/branches/activation/initiate`
 
@@ -226,7 +294,7 @@ Errors:
 - `429` branch activation rate-limited (`code = FAIRUSE_RATE_LIMITED`)
 - `422` missing `branchName`
 
-### 5) Confirm branch activation (payment-confirmed path)
+### 6) Confirm branch activation (payment-confirmed path)
 
 `POST /v0/org/branches/activation/confirm`
 

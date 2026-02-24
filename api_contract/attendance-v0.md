@@ -28,6 +28,23 @@ Base path: `/v0/attendance`
 ```ts
 type AttendanceType = "CHECK_IN" | "CHECK_OUT";
 
+type AttendanceObservedLocationInput = {
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number | null;
+  capturedAt?: string | null; // ISO datetime
+};
+
+type AttendanceLocationVerification = {
+  observedLatitude: number | null;
+  observedLongitude: number | null;
+  observedAccuracyMeters: number | null;
+  capturedAt: string | null; // ISO datetime
+  status: "MATCH" | "MISMATCH" | "UNKNOWN" | null;
+  reason: string | null;
+  distanceMeters: number | null;
+};
+
 type AttendanceRecord = {
   id: string;
   tenantId: string;
@@ -36,8 +53,34 @@ type AttendanceRecord = {
   type: AttendanceType;
   occurredAt: string; // ISO datetime
   createdAt: string; // ISO datetime
+  locationVerification: AttendanceLocationVerification | null;
+  forceEndedByAccountId: string | null;
+  forceEndReason: string | null;
+};
+
+type AttendanceScopedRecord = AttendanceRecord & {
+  account: {
+    id: string;
+    phone: string;
+    firstName: string | null;
+    lastName: string | null;
+  };
+  branch: {
+    id: string;
+    name: string;
+  };
 };
 ```
+
+Location verification behavior:
+- branch configuration controls verification mode:
+  - `disabled`
+  - `checkin_only`
+  - `checkin_and_checkout`
+- when verification is enabled and location evidence is missing/unusable, status is `UNKNOWN` (write still succeeds).
+- force-end metadata fields:
+  - normal check-in/check-out: `forceEndedByAccountId = null`, `forceEndReason = null`
+  - manager/admin force-end: both fields are populated.
 
 ## Endpoints
 
@@ -52,11 +95,17 @@ Body:
 
 ```json
 {
-  "occurredAt": "2026-02-13T08:00:00.000Z"
+  "occurredAt": "2026-02-13T08:00:00.000Z",
+  "location": {
+    "latitude": 11.5564,
+    "longitude": 104.9282,
+    "accuracyMeters": 12.5,
+    "capturedAt": "2026-02-13T07:59:58.000Z"
+  }
 }
 ```
 
-`occurredAt` is optional. If omitted, backend uses current time.
+`occurredAt` and `location` are optional. If omitted, backend uses current time and records no observed location.
 
 Success `201`:
 
@@ -70,7 +119,16 @@ Success `201`:
     "accountId": "uuid",
     "type": "CHECK_IN",
     "occurredAt": "2026-02-13T08:00:00.000Z",
-    "createdAt": "2026-02-13T08:00:01.000Z"
+    "createdAt": "2026-02-13T08:00:01.000Z",
+    "locationVerification": {
+      "observedLatitude": 11.5564,
+      "observedLongitude": 104.9282,
+      "observedAccuracyMeters": 12.5,
+      "capturedAt": "2026-02-13T07:59:58.000Z",
+      "status": "MATCH",
+      "reason": null,
+      "distanceMeters": 8.21
+    }
   }
 }
 ```
@@ -85,6 +143,7 @@ Errors:
 - `409` `IDEMPOTENCY_IN_PROGRESS` (same key currently being processed)
 - `409` already checked in
 - `422` invalid `occurredAt`
+- `422` invalid location payload (`location`, `location.latitude`, `location.longitude`, `location.accuracyMeters`, `location.capturedAt`)
 
 ### 2) Check out
 
@@ -97,11 +156,16 @@ Body:
 
 ```json
 {
-  "occurredAt": "2026-02-13T17:00:00.000Z"
+  "occurredAt": "2026-02-13T17:00:00.000Z",
+  "location": {
+    "latitude": 11.5565,
+    "longitude": 104.9281,
+    "accuracyMeters": 9.3
+  }
 }
 ```
 
-`occurredAt` is optional. If omitted, backend uses current time.
+`occurredAt` and `location` are optional. If omitted, backend uses current time and records no observed location.
 
 Success `201`:
 
@@ -115,7 +179,16 @@ Success `201`:
     "accountId": "uuid",
     "type": "CHECK_OUT",
     "occurredAt": "2026-02-13T17:00:00.000Z",
-    "createdAt": "2026-02-13T17:00:01.000Z"
+    "createdAt": "2026-02-13T17:00:01.000Z",
+    "locationVerification": {
+      "observedLatitude": 11.5565,
+      "observedLongitude": 104.9281,
+      "observedAccuracyMeters": 9.3,
+      "capturedAt": "2026-02-13T17:00:00.000Z",
+      "status": "MATCH",
+      "reason": null,
+      "distanceMeters": 7.64
+    }
   }
 }
 ```
@@ -130,6 +203,7 @@ Errors:
 - `409` `IDEMPOTENCY_IN_PROGRESS`
 - `409` no active check-in
 - `422` invalid `occurredAt`
+- `422` invalid location payload (`location`, `location.latitude`, `location.longitude`, `location.accuracyMeters`, `location.capturedAt`)
 
 ### 3) List own attendance
 
@@ -151,7 +225,8 @@ Success `200`:
       "accountId": "uuid",
       "type": "CHECK_OUT",
       "occurredAt": "2026-02-13T17:00:00.000Z",
-      "createdAt": "2026-02-13T17:00:01.000Z"
+      "createdAt": "2026-02-13T17:00:01.000Z",
+      "locationVerification": null
     }
   ]
 }
@@ -164,3 +239,121 @@ Errors:
 - `401` missing/invalid access token
 - `403` `TENANT_CONTEXT_REQUIRED` or `BRANCH_CONTEXT_REQUIRED`
 - `403` `NO_MEMBERSHIP` or `NO_BRANCH_ACCESS`
+
+### 4) Force end work (manager/admin)
+
+`POST /v0/attendance/force-end`
+
+Headers:
+- `Idempotency-Key: <client generated key>`
+
+Body:
+
+```json
+{
+  "targetAccountId": "uuid",
+  "reason": "cashier forgot to check out",
+  "occurredAt": "2026-02-13T17:30:00.000Z",
+  "location": {
+    "latitude": 11.5565,
+    "longitude": 104.9281,
+    "accuracyMeters": 10.1
+  }
+}
+```
+
+Success `201`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "tenantId": "uuid",
+    "branchId": "uuid",
+    "accountId": "uuid",
+    "type": "CHECK_OUT",
+    "occurredAt": "2026-02-13T17:30:00.000Z",
+    "createdAt": "2026-02-13T17:30:01.000Z",
+    "locationVerification": null,
+    "forceEndedByAccountId": "uuid",
+    "forceEndReason": "cashier forgot to check out"
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` `TENANT_CONTEXT_REQUIRED` or `BRANCH_CONTEXT_REQUIRED`
+- `403` `NO_MEMBERSHIP` or `NO_BRANCH_ACCESS`
+- `403` role deny (manager/admin/owner only)
+- `403` `TENANT_NOT_ACTIVE` or `SUBSCRIPTION_FROZEN` or `BRANCH_FROZEN`
+- `422` `IDEMPOTENCY_KEY_REQUIRED`
+- `409` `IDEMPOTENCY_CONFLICT`
+- `409` `IDEMPOTENCY_IN_PROGRESS`
+- `422` `targetAccountId` invalid
+- `422` `reason` missing/invalid
+- `409` target has no active check-in
+
+### 5) List branch attendance (manager/admin)
+
+`GET /v0/attendance/branch?accountId=<uuid>&occurredFrom=<iso>&occurredTo=<iso>&limit=50&offset=0`
+
+Notes:
+- Branch context in token is required.
+- `accountId`, `occurredFrom`, `occurredTo`, `limit`, and `offset` are optional.
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "tenantId": "uuid",
+      "branchId": "uuid",
+      "accountId": "uuid",
+      "type": "CHECK_IN",
+      "occurredAt": "2026-02-13T08:00:00.000Z",
+      "createdAt": "2026-02-13T08:00:01.000Z",
+      "locationVerification": null,
+      "account": {
+        "id": "uuid",
+        "phone": "+85512000001",
+        "firstName": "Sok",
+        "lastName": "Dara"
+      },
+      "branch": {
+        "id": "uuid",
+        "name": "Main Branch"
+      }
+    }
+  ]
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` `TENANT_CONTEXT_REQUIRED` or `BRANCH_CONTEXT_REQUIRED`
+- `403` `NO_MEMBERSHIP` or `NO_BRANCH_ACCESS`
+- `403` role deny (manager/admin/owner only)
+- `422` invalid `accountId`, `occurredFrom`, `occurredTo`, or date range
+
+### 6) List tenant attendance (admin/owner)
+
+`GET /v0/attendance/tenant?branchId=<uuid>&accountId=<uuid>&occurredFrom=<iso>&occurredTo=<iso>&limit=50&offset=0`
+
+Notes:
+- Tenant context in token is required.
+- `branchId`, `accountId`, `occurredFrom`, `occurredTo`, `limit`, and `offset` are optional.
+
+Success `200`:
+- Same response shape as branch list (`AttendanceScopedRecord[]`).
+
+Errors:
+- `401` missing/invalid access token
+- `403` `TENANT_CONTEXT_REQUIRED`
+- `403` `NO_MEMBERSHIP`
+- `403` role deny (admin/owner only)
+- `422` invalid `branchId`, `accountId`, `occurredFrom`, `occurredTo`, or date range
