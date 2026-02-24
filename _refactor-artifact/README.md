@@ -17,11 +17,14 @@ This folder tracks implementation/refactor plans and execution notes for `/v0`.
 - `05-pos/`
   - POS module sequencing and per-module rollout trackers
   - files are prefixed with build-order numbers (`00_`, `01_`, ... `10_`)
+- `06-hr/`
+  - HR module sequencing and per-module rollout trackers
+  - files are prefixed with build-order numbers (`00_`, `01_`, ... `04_`)
 - `90-archive/`
   - superseded/closed artifacts kept for history
 
 ## Rules
 
-- New artifact files must use `kebab-case.md`.
+- New artifact files should use `kebab-case.md`; ordered rollout trackers may use numeric prefixes (`00_name.md`).
 - New artifacts should be registered in `00-index.md`.
 - If an artifact is superseded, move it to `90-archive/` and note replacement in `00-index.md`.

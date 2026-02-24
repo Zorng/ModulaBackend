@@ -27,6 +27,11 @@
 | OrgAccount | OrgAccount Overhaul + POS Readiness | In Progress | `_refactor-artifact/03-orgaccount/orgaccount-overhaul-pos-readiness.md` |
 | OrgAccount | Branch Billable Workspaces Rollout v0 | Completed | `_refactor-artifact/03-orgaccount/branch-billable-workspaces-rollout-v0.md` |
 | Auth | SaaS Multi-Tenant Overhaul | Completed | `_refactor-artifact/04-auth/saas-multi-tenant-overhaul.md` |
+| HR | HR Module Build Order v0 | Active execution | `_refactor-artifact/06-hr/00_hr-module-build-order-v0.md` |
+| HR | StaffManagement Rollout v0 | In progress (baseline live) | `_refactor-artifact/06-hr/01_staff-management-rollout-v0.md` |
+| HR | Attendance Rollout v0 | In progress (baseline live) | `_refactor-artifact/06-hr/02_attendance-rollout-v0.md` |
+| HR | Shift Rollout v0 | Not started | `_refactor-artifact/06-hr/03_shift-rollout-v0.md` |
+| HR | Work Review Rollout v0 | Not started | `_refactor-artifact/06-hr/04_work-review-rollout-v0.md` |
 | POS | POS Module Build Order v0 | Active execution | `_refactor-artifact/05-pos/00_pos-module-build-order-v0.md` |
 | POS | Offline-First DoD Template v0 | Template | `_refactor-artifact/05-pos/00_offline-first-dod-template-v0.md` |
 | POS | Policy Rollout v0 | Completed | `_refactor-artifact/05-pos/01_policy-rollout-v0.md` |
@@ -42,8 +47,9 @@
 
 ## Next Recommended Artifact
 
-- Continue sale-order remodel execution in `_refactor-artifact/05-pos/06_sale-order-rollout-v0.md` with `_refactor-artifact/05-pos/06_sale-order-checkout-remodel-spec-v0.md` as source-of-truth.
-- Start reporting rollout boundary/phase work in `_refactor-artifact/05-pos/08_reporting-rollout-v0.md` after sale-order remodel checkpoints are locked.
+- Start HR implementation from `_refactor-artifact/06-hr/01_staff-management-rollout-v0.md` (Phase 0 and Phase 1 lock) using `_refactor-artifact/06-hr/00_hr-module-build-order-v0.md` as sequence guard.
+- Continue attendance expansion in `_refactor-artifact/06-hr/02_attendance-rollout-v0.md` after StaffManagement contract/read surface is locked.
+- Keep POS sale-order remodel work paused/parallelized until HR command/event surfaces needed by notifications are stabilized.
 
 ## Filename Redirects
 
