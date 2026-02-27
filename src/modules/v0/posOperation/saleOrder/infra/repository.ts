@@ -6,6 +6,7 @@ export type V0OrderTicketStatus = "OPEN" | "CHECKED_OUT" | "CANCELLED";
 export type V0SaleStatus = "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
 export type V0SalePaymentMethod = "CASH" | "KHQR";
 export type V0TenderCurrency = "USD" | "KHR";
+export type V0SaleType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
 export type V0VoidRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type V0OrderFulfillmentBatchStatus =
   | "PENDING"
@@ -75,6 +76,7 @@ export type V0SaleRow = {
   tenant_id: string;
   branch_id: string;
   order_ticket_id: string | null;
+  sale_type: V0SaleType;
   status: V0SaleStatus;
   payment_method: V0SalePaymentMethod;
   tender_currency: V0TenderCurrency;
@@ -193,6 +195,7 @@ const SALE_SELECT = `
   tenant_id,
   branch_id,
   order_ticket_id,
+  sale_type,
   status,
   payment_method,
   tender_currency,
@@ -607,6 +610,7 @@ export class V0SaleOrderRepository {
     tenantId: string;
     branchId: string;
     orderTicketId?: string | null;
+    saleType: V0SaleType;
     paymentMethod: V0SalePaymentMethod;
     tenderCurrency: V0TenderCurrency;
     tenderAmount: number;
@@ -660,7 +664,8 @@ export class V0SaleOrderRepository {
          discount_amount,
          vat_amount,
          total_amount,
-         paid_amount
+         paid_amount,
+         sale_type
        )
        VALUES (
          $1,
@@ -691,7 +696,8 @@ export class V0SaleOrderRepository {
          $26::NUMERIC(14,2),
          $27::NUMERIC(14,2),
          $28::NUMERIC(14,2),
-         $29::NUMERIC(14,2)
+         $29::NUMERIC(14,2),
+         $30
        )
        RETURNING ${SALE_SELECT}`,
       [
@@ -724,6 +730,7 @@ export class V0SaleOrderRepository {
         input.vatUsd,
         input.grandTotalUsd,
         input.paidAmount ?? 0,
+        input.saleType,
       ]
     );
     return result.rows[0];

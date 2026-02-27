@@ -102,6 +102,6 @@ Completion (2026-02-19):
 | inventory | In progress | Phase 0+1 locked (`05_inventory-rollout-v0.md`, `inventory-boundary-v0.md`, `api_contract/inventory-v0.md`) |
 | sale-order | In progress (remodel) | Legacy server-cart rollout artifacts were archived under `_refactor-artifact/05-pos/_archived/`. Active tracker is `_refactor-artifact/05-pos/06_sale-order-rollout-v0.md` with source-of-truth remodel spec `_refactor-artifact/05-pos/06_sale-order-checkout-remodel-spec-v0.md` and pending remodel contract sections in `api_contract/sale-order-v0.md` + `api_contract/khqr-payment-v0.md`. |
 | receipt | Completed | Phase 0-5 completed (`07_receipt-rollout-v0.md`, `receipt-boundary-v0.md`, `api_contract/receipt-v0.md`, receipt service/router + ACL mappings, sale-derived receipt reads, receipt-ready finalize response payload + reliability tests, close-out sync). |
-| reporting | Not started | read-only aggregation only |
+| reporting | Completed (v0 baseline) | Phase 1-5 completed (boundary/contract, data/repository scaffolding, runtime handlers + ACL, integration/reliability coverage, close-out sync). Attendance report routes remain intentionally degraded with `REPORT_NOT_AVAILABLE` until HR reporting data contracts close. |
 | pushSync | Not started | queue/replay over stable commands |
 | printing | Not started | best-effort operational effects |

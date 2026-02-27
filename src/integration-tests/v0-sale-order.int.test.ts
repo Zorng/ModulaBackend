@@ -728,6 +728,7 @@ describe("v0 sale-order integration", () => {
       .set("Idempotency-Key", `sale-order-khqr-checkout-${uniqueSuffix()}`)
       .send({
         paymentMethod: "KHQR",
+        saleType: "DELIVERY",
         tenderCurrency: "USD",
       });
     expect(checkout.status).toBe(200);
@@ -781,6 +782,7 @@ describe("v0 sale-order integration", () => {
     expect(finalizedSale.status).toBe(200);
     expect(finalizedSale.body.success).toBe(true);
     expect(finalizedSale.body.data.status).toBe("FINALIZED");
+    expect(finalizedSale.body.data.saleType).toBe("DELIVERY");
 
     const xReport = await request(app)
       .get(`/v0/cash/sessions/${cashSessionId}/x`)
@@ -880,6 +882,7 @@ describe("v0 sale-order integration", () => {
       .send({
         ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 2 }),
         paymentMethod: "CASH",
+        saleType: "TAKEAWAY",
         tenderCurrency: "USD",
         cashReceivedTenderAmount: 10,
       });
@@ -887,6 +890,7 @@ describe("v0 sale-order integration", () => {
     expect(finalized.status).toBe(200);
     expect(finalized.body.success).toBe(true);
     expect(finalized.body.data.status).toBe("FINALIZED");
+    expect(finalized.body.data.saleType).toBe("TAKEAWAY");
     expect(finalized.body.data.paymentMethod).toBe("CASH");
     expect(finalized.body.data.orderId).toBeNull();
 
@@ -1108,12 +1112,14 @@ describe("v0 sale-order integration", () => {
       .set("Idempotency-Key", `sale-order-cash-auto-finalize-checkout-${uniqueSuffix()}`)
       .send({
         paymentMethod: "CASH",
+        saleType: "TAKEAWAY",
         tenderCurrency: "USD",
         cashReceivedTenderAmount: 10,
       });
     expect(checkedOut.status).toBe(200);
     expect(checkedOut.body.success).toBe(true);
     expect(checkedOut.body.data.status).toBe("FINALIZED");
+    expect(checkedOut.body.data.saleType).toBe("TAKEAWAY");
     expect(typeof checkedOut.body.data.finalizedAt).toBe("string");
     expect(checkedOut.body.data.order.status).toBe("CHECKED_OUT");
     expect(checkedOut.body.data.receipt.statusDisplay).toBe("NORMAL");
@@ -1126,6 +1132,7 @@ describe("v0 sale-order integration", () => {
     expect(sale.status).toBe(200);
     expect(sale.body.success).toBe(true);
     expect(sale.body.data.status).toBe("FINALIZED");
+    expect(sale.body.data.saleType).toBe("TAKEAWAY");
     expect(typeof sale.body.data.finalizedAt).toBe("string");
   });
 
@@ -1185,6 +1192,7 @@ describe("v0 sale-order integration", () => {
       .set("Idempotency-Key", `sale-order-khqr-checkout-init-${uniqueSuffix()}`)
       .send({
         ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 1 }),
+        saleType: "DELIVERY",
         tenderCurrency: "USD",
         expiresInSeconds: 180,
       });
@@ -1209,6 +1217,7 @@ describe("v0 sale-order integration", () => {
     expect(confirmed.body.data.verificationStatus).toBe("CONFIRMED");
     expect(confirmed.body.data.saleFinalized).toBe(true);
     expect(confirmed.body.data.sale.status).toBe("FINALIZED");
+    expect(confirmed.body.data.sale.saleType).toBe("DELIVERY");
 
     const finalizedIntent = await pool.query<{ status: string; saleId: string | null }>(
       `SELECT status, sale_id AS "saleId"

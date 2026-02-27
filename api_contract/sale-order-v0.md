@@ -87,6 +87,7 @@ Body:
       "note": "Less ice"
     }
   ],
+  "saleType": "DINE_IN",
   "tenderCurrency": "USD",
   "cashReceivedTenderAmount": 10
 }
@@ -97,7 +98,7 @@ Response `200`:
 {
   "success": true,
   "data": {
-    "sale": { "id": "uuid", "status": "FINALIZED" },
+    "sale": { "id": "uuid", "status": "FINALIZED", "saleType": "DINE_IN" },
     "lines": [],
     "receipt": {
       "receiptId": "uuid",
@@ -127,6 +128,7 @@ Response `200`:
 Rules:
 - Server reprices from catalog/policy and ignores client price snapshots.
 - Atomic write: sale + sale lines + side effects (inventory/cash movement/outbox).
+- `saleType` defaults to `DINE_IN` when omitted.
 - For `paymentMethod = CASH`, `tenderAmount` must match grand total and `cashReceivedTenderAmount` must be `>= tenderAmount`.
 - Finalized responses include `data.receipt` for local immediate print (no extra receipt API call required).
 
@@ -145,6 +147,7 @@ Body:
       "note": null
     }
   ],
+  "saleType": "DINE_IN",
   "expiresInSeconds": 180
 }
 ```
@@ -184,6 +187,7 @@ Response `200`:
 Rules:
 - No `sale` row is created at initiate.
 - Intent stores immutable checkout snapshot for later finalization.
+- `saleType` defaults to `DINE_IN` when omitted and is applied when sale is materialized after KHQR confirmation.
 
 #### 3) Read intent status
 `GET /v0/checkout/khqr/intents/:intentId`
@@ -262,6 +266,7 @@ Content-Type: application/json
 type OrderStatus = "OPEN" | "CHECKED_OUT" | "CANCELLED";
 type SaleStatus = "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
 type VoidRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+type SaleType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
 
 type OrderItemModifierSelection = {
   groupId: string;
@@ -407,6 +412,7 @@ Body example (KHQR):
 ```json
 {
   "paymentMethod": "KHQR",
+  "saleType": "DELIVERY",
   "tenderCurrency": "USD",
   "tenderAmount": 8,
   "subtotalUsd": 8,
@@ -427,6 +433,7 @@ Response example (`200`):
     "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
     "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
     "status": "PENDING",
+    "saleType": "DELIVERY",
     "paymentMethod": "KHQR",
     "tenderCurrency": "USD",
     "tenderAmount": 8,
@@ -489,6 +496,7 @@ Response example (`200`):
 
 Rules:
 - requires open cash session (`SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION`)
+- `saleType` defaults to `DINE_IN` when omitted
 - `paymentMethod = CASH` settles and returns `sale.status = FINALIZED` in one command
 - `paymentMethod = KHQR` returns `sale.status = PENDING` until KHQR is confirmed
 

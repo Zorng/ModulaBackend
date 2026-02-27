@@ -421,6 +421,17 @@ Verification note:
 - print/reprint command outbox coverage is in `src/modules/v0/posOperation/receipt/api/router.ts`.
 - receipt module no longer emits `RECEIPT_CREATED`; receipt payload is sale-derived (`receiptId == saleId`) and delivered inline on sale finalize/KHQR confirm responses.
 
+### Reporting
+- Reporting query endpoints under `/v0/reports/*` are read-only and do **not** insert rows into `v0_command_outbox`.
+- Observational access logging is captured in `v0_audit_events` with:
+  - actionKey: `REPORT_VIEWED`
+  - outcome: `SUCCESS`
+  - entityType: `report`
+  - metadata carries report type + scope echo (`branchScope`, `branchId`, `from`, `to`, `timezone`)
+
+Verification note:
+- reporting read-path + scope/role enforcement coverage is in `src/integration-tests/v0-reporting.int.test.ts`.
+
 ### Offline Sync (foundation behavior note)
 - `pushSync.apply` is a replay orchestrator action and does not currently emit dedicated outbox event types.
 - it routes to underlying command handlers; domain events are emitted by those underlying commands when applicable.

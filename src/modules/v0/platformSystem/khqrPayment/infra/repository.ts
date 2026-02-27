@@ -18,6 +18,7 @@ export type V0KhqrVerificationStatus =
   | "NOT_FOUND";
 
 export type V0KhqrCurrency = "USD" | "KHR";
+export type V0SaleType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
 export type V0KhqrProvider = "BAKONG" | "STUB";
 export type V0PaymentIntentStatus =
   | "WAITING_FOR_PAYMENT"
@@ -112,6 +113,7 @@ export type V0SaleKhqrSnapshotRow = {
   id: string;
   tenant_id: string;
   branch_id: string;
+  sale_type: V0SaleType;
   status: "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
   payment_method: "CASH" | "KHQR";
   tender_currency: V0KhqrCurrency;
@@ -253,6 +255,7 @@ export class V0KhqrPaymentRepository {
          id,
          tenant_id,
          branch_id,
+         sale_type,
          status,
          payment_method,
          tender_currency,
@@ -333,6 +336,7 @@ export class V0KhqrPaymentRepository {
          id,
          tenant_id,
          branch_id,
+         sale_type,
          status,
          payment_method,
          tender_currency,
@@ -363,6 +367,7 @@ export class V0KhqrPaymentRepository {
   async createPendingSaleForKhqrIntent(input: {
     tenantId: string;
     branchId: string;
+    saleType: V0SaleType;
     tenderCurrency: V0KhqrCurrency;
     tenderAmount: number;
     khqrMd5: string;
@@ -414,7 +419,8 @@ export class V0KhqrPaymentRepository {
          discount_amount,
          vat_amount,
          total_amount,
-         paid_amount
+         paid_amount,
+         sale_type
        )
        VALUES (
          $1,
@@ -446,12 +452,14 @@ export class V0KhqrPaymentRepository {
          $11::NUMERIC(14,2),
          $13::NUMERIC(14,2),
          $15::NUMERIC(14,2),
-         $21::NUMERIC(14,2)
+         $21::NUMERIC(14,2),
+         $22
        )
        RETURNING
          id,
          tenant_id,
          branch_id,
+         sale_type,
          status,
          payment_method,
          tender_currency,
@@ -487,6 +495,7 @@ export class V0KhqrPaymentRepository {
         input.saleKhrRoundingMode,
         input.saleKhrRoundingGranularity,
         input.paidAmount,
+        input.saleType,
       ]
     );
     return result.rows[0];

@@ -44,7 +44,7 @@
 | POS | Inventory Rollout v0 | In progress | `_refactor-artifact/05-pos/05_inventory-rollout-v0.md` |
 | POS | Sale-Order Rollout v0 | Active (remodel planning) | `_refactor-artifact/05-pos/06_sale-order-rollout-v0.md` |
 | POS | Receipt Rollout v0 | Completed | `_refactor-artifact/05-pos/07_receipt-rollout-v0.md` |
-| POS | Reporting Rollout v0 | Not started | `_refactor-artifact/05-pos/08_reporting-rollout-v0.md` |
+| POS | Reporting Rollout v0 | Completed (v0 baseline) | `_refactor-artifact/05-pos/08_reporting-rollout-v0.md` |
 | POS | Push Sync Rollout v0 | Not started | `_refactor-artifact/05-pos/09_push-sync-rollout-v0.md` |
 | POS | Printing Rollout v0 | Not started | `_refactor-artifact/05-pos/10_printing-rollout-v0.md` |
 

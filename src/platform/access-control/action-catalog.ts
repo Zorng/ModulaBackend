@@ -686,6 +686,42 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "core.pos",
   },
+  "reports.sales.summary": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
+  "reports.sales.drillDown": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
+  "reports.restockSpend.summary": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
+  "reports.restockSpend.drillDown": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
+  "reports.attendance.summary": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
+  "reports.attendance.drillDown": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
   "operationalNotification.inbox.list": {
     scope: "BRANCH",
     effect: "READ",

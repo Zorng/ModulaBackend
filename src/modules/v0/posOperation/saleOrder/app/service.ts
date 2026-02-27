@@ -13,6 +13,7 @@ import {
   type V0SalePaymentMethod,
   type V0SaleRow,
   type V0SaleStatus,
+  type V0SaleType,
   type V0TenderCurrency,
   type V0VoidRequestRow,
 } from "../infra/repository.js";
@@ -53,6 +54,7 @@ type ItemDraft = {
 
 type CheckoutInput = {
   paymentMethod: V0SalePaymentMethod;
+  saleType: V0SaleType;
   tenderCurrency: V0TenderCurrency;
   tenderAmount: number;
   cashReceivedTenderAmount: number | null;
@@ -362,6 +364,7 @@ export class V0SaleOrderService {
       tenantId: actor.tenantId,
       branchId: actor.branchId,
       orderTicketId: order.id,
+      saleType: checkout.saleType,
       paymentMethod: checkout.paymentMethod,
       tenderCurrency: checkout.tenderCurrency,
       tenderAmount: checkout.tenderAmount,
@@ -836,6 +839,7 @@ export class V0SaleOrderService {
       tenantId: prepared.actor.tenantId,
       branchId: prepared.actor.branchId,
       orderTicketId: null,
+      saleType: prepared.checkout.saleType,
       paymentMethod: "CASH",
       tenderCurrency: prepared.checkout.tenderCurrency,
       tenderAmount: prepared.checkout.tenderAmount,
@@ -967,6 +971,7 @@ export class V0SaleOrderService {
       metadataSnapshot: {
         source: "checkout.khqr.initiate",
         itemCount: checkoutLinesSnapshot.length,
+        saleType: prepared.checkout.saleType,
       },
       preview: {
         itemCount: checkoutLinesSnapshot.length,
@@ -1375,6 +1380,7 @@ function assertNoDuplicateValues(values: readonly string[], message: string): vo
 
 function parseCheckoutBody(body: Record<string, unknown>, lines: V0OrderTicketLineRow[]): CheckoutInput {
   const paymentMethod = parsePaymentMethod(body.paymentMethod);
+  const saleType = parseSaleType(body.saleType);
   const saleFxRateKhrPerUsd = requirePositiveNumberOrDefault(
     body.saleFxRateKhrPerUsd,
     4100,
@@ -1472,6 +1478,7 @@ function parseCheckoutBody(body: Record<string, unknown>, lines: V0OrderTicketLi
 
   return {
     paymentMethod,
+    saleType,
     tenderCurrency,
     tenderAmount,
     cashReceivedTenderAmount,
@@ -1557,6 +1564,28 @@ function parseTenderCurrency(input: unknown): V0TenderCurrency {
     return "KHR";
   }
   throw new V0SaleOrderError(422, "tenderCurrency must be USD or KHR", "SALE_TENDER_CURRENCY_INVALID");
+}
+
+function parseSaleType(input: unknown): V0SaleType {
+  const raw = normalizeOptionalString(input);
+  if (!raw) {
+    return "DINE_IN";
+  }
+  const normalized = raw.toUpperCase().replaceAll("-", "_");
+  if (normalized === "DINE_IN") {
+    return "DINE_IN";
+  }
+  if (normalized === "TAKEAWAY" || normalized === "TAKE_AWAY") {
+    return "TAKEAWAY";
+  }
+  if (normalized === "DELIVERY") {
+    return "DELIVERY";
+  }
+  throw new V0SaleOrderError(
+    422,
+    "saleType must be DINE_IN, TAKEAWAY, or DELIVERY",
+    "SALE_TYPE_INVALID"
+  );
 }
 
 function parseFulfillmentStatus(input: unknown): V0OrderFulfillmentBatchStatus {
@@ -1755,6 +1784,7 @@ function mapSaleSummary(row: V0SaleRow): Record<string, unknown> {
   return {
     id: row.id,
     status: row.status,
+    saleType: row.sale_type,
     paymentMethod: row.payment_method,
     tenderCurrency: row.tender_currency,
     grandTotalUsd: row.grand_total_usd,
@@ -1773,6 +1803,7 @@ function mapSale(row: V0SaleRow): Record<string, unknown> {
     branchId: row.branch_id,
     orderId: row.order_ticket_id,
     status: row.status,
+    saleType: row.sale_type,
     paymentMethod: row.payment_method,
     tenderCurrency: row.tender_currency,
     tenderAmount: row.tender_amount,

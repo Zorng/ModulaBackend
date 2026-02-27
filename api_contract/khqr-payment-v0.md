@@ -52,7 +52,8 @@ Target response `200`:
     },
     "sale": {
       "id": "uuid",
-      "status": "FINALIZED"
+      "status": "FINALIZED",
+      "saleType": "DINE_IN"
     }
   }
 }
@@ -418,7 +419,8 @@ Success `200` (proof confirmed):
     },
     "sale": {
       "saleId": "uuid",
-      "status": "FINALIZED"
+      "status": "FINALIZED",
+      "saleType": "DINE_IN"
     },
     "receipt": {
       "receiptId": "uuid",
@@ -559,7 +561,8 @@ Success `200` (applied):
     },
     "sale": {
       "saleId": "uuid",
-      "status": "FINALIZED"
+      "status": "FINALIZED",
+      "saleType": "DINE_IN"
     }
   }
 }

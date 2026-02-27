@@ -3,6 +3,7 @@ import type {
   V0KhqrCurrency,
   V0KhqrPaymentAttemptRow,
   V0PaymentIntentRow,
+  V0SaleType,
   V0SaleKhqrLineSnapshotInput,
   V0SaleKhqrSnapshotRow,
   V0KhqrVerificationStatus,
@@ -45,6 +46,10 @@ type V0CheckoutIntentPricingSnapshot = {
   saleKhrRoundingEnabled: boolean;
   saleKhrRoundingMode: "NEAREST" | "UP" | "DOWN";
   saleKhrRoundingGranularity: 100 | 1000;
+};
+
+type V0CheckoutIntentMetadataSnapshot = {
+  saleType: V0SaleType;
 };
 
 export class V0KhqrPaymentError extends Error {
@@ -998,10 +1003,12 @@ export class V0KhqrPaymentService {
       input.intent
     );
     const pricing = parseCheckoutIntentPricingSnapshot(input.intent.pricing_snapshot);
+    const metadata = parseCheckoutIntentMetadataSnapshot(input.intent.metadata_snapshot);
 
     const createdSale = await this.repo.createPendingSaleForKhqrIntent({
       tenantId: input.intent.tenant_id,
       branchId: input.intent.branch_id,
+      saleType: metadata.saleType,
       tenderCurrency: input.intent.tender_currency,
       tenderAmount: input.intent.tender_amount,
       khqrMd5: input.attempt.md5,
@@ -1158,6 +1165,7 @@ export type V0KhqrGenerateResult = {
 export type V0KhqrFinalizedSaleView = {
   saleId: string;
   status: "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
+  saleType: V0SaleType;
   paymentMethod: "CASH" | "KHQR";
   tenderCurrency: V0KhqrCurrency;
   tenderAmount: number;
@@ -1194,6 +1202,7 @@ function mapFinalizedSale(row: V0SaleKhqrSnapshotRow): V0KhqrFinalizedSaleView {
   return {
     saleId: row.id,
     status: row.status,
+    saleType: row.sale_type,
     paymentMethod: row.payment_method,
     tenderCurrency: row.tender_currency,
     tenderAmount: row.tender_amount,
@@ -1420,6 +1429,35 @@ function parseCheckoutIntentPricingSnapshot(value: unknown): V0CheckoutIntentPri
     saleKhrRoundingMode,
     saleKhrRoundingGranularity,
   };
+}
+
+function parseCheckoutIntentMetadataSnapshot(value: unknown): V0CheckoutIntentMetadataSnapshot {
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
+  return {
+    saleType: parseSaleType(record.saleType),
+  };
+}
+
+function parseSaleType(value: unknown): V0SaleType {
+  const raw = normalizeOptionalString(value);
+  if (!raw) {
+    return "DINE_IN";
+  }
+  const normalized = raw.toUpperCase().replaceAll("-", "_");
+  if (normalized === "DINE_IN") {
+    return "DINE_IN";
+  }
+  if (normalized === "TAKEAWAY" || normalized === "TAKE_AWAY") {
+    return "TAKEAWAY";
+  }
+  if (normalized === "DELIVERY") {
+    return "DELIVERY";
+  }
+  return "DINE_IN";
 }
 
 function toFiniteNumber(value: unknown): number | null {

@@ -913,6 +913,42 @@ export const PROTECTED_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "GET",
+    pattern: /^\/reports\/sales\/summary$/,
+    actionKey: "reports.sales.summary",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/reports\/sales\/drill-down$/,
+    actionKey: "reports.sales.drillDown",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/reports\/restock-spend\/summary$/,
+    actionKey: "reports.restockSpend.summary",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/reports\/restock-spend\/drill-down$/,
+    actionKey: "reports.restockSpend.drillDown",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/reports\/attendance\/summary$/,
+    actionKey: "reports.attendance.summary",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
+    pattern: /^\/reports\/attendance\/drill-down$/,
+    actionKey: "reports.attendance.drillDown",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
     pattern: /^\/notifications\/inbox$/,
     actionKey: "operationalNotification.inbox.list",
     tenantSource: "token",

@@ -19,6 +19,7 @@ This folder contains the **frontend-facing HTTP API contracts** for this backend
 - Context propagation (workflow rule):
   - `/v0` uses a **working context in token** model.
   - Feature endpoints must **not** accept `tenantId` / `branchId` overrides via query/body/headers.
+  - Exception: reporting read endpoints may accept explicit branch-scope selectors for aggregation (`api_contract/reporting-v0.md`), still validated by Access Control.
   - Tenant/branch selection (and switching) is done via Auth endpoints that **re-issue access tokens** with updated context.
 
 ## Active Contracts
@@ -42,6 +43,7 @@ This folder contains the **frontend-facing HTTP API contracts** for this backend
 - `api_contract/receipt-v0.md`
 - `api_contract/cash-session-v0.md`
 - `api_contract/inventory-v0.md`
+- `api_contract/reporting-v0.md`
 - `api_contract/khqr-payment-v0.md`
 - `api_contract/media-v0.md`
 - `api_contract/operational-notification-v0.md`
