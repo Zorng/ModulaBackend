@@ -796,6 +796,15 @@ function handleError(res: Response, error: unknown): void {
     return;
   }
 
+  if (isUniqueViolation(error)) {
+    res.status(409).json({
+      success: false,
+      error: "menu uniqueness conflict",
+      code: mapUniqueViolationCode(error.constraint),
+    });
+    return;
+  }
+
   if (error instanceof Error && error.message.startsWith("Invalid file type:")) {
     res.status(422).json({
       success: false,
@@ -809,6 +818,43 @@ function handleError(res: Response, error: unknown): void {
     success: false,
     error: error instanceof Error ? error.message : "internal server error",
   });
+}
+
+function isUniqueViolation(error: unknown): error is { code: string; constraint?: string } {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "23505"
+  );
+}
+
+function mapUniqueViolationCode(constraint: string | undefined): string {
+  if (!constraint) {
+    return "MENU_UNIQUE_CONSTRAINT";
+  }
+  if (constraint === "v0_menu_items_tenant_id_name_key") {
+    return "MENU_ITEM_DUPLICATE_NAME";
+  }
+  if (constraint === "v0_menu_categories_tenant_id_name_key") {
+    return "MENU_CATEGORY_DUPLICATE_NAME";
+  }
+  if (constraint === "v0_menu_modifier_groups_tenant_id_name_key") {
+    return "MODIFIER_GROUP_DUPLICATE_NAME";
+  }
+  if (constraint === "v0_menu_modifier_options_tenant_id_modifier_group_id_label_key") {
+    return "MODIFIER_OPTION_DUPLICATE_LABEL";
+  }
+  if (constraint === "v0_menu_item_base_components_tenant_id_menu_item_id_stock_item_id_key") {
+    return "MENU_COMPOSITION_DUPLICATE_BASE_COMPONENT";
+  }
+  if (
+    constraint ===
+    "v0_menu_modifier_option_component_deltas_tenant_id_modifier_option_id_stock_item_id_key"
+  ) {
+    return "MENU_COMPOSITION_DUPLICATE_OPTION_COMPONENT";
+  }
+  return "MENU_UNIQUE_CONSTRAINT";
 }
 
 function runUploadSingleImage(req: V0AuthRequest, res: Response): Promise<void> {

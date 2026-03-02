@@ -371,6 +371,9 @@ Body:
 }
 ```
 
+Errors:
+- `409` `MODIFIER_GROUP_DUPLICATE_NAME`
+
 #### 16) Update modifier group
 
 `PATCH /v0/menu/modifier-groups/:groupId`
@@ -523,6 +526,8 @@ Common errors across write endpoints:
 - `422` `IDEMPOTENCY_KEY_REQUIRED`
 - `409` `IDEMPOTENCY_CONFLICT`
 - `409` `IDEMPOTENCY_IN_PROGRESS`
+- `409` `MENU_ITEM_DUPLICATE_NAME` / `MENU_CATEGORY_DUPLICATE_NAME`
+- `409` `MODIFIER_GROUP_DUPLICATE_NAME` / `MODIFIER_OPTION_DUPLICATE_LABEL`
 - `404` domain not found codes
 - `422` menu validation/invariant codes
 

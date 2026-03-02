@@ -406,6 +406,43 @@ describe("v0 menu integration", () => {
     expect(restored.body.data.status).toBe("ACTIVE");
   });
 
+  it("returns deterministic duplicate code when creating modifier group with same name", async () => {
+    const setup = await setupOwnerTenantContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Menu Duplicate Group ${uniqueSuffix()}`,
+    });
+    const groupName = `Size ${uniqueSuffix()}`;
+
+    const first = await request(app)
+      .post("/v0/menu/modifier-groups")
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", "menu-modifier-group-duplicate-1")
+      .send({
+        name: groupName,
+        selectionMode: "SINGLE",
+        minSelections: 0,
+        maxSelections: 1,
+        isRequired: false,
+      });
+    expect(first.status).toBe(200);
+
+    const duplicate = await request(app)
+      .post("/v0/menu/modifier-groups")
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", "menu-modifier-group-duplicate-2")
+      .send({
+        name: groupName,
+        selectionMode: "SINGLE",
+        minSelections: 0,
+        maxSelections: 1,
+        isRequired: false,
+      });
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body.code).toBe("MODIFIER_GROUP_DUPLICATE_NAME");
+  });
+
   it("supports create menu item idempotency replay and conflict safeguards", async () => {
     const setup = await setupOwnerTenantContext({
       app,
