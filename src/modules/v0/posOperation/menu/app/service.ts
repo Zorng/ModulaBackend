@@ -162,13 +162,9 @@ export class V0MenuService {
   }
 
   async getItem(input: { actor: ActorContext; menuItemId: string }) {
-    const scope = assertBranchContext(input.actor);
+    const scope = assertTenantContext(input.actor);
     const menuItemId = requireUuid(input.menuItemId, "menuItemId");
-    const row = await this.repo.getMenuItemVisibleInBranch({
-      tenantId: scope.tenantId,
-      branchId: scope.branchId,
-      menuItemId,
-    });
+    const row = await this.repo.getMenuItemById({ tenantId: scope.tenantId, menuItemId });
     if (!row) {
       throw new V0MenuError(404, "menu item not found", "MENU_ITEM_NOT_FOUND");
     }
@@ -739,7 +735,7 @@ export class V0MenuService {
     actor: ActorContext;
     body: unknown;
   }) {
-    const scope = assertBranchContext(input.actor);
+    const scope = assertTenantContext(input.actor);
     const body = toObject(input.body);
     const name = requireNonEmptyString(body.name, "name");
     const basePrice = toNonNegativeNumber(body.basePrice, "basePrice");
@@ -792,7 +788,7 @@ export class V0MenuService {
     menuItemId: string;
     body: unknown;
   }) {
-    const scope = assertBranchContext(input.actor);
+    const scope = assertTenantContext(input.actor);
     const menuItemId = requireUuid(input.menuItemId, "menuItemId");
     const body = toObject(input.body);
     const existing = await this.repo.getMenuItemById({
@@ -930,7 +926,7 @@ export class V0MenuService {
     actor: ActorContext;
     menuItemId: string;
   }) {
-    const scope = assertBranchContext(input.actor);
+    const scope = assertTenantContext(input.actor);
     const menuItemId = requireUuid(input.menuItemId, "menuItemId");
     const archived = await this.repo.updateMenuItemStatus({
       tenantId: scope.tenantId,
@@ -951,7 +947,7 @@ export class V0MenuService {
     actor: ActorContext;
     menuItemId: string;
   }) {
-    const scope = assertBranchContext(input.actor);
+    const scope = assertTenantContext(input.actor);
     const menuItemId = requireUuid(input.menuItemId, "menuItemId");
     const restored = await this.repo.updateMenuItemStatus({
       tenantId: scope.tenantId,

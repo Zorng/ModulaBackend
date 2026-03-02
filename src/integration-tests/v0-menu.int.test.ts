@@ -349,6 +349,63 @@ describe("v0 menu integration", () => {
     expect(cashierDenied.body.code).toBe("PERMISSION_DENIED");
   });
 
+  it("supports menu item CRUD with tenant context token (no branch required)", async () => {
+    const setup = await setupOwnerTenantContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Menu Tenant CRUD ${uniqueSuffix()}`,
+    });
+
+    const created = await request(app)
+      .post("/v0/menu/items")
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", "menu-item-tenant-scope-create-1")
+      .send({
+        name: `Tenant Scoped Item ${uniqueSuffix()}`,
+        basePrice: 3.15,
+        categoryId: null,
+        modifierGroupIds: [],
+        visibleBranchIds: [setup.branchAId],
+        imageUrl: null,
+      });
+    expect(created.status).toBe(200);
+    const menuItemId = created.body.data.id as string;
+    expect(created.body.data.visibleBranchIds).toEqual([setup.branchAId]);
+
+    const read = await request(app)
+      .get(`/v0/menu/items/${menuItemId}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(read.status).toBe(200);
+    expect(read.body.data.id).toBe(menuItemId);
+
+    const updated = await request(app)
+      .patch(`/v0/menu/items/${menuItemId}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", "menu-item-tenant-scope-update-1")
+      .send({
+        name: `Updated Tenant Scoped Item ${uniqueSuffix()}`,
+      });
+    expect(updated.status).toBe(200);
+    expect(updated.body.data.id).toBe(menuItemId);
+
+    const archived = await request(app)
+      .post(`/v0/menu/items/${menuItemId}/archive`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", "menu-item-tenant-scope-archive-1")
+      .send({});
+    expect(archived.status).toBe(200);
+    expect(archived.body.data.status).toBe("ARCHIVED");
+
+    const restored = await request(app)
+      .post(`/v0/menu/items/${menuItemId}/restore`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", "menu-item-tenant-scope-restore-1")
+      .send({});
+    expect(restored.status).toBe(200);
+    expect(restored.body.data.status).toBe("ACTIVE");
+  });
+
   it("supports create menu item idempotency replay and conflict safeguards", async () => {
     const setup = await setupOwnerTenantContext({
       app,

@@ -23,6 +23,18 @@ Implementation status:
 - Access-control reason codes:
   - see `api_contract/access-control-v0.md`.
 
+## Read Lanes (Frontend Contract)
+
+Use one of two read lanes depending on UX context:
+
+| Lane | Primary endpoint | Context required | Intended UI |
+|---|---|---|---|
+| POS lane | `GET /v0/menu/items` | tenant + branch | cashier selling screen (branch menu only) |
+| Management lane | `GET /v0/menu/items/all` | tenant only | admin/manager catalog management |
+
+Additional management read:
+- `GET /v0/menu/items/:menuItemId` is tenant-scope detail read (not branch-filtered).
+
 ## Types
 
 ```ts
@@ -133,7 +145,7 @@ Errors:
 
 ### Menu Items
 
-#### 2) List menu items (branch-visible)
+#### 2) POS Read Lane — List menu items (branch-visible)
 
 `GET /v0/menu/items?status=active|archived|all&categoryId=uuid&search=text&limit=50&offset=0`
 
@@ -142,12 +154,13 @@ Action key: `menu.items.list`
 Notes:
 - Returns items visible to current branch context.
 - `status` defaults to `active`.
+- Use this for selling flow only.
 
 Errors:
 - `401` missing/invalid token
 - `403` context/membership/branch access denial reason
 
-#### 3) List tenant menu items (all branches, management view)
+#### 3) Management Read Lane — List tenant menu items (all branches)
 
 `GET /v0/menu/items/all?status=active|archived|all&categoryId=uuid&search=text&branchId=uuid&limit=50&offset=0`
 
@@ -157,12 +170,18 @@ Notes:
 - Returns all tenant menu items and includes `visibleBranchIds` per item.
 - Optional `branchId` filters to items visible in that branch.
 - Intended for management screens (cross-branch catalog view).
+- Do not use this endpoint as POS cart catalog source.
 
-#### 4) Get menu item detail
+#### 4) Management Read Lane — Get menu item detail
 
 `GET /v0/menu/items/:menuItemId`
 
 Action key: `menu.items.read`
+
+Notes:
+- Tenant-scope read (branch context not required).
+- Returns item detail by tenant ownership; not filtered by current branch visibility.
+- Intended for management edit/detail screens.
 
 Errors:
 - `404` `MENU_ITEM_NOT_FOUND`
@@ -173,6 +192,9 @@ Errors:
 `POST /v0/menu/items`
 
 Action key: `menu.items.create`
+
+Notes:
+- Tenant-scope write (branch context not required).
 
 Headers:
 - `Idempotency-Key: <client key>`
@@ -202,6 +224,9 @@ Errors:
 
 Action key: `menu.items.update`
 
+Notes:
+- Tenant-scope write (branch context not required).
+
 Headers:
 - `Idempotency-Key: <client key>`
 
@@ -217,6 +242,9 @@ Errors:
 
 Action key: `menu.items.archive`
 
+Notes:
+- Tenant-scope write (branch context not required).
+
 Headers:
 - `Idempotency-Key: <client key>`
 
@@ -229,6 +257,9 @@ Errors:
 `POST /v0/menu/items/:menuItemId/restore`
 
 Action key: `menu.items.restore`
+
+Notes:
+- Tenant-scope write (branch context not required).
 
 Headers:
 - `Idempotency-Key: <client key>`
@@ -497,8 +528,11 @@ Common errors across write endpoints:
 
 ## Frontend Rollout Notes
 
-- On branch switch, reload menu list from backend (`GET /v0/menu/items`) rather than relying on cached labels.
-- For management screens needing cross-branch catalog data, use `GET /v0/menu/items/all` and render `visibleBranchIds` from backend response.
+- Route frontend by lane:
+  1. POS lane: `GET /v0/menu/items`
+  2. Management lane: `GET /v0/menu/items/all` (+ `GET /v0/menu/items/:menuItemId` for detail/edit)
+- On branch switch, reload POS lane list (`GET /v0/menu/items`) rather than relying on cached labels.
+- For management screens, render `visibleBranchIds` from backend response and treat branch visibility as overlay state.
 - Treat uncategorized as derived view (`categoryId = null`), not a mutable category entity.
 - For image flow:
   1. upload file via `POST /v0/menu/images/upload`
