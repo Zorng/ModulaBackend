@@ -105,6 +105,12 @@ export const INVENTORY_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "GET",
+    pattern: /^\/inventory\/journal\/all$/,
+    actionKey: "inventory.journal.listAll",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
     pattern: /^\/inventory\/stock\/branch$/,
     actionKey: "inventory.stock.branch.read",
     tenantSource: "token",

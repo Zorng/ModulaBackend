@@ -344,6 +344,80 @@ describe("v0 inventory integration", () => {
     ).toBe(true);
   });
 
+  it("provides tenant-wide inventory journal lane with optional branch filter", async () => {
+    const setup = await setupOwnerTenantContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Inventory Journal Tenant ${uniqueSuffix()}`,
+    });
+
+    const createdItem = await request(app)
+      .post("/v0/inventory/items")
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", `idem-item-${uniqueSuffix()}`)
+      .send({
+        name: `Sugar ${uniqueSuffix()}`,
+        baseUnit: "g",
+        categoryId: null,
+        imageUrl: null,
+        lowStockThreshold: null,
+      });
+    expect(createdItem.status).toBe(200);
+    const stockItemId = createdItem.body.data.id as string;
+
+    const restockA = await request(app)
+      .post("/v0/inventory/restock-batches")
+      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .set("Idempotency-Key", `idem-restock-a-${uniqueSuffix()}`)
+      .send({
+        stockItemId,
+        quantityInBaseUnit: 1000,
+        receivedAt: new Date().toISOString(),
+        expiryDate: null,
+        supplierName: "Supplier A",
+        purchaseCostUsd: 10,
+        note: "Branch A restock",
+      });
+    expect(restockA.status).toBe(200);
+
+    const restockB = await request(app)
+      .post("/v0/inventory/restock-batches")
+      .set("Authorization", `Bearer ${setup.ownerBranchBToken}`)
+      .set("Idempotency-Key", `idem-restock-b-${uniqueSuffix()}`)
+      .send({
+        stockItemId,
+        quantityInBaseUnit: 2000,
+        receivedAt: new Date().toISOString(),
+        expiryDate: null,
+        supplierName: "Supplier B",
+        purchaseCostUsd: 20,
+        note: "Branch B restock",
+      });
+    expect(restockB.status).toBe(200);
+
+    const listedAll = await request(app)
+      .get(`/v0/inventory/journal/all?stockItemId=${stockItemId}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(listedAll.status).toBe(200);
+
+    const allRows = listedAll.body.data as Array<{ branchId: string; stockItemId: string }>;
+    expect(allRows).toHaveLength(2);
+    expect(allRows.every((row) => row.stockItemId === stockItemId)).toBe(true);
+    expect(allRows.map((row) => row.branchId).sort()).toEqual(
+      [setup.branchAId, setup.branchBId].sort()
+    );
+
+    const listedBranchA = await request(app)
+      .get(`/v0/inventory/journal/all?stockItemId=${stockItemId}&branchId=${setup.branchAId}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(listedBranchA.status).toBe(200);
+
+    const branchRows = listedBranchA.body.data as Array<{ branchId: string }>;
+    expect(branchRows).toHaveLength(1);
+    expect(branchRows[0]?.branchId).toBe(setup.branchAId);
+  });
+
   it("rolls back business writes when outbox insert fails (atomic command contract)", async () => {
     const setup = await setupOwnerTenantContext({
       app,

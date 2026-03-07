@@ -477,6 +477,12 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "module.inventory",
   },
+  "inventory.journal.listAll": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "module.inventory",
+  },
   "inventory.stock.branch.read": {
     scope: "BRANCH",
     effect: "READ",

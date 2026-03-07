@@ -773,6 +773,50 @@ export class V0InventoryRepository {
     return result.rows;
   }
 
+  async listJournalByTenant(input: {
+    tenantId: string;
+    branchId?: string | null;
+    stockItemId?: string | null;
+    reasonCode?: InventoryReasonCode | null;
+    limit: number;
+    offset: number;
+  }): Promise<InventoryJournalEntryRow[]> {
+    const result = await this.db.query<InventoryJournalEntryRow>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         stock_item_id,
+         direction,
+         quantity_in_base_unit::FLOAT8 AS quantity_in_base_unit,
+         reason_code,
+         source_type,
+         source_id,
+         idempotency_key,
+         occurred_at,
+         actor_account_id,
+         note,
+         created_at
+       FROM v0_inventory_journal_entries
+       WHERE tenant_id = $1
+         AND ($2::UUID IS NULL OR branch_id = $2::UUID)
+         AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
+         AND ($4::VARCHAR IS NULL OR reason_code = $4::VARCHAR)
+       ORDER BY occurred_at DESC, id DESC
+       LIMIT $5
+       OFFSET $6`,
+      [
+        input.tenantId,
+        input.branchId ?? null,
+        input.stockItemId ?? null,
+        input.reasonCode ?? null,
+        input.limit,
+        input.offset,
+      ]
+    );
+    return result.rows;
+  }
+
   async applyBranchStockDelta(input: {
     tenantId: string;
     branchId: string;

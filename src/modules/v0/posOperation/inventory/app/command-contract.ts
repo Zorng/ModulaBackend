@@ -22,6 +22,7 @@ export const V0_INVENTORY_ACTION_KEYS = {
   restockBatchesArchive: "inventory.restockBatches.archive",
   adjustmentsApply: "inventory.adjustments.apply",
   journalList: "inventory.journal.list",
+  journalListAll: "inventory.journal.listAll",
   stockBranchRead: "inventory.stock.branch.read",
   stockAggregateRead: "inventory.stock.aggregate.read",
   externalSaleDeductionApply: "inventory.external.saleDeduction.apply",

@@ -394,6 +394,28 @@ export function createV0InventoryRouter(input: {
     }
   });
 
+  router.get("/journal/all", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
+    try {
+      const actor = req.v0Auth;
+      if (!actor) {
+        res.status(401).json({ success: false, error: "authentication required" });
+        return;
+      }
+
+      const data = await input.service.listJournalAll({
+        actor,
+        branchId: asString(req.query?.branchId),
+        stockItemId: asString(req.query?.stockItemId),
+        reasonCode: asString(req.query?.reasonCode),
+        limit: asNumber(req.query?.limit),
+        offset: asNumber(req.query?.offset),
+      });
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
+
   router.get("/stock/branch", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
       const actor = req.v0Auth;

@@ -643,6 +643,33 @@ export class V0InventoryService {
     return rows.map(mapJournalRow);
   }
 
+  async listJournalAll(input: {
+    actor: ActorContext;
+    branchId?: string;
+    stockItemId?: string;
+    reasonCode?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Array<Record<string, unknown>>> {
+    const scope = assertTenantContext(input.actor);
+    const branchId = parseOptionalUuid(input.branchId, "branchId");
+    const stockItemId = parseOptionalUuid(input.stockItemId, "stockItemId");
+    const reasonCode = parseOptionalInventoryReasonCode(input.reasonCode);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+
+    const rows = await this.repo.listJournalByTenant({
+      tenantId: scope.tenantId,
+      branchId,
+      stockItemId,
+      reasonCode,
+      limit,
+      offset,
+    });
+
+    return rows.map(mapJournalRow);
+  }
+
   async readBranchStock(input: {
     actor: ActorContext;
     includeArchivedItems?: boolean;

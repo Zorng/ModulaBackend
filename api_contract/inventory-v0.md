@@ -30,6 +30,8 @@ Implementation status:
   - Categories/items: `OWNER|ADMIN`
 - Branch operational reads:
   - Restock list, journal, branch stock: `OWNER|ADMIN|MANAGER`
+- Tenant management reads:
+  - Aggregate stock, tenant-wide journal: `OWNER|ADMIN|MANAGER`
 - Branch operational writes:
   - Restock create: `OWNER|ADMIN|MANAGER`
   - Restock metadata update/archive + adjustments: `OWNER|ADMIN`
@@ -395,16 +397,33 @@ Errors:
 
 Action key: `inventory.journal.list`
 
+Notes:
+- Branch read lane.
+- Requires branch context.
+- Returns only current branch journal entries.
+
 Response `200`: `InventoryJournalEntry[]`
 
-#### 17) Read branch stock projection (fast read)
+#### 17) List tenant inventory journal (management lane)
+`GET /v0/inventory/journal/all?branchId=uuid&stockItemId=uuid&reasonCode=RESTOCK|SALE_DEDUCTION|VOID_REVERSAL|ADJUSTMENT|OTHER&limit=number&offset=number`
+
+Action key: `inventory.journal.listAll`
+
+Notes:
+- Tenant management read lane.
+- Branch context not required.
+- Optional `branchId` narrows result to one branch while keeping tenant-scope access model.
+
+Response `200`: `InventoryJournalEntry[]`
+
+#### 18) Read branch stock projection (fast read)
 `GET /v0/inventory/stock/branch?includeArchivedItems=true|false`
 
 Action key: `inventory.stock.branch.read`
 
 Response `200`: `BranchStockItem[]`
 
-#### 18) Read aggregate stock across active branches
+#### 19) Read aggregate stock across active branches
 `GET /v0/inventory/stock/aggregate?includeArchivedItems=true|false`
 
 Action key: `inventory.stock.aggregate.read`
@@ -482,4 +501,3 @@ Expected inventory entity types in `/v0/sync/pull`:
 - `inventory_restock_batch`
 - `inventory_journal_entry`
 - `inventory_branch_stock_projection`
-
