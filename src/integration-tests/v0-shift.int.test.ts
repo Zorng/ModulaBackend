@@ -57,6 +57,7 @@ async function setupShiftWriteContext(input: {
   membershipId: string;
   ownerTenantToken: string;
   ownerBranchToken: string;
+  staffTenantToken: string;
 }> {
   const ownerToken = await registerAndLogin(input.app, input.ownerPhone);
   const createdTenant = await request(input.app)
@@ -135,12 +136,20 @@ async function setupShiftWriteContext(input: {
   expect(ownerBranchContext.status).toBe(200);
   const ownerBranchToken = ownerBranchContext.body.data.accessToken as string;
 
+  const staffTenantContext = await request(input.app)
+    .post("/v0/auth/context/tenant/select")
+    .set("Authorization", `Bearer ${staffToken}`)
+    .send({ tenantId });
+  expect(staffTenantContext.status).toBe(200);
+  const staffTenantToken = staffTenantContext.body.data.accessToken as string;
+
   return {
     tenantId,
     branchId,
     membershipId,
     ownerTenantToken,
     ownerBranchToken,
+    staffTenantToken,
   };
 }
 
@@ -185,7 +194,14 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
       tenantName: `Shift Tenant ${Date.now()}`,
     });
 
-    const { tenantId, branchId, membershipId, ownerTenantToken, ownerBranchToken } = setup;
+    const {
+      tenantId,
+      branchId,
+      membershipId,
+      ownerTenantToken,
+      ownerBranchToken,
+      staffTenantToken,
+    } = setup;
 
     const createdPattern = await request(app)
       .post("/v0/hr/shifts/patterns")
@@ -271,6 +287,26 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
     expect(
       schedule.body.data.instances.some((row: { id: string }) => row.id === instanceId)
     ).toBe(true);
+
+    const mySchedule = await request(app)
+      .get("/v0/hr/shifts/me")
+      .query({ from: "2026-03-01", to: "2026-03-10" })
+      .set("Authorization", `Bearer ${staffTenantToken}`);
+    expect(mySchedule.status).toBe(200);
+    expect(mySchedule.body.data.membershipId).toBe(membershipId);
+    expect(
+      mySchedule.body.data.patterns.some((row: { id: string }) => row.id === patternId)
+    ).toBe(true);
+    expect(
+      mySchedule.body.data.instances.some((row: { id: string }) => row.id === instanceId)
+    ).toBe(true);
+
+    const directMembershipReadDenied = await request(app)
+      .get(`/v0/hr/shifts/memberships/${membershipId}`)
+      .query({ from: "2026-03-01", to: "2026-03-10" })
+      .set("Authorization", `Bearer ${staffTenantToken}`);
+    expect(directMembershipReadDenied.status).toBe(403);
+    expect(directMembershipReadDenied.body.code).toBe("PERMISSION_DENIED");
 
     const instanceDetail = await request(app)
       .get(`/v0/hr/shifts/instances/${instanceId}`)

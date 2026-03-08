@@ -75,6 +75,29 @@ export function createV0ShiftRouter(input: {
     }
   });
 
+  router.get("/shifts/me", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
+    try {
+      const actor = req.v0Auth;
+      if (!actor) {
+        res.status(401).json({ success: false, error: "authentication required" });
+        return;
+      }
+
+      const data = await input.service.listMySchedule({
+        actor,
+        from: asString(req.query?.from),
+        to: asString(req.query?.to),
+        patternStatus: asString(req.query?.patternStatus),
+        instanceStatus: asString(req.query?.instanceStatus),
+        limit: asNumber(req.query?.limit),
+        offset: asNumber(req.query?.offset),
+      });
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
+
   router.get(
     "/shifts/memberships/:membershipId",
     requireV0Auth,

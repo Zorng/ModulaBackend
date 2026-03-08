@@ -129,6 +129,12 @@ export const AUTH_HR_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "GET",
+    pattern: /^\/hr\/shifts\/me$/,
+    actionKey: "hr.shift.schedule.readSelf",
+    tenantSource: "token",
+  },
+  {
+    method: "GET",
     pattern: /^\/hr\/shifts\/memberships\/[^/]+$/,
     actionKey: "hr.shift.schedule.read",
     tenantSource: "token",

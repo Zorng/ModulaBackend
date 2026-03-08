@@ -78,6 +78,11 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
   },
+  "hr.shift.schedule.readSelf": {
+    scope: "TENANT",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER", "CLERK"],
+  },
   "org.tenant.provision": { scope: "GLOBAL", effect: "WRITE" },
   "tenant.provision": { scope: "GLOBAL", effect: "WRITE" }, // compatibility alias
   "attendance.checkIn": {

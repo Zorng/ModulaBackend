@@ -8,6 +8,7 @@ export const V0_SHIFT_ACTION_KEYS = {
   updateInstance: "hr.shift.instance.update",
   cancelInstance: "hr.shift.instance.cancel",
   scheduleRead: "hr.shift.schedule.read",
+  scheduleReadSelf: "hr.shift.schedule.readSelf",
 } as const;
 
 export const V0_SHIFT_EVENT_TYPES = {

@@ -464,6 +464,55 @@ export class V0ShiftService {
     };
   }
 
+  async listMySchedule(input: {
+    actor: ActorContext;
+    from?: string;
+    to?: string;
+    patternStatus?: string;
+    instanceStatus?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const access = await this.assertSelfReadAccess(input.actor);
+    const from = parseOptionalDate(input.from, "from");
+    const to = parseOptionalDate(input.to, "to");
+    const patternStatus = parseOptionalPatternStatus(input.patternStatus);
+    const instanceStatus = parseOptionalInstanceStatus(input.instanceStatus);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+
+    const membershipId = access.requesterMembership.id;
+
+    const [patterns, instances] = await Promise.all([
+      this.repo.listShiftPatterns({
+        tenantId: access.tenantId,
+        branchId: null,
+        membershipId,
+        fromDate: from,
+        toDate: to,
+        status: patternStatus,
+        limit,
+        offset,
+      }),
+      this.repo.listShiftInstances({
+        tenantId: access.tenantId,
+        branchId: null,
+        membershipId,
+        fromDate: from,
+        toDate: to,
+        status: instanceStatus,
+        limit,
+        offset,
+      }),
+    ]);
+
+    return {
+      membershipId,
+      patterns: patterns.map(mapPattern),
+      instances: instances.map(mapInstance),
+    };
+  }
+
   async getInstance(input: { actor: ActorContext; instanceId: string }) {
     const access = await this.assertReadAccess(input.actor);
     const instanceId = parseUuid(input.instanceId, "instanceId");
@@ -512,6 +561,22 @@ export class V0ShiftService {
     }
     if (!this.readRoles.has(requesterMembership.role_key)) {
       throw new V0ShiftError(403, "no permission", "NO_PERMISSION");
+    }
+    return { ...scope, requesterMembership };
+  }
+
+  private async assertSelfReadAccess(actor: ActorContext): Promise<{
+    accountId: string;
+    tenantId: string;
+    requesterMembership: V0TenantMembershipRow;
+  }> {
+    const scope = assertTenantContext(actor);
+    const requesterMembership = await this.repo.findActiveMembershipForAccountInTenant({
+      accountId: scope.accountId,
+      tenantId: scope.tenantId,
+    });
+    if (!requesterMembership) {
+      throw new V0ShiftError(403, "no membership", "NO_MEMBERSHIP");
     }
     return { ...scope, requesterMembership };
   }

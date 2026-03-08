@@ -31,6 +31,7 @@ Implementation status:
 
 - Write roles: `OWNER | ADMIN | MANAGER`
 - Read roles: `OWNER | ADMIN | MANAGER`
+- Self read roles: any active tenant member (`OWNER | ADMIN | MANAGER | CASHIER | CLERK`)
 - Action namespaces:
   - `hr.shift.pattern.*`
   - `hr.shift.instance.*`
@@ -241,7 +242,29 @@ Response `200`:
 
 Action key: `hr.shift.schedule.read`
 
-#### 9) Shift instance detail
+#### 9) My shift view
+`GET /v0/hr/shifts/me?from=YYYY-MM-DD&to=YYYY-MM-DD`
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "membershipId": "uuid",
+    "patterns": [],
+    "instances": []
+  }
+}
+```
+
+Action key: `hr.shift.schedule.readSelf`
+
+Notes:
+- Self-service endpoint for staff to read only their own assigned shift schedule.
+- Caller must have tenant context.
+- Caller does not provide `membershipId`; backend resolves it from the active tenant membership in token context.
+
+#### 10) Shift instance detail
 `GET /v0/hr/shifts/instances/:instanceId`
 
 Response `200`: `ShiftInstance`
