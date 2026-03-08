@@ -16,6 +16,7 @@ export const V0_CASH_SESSION_ACTION_KEYS = {
   readActive: "cashSession.active.read",
   listSessions: "cashSession.list",
   readSession: "cashSession.read",
+  listSessionSales: "cashSession.sales.list",
   listMovements: "cashSession.movements.list",
   viewX: "cashSession.x.view",
   viewZ: "cashSession.z.view",

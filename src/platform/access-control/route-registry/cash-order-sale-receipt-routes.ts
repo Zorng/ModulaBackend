@@ -24,6 +24,13 @@ export const CASH_ORDER_SALE_RECEIPT_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "GET",
+    pattern: /^\/cash\/sessions\/[^/]+\/sales$/,
+    actionKey: "cashSession.sales.list",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "GET",
     pattern: /^\/cash\/sessions\/[^/]+\/movements$/,
     actionKey: "cashSession.movements.list",
     tenantSource: "token",

@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
+import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import type { Pool } from "pg";
@@ -189,6 +190,141 @@ async function inviteAndAcceptBranchUser(input: {
   };
 }
 
+async function insertSessionSale(input: {
+  pool: Pool;
+  tenantId: string;
+  branchId: string;
+  finalizedByAccountId: string;
+  status: "FINALIZED" | "VOID_PENDING" | "VOIDED";
+  paymentMethod: "CASH" | "KHQR";
+  saleType: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
+  grandTotalUsd: number;
+  grandTotalKhr: number;
+  finalizedAt: Date;
+  voidedAt?: Date | null;
+}): Promise<string> {
+  const result = await input.pool.query<{ id: string }>(
+    `INSERT INTO v0_sales (
+       tenant_id,
+       branch_id,
+       status,
+       payment_method,
+       tender_currency,
+       tender_amount,
+       cash_received_tender_amount,
+       cash_change_tender_amount,
+       subtotal_usd,
+       subtotal_khr,
+       discount_usd,
+       discount_khr,
+       vat_usd,
+       vat_khr,
+       grand_total_usd,
+       grand_total_khr,
+       sale_fx_rate_khr_per_usd,
+       sale_khr_rounding_enabled,
+       sale_khr_rounding_mode,
+       sale_khr_rounding_granularity,
+       subtotal_amount,
+       discount_amount,
+       vat_amount,
+       total_amount,
+       paid_amount,
+       finalized_at,
+       finalized_by_account_id,
+       voided_at,
+       voided_by_account_id,
+       void_reason,
+       sale_type
+     )
+     VALUES (
+       $1, $2, $3, $4::VARCHAR(20),
+       'USD',
+       $5::NUMERIC(14,2),
+       CASE WHEN $4::VARCHAR(20) = 'CASH' THEN $5::NUMERIC(14,2) ELSE NULL END,
+       0,
+       $5::NUMERIC(14,2),
+       $6::NUMERIC(14,2),
+       0, 0, 0, 0,
+       $5::NUMERIC(14,2),
+       $6::NUMERIC(14,2),
+       4100,
+       TRUE,
+       'NEAREST',
+       100,
+       $5::NUMERIC(14,2),
+       0,
+       0,
+       $5::NUMERIC(14,2),
+       $5::NUMERIC(14,2),
+       $7,
+       $8::UUID,
+       $9::TIMESTAMPTZ,
+       CASE WHEN $9::TIMESTAMPTZ IS NULL THEN NULL ELSE $8::UUID END,
+       CASE WHEN $9 IS NULL THEN NULL ELSE 'voided in integration test' END,
+       $10::VARCHAR(20)
+     )
+     RETURNING id`,
+    [
+      input.tenantId,
+      input.branchId,
+      input.status,
+      input.paymentMethod,
+      input.grandTotalUsd,
+      input.grandTotalKhr,
+      input.finalizedAt,
+      input.finalizedByAccountId,
+      input.voidedAt ?? null,
+      input.saleType,
+    ]
+  );
+  return result.rows[0].id;
+}
+
+async function insertSessionSaleLine(input: {
+  pool: Pool;
+  tenantId: string;
+  branchId: string;
+  saleId: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotalAmount: number;
+}): Promise<void> {
+  await input.pool.query(
+    `INSERT INTO v0_sale_lines (
+       tenant_id,
+       branch_id,
+       sale_id,
+       order_ticket_line_id,
+       menu_item_id,
+       menu_item_name_snapshot,
+       unit_price,
+       quantity,
+       line_discount_amount,
+       line_total_amount,
+       modifier_snapshot
+     )
+     VALUES (
+       $1, $2, $3, NULL, $4, $5,
+       $6::NUMERIC(14,2),
+       $7::NUMERIC(12,3),
+       0,
+       $8::NUMERIC(14,2),
+       '[]'::JSONB
+     )`,
+    [
+      input.tenantId,
+      input.branchId,
+      input.saleId,
+      randomUUID(),
+      `Session Sale ${uniqueSuffix()}`,
+      input.unitPrice,
+      input.quantity,
+      input.lineTotalAmount,
+    ]
+  );
+}
+
 describe("v0 cash session integration", () => {
   let pool: Pool;
   let app: express.Express;
@@ -238,10 +374,12 @@ describe("v0 cash session integration", () => {
     });
   });
 
-  it("returns the same open branch session to another cashier in the same branch", async () => {
-    const setup = await setupOwnerBranchContext({
-      app,
-      pool,
+  it(
+    "returns the same open branch session to another cashier in the same branch",
+    async () => {
+      const setup = await setupOwnerBranchContext({
+        app,
+        pool,
       ownerPhone: uniquePhone(),
       tenantName: `Cash Occupancy ${uniqueSuffix()}`,
     });
@@ -290,9 +428,132 @@ describe("v0 cash session integration", () => {
           branchId: setup.branchId,
           tenantId: setup.tenantId,
           openedByAccountId: cashierA.accountId,
+          openedByName: "Cash User",
+          closedByName: null,
           status: "OPEN",
         },
       },
+    });
+    },
+    15000
+  );
+
+  it("lists session-bound sale rows and enforces cashier self-scope", async () => {
+    const setup = await setupOwnerBranchContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Cash Session Sales ${uniqueSuffix()}`,
+    });
+
+    const cashierA = await inviteAndAcceptBranchUser({
+      app,
+      pool,
+      ownerToken: setup.ownerToken,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+      phone: uniquePhone(),
+    });
+    const cashierB = await inviteAndAcceptBranchUser({
+      app,
+      pool,
+      ownerToken: setup.ownerToken,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+      phone: uniquePhone(),
+    });
+
+    const opened = await request(app)
+      .post("/v0/cash/sessions")
+      .set("Authorization", `Bearer ${cashierA.branchToken}`)
+      .set("Idempotency-Key", `cash-open-sales-${uniqueSuffix()}`)
+      .send({
+        openingFloatUsd: 15,
+        openingFloatKhr: 20000,
+        note: "Session sales test",
+      });
+    expect(opened.status).toBe(200);
+    const sessionId = opened.body.data.id as string;
+
+    const finalizedAt = new Date();
+    const saleId = await insertSessionSale({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      finalizedByAccountId: cashierA.accountId,
+      status: "FINALIZED",
+      paymentMethod: "CASH",
+      saleType: "TAKEAWAY",
+      grandTotalUsd: 7.5,
+      grandTotalKhr: 30750,
+      finalizedAt,
+    });
+    await insertSessionSaleLine({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      saleId,
+      quantity: 2,
+      unitPrice: 2.5,
+      lineTotalAmount: 5,
+    });
+    await insertSessionSaleLine({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      saleId,
+      quantity: 1,
+      unitPrice: 2.5,
+      lineTotalAmount: 2.5,
+    });
+
+    const ownerRead = await request(app)
+      .get(`/v0/cash/sessions/${sessionId}/sales?limit=20&offset=0`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(ownerRead.status).toBe(200);
+    expect(ownerRead.body).toMatchObject({
+      success: true,
+      data: {
+        sessionId,
+        limit: 20,
+        offset: 0,
+        items: [
+          {
+            saleId,
+            status: "FINALIZED",
+            paymentMethod: "CASH",
+            saleType: "TAKEAWAY",
+            totalItems: 3,
+            grandTotalUsd: 7.5,
+            grandTotalKhr: 30750,
+            cashierAccountId: cashierA.accountId,
+            cashierName: "Cash User",
+            voidedAt: null,
+          },
+        ],
+      },
+    });
+    expect(ownerRead.body.data.items[0].finalizedAt).toBeTruthy();
+
+    const cashierOwnRead = await request(app)
+      .get(`/v0/cash/sessions/${sessionId}/sales`)
+      .set("Authorization", `Bearer ${cashierA.branchToken}`);
+    expect(cashierOwnRead.status).toBe(200);
+    expect(cashierOwnRead.body.data.items).toHaveLength(1);
+    expect(cashierOwnRead.body.data.items[0]).toMatchObject({
+      saleId,
+      cashierAccountId: cashierA.accountId,
+    });
+
+    const cashierOtherRead = await request(app)
+      .get(`/v0/cash/sessions/${sessionId}/sales`)
+      .set("Authorization", `Bearer ${cashierB.branchToken}`);
+    expect(cashierOtherRead.status).toBe(403);
+    expect(cashierOtherRead.body).toMatchObject({
+      success: false,
+      code: "CASH_SESSION_FORBIDDEN_SELF_SCOPE",
     });
   });
 
@@ -545,13 +806,21 @@ describe("v0 cash session integration", () => {
     try {
       await published;
 
-      const publishedRow = await pool.query<{ published_at: Date | null }>(
-        `SELECT published_at
-         FROM v0_command_outbox
-         WHERE id = $1`,
-        [outboxId]
-      );
-      expect(publishedRow.rows[0]?.published_at).not.toBeNull();
+      let publishedAt: Date | null = null;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const publishedRow = await pool.query<{ published_at: Date | null }>(
+          `SELECT published_at
+           FROM v0_command_outbox
+           WHERE id = $1`,
+          [outboxId]
+        );
+        publishedAt = publishedRow.rows[0]?.published_at ?? null;
+        if (publishedAt) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(publishedAt).not.toBeNull();
     } finally {
       dispatcher.stop();
     }

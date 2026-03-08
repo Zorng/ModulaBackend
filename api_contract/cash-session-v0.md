@@ -40,12 +40,14 @@ type CashSession = {
   tenantId: string;
   branchId: string;
   openedByAccountId: string;
+  openedByName: string;
   openedAt: string; // ISO datetime
   status: CashSessionStatus;
   openingFloatUsd: number;
   openingFloatKhr: number;
   closedAt: string | null;
   closedByAccountId: string | null;
+  closedByName: string | null;
   closeNote: string | null;
 };
 
@@ -62,6 +64,20 @@ type CashMovement = {
   sourceRefId: string | null;
   recordedByAccountId: string;
   occurredAt: string; // ISO datetime
+};
+
+type CashSessionSaleRow = {
+  saleId: string;
+  status: "FINALIZED" | "VOID_PENDING" | "VOIDED";
+  paymentMethod: "CASH" | "KHQR";
+  saleType: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
+  finalizedAt: string; // ISO datetime
+  totalItems: number; // sum of sale-line quantities
+  grandTotalUsd: number;
+  grandTotalKhr: number;
+  cashierAccountId: string | null;
+  cashierName: string | null;
+  voidedAt: string | null; // ISO datetime
 };
 
 type XReport = {
@@ -142,12 +158,14 @@ Response `200`:
       "tenantId": "uuid",
       "branchId": "uuid",
       "openedByAccountId": "uuid",
+      "openedByName": "John Smith",
       "openedAt": "2026-02-19T01:00:00.000Z",
       "status": "OPEN",
       "openingFloatUsd": 20,
       "openingFloatKhr": 50000,
       "closedAt": null,
       "closedByAccountId": null,
+      "closedByName": null,
       "closeNote": null
     }
   }
@@ -169,10 +187,52 @@ Notes:
 - branch-scoped, not self-scoped:
   - any authorized user in the current branch receives the same open branch session
   - `openedByAccountId` is included so frontend can show branch occupancy / opened-by-another-user state
+- full cash-session payloads include opener/closer display names for direct UI rendering without extra account lookups
+
+### 3) List session sales (operational view)
+
+`GET /v0/cash/sessions/:sessionId/sales?limit=20&offset=0`
+
+Action key: `cashSession.sales.list`
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "sessionId": "uuid",
+    "items": [
+      {
+        "saleId": "uuid",
+        "status": "FINALIZED",
+        "paymentMethod": "CASH",
+        "saleType": "TAKEAWAY",
+        "finalizedAt": "2026-03-09T09:10:00.000Z",
+        "totalItems": 3,
+        "grandTotalUsd": 7.5,
+        "grandTotalKhr": 30750,
+        "cashierAccountId": "uuid",
+        "cashierName": "John Smith",
+        "voidedAt": null
+      }
+    ],
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+
+Rules:
+- operational, session-scoped sale-row listing for UI verification/reconciliation
+- branch-scoped endpoint
+- cashier may view only sessions opened by that cashier
+- owner/admin/manager may view any session in the current branch
+- results are bound to the cash-session time window (`openedAt .. closedAt`)
+- includes finalized and void lifecycle rows currently associated to that session window
 
 ---
 
-### 3) Close session (normal)
+### 4) Close session (normal)
 
 `POST /v0/cash/sessions/:sessionId/close`
 
@@ -196,7 +256,7 @@ Rules:
 
 ---
 
-### 4) Force close session
+### 5) Force close session
 
 `POST /v0/cash/sessions/:sessionId/force-close`
 
@@ -223,7 +283,7 @@ Rules:
 
 ---
 
-### 5) Record paid-in
+### 6) Record paid-in
 
 `POST /v0/cash/sessions/:sessionId/movements/paid-in`
 
@@ -243,7 +303,7 @@ Body:
 
 ---
 
-### 6) Record paid-out
+### 7) Record paid-out
 
 `POST /v0/cash/sessions/:sessionId/movements/paid-out`
 

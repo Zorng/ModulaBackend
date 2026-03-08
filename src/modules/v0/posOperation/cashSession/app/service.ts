@@ -3,6 +3,7 @@ import type {
   CashCloseReason,
   CashMovementRow,
   CashMovementTotalsRow,
+  CashSessionSaleRow,
   CashMovementType,
   CashSessionRow,
   CashSessionStatus,
@@ -30,12 +31,14 @@ type CashSessionDto = {
   tenantId: string;
   branchId: string;
   openedByAccountId: string;
+  openedByName: string;
   openedAt: string;
   status: CashSessionStatus;
   openingFloatUsd: number;
   openingFloatKhr: number;
   openingNote: string | null;
   closedByAccountId: string | null;
+  closedByName: string | null;
   closedAt: string | null;
   closeReason: CashCloseReason | null;
   closeNote: string | null;
@@ -58,6 +61,20 @@ type CashMovementDto = {
   recordedByAccountId: string;
   occurredAt: string;
   createdAt: string;
+};
+
+type CashSessionSaleItemDto = {
+  saleId: string;
+  status: "FINALIZED" | "VOID_PENDING" | "VOIDED";
+  paymentMethod: "CASH" | "KHQR";
+  saleType: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
+  finalizedAt: string;
+  totalItems: number;
+  grandTotalUsd: number;
+  grandTotalKhr: number;
+  cashierAccountId: string | null;
+  cashierName: string | null;
+  voidedAt: string | null;
 };
 
 type XReportDto = {
@@ -138,7 +155,7 @@ export class V0CashSessionService {
       openingFloatKhr: body.openingFloatKhr,
       openingNote: body.note,
     });
-    return mapSession(created);
+    return this.mapSessionWithNames(created);
   }
 
   async readActiveSession(input: {
@@ -152,7 +169,7 @@ export class V0CashSessionService {
     if (!session) {
       return { session: null };
     }
-    return { session: mapSession(session) };
+    return { session: await this.mapSessionWithNames(session) };
   }
 
   async listSessions(input: {
@@ -202,7 +219,7 @@ export class V0CashSessionService {
     const role = await this.resolveActorRole(actor);
     const session = await this.requireSessionForBranch(actor, input.sessionId);
     await this.assertSessionOwnershipForCashier(role, actor.accountId, session);
-    return mapSession(session);
+    return this.mapSessionWithNames(session);
   }
 
   async listSessionMovements(input: {
@@ -222,6 +239,46 @@ export class V0CashSessionService {
       offset: normalizeOffset(input.offset),
     });
     return rows.map(mapMovement);
+  }
+
+  async listSessionSales(input: {
+    actor: ActorContext;
+    sessionId: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    sessionId: string;
+    items: CashSessionSaleItemDto[];
+    limit: number;
+    offset: number;
+  }> {
+    const actor = await this.assertBranchContext(input.actor);
+    const role = await this.resolveActorRole(actor);
+    const session = await this.requireSessionForBranch(actor, input.sessionId);
+    await this.assertSessionOwnershipForCashier(role, actor.accountId, session);
+
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+    const rows = await this.repo.listSalesBySession({
+      tenantId: actor.tenantId,
+      sessionId: session.id,
+      limit,
+      offset,
+    });
+    const nameMap = await this.repo.listAccountDisplayNames({
+      accountIds: uniq(
+        rows
+          .map((row) => row.finalized_by_account_id)
+          .filter((value): value is string => Boolean(value))
+      ),
+    });
+
+    return {
+      sessionId: session.id,
+      items: rows.map((row) => mapSessionSale(row, nameMap)),
+      limit,
+      offset,
+    };
   }
 
   async closeSession(input: {
@@ -290,7 +347,7 @@ export class V0CashSessionService {
       closedAt,
     });
 
-    return mapSession(closed);
+    return this.mapSessionWithNames(closed);
   }
 
   async forceCloseSession(input: {
@@ -361,7 +418,7 @@ export class V0CashSessionService {
       closedAt,
     });
 
-    return mapSession(closed);
+    return this.mapSessionWithNames(closed);
   }
 
   async recordPaidIn(input: {
@@ -663,6 +720,16 @@ export class V0CashSessionService {
       );
     }
   }
+
+  private async mapSessionWithNames(row: CashSessionRow): Promise<CashSessionDto> {
+    const accountIds = uniq(
+      [row.opened_by_account_id, row.closed_by_account_id].filter(
+        (value): value is string => Boolean(value)
+      )
+    );
+    const nameMap = await this.repo.listAccountDisplayNames({ accountIds });
+    return mapSession(row, nameMap);
+  }
 }
 
 function parseOpenBody(input: unknown): {
@@ -873,18 +940,22 @@ function uniq(values: readonly string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-function mapSession(row: CashSessionRow): CashSessionDto {
+function mapSession(row: CashSessionRow, nameMap: Map<string, string> = new Map()): CashSessionDto {
   return {
     id: row.id,
     tenantId: row.tenant_id,
     branchId: row.branch_id,
     openedByAccountId: row.opened_by_account_id,
+    openedByName: nameMap.get(row.opened_by_account_id) ?? row.opened_by_account_id,
     openedAt: row.opened_at.toISOString(),
     status: row.status,
     openingFloatUsd: row.opening_float_usd,
     openingFloatKhr: row.opening_float_khr,
     openingNote: row.opening_note,
     closedByAccountId: row.closed_by_account_id,
+    closedByName: row.closed_by_account_id
+      ? nameMap.get(row.closed_by_account_id) ?? row.closed_by_account_id
+      : null,
     closedAt: row.closed_at ? row.closed_at.toISOString() : null,
     closeReason: row.close_reason,
     closeNote: row.close_note,
@@ -909,6 +980,27 @@ function mapMovement(row: CashMovementRow): CashMovementDto {
     recordedByAccountId: row.recorded_by_account_id,
     occurredAt: row.occurred_at.toISOString(),
     createdAt: row.created_at.toISOString(),
+  };
+}
+
+function mapSessionSale(
+  row: CashSessionSaleRow,
+  nameMap: Map<string, string>
+): CashSessionSaleItemDto {
+  return {
+    saleId: row.sale_id,
+    status: row.status,
+    paymentMethod: row.payment_method,
+    saleType: row.sale_type,
+    finalizedAt: row.finalized_at.toISOString(),
+    totalItems: row.total_items,
+    grandTotalUsd: row.grand_total_usd,
+    grandTotalKhr: row.grand_total_khr,
+    cashierAccountId: row.finalized_by_account_id,
+    cashierName: row.finalized_by_account_id
+      ? nameMap.get(row.finalized_by_account_id) ?? row.finalized_by_account_id
+      : null,
+    voidedAt: row.voided_at ? row.voided_at.toISOString() : null,
   };
 }
 

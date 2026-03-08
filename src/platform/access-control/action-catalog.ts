@@ -556,6 +556,11 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     entitlementKey: "core.pos",
   },
+  "cashSession.sales.list": {
+    scope: "BRANCH",
+    effect: "READ",
+    entitlementKey: "core.pos",
+  },
   "cashSession.movements.list": {
     scope: "BRANCH",
     effect: "READ",

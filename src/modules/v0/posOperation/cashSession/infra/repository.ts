@@ -103,6 +103,19 @@ export type CashMovementTotalsRow = {
   total_cash_delta_khr: number;
 };
 
+export type CashSessionSaleRow = {
+  sale_id: string;
+  status: "FINALIZED" | "VOID_PENDING" | "VOIDED";
+  payment_method: "CASH" | "KHQR";
+  sale_type: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
+  finalized_at: Date;
+  finalized_by_account_id: string | null;
+  voided_at: Date | null;
+  grand_total_usd: number;
+  grand_total_khr: number;
+  total_items: number;
+};
+
 export class V0CashSessionRepository {
   constructor(private readonly db: Queryable) {}
 
@@ -343,6 +356,55 @@ export class V0CashSessionRepository {
        WHERE m.tenant_id = $1
          AND m.cash_session_id = $2
        ORDER BY m.occurred_at DESC, m.created_at DESC
+       LIMIT $3 OFFSET $4`,
+      [input.tenantId, input.sessionId, input.limit, input.offset]
+    );
+    return result.rows;
+  }
+
+  async listSalesBySession(input: {
+    tenantId: string;
+    sessionId: string;
+    limit: number;
+    offset: number;
+  }): Promise<CashSessionSaleRow[]> {
+    const result = await this.db.query<CashSessionSaleRow>(
+      `WITH session_window AS (
+         SELECT tenant_id, branch_id, opened_at, closed_at
+         FROM v0_cash_sessions
+         WHERE tenant_id = $1
+           AND id = $2
+         LIMIT 1
+       ),
+       sale_line_totals AS (
+         SELECT tenant_id, sale_id, COALESCE(SUM(quantity), 0)::FLOAT8 AS total_items
+         FROM v0_sale_lines
+         WHERE tenant_id = $1
+         GROUP BY tenant_id, sale_id
+       )
+       SELECT
+         s.id AS sale_id,
+         s.status,
+         s.payment_method,
+         s.sale_type,
+         s.finalized_at,
+         s.finalized_by_account_id,
+         s.voided_at,
+         s.grand_total_usd::FLOAT8 AS grand_total_usd,
+         s.grand_total_khr::FLOAT8 AS grand_total_khr,
+         COALESCE(t.total_items, 0)::FLOAT8 AS total_items
+       FROM v0_sales s
+       JOIN session_window w
+         ON w.tenant_id = s.tenant_id
+        AND w.branch_id = s.branch_id
+       LEFT JOIN sale_line_totals t
+         ON t.tenant_id = s.tenant_id
+        AND t.sale_id = s.id
+       WHERE s.status IN ('FINALIZED', 'VOID_PENDING', 'VOIDED')
+         AND s.finalized_at IS NOT NULL
+         AND s.finalized_at >= w.opened_at
+         AND (w.closed_at IS NULL OR s.finalized_at <= w.closed_at)
+       ORDER BY s.finalized_at DESC, s.id DESC
        LIMIT $3 OFFSET $4`,
       [input.tenantId, input.sessionId, input.limit, input.offset]
     );
