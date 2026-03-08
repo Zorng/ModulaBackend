@@ -121,6 +121,11 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
   "org.tenant.current.read": { scope: "TENANT", effect: "READ" },
   "org.branches.accessible.read": { scope: "TENANT", effect: "READ" },
   "org.branch.current.read": { scope: "BRANCH", effect: "READ" },
+  "org.branch.current.profile.update": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+  },
   "org.branch.current.khqrReceiver.update": {
     scope: "BRANCH",
     effect: "WRITE",

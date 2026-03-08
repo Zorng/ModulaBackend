@@ -210,6 +210,7 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
     } = setup;
     const yesterday = dateOnlyWithOffset(-1);
     const tomorrow = dateOnlyWithOffset(1);
+    const updatedDate = dateOnlyWithOffset(2);
 
     const createdPattern = await request(app)
       .post("/v0/hr/shifts/patterns")
@@ -276,15 +277,17 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
       .set("Authorization", `Bearer ${ownerTenantToken}`)
       .set("Idempotency-Key", "shift-instance-update-1")
       .send({
+        date: updatedDate,
         plannedStartTime: "11:00",
         plannedEndTime: "15:00",
       });
     expect(updatedInstance.status).toBe(200);
     expect(updatedInstance.body.data.status).toBe("UPDATED");
+    expect(updatedInstance.body.data.date).toBe(updatedDate);
 
     const schedule = await request(app)
       .get("/v0/hr/shifts/schedule")
-      .query({ branchId, from: yesterday, to: tomorrow })
+      .query({ branchId, from: yesterday, to: updatedDate })
       .set("Authorization", `Bearer ${ownerTenantToken}`);
     expect(schedule.status).toBe(200);
     expect(Array.isArray(schedule.body.data.patterns)).toBe(true);

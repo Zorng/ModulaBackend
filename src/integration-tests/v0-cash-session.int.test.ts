@@ -122,6 +122,73 @@ async function setupOwnerBranchContext(input: {
   };
 }
 
+async function inviteAndAcceptBranchUser(input: {
+  app: express.Express;
+  pool: Pool;
+  ownerToken: string;
+  tenantId: string;
+  branchId: string;
+  roleKey: "OWNER" | "ADMIN" | "MANAGER" | "CASHIER" | "CLERK";
+  phone: string;
+}): Promise<{
+  accountId: string;
+  membershipId: string;
+  tenantToken: string;
+  branchToken: string;
+}> {
+  const invited = await request(input.app)
+    .post("/v0/auth/memberships/invite")
+    .set("Authorization", `Bearer ${input.ownerToken}`)
+    .send({
+      tenantId: input.tenantId,
+      phone: input.phone,
+      roleKey: input.roleKey,
+    });
+  expect(invited.status).toBe(201);
+  const membershipId = invited.body.data.membershipId as string;
+
+  const assigned = await request(input.app)
+    .post(`/v0/auth/memberships/${membershipId}/branches`)
+    .set("Authorization", `Bearer ${input.ownerToken}`)
+    .send({ branchIds: [input.branchId] });
+  expect(assigned.status).toBe(200);
+
+  const accessToken = await registerAndLogin(input.app, input.phone);
+  const accepted = await request(input.app)
+    .post(`/v0/auth/memberships/invitations/${membershipId}/accept`)
+    .set("Authorization", `Bearer ${accessToken}`)
+    .send({});
+  expect(accepted.status).toBe(200);
+
+  const tenantSelected = await request(input.app)
+    .post("/v0/auth/context/tenant/select")
+    .set("Authorization", `Bearer ${accessToken}`)
+    .send({ tenantId: input.tenantId });
+  expect(tenantSelected.status).toBe(200);
+  const tenantToken = tenantSelected.body.data.accessToken as string;
+
+  const branchSelected = await request(input.app)
+    .post("/v0/auth/context/branch/select")
+    .set("Authorization", `Bearer ${tenantToken}`)
+    .send({ branchId: input.branchId });
+  expect(branchSelected.status).toBe(200);
+  const branchToken = branchSelected.body.data.accessToken as string;
+
+  const accountQuery = await input.pool.query<{ id: string }>(
+    `SELECT id FROM accounts WHERE phone = $1`,
+    [input.phone]
+  );
+  const accountId = accountQuery.rows[0]?.id;
+  expect(accountId).toBeTruthy();
+
+  return {
+    accountId: accountId!,
+    membershipId,
+    tenantToken,
+    branchToken,
+  };
+}
+
 describe("v0 cash session integration", () => {
   let pool: Pool;
   let app: express.Express;
@@ -167,6 +234,64 @@ describe("v0 cash session integration", () => {
       success: true,
       data: {
         session: null,
+      },
+    });
+  });
+
+  it("returns the same open branch session to another cashier in the same branch", async () => {
+    const setup = await setupOwnerBranchContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Cash Occupancy ${uniqueSuffix()}`,
+    });
+
+    const cashierA = await inviteAndAcceptBranchUser({
+      app,
+      pool,
+      ownerToken: setup.ownerToken,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+      phone: uniquePhone(),
+    });
+    const cashierB = await inviteAndAcceptBranchUser({
+      app,
+      pool,
+      ownerToken: setup.ownerToken,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+      phone: uniquePhone(),
+    });
+
+    const opened = await request(app)
+      .post("/v0/cash/sessions")
+      .set("Authorization", `Bearer ${cashierA.branchToken}`)
+      .set("Idempotency-Key", `cash-open-occupancy-${uniqueSuffix()}`)
+      .send({
+        openingFloatUsd: 20,
+        openingFloatKhr: 50000,
+        note: "Morning shift",
+      });
+    expect(opened.status).toBe(200);
+    const sessionId = opened.body.data.id as string;
+
+    const activeForCashierB = await request(app)
+      .get("/v0/cash/sessions/active")
+      .set("Authorization", `Bearer ${cashierB.branchToken}`);
+
+    expect(activeForCashierB.status).toBe(200);
+    expect(activeForCashierB.body).toMatchObject({
+      success: true,
+      data: {
+        session: {
+          id: sessionId,
+          branchId: setup.branchId,
+          tenantId: setup.tenantId,
+          openedByAccountId: cashierA.accountId,
+          status: "OPEN",
+        },
       },
     });
   });

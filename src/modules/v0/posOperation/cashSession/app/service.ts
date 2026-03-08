@@ -145,20 +145,12 @@ export class V0CashSessionService {
     actor: ActorContext;
   }): Promise<{ session: CashSessionDto | null }> {
     const actor = await this.assertBranchContext(input.actor);
-    const role = await this.resolveActorRole(actor);
     const session = await this.repo.getActiveSessionByBranch({
       tenantId: actor.tenantId,
       branchId: actor.branchId,
     });
     if (!session) {
       return { session: null };
-    }
-    if (role === "CASHIER" && session.opened_by_account_id !== actor.accountId) {
-      throw new V0CashSessionError(
-        403,
-        "cashier can only access own session",
-        "CASH_SESSION_FORBIDDEN_SELF_SCOPE"
-      );
     }
     return { session: mapSession(session) };
   }

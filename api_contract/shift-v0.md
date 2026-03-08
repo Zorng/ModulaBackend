@@ -178,6 +178,7 @@ Headers:
 Body:
 ```json
 {
+  "date": "2026-03-09",
   "plannedStartTime": "11:00",
   "plannedEndTime": "15:00",
   "note": "updated by manager"

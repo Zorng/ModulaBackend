@@ -22,6 +22,13 @@ export const ORG_POLICY_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "PATCH",
+    pattern: /^\/org\/branch\/current$/,
+    actionKey: "org.branch.current.profile.update",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "PATCH",
     pattern: /^\/org\/branch\/current\/khqr-receiver$/,
     actionKey: "org.branch.current.khqrReceiver.update",
     tenantSource: "token",

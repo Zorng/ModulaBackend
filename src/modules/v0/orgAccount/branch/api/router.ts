@@ -56,6 +56,27 @@ export function createV0BranchRouter(input: {
     }
   });
 
+  router.patch("/branch/current", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
+    try {
+      const actor = req.v0Auth;
+      if (!actor) {
+        res.status(401).json({ success: false, error: "authentication required" });
+        return;
+      }
+
+      const body = asRecord(req.body);
+      const data = await input.service.setCurrentBranchProfile({
+        actor,
+        branchName: body.branchName,
+        branchAddress: body.branchAddress,
+        contactNumber: body.contactNumber,
+      });
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
+
   router.patch(
     "/branch/current/khqr-receiver",
     requireV0Auth,

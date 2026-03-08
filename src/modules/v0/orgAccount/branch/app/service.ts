@@ -38,24 +38,42 @@ export class V0BranchService {
 
   async getCurrentBranchProfile(input: { actor: OrgActorContext }) {
     const scope = assertBranchContext(input.actor);
-    const hasAccess = await this.repo.hasActiveBranchAssignment({
-      accountId: scope.accountId,
-      tenantId: scope.tenantId,
-      branchId: scope.branchId,
-    });
-    if (!hasAccess) {
-      throw new V0OrgAccountError(403, "no active branch assignment for branch");
-    }
+    const branch = await this.assertCurrentBranchAccess(scope);
 
-    const branch = await this.repo.findBranchProfile({
+    return mapBranchProfile(branch);
+  }
+
+  async setCurrentBranchProfile(input: {
+    actor: OrgActorContext;
+    branchName: unknown;
+    branchAddress: unknown;
+    contactNumber: unknown;
+  }) {
+    const scope = assertBranchContext(input.actor);
+    const current = await this.assertCurrentBranchAccess(scope);
+
+    const branchName = hasOwnValue(input, "branchName")
+      ? parseBranchName(input.branchName)
+      : current.name;
+    const branchAddress = hasOwnValue(input, "branchAddress")
+      ? normalizeOptionalString(input.branchAddress)
+      : current.address;
+    const contactNumber = hasOwnValue(input, "contactNumber")
+      ? normalizeOptionalString(input.contactNumber)
+      : current.contact_phone;
+
+    const updated = await this.repo.updateBranchProfile({
       tenantId: scope.tenantId,
       branchId: scope.branchId,
+      branchName,
+      branchAddress,
+      contactPhone: contactNumber,
     });
-    if (!branch) {
+    if (!updated) {
       throw new V0OrgAccountError(404, "branch not found");
     }
 
-    return mapBranchProfile(branch);
+    return mapBranchProfile(updated);
   }
 
   async setCurrentBranchKhqrReceiver(input: {
@@ -127,6 +145,30 @@ export class V0BranchService {
     }
 
     return mapBranchProfile(updated);
+  }
+
+  private async assertCurrentBranchAccess(scope: {
+    accountId: string;
+    tenantId: string;
+    branchId: string;
+  }): Promise<BranchProfileRow> {
+    const hasAccess = await this.repo.hasActiveBranchAssignment({
+      accountId: scope.accountId,
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+    });
+    if (!hasAccess) {
+      throw new V0OrgAccountError(403, "no active branch assignment for branch");
+    }
+
+    const branch = await this.repo.findBranchProfile({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+    });
+    if (!branch) {
+      throw new V0OrgAccountError(404, "branch not found");
+    }
+    return branch;
   }
 
   async initiateFirstBranchActivation(input: {
@@ -469,6 +511,22 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
 function normalizeOptionalString(value: unknown): string | null {
   const normalized = String(value ?? "").trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function parseBranchName(value: unknown): string {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    throw new V0OrgAccountError(
+      422,
+      "branchName is required",
+      "ORG_BRANCH_NAME_INVALID"
+    );
+  }
+  return normalized;
+}
+
+function hasOwnValue(source: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(source, key);
 }
 
 function parseAttendanceLocationVerificationMode(

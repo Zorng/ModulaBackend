@@ -159,6 +159,24 @@ describe("v0 org account (phase F1 scaffold)", () => {
       status: "ACTIVE",
     });
 
+    const updatedBranchProfile = await request(app)
+      .patch("/v0/org/branch/current")
+      .set("Authorization", `Bearer ${branchToken}`)
+      .send({
+        branchName: "Sen Sok Downtown",
+        branchAddress: "Street 101",
+        contactNumber: "+85512009999",
+      });
+    expect(updatedBranchProfile.status).toBe(200);
+    expect(updatedBranchProfile.body.data).toMatchObject({
+      branchId,
+      tenantId,
+      branchName: "Sen Sok Downtown",
+      branchAddress: "Street 101",
+      contactNumber: "+85512009999",
+      status: "ACTIVE",
+    });
+
     const configuredKhqr = await request(app)
       .patch("/v0/org/branch/current/khqr-receiver")
       .set("Authorization", `Bearer ${branchToken}`)
@@ -201,6 +219,9 @@ describe("v0 org account (phase F1 scaffold)", () => {
     expect(branchProfileAfterLocationUpdate.status).toBe(200);
     expect(branchProfileAfterLocationUpdate.body.data).toMatchObject({
       branchId,
+      branchName: "Sen Sok Downtown",
+      branchAddress: "Street 101",
+      contactNumber: "+85512009999",
       attendanceLocationVerificationMode: "checkin_only",
       workplaceLocation: {
         latitude: 11.5564,

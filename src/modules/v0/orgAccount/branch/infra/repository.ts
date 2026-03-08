@@ -439,6 +439,45 @@ export class V0BranchRepository {
     return result.rows[0] ?? null;
   }
 
+  async updateBranchProfile(input: {
+    tenantId: string;
+    branchId: string;
+    branchName: string;
+    branchAddress: string | null;
+    contactPhone: string | null;
+  }): Promise<BranchProfileRow | null> {
+    const result = await this.db.query<BranchProfileRow>(
+      `UPDATE branches
+       SET name = $3,
+           address = $4,
+           contact_phone = $5,
+           updated_at = NOW()
+       WHERE id = $1
+         AND tenant_id = $2
+       RETURNING
+         id,
+         tenant_id,
+         name,
+         address,
+         contact_phone,
+         khqr_receiver_account_id,
+         khqr_receiver_name,
+         attendance_location_verification_mode,
+         workplace_latitude::FLOAT8 AS workplace_latitude,
+         workplace_longitude::FLOAT8 AS workplace_longitude,
+         workplace_radius_meters,
+         status`,
+      [
+        input.branchId,
+        input.tenantId,
+        input.branchName,
+        input.branchAddress,
+        input.contactPhone,
+      ]
+    );
+    return result.rows[0] ?? null;
+  }
+
   async setBranchAttendanceLocationSettings(input: {
     tenantId: string;
     branchId: string;

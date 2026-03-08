@@ -166,6 +166,9 @@ Response `200` (no active session):
 
 Notes:
 - no active session is a normal state for this query endpoint (`200` with `session: null`)
+- branch-scoped, not self-scoped:
+  - any authorized user in the current branch receives the same open branch session
+  - `openedByAccountId` is included so frontend can show branch occupancy / opened-by-another-user state
 
 ---
 

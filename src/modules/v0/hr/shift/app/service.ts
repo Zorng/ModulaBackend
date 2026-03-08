@@ -789,7 +789,11 @@ function formatDateOnly(value: unknown): string | null {
     return value.slice(0, 10);
   }
   if (value instanceof Date) {
-    return value.toISOString().slice(0, 10);
+    return [
+      value.getFullYear().toString().padStart(4, "0"),
+      (value.getMonth() + 1).toString().padStart(2, "0"),
+      value.getDate().toString().padStart(2, "0"),
+    ].join("-");
   }
   return String(value).slice(0, 10);
 }
