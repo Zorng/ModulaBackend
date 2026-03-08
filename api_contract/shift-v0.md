@@ -242,8 +242,8 @@ Response `200`:
 
 Action key: `hr.shift.schedule.read`
 
-#### 9) My shift view
-`GET /v0/hr/shifts/me?from=YYYY-MM-DD&to=YYYY-MM-DD`
+#### 9) My active shifts
+`GET /v0/hr/shifts/me`
 
 Response `200`:
 ```json
@@ -263,6 +263,10 @@ Notes:
 - Self-service endpoint for staff to read only their own assigned shift schedule.
 - Caller must have tenant context.
 - Caller does not provide `membershipId`; backend resolves it from the active tenant membership in token context.
+- Response is simplified to active assignments only:
+  - active patterns effective today
+  - non-cancelled instances from today onward
+- Historical, inactive, and cancelled shift rows are not returned by this endpoint.
 
 #### 10) Shift instance detail
 `GET /v0/hr/shifts/instances/:instanceId`

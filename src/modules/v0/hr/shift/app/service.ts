@@ -466,50 +466,40 @@ export class V0ShiftService {
 
   async listMySchedule(input: {
     actor: ActorContext;
-    from?: string;
-    to?: string;
-    patternStatus?: string;
-    instanceStatus?: string;
-    limit?: number;
-    offset?: number;
   }) {
     const access = await this.assertSelfReadAccess(input.actor);
-    const from = parseOptionalDate(input.from, "from");
-    const to = parseOptionalDate(input.to, "to");
-    const patternStatus = parseOptionalPatternStatus(input.patternStatus);
-    const instanceStatus = parseOptionalInstanceStatus(input.instanceStatus);
-    const limit = normalizeLimit(input.limit);
-    const offset = normalizeOffset(input.offset);
-
     const membershipId = access.requesterMembership.id;
+    const today = currentDateOnly();
 
     const [patterns, instances] = await Promise.all([
       this.repo.listShiftPatterns({
         tenantId: access.tenantId,
         branchId: null,
         membershipId,
-        fromDate: from,
-        toDate: to,
-        status: patternStatus,
-        limit,
-        offset,
+        fromDate: today,
+        toDate: today,
+        status: "ACTIVE",
+        limit: 100,
+        offset: 0,
       }),
       this.repo.listShiftInstances({
         tenantId: access.tenantId,
         branchId: null,
         membershipId,
-        fromDate: from,
-        toDate: to,
-        status: instanceStatus,
-        limit,
-        offset,
+        fromDate: today,
+        toDate: null,
+        status: null,
+        limit: 100,
+        offset: 0,
       }),
     ]);
 
     return {
       membershipId,
       patterns: patterns.map(mapPattern),
-      instances: instances.map(mapInstance),
+      instances: instances
+        .filter((row) => row.status === "PLANNED" || row.status === "UPDATED")
+        .map(mapInstance),
     };
   }
 
@@ -802,6 +792,10 @@ function formatDateOnly(value: unknown): string | null {
     return value.toISOString().slice(0, 10);
   }
   return String(value).slice(0, 10);
+}
+
+function currentDateOnly(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function formatIsoDateTime(value: unknown): string {

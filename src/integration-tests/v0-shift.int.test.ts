@@ -22,6 +22,12 @@ function uniquePhone(): string {
   return `+1${now}${rand}`;
 }
 
+function dateOnlyWithOffset(days: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 async function registerAndLogin(app: express.Express, phone: string): Promise<string> {
   const register = await request(app).post("/v0/auth/register").send({
     phone,
@@ -202,6 +208,8 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
       ownerBranchToken,
       staffTenantToken,
     } = setup;
+    const yesterday = dateOnlyWithOffset(-1);
+    const tomorrow = dateOnlyWithOffset(1);
 
     const createdPattern = await request(app)
       .post("/v0/hr/shifts/patterns")
@@ -213,7 +221,7 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
         daysOfWeek: [1, 2, 3, 4, 5],
         plannedStartTime: "08:00",
         plannedEndTime: "17:00",
-        effectiveFrom: "2026-03-01",
+        effectiveFrom: yesterday,
         effectiveTo: null,
         note: "weekday shift",
       });
@@ -230,7 +238,7 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
         daysOfWeek: [1, 2, 3, 4, 5],
         plannedStartTime: "08:00",
         plannedEndTime: "17:00",
-        effectiveFrom: "2026-03-01",
+        effectiveFrom: yesterday,
         effectiveTo: null,
         note: "weekday shift",
       });
@@ -255,7 +263,7 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
         membershipId,
         branchId,
         patternId,
-        date: "2026-03-05",
+        date: tomorrow,
         plannedStartTime: "10:00",
         plannedEndTime: "14:00",
         note: "special event",
@@ -276,7 +284,7 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
 
     const schedule = await request(app)
       .get("/v0/hr/shifts/schedule")
-      .query({ branchId, from: "2026-03-01", to: "2026-03-10" })
+      .query({ branchId, from: yesterday, to: tomorrow })
       .set("Authorization", `Bearer ${ownerTenantToken}`);
     expect(schedule.status).toBe(200);
     expect(Array.isArray(schedule.body.data.patterns)).toBe(true);
@@ -290,7 +298,6 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
 
     const mySchedule = await request(app)
       .get("/v0/hr/shifts/me")
-      .query({ from: "2026-03-01", to: "2026-03-10" })
       .set("Authorization", `Bearer ${staffTenantToken}`);
     expect(mySchedule.status).toBe(200);
     expect(mySchedule.body.data.membershipId).toBe(membershipId);
@@ -303,7 +310,7 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
 
     const directMembershipReadDenied = await request(app)
       .get(`/v0/hr/shifts/memberships/${membershipId}`)
-      .query({ from: "2026-03-01", to: "2026-03-10" })
+      .query({ from: yesterday, to: tomorrow })
       .set("Authorization", `Bearer ${staffTenantToken}`);
     expect(directMembershipReadDenied.status).toBe(403);
     expect(directMembershipReadDenied.body.code).toBe("PERMISSION_DENIED");

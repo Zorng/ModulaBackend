@@ -85,12 +85,6 @@ export function createV0ShiftRouter(input: {
 
       const data = await input.service.listMySchedule({
         actor,
-        from: asString(req.query?.from),
-        to: asString(req.query?.to),
-        patternStatus: asString(req.query?.patternStatus),
-        instanceStatus: asString(req.query?.instanceStatus),
-        limit: asNumber(req.query?.limit),
-        offset: asNumber(req.query?.offset),
       });
       res.status(200).json({ success: true, data });
     } catch (error) {
