@@ -12,7 +12,10 @@
   "scripts": {
     "setup": "tsx scripts/setup.ts",
     "dev": "cross-env NODE_ENV=development tsx watch src/server.ts",
-    "migrate": "cross-env NODE_ENV=development tsx src/platform/db/migrate.ts",
+    "migrate": "tsx src/platform/db/migrate.ts",
+    "migrate:dev": "cross-env NODE_ENV=development tsx src/platform/db/migrate.ts",
+    "migrate:test": "cross-env NODE_ENV=test tsx src/platform/db/migrate.ts",
+    "migrate:prod": "cross-env NODE_ENV=production tsx src/platform/db/migrate.ts",
     "seed:dev": "cross-env NODE_ENV=development tsx src/platform/db/seed-dev.ts",
     "start": "cross-env NODE_ENV=production node dist/server.js",
     "test": "cross-env NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js",
