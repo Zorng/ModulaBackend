@@ -229,9 +229,7 @@ export class V0CashSessionService {
     offset?: number;
   }): Promise<CashMovementDto[]> {
     const actor = await this.assertBranchContext(input.actor);
-    const role = await this.resolveActorRole(actor);
     const session = await this.requireSessionForBranch(actor, input.sessionId);
-    await this.assertSessionOwnershipForCashier(role, actor.accountId, session);
     const rows = await this.repo.listMovementsBySession({
       tenantId: actor.tenantId,
       sessionId: session.id,
@@ -251,6 +249,8 @@ export class V0CashSessionService {
     items: CashSessionSaleItemDto[];
     limit: number;
     offset: number;
+    total: number;
+    hasMore: boolean;
   }> {
     const actor = await this.assertBranchContext(input.actor);
     const role = await this.resolveActorRole(actor);
@@ -259,6 +259,10 @@ export class V0CashSessionService {
 
     const limit = normalizeLimit(input.limit);
     const offset = normalizeOffset(input.offset);
+    const total = await this.repo.countSalesBySession({
+      tenantId: actor.tenantId,
+      sessionId: session.id,
+    });
     const rows = await this.repo.listSalesBySession({
       tenantId: actor.tenantId,
       sessionId: session.id,
@@ -278,6 +282,8 @@ export class V0CashSessionService {
       items: rows.map((row) => mapSessionSale(row, nameMap)),
       limit,
       offset,
+      total,
+      hasMore: offset + rows.length < total,
     };
   }
 
@@ -431,7 +437,7 @@ export class V0CashSessionService {
     const role = await this.resolveActorRole(actor);
     assertCanWriteMovementForRole(role);
     const body = parsePaidInBody(input.body);
-    const session = await this.requireOpenSessionForMovement(actor, input.sessionId, role);
+    const session = await this.requireOpenSessionForMovement(actor, input.sessionId);
 
     try {
       const movement = await this.repo.appendMovement({
@@ -470,7 +476,7 @@ export class V0CashSessionService {
     const role = await this.resolveActorRole(actor);
     assertCanWriteMovementForRole(role);
     const body = parsePaidOutBody(input.body);
-    const session = await this.requireOpenSessionForMovement(actor, input.sessionId, role);
+    const session = await this.requireOpenSessionForMovement(actor, input.sessionId);
 
     try {
       const movement = await this.repo.appendMovement({
@@ -509,7 +515,7 @@ export class V0CashSessionService {
     const role = await this.resolveActorRole(actor);
     assertCanAdjustForRole(role);
     const body = parseAdjustmentBody(input.body);
-    const session = await this.requireOpenSessionForMovement(actor, input.sessionId, role);
+    const session = await this.requireOpenSessionForMovement(actor, input.sessionId);
 
     try {
       const movement = await this.repo.appendMovement({
@@ -678,11 +684,9 @@ export class V0CashSessionService {
 
   private async requireOpenSessionForMovement(
     actor: { accountId: string; tenantId: string; branchId: string },
-    sessionId: string,
-    role: string
+    sessionId: string
   ): Promise<CashSessionRow> {
     const session = await this.requireSessionForBranch(actor, sessionId);
-    await this.assertSessionOwnershipForCashier(role, actor.accountId, session);
     if (session.status !== "OPEN") {
       throw new V0CashSessionError(
         409,

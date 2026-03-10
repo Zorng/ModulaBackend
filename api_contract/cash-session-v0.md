@@ -45,10 +45,14 @@ type CashSession = {
   status: CashSessionStatus;
   openingFloatUsd: number;
   openingFloatKhr: number;
+  openingNote: string | null;
   closedAt: string | null;
   closedByAccountId: string | null;
   closedByName: string | null;
+  closeReason: "NORMAL_CLOSE" | "FORCE_CLOSE" | null;
   closeNote: string | null;
+  createdAt: string; // ISO datetime
+  updatedAt: string; // ISO datetime
 };
 
 type CashMovement = {
@@ -57,13 +61,15 @@ type CashMovement = {
   tenantId: string;
   branchId: string;
   movementType: CashMovementType;
-  amountUsd: number;
-  amountKhr: number;
+  amountUsdDelta: number;
+  amountKhrDelta: number;
   reason: string | null;
-  sourceRefType: "SALE" | "VOID" | "MANUAL";
+  sourceRefType: "SALE" | "MANUAL" | "SYSTEM";
   sourceRefId: string | null;
+  idempotencyKey: string;
   recordedByAccountId: string;
   occurredAt: string; // ISO datetime
+  createdAt: string; // ISO datetime
 };
 
 type CashSessionSaleRow = {
@@ -136,6 +142,32 @@ Body:
 }
 ```
 
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "tenantId": "uuid",
+    "branchId": "uuid",
+    "openedByAccountId": "uuid",
+    "openedByName": "John Smith",
+    "openedAt": "2026-03-10T01:00:00.000Z",
+    "status": "OPEN",
+    "openingFloatUsd": 20,
+    "openingFloatKhr": 50000,
+    "openingNote": "Shift start",
+    "closedByAccountId": null,
+    "closedByName": null,
+    "closedAt": null,
+    "closeReason": null,
+    "closeNote": null,
+    "createdAt": "2026-03-10T01:00:00.000Z",
+    "updatedAt": "2026-03-10T01:00:00.000Z"
+  }
+}
+```
+
 Rules:
 - only one OPEN session per branch
 - requires active branch context
@@ -163,10 +195,14 @@ Response `200`:
       "status": "OPEN",
       "openingFloatUsd": 20,
       "openingFloatKhr": 50000,
+      "openingNote": "Shift start",
       "closedAt": null,
       "closedByAccountId": null,
       "closedByName": null,
-      "closeNote": null
+      "closeReason": null,
+      "closeNote": null,
+      "createdAt": "2026-02-19T01:00:00.000Z",
+      "updatedAt": "2026-02-19T01:00:00.000Z"
     }
   }
 }
@@ -217,7 +253,9 @@ Response `200`:
       }
     ],
     "limit": 20,
-    "offset": 0
+    "offset": 0,
+    "total": 47,
+    "hasMore": true
   }
 }
 ```
@@ -229,6 +267,8 @@ Rules:
 - owner/admin/manager may view any session in the current branch
 - results are bound to the cash-session time window (`openedAt .. closedAt`)
 - includes finalized and void lifecycle rows currently associated to that session window
+- `total` is the total number of matching rows in the session window
+- `hasMore` indicates whether another page exists after the current slice
 
 ---
 
@@ -247,6 +287,32 @@ Body:
   "countedCashUsd": 31,
   "countedCashKhr": 74000,
   "note": "End shift"
+}
+```
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "tenantId": "uuid",
+    "branchId": "uuid",
+    "openedByAccountId": "uuid",
+    "openedByName": "John Smith",
+    "openedAt": "2026-03-10T01:00:00.000Z",
+    "status": "CLOSED",
+    "openingFloatUsd": 20,
+    "openingFloatKhr": 50000,
+    "openingNote": "Shift start",
+    "closedByAccountId": "uuid",
+    "closedByName": "Jane Doe",
+    "closedAt": "2026-03-10T09:00:00.000Z",
+    "closeReason": "NORMAL_CLOSE",
+    "closeNote": "End shift",
+    "createdAt": "2026-03-10T01:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+  }
 }
 ```
 
@@ -275,6 +341,32 @@ Body:
 }
 ```
 
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "tenantId": "uuid",
+    "branchId": "uuid",
+    "openedByAccountId": "uuid",
+    "openedByName": "John Smith",
+    "openedAt": "2026-03-10T01:00:00.000Z",
+    "status": "FORCE_CLOSED",
+    "openingFloatUsd": 20,
+    "openingFloatKhr": 50000,
+    "openingNote": "Shift start",
+    "closedByAccountId": "uuid",
+    "closedByName": "Jane Doe",
+    "closedAt": "2026-03-10T09:00:00.000Z",
+    "closeReason": "FORCE_CLOSE",
+    "closeNote": "Manager override",
+    "createdAt": "2026-03-10T01:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+  }
+}
+```
+
 Rules:
 - manager/admin/owner only
 - session becomes `FORCE_CLOSED`
@@ -287,7 +379,7 @@ Rules:
 
 `POST /v0/cash/sessions/:sessionId/movements/paid-in`
 
-Action key: `cashSession.movement.paidIn`
+Action key: `cashSession.paidIn`
 
 Headers:
 - `Idempotency-Key: <key>`
@@ -301,13 +393,40 @@ Body:
 }
 ```
 
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "tenantId": "uuid",
+    "branchId": "uuid",
+    "sessionId": "uuid",
+    "movementType": "MANUAL_IN",
+    "amountUsdDelta": 10,
+    "amountKhrDelta": 0,
+    "reason": "Float top-up",
+    "sourceRefType": "MANUAL",
+    "sourceRefId": null,
+    "idempotencyKey": "paid-in:idem-key",
+    "recordedByAccountId": "uuid",
+    "occurredAt": "2026-03-10T01:10:00.000Z",
+    "createdAt": "2026-03-10T01:10:00.000Z"
+  }
+}
+```
+
+Rules:
+- branch-authorized write; not restricted to the session opener
+- cashier/manager/admin/owner may record paid-in on the branch's open session
+
 ---
 
 ### 7) Record paid-out
 
 `POST /v0/cash/sessions/:sessionId/movements/paid-out`
 
-Action key: `cashSession.movement.paidOut`
+Action key: `cashSession.paidOut`
 
 Headers:
 - `Idempotency-Key: <key>`
@@ -321,13 +440,40 @@ Body:
 }
 ```
 
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "tenantId": "uuid",
+    "branchId": "uuid",
+    "sessionId": "uuid",
+    "movementType": "MANUAL_OUT",
+    "amountUsdDelta": 0,
+    "amountKhrDelta": -12000,
+    "reason": "Small expense",
+    "sourceRefType": "MANUAL",
+    "sourceRefId": null,
+    "idempotencyKey": "paid-out:idem-key",
+    "recordedByAccountId": "uuid",
+    "occurredAt": "2026-03-10T01:15:00.000Z",
+    "createdAt": "2026-03-10T01:15:00.000Z"
+  }
+}
+```
+
+Rules:
+- branch-authorized write; not restricted to the session opener
+- cashier/manager/admin/owner may record paid-out on the branch's open session
+
 ---
 
-### 7) Record manual adjustment
+### 8) Record manual adjustment
 
 `POST /v0/cash/sessions/:sessionId/movements/adjustment`
 
-Action key: `cashSession.movement.adjustment`
+Action key: `cashSession.adjust`
 
 Headers:
 - `Idempotency-Key: <key>`
@@ -341,40 +487,170 @@ Body:
 }
 ```
 
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "tenantId": "uuid",
+    "branchId": "uuid",
+    "sessionId": "uuid",
+    "movementType": "ADJUSTMENT",
+    "amountUsdDelta": -2,
+    "amountKhrDelta": 0,
+    "reason": "Correction after count review",
+    "sourceRefType": "MANUAL",
+    "sourceRefId": null,
+    "idempotencyKey": "adjustment:idem-key",
+    "recordedByAccountId": "uuid",
+    "occurredAt": "2026-03-10T01:20:00.000Z",
+    "createdAt": "2026-03-10T01:20:00.000Z"
+  }
+}
+```
+
 Rules:
+- branch-authorized write; not restricted to the session opener
 - manager/admin/owner only
 
 ---
 
-### 8) List sessions
+### 9) List sessions
 
 `GET /v0/cash/sessions?status=open|closed|force_closed|all&from=ISO&to=ISO&limit=50&offset=0`
 
 Action key: `cashSession.list`
 
+Response `200`:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "status": "OPEN",
+      "openedByName": "John Smith",
+      "openedAt": "2026-03-10T01:00:00.000Z",
+      "closedAt": null
+    }
+  ]
+}
+```
+
 ---
 
-### 9) Get session detail
+### 10) Get session detail
 
 `GET /v0/cash/sessions/:sessionId`
 
 Action key: `cashSession.read`
 
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "tenantId": "uuid",
+    "branchId": "uuid",
+    "openedByAccountId": "uuid",
+    "openedByName": "John Smith",
+    "openedAt": "2026-03-10T01:00:00.000Z",
+    "status": "OPEN",
+    "openingFloatUsd": 20,
+    "openingFloatKhr": 50000,
+    "openingNote": "Shift start",
+    "closedByAccountId": null,
+    "closedByName": null,
+    "closedAt": null,
+    "closeReason": null,
+    "closeNote": null,
+    "createdAt": "2026-03-10T01:00:00.000Z",
+    "updatedAt": "2026-03-10T01:00:00.000Z"
+  }
+}
+```
+
 ---
 
-### 10) List movements for a session
+### 11) List movements for a session
 
 `GET /v0/cash/sessions/:sessionId/movements?limit=100&offset=0`
 
 Action key: `cashSession.movements.list`
 
+Response `200`:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "tenantId": "uuid",
+      "branchId": "uuid",
+      "sessionId": "uuid",
+      "movementType": "MANUAL_IN",
+      "amountUsdDelta": 10,
+      "amountKhrDelta": 0,
+      "reason": "Float top-up",
+      "sourceRefType": "MANUAL",
+      "sourceRefId": null,
+      "idempotencyKey": "paid-in:idem-key",
+      "recordedByAccountId": "uuid",
+      "occurredAt": "2026-03-10T01:10:00.000Z",
+      "createdAt": "2026-03-10T01:10:00.000Z"
+    }
+  ]
+}
+```
+
+Rules:
+- movement history is branch-readable when the actor can access the branch/session context
+- movement write controls are gated separately by:
+  - `cashSession.paidIn`
+  - `cashSession.paidOut`
+  - `cashSession.adjust`
+
 ---
 
-### 11) X report (operational snapshot)
+### 12) X report (operational snapshot)
 
 `GET /v0/cash/sessions/:sessionId/x`
 
 Action key: `cashSession.x.view`
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "sessionId": "uuid",
+    "status": "OPEN",
+    "openedByName": "John Smith",
+    "openedAt": "2026-03-10T01:00:00.000Z",
+    "closedAt": null,
+    "openingFloatUsd": 20,
+    "openingFloatKhr": 50000,
+    "totalSalesNonCashUsd": 7.5,
+    "totalSalesNonCashKhr": 0,
+    "totalSalesKhqrUsd": 7.5,
+    "totalSalesKhqrKhr": 0,
+    "totalSaleInUsd": 15,
+    "totalSaleInKhr": 0,
+    "totalRefundOutUsd": 0,
+    "totalRefundOutKhr": 0,
+    "totalManualInUsd": 5,
+    "totalManualInKhr": 0,
+    "totalManualOutUsd": 2,
+    "totalManualOutKhr": 0,
+    "totalAdjustmentUsd": -1,
+    "totalAdjustmentKhr": 0,
+    "expectedCashUsd": 37,
+    "expectedCashKhr": 50000
+  }
+}
+```
 
 Rules:
 - cashier may view own sessions only
@@ -384,11 +660,49 @@ Rules:
 
 ---
 
-### 12) Z report (close artifact)
+### 13) Z report (close artifact)
 
 `GET /v0/cash/sessions/:sessionId/z`
 
 Action key: `cashSession.z.view`
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "sessionId": "uuid",
+    "status": "CLOSED",
+    "openedByName": "John Smith",
+    "openedAt": "2026-03-10T01:00:00.000Z",
+    "closedAt": "2026-03-10T09:00:00.000Z",
+    "openingFloatUsd": 20,
+    "openingFloatKhr": 50000,
+    "totalSalesNonCashUsd": 7.5,
+    "totalSalesNonCashKhr": 0,
+    "totalSalesKhqrUsd": 7.5,
+    "totalSalesKhqrKhr": 0,
+    "totalSaleInUsd": 15,
+    "totalSaleInKhr": 0,
+    "totalRefundOutUsd": 0,
+    "totalRefundOutKhr": 0,
+    "totalManualInUsd": 5,
+    "totalManualInKhr": 0,
+    "totalManualOutUsd": 2,
+    "totalManualOutKhr": 0,
+    "totalAdjustmentUsd": -1,
+    "totalAdjustmentKhr": 0,
+    "expectedCashUsd": 37,
+    "expectedCashKhr": 50000,
+    "countedCashUsd": 37,
+    "countedCashKhr": 50000,
+    "varianceUsd": 0,
+    "varianceKhr": 0,
+    "closedByName": "Jane Doe",
+    "closeReason": "NORMAL_CLOSE"
+  }
+}
+```
 
 Rules:
 - session must be `CLOSED` or `FORCE_CLOSED`

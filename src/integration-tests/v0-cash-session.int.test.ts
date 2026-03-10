@@ -508,26 +508,49 @@ describe("v0 cash session integration", () => {
       unitPrice: 2.5,
       lineTotalAmount: 2.5,
     });
+    const saleId2 = await insertSessionSale({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      finalizedByAccountId: cashierA.accountId,
+      status: "FINALIZED",
+      paymentMethod: "KHQR",
+      saleType: "DINE_IN",
+      grandTotalUsd: 4,
+      grandTotalKhr: 16400,
+      finalizedAt: new Date(finalizedAt.getTime() + 1_000),
+    });
+    await insertSessionSaleLine({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      saleId: saleId2,
+      quantity: 1,
+      unitPrice: 4,
+      lineTotalAmount: 4,
+    });
 
     const ownerRead = await request(app)
-      .get(`/v0/cash/sessions/${sessionId}/sales?limit=20&offset=0`)
+      .get(`/v0/cash/sessions/${sessionId}/sales?limit=1&offset=0`)
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
     expect(ownerRead.status).toBe(200);
     expect(ownerRead.body).toMatchObject({
       success: true,
       data: {
         sessionId,
-        limit: 20,
+        limit: 1,
         offset: 0,
+        total: 2,
+        hasMore: true,
         items: [
           {
-            saleId,
+            saleId: saleId2,
             status: "FINALIZED",
-            paymentMethod: "CASH",
-            saleType: "TAKEAWAY",
-            totalItems: 3,
-            grandTotalUsd: 7.5,
-            grandTotalKhr: 30750,
+            paymentMethod: "KHQR",
+            saleType: "DINE_IN",
+            totalItems: 1,
+            grandTotalUsd: 4,
+            grandTotalKhr: 16400,
             cashierAccountId: cashierA.accountId,
             cashierName: "Cash User",
             voidedAt: null,
@@ -541,8 +564,14 @@ describe("v0 cash session integration", () => {
       .get(`/v0/cash/sessions/${sessionId}/sales`)
       .set("Authorization", `Bearer ${cashierA.branchToken}`);
     expect(cashierOwnRead.status).toBe(200);
-    expect(cashierOwnRead.body.data.items).toHaveLength(1);
+    expect(cashierOwnRead.body.data.total).toBe(2);
+    expect(cashierOwnRead.body.data.hasMore).toBe(false);
+    expect(cashierOwnRead.body.data.items).toHaveLength(2);
     expect(cashierOwnRead.body.data.items[0]).toMatchObject({
+      saleId: saleId2,
+      cashierAccountId: cashierA.accountId,
+    });
+    expect(cashierOwnRead.body.data.items[1]).toMatchObject({
       saleId,
       cashierAccountId: cashierA.accountId,
     });
@@ -748,6 +777,89 @@ describe("v0 cash session integration", () => {
       [setup.tenantId, sessionId]
     );
     expect(Number(movementCount.rows[0]?.count ?? "0")).toBe(1);
+  });
+
+  it("allows another cashier in the same branch to record paid-in and view movements, but not adjustment", async () => {
+    const setup = await setupOwnerBranchContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Cash Movement Branch Scope ${uniqueSuffix()}`,
+    });
+
+    const cashierA = await inviteAndAcceptBranchUser({
+      app,
+      pool,
+      ownerToken: setup.ownerToken,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+      phone: uniquePhone(),
+    });
+    const cashierB = await inviteAndAcceptBranchUser({
+      app,
+      pool,
+      ownerToken: setup.ownerToken,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+      phone: uniquePhone(),
+    });
+
+    const opened = await request(app)
+      .post("/v0/cash/sessions")
+      .set("Authorization", `Bearer ${cashierA.branchToken}`)
+      .set("Idempotency-Key", `cash-open-branch-scope-${uniqueSuffix()}`)
+      .send({
+        openingFloatUsd: 10,
+        openingFloatKhr: 0,
+        note: "Opened by cashier A",
+      });
+    expect(opened.status).toBe(200);
+    const sessionId = opened.body.data.id as string;
+
+    const paidInByCashierB = await request(app)
+      .post(`/v0/cash/sessions/${sessionId}/movements/paid-in`)
+      .set("Authorization", `Bearer ${cashierB.branchToken}`)
+      .set("Idempotency-Key", `cash-paidin-branch-scope-${uniqueSuffix()}`)
+      .send({
+        amountUsd: 3,
+        amountKhr: 0,
+        reason: "Float top-up by cashier B",
+      });
+    expect(paidInByCashierB.status).toBe(200);
+    expect(paidInByCashierB.body.data).toMatchObject({
+      sessionId,
+      movementType: "MANUAL_IN",
+      amountUsdDelta: 3,
+      recordedByAccountId: cashierB.accountId,
+    });
+
+    const movementListForCashierB = await request(app)
+      .get(`/v0/cash/sessions/${sessionId}/movements`)
+      .set("Authorization", `Bearer ${cashierB.branchToken}`);
+    expect(movementListForCashierB.status).toBe(200);
+    expect(movementListForCashierB.body.data).toHaveLength(1);
+    expect(movementListForCashierB.body.data[0]).toMatchObject({
+      sessionId,
+      movementType: "MANUAL_IN",
+      recordedByAccountId: cashierB.accountId,
+    });
+
+    const adjustmentByCashierB = await request(app)
+      .post(`/v0/cash/sessions/${sessionId}/movements/adjustment`)
+      .set("Authorization", `Bearer ${cashierB.branchToken}`)
+      .set("Idempotency-Key", `cash-adjustment-branch-scope-${uniqueSuffix()}`)
+      .send({
+        amountUsdDelta: 1,
+        amountKhrDelta: 0,
+        reason: "Should be denied",
+      });
+    expect(adjustmentByCashierB.status).toBe(403);
+    expect(adjustmentByCashierB.body).toMatchObject({
+      success: false,
+      code: "PERMISSION_DENIED",
+    });
   });
 
   it("publishes CASH_SESSION_OPENED via outbox dispatcher", async () => {

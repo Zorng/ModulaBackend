@@ -117,7 +117,9 @@ Response `200`:
         "grandTotalUsd": 8,
         "grandTotalKhr": 32800,
         "tenderAmount": 8,
-        "paidAmount": 8
+        "paidAmount": 8,
+        "cashReceivedTenderAmount": 10,
+        "cashChangeTenderAmount": 2
       },
       "lines": []
     }
@@ -131,6 +133,7 @@ Rules:
 - `saleType` defaults to `DINE_IN` when omitted.
 - For `paymentMethod = CASH`, `tenderAmount` must match grand total and `cashReceivedTenderAmount` must be `>= tenderAmount`.
 - Finalized responses include `data.receipt` for local immediate print (no extra receipt API call required).
+- For cash receipts, use `cashReceivedTenderAmount` and `cashChangeTenderAmount` from the receipt payload.
 
 #### 2) KHQR checkout initiate
 `POST /v0/checkout/khqr/initiate`  
@@ -697,7 +700,9 @@ Response example (`200`):
         "grandTotalUsd": 8,
         "grandTotalKhr": 32800,
         "tenderAmount": 8,
-        "paidAmount": 8
+        "paidAmount": 8,
+        "cashReceivedTenderAmount": null,
+        "cashChangeTenderAmount": 0
       },
       "lines": []
     }

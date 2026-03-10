@@ -197,6 +197,25 @@ export class V0CashSessionRepository {
     return result.rows[0] ?? null;
   }
 
+  async findSessionByOccurredAt(input: {
+    tenantId: string;
+    branchId: string;
+    occurredAt: Date;
+  }): Promise<CashSessionRow | null> {
+    const result = await this.db.query<CashSessionRow>(
+      `${cashSessionSelectSql}
+       FROM v0_cash_sessions s
+       WHERE s.tenant_id = $1
+         AND s.branch_id = $2
+         AND s.opened_at <= $3
+         AND (s.closed_at IS NULL OR $3 <= s.closed_at)
+       ORDER BY s.opened_at DESC
+       LIMIT 1`,
+      [input.tenantId, input.branchId, input.occurredAt]
+    );
+    return result.rows[0] ?? null;
+  }
+
   async listSessions(input: {
     tenantId: string;
     branchId: string;
@@ -409,6 +428,32 @@ export class V0CashSessionRepository {
       [input.tenantId, input.sessionId, input.limit, input.offset]
     );
     return result.rows;
+  }
+
+  async countSalesBySession(input: {
+    tenantId: string;
+    sessionId: string;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `WITH session_window AS (
+         SELECT tenant_id, branch_id, opened_at, closed_at
+         FROM v0_cash_sessions
+         WHERE tenant_id = $1
+           AND id = $2
+         LIMIT 1
+       )
+       SELECT COUNT(*)::TEXT AS count
+       FROM v0_sales s
+       JOIN session_window w
+         ON w.tenant_id = s.tenant_id
+        AND w.branch_id = s.branch_id
+       WHERE s.status IN ('FINALIZED', 'VOID_PENDING', 'VOIDED')
+         AND s.finalized_at IS NOT NULL
+         AND s.finalized_at >= w.opened_at
+         AND (w.closed_at IS NULL OR s.finalized_at <= w.closed_at)`,
+      [input.tenantId, input.sessionId]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async getMovementById(input: {

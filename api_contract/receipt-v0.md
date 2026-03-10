@@ -16,6 +16,7 @@ Rules:
 - `receiptId` equals `saleId` (receipt APIs are sale-keyed).
 - Receipt reads are served from sale + sale lines (no dedicated receipt snapshot table).
 - Print/reprint are observational effects and do not mutate sale/cash/inventory truth.
+- Immediate post-checkout printing should use the receipt payload already returned by finalize/checkout responses.
 
 ## Conventions
 
@@ -60,6 +61,10 @@ Response example (`200`):
     "saleSnapshot": {
       "paymentMethod": "KHQR",
       "tenderCurrency": "USD",
+      "tenderAmount": 8,
+      "paidAmount": 8,
+      "cashReceivedTenderAmount": null,
+      "cashChangeTenderAmount": 0,
       "subtotalUsd": 8,
       "discountUsd": 0,
       "vatUsd": 0,
@@ -174,8 +179,13 @@ Response example (`200`):
 
 ## Frontend Rollout Note
 
-Receipt APIs are live and should be used as the canonical render source for receipt workflows:
-- `GET /v0/receipts/sales/:saleId`
-- `GET /v0/receipts/:receiptId`
-- `POST /v0/receipts/:receiptId/print`
-- `POST /v0/receipts/:receiptId/reprint`
+Recommended usage:
+- immediate print after successful checkout:
+  - use `data.receipt` from the finalize/checkout response
+  - do not make an extra round trip just to print
+- later retrieval / reprint:
+  - `GET /v0/receipts/sales/:saleId`
+  - `GET /v0/receipts/:receiptId`
+- optional operational print commands (only if frontend wants to model print/reprint as explicit backend-observed events):
+  - `POST /v0/receipts/:receiptId/print`
+  - `POST /v0/receipts/:receiptId/reprint`

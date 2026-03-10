@@ -62,6 +62,13 @@ type MenuCategory = {
   updatedAt: string;
 };
 
+type MenuCategoryStatusResult = {
+  id: string;
+  tenantId: string;
+  status: ActiveStatus;
+  updatedAt: string;
+};
+
 type ModifierOption = {
   id: string;
   groupId: string;
@@ -69,6 +76,18 @@ type ModifierOption = {
   priceDelta: number;
   status: ActiveStatus;
   componentDeltas: ModifierDelta[];
+};
+
+type ModifierOptionWriteResult = ModifierOption & {
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ModifierOptionStatusResult = {
+  id: string;
+  groupId: string;
+  status: ActiveStatus;
+  updatedAt: string;
 };
 
 type ModifierGroup = {
@@ -81,6 +100,26 @@ type ModifierGroup = {
   isRequired: boolean;
   status: ActiveStatus;
   options: ModifierOption[];
+};
+
+type ModifierGroupWriteResult = {
+  id: string;
+  tenantId: string;
+  name: string;
+  selectionMode: "SINGLE" | "MULTI";
+  minSelections: number;
+  maxSelections: number;
+  isRequired: boolean;
+  status: ActiveStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ModifierGroupStatusResult = {
+  id: string;
+  tenantId: string;
+  status: ActiveStatus;
+  updatedAt: string;
 };
 
 type MenuItem = {
@@ -101,6 +140,33 @@ type MenuItemDetail = MenuItem & {
   categoryName: string | null;
   modifierGroups: ModifierGroup[];
   baseComponents: Component[];
+};
+
+type MenuItemStatusResult = {
+  id: string;
+  status: ActiveStatus;
+  updatedAt: string;
+};
+
+type MenuItemVisibilityResult = {
+  menuItemId: string;
+  visibleBranchIds: string[];
+  updatedAt: string;
+};
+
+type CompositionUpsertResult = {
+  menuItemId: string;
+  baseComponents: Component[];
+  modifierOptionDeltas: Array<{
+    modifierOptionId: string;
+    deltas: ModifierDelta[];
+  }>;
+  updatedAt: string;
+};
+
+type CompositionEvaluation = {
+  menuItemId: string;
+  components: Component[];
 };
 ```
 
@@ -156,6 +222,11 @@ Notes:
 - `status` defaults to `active`.
 - Use this for selling flow only.
 
+Response `200` shape:
+```ts
+{ success: true; data: MenuItem[] }
+```
+
 Errors:
 - `401` missing/invalid token
 - `403` context/membership/branch access denial reason
@@ -172,6 +243,11 @@ Notes:
 - Intended for management screens (cross-branch catalog view).
 - Do not use this endpoint as POS cart catalog source.
 
+Response `200` shape:
+```ts
+{ success: true; data: MenuItem[] }
+```
+
 #### 4) Management Read Lane — Get menu item detail
 
 `GET /v0/menu/items/:menuItemId`
@@ -182,6 +258,11 @@ Notes:
 - Tenant-scope read (branch context not required).
 - Returns item detail by tenant ownership; not filtered by current branch visibility.
 - Intended for management edit/detail screens.
+
+Response `200` shape:
+```ts
+{ success: true; data: MenuItemDetail }
+```
 
 Errors:
 - `404` `MENU_ITEM_NOT_FOUND`
@@ -218,6 +299,11 @@ Errors:
 - `422` `MENU_LIMIT_SOFT_EXCEEDED`
 - `422` validation reason codes
 
+Response `200` shape:
+```ts
+{ success: true; data: MenuItem }
+```
+
 #### 6) Update menu item
 
 `PATCH /v0/menu/items/:menuItemId`
@@ -236,6 +322,11 @@ Errors:
 - `404` `MENU_ITEM_NOT_FOUND`
 - idempotency/access-control/validation errors
 
+Response `200` shape:
+```ts
+{ success: true; data: MenuItem }
+```
+
 #### 7) Archive menu item
 
 `POST /v0/menu/items/:menuItemId/archive`
@@ -252,6 +343,11 @@ Errors:
 - `404` `MENU_ITEM_NOT_FOUND`
 - `422` business guard violations
 
+Response `200` shape:
+```ts
+{ success: true; data: MenuItemStatusResult }
+```
+
 #### 8) Restore menu item
 
 `POST /v0/menu/items/:menuItemId/restore`
@@ -267,6 +363,11 @@ Headers:
 Errors:
 - `404` `MENU_ITEM_NOT_FOUND`
 - `422` `MENU_LIMIT_SOFT_EXCEEDED`
+
+Response `200` shape:
+```ts
+{ success: true; data: MenuItemStatusResult }
+```
 
 #### 9) Set branch visibility
 
@@ -288,6 +389,11 @@ Body:
 Notes:
 - Empty list is allowed (item exists but hidden from POS).
 
+Response `200` shape:
+```ts
+{ success: true; data: MenuItemVisibilityResult }
+```
+
 ### Categories
 
 #### 10) List categories
@@ -295,6 +401,11 @@ Notes:
 `GET /v0/menu/categories?status=active|archived|all`
 
 Action key: `menu.categories.list`
+
+Response `200` shape:
+```ts
+{ success: true; data: MenuCategory[] }
+```
 
 #### 11) Create category
 
@@ -311,6 +422,11 @@ Body:
 {
   "name": "Coffee"
 }
+```
+
+Response `200` shape:
+```ts
+{ success: true; data: MenuCategory }
 ```
 
 #### 12) Update category
@@ -330,6 +446,11 @@ Body:
 }
 ```
 
+Response `200` shape:
+```ts
+{ success: true; data: MenuCategory }
+```
+
 #### 13) Archive category
 
 `POST /v0/menu/categories/:categoryId/archive`
@@ -342,6 +463,11 @@ Headers:
 Notes:
 - Items linked to archived category resolve as uncategorized for listing.
 
+Response `200` shape:
+```ts
+{ success: true; data: MenuCategoryStatusResult }
+```
+
 ### Modifiers
 
 #### 14) List modifier groups
@@ -349,6 +475,11 @@ Notes:
 `GET /v0/menu/modifier-groups?status=active|archived|all`
 
 Action key: `menu.modifierGroups.list`
+
+Response `200` shape:
+```ts
+{ success: true; data: ModifierGroup[] }
+```
 
 #### 15) Create modifier group
 
@@ -374,6 +505,11 @@ Body:
 Errors:
 - `409` `MODIFIER_GROUP_DUPLICATE_NAME`
 
+Response `200` shape:
+```ts
+{ success: true; data: ModifierGroupWriteResult }
+```
+
 #### 16) Update modifier group
 
 `PATCH /v0/menu/modifier-groups/:groupId`
@@ -383,6 +519,11 @@ Action key: `menu.modifierGroups.update`
 Headers:
 - `Idempotency-Key: <client key>`
 
+Response `200` shape:
+```ts
+{ success: true; data: ModifierGroupWriteResult }
+```
+
 #### 17) Archive modifier group
 
 `POST /v0/menu/modifier-groups/:groupId/archive`
@@ -391,6 +532,11 @@ Action key: `menu.modifierGroups.archive`
 
 Headers:
 - `Idempotency-Key: <client key>`
+
+Response `200` shape:
+```ts
+{ success: true; data: ModifierGroupStatusResult }
+```
 
 #### 18) Create modifier option
 
@@ -417,6 +563,11 @@ Body:
 }
 ```
 
+Response `200` shape:
+```ts
+{ success: true; data: ModifierOptionWriteResult }
+```
+
 #### 19) Update modifier option
 
 `PATCH /v0/menu/modifier-groups/:groupId/options/:optionId`
@@ -425,6 +576,11 @@ Action key: `menu.modifierOptions.update`
 
 Headers:
 - `Idempotency-Key: <client key>`
+
+Response `200` shape:
+```ts
+{ success: true; data: ModifierOptionWriteResult }
+```
 
 #### 20) Archive modifier option
 
@@ -435,6 +591,11 @@ Action key: `menu.modifierOptions.archive`
 Headers:
 - `Idempotency-Key: <client key>`
 
+Response `200` shape:
+```ts
+{ success: true; data: ModifierOptionStatusResult }
+```
+
 #### 21) Restore modifier option
 
 `POST /v0/menu/modifier-groups/:groupId/options/:optionId/restore`
@@ -443,6 +604,11 @@ Action key: `menu.modifierOptions.restore`
 
 Headers:
 - `Idempotency-Key: <client key>`
+
+Response `200` shape:
+```ts
+{ success: true; data: ModifierOptionStatusResult }
+```
 
 ### Composition
 
@@ -480,6 +646,11 @@ Errors:
 - `403` `INVENTORY_ENTITLEMENT_REQUIRED_FOR_TRACKED_COMPONENTS`
 - `422` `MENU_COMPOSITION_INVALID` / `MENU_COMPONENT_NEGATIVE_QUANTITY`
 
+Response `200` shape:
+```ts
+{ success: true; data: CompositionUpsertResult }
+```
+
 #### 23) Evaluate composition (read-only)
 
 `POST /v0/menu/items/:menuItemId/composition/evaluate`
@@ -494,22 +665,9 @@ Body:
 }
 ```
 
-Success `200`:
-
-```json
-{
-  "success": true,
-  "data": {
-    "menuItemId": "uuid",
-    "components": [
-      {
-        "stockItemId": "uuid",
-        "quantityInBaseUnit": 350,
-        "trackingMode": "TRACKED"
-      }
-    ]
-  }
-}
+Response `200` shape:
+```ts
+{ success: true; data: CompositionEvaluation }
 ```
 
 Notes:

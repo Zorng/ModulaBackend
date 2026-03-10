@@ -35,6 +35,10 @@ type ReceiptDto = {
   saleSnapshot: {
     paymentMethod: ReceiptPaymentMethod;
     tenderCurrency: ReceiptTenderCurrency;
+    tenderAmount: number;
+    paidAmount: number;
+    cashReceivedTenderAmount: number | null;
+    cashChangeTenderAmount: number;
     subtotalUsd: number;
     subtotalKhr: number;
     discountUsd: number;
@@ -186,6 +190,10 @@ export class V0ReceiptService {
       saleSnapshot: {
         paymentMethod: sale.payment_method,
         tenderCurrency: sale.tender_currency,
+        tenderAmount: sale.tender_amount,
+        paidAmount: sale.paid_amount,
+        cashReceivedTenderAmount: sale.cash_received_tender_amount,
+        cashChangeTenderAmount: sale.cash_change_tender_amount,
         subtotalUsd: sale.subtotal_usd,
         subtotalKhr: sale.subtotal_khr,
         discountUsd: sale.discount_usd,

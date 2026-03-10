@@ -13,6 +13,10 @@ export type V0ReceiptDerivedSaleRow = {
   status: ReceiptSaleStatus;
   payment_method: ReceiptPaymentMethod;
   tender_currency: ReceiptTenderCurrency;
+  tender_amount: number;
+  paid_amount: number;
+  cash_received_tender_amount: number | null;
+  cash_change_tender_amount: number;
   subtotal_usd: number;
   subtotal_khr: number;
   discount_usd: number;
@@ -49,6 +53,10 @@ const DERIVED_SALE_SELECT = `
   status,
   payment_method,
   tender_currency,
+  tender_amount::FLOAT8 AS tender_amount,
+  paid_amount::FLOAT8 AS paid_amount,
+  cash_received_tender_amount::FLOAT8 AS cash_received_tender_amount,
+  cash_change_tender_amount::FLOAT8 AS cash_change_tender_amount,
   subtotal_usd::FLOAT8 AS subtotal_usd,
   subtotal_khr::FLOAT8 AS subtotal_khr,
   discount_usd::FLOAT8 AS discount_usd,

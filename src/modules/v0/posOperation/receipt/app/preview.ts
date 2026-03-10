@@ -11,6 +11,10 @@ export type V0SaleReceiptPreview = {
   saleSnapshot: {
     paymentMethod: "CASH" | "KHQR";
     tenderCurrency: "USD" | "KHR";
+    tenderAmount: number;
+    paidAmount: number;
+    cashReceivedTenderAmount: number | null;
+    cashChangeTenderAmount: number;
     subtotalUsd: number;
     subtotalKhr: number;
     discountUsd: number;
@@ -19,8 +23,6 @@ export type V0SaleReceiptPreview = {
     vatKhr: number;
     grandTotalUsd: number;
     grandTotalKhr: number;
-    tenderAmount: number;
-    paidAmount: number;
   };
   lines: Array<{
     lineId: string;
@@ -48,6 +50,10 @@ export function buildSaleReceiptPreview(input: {
     saleSnapshot: {
       paymentMethod: input.sale.payment_method,
       tenderCurrency: input.sale.tender_currency,
+      tenderAmount: input.sale.tender_amount,
+      paidAmount: input.sale.paid_amount,
+      cashReceivedTenderAmount: input.sale.cash_received_tender_amount,
+      cashChangeTenderAmount: input.sale.cash_change_tender_amount,
       subtotalUsd: input.sale.subtotal_usd,
       subtotalKhr: input.sale.subtotal_khr,
       discountUsd: input.sale.discount_usd,
@@ -56,8 +62,6 @@ export function buildSaleReceiptPreview(input: {
       vatKhr: input.sale.vat_khr,
       grandTotalUsd: input.sale.grand_total_usd,
       grandTotalKhr: input.sale.grand_total_khr,
-      tenderAmount: input.sale.tender_amount,
-      paidAmount: input.sale.paid_amount,
     },
     lines: input.lines.map((line) => ({
       lineId: line.id,

@@ -16,9 +16,11 @@ import { bootstrapV0PullSyncModule } from "../modules/v0/platformSystem/pullSync
 import { bootstrapV0KhqrPaymentModule } from "../modules/v0/platformSystem/khqrPayment/index.js";
 import { bootstrapV0CashSessionModule } from "../modules/v0/posOperation/cashSession/index.js";
 import { bootstrapV0InventoryModule } from "../modules/v0/posOperation/inventory/index.js";
+import { bootstrapV0ReceiptModule } from "../modules/v0/posOperation/receipt/index.js";
 import { bootstrapV0SaleOrderModule } from "../modules/v0/posOperation/saleOrder/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 import { eventBus } from "../platform/events/index.js";
+import { startV0CommandOutboxDispatcher } from "../platform/outbox/dispatcher.js";
 
 function uniquePhone(): string {
   const now = Date.now().toString().slice(-9);
@@ -380,6 +382,7 @@ describe("v0 sale-order integration", () => {
     app.use("/v0/org", bootstrapV0OrgAccountModule(pool).router);
     app.use("/v0/cash", bootstrapV0CashSessionModule(pool).router);
     app.use("/v0/inventory", bootstrapV0InventoryModule(pool).router);
+    app.use("/v0/receipts", bootstrapV0ReceiptModule(pool).router);
     app.use("/v0/payments/khqr", bootstrapV0KhqrPaymentModule(pool).router);
     app.use("/v0/sync", bootstrapV0PullSyncModule(pool).router);
     app.use("/v0", bootstrapV0SaleOrderModule(pool).router);
@@ -904,6 +907,80 @@ describe("v0 sale-order integration", () => {
     expect(Number(orderCount.rows[0]?.count ?? "0")).toBe(0);
   });
 
+  it("updates current-session X report after finalized cash checkout is dispatched", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const sessionId = await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const dispatcher = startV0CommandOutboxDispatcher({
+      db: pool,
+      pollIntervalMs: 50,
+      batchSize: 25,
+    });
+
+    try {
+      const finalized = await request(app)
+        .post("/v0/checkout/cash/finalize")
+        .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+        .set("Idempotency-Key", `sale-order-cash-x-report-${uniqueSuffix()}`)
+        .send({
+          ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 2 }),
+          paymentMethod: "CASH",
+          saleType: "TAKEAWAY",
+          tenderCurrency: "USD",
+          cashReceivedTenderAmount: 10,
+        });
+
+      expect(finalized.status).toBe(200);
+      expect(finalized.body.data.status).toBe("FINALIZED");
+
+      let xReportResponse:
+        | request.Response
+        | null = null;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        xReportResponse = await request(app)
+          .get(`/v0/cash/sessions/${sessionId}/x`)
+          .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+        if (
+          xReportResponse.status === 200
+          && xReportResponse.body?.data?.totalSaleInUsd === 7
+          && xReportResponse.body?.data?.expectedCashUsd === 57
+        ) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
+      expect(xReportResponse?.status).toBe(200);
+      expect(xReportResponse?.body).toMatchObject({
+        success: true,
+        data: {
+          sessionId,
+          totalSaleInUsd: 7,
+          totalSaleInKhr: 0,
+          expectedCashUsd: 57,
+          expectedCashKhr: 0,
+        },
+      });
+
+      const movementCount = await pool.query<{ count: string }>(
+        `SELECT COUNT(*)::TEXT AS count
+         FROM v0_cash_movements
+         WHERE tenant_id = $1
+           AND cash_session_id = $2
+           AND movement_type = 'SALE_IN'`,
+        [setup.tenantId, sessionId]
+      );
+      expect(Number(movementCount.rows[0]?.count ?? "0")).toBe(1);
+    } finally {
+      dispatcher.stop();
+    }
+  });
+
   it("returns receipt-ready payload on finalized cash checkout response", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     await openCashSession({
@@ -932,8 +1009,25 @@ describe("v0 sale-order integration", () => {
     expect(finalized.body.data.receipt.statusDisplay).toBe("NORMAL");
     expect(finalized.body.data.receipt.saleSnapshot.paymentMethod).toBe("CASH");
     expect(finalized.body.data.receipt.saleSnapshot.tenderCurrency).toBe("USD");
+    expect(finalized.body.data.receipt.saleSnapshot.tenderAmount).toBe(8);
+    expect(finalized.body.data.receipt.saleSnapshot.paidAmount).toBe(8);
+    expect(finalized.body.data.receipt.saleSnapshot.cashReceivedTenderAmount).toBe(10);
+    expect(finalized.body.data.receipt.saleSnapshot.cashChangeTenderAmount).toBe(2);
     expect(Array.isArray(finalized.body.data.receipt.lines)).toBe(true);
     expect(finalized.body.data.receipt.lines.length).toBe(1);
+
+    const receiptRead = await request(app)
+      .get(`/v0/receipts/${saleId}`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+
+    expect(receiptRead.status).toBe(200);
+    expect(receiptRead.body.data.receiptId).toBe(saleId);
+    expect(receiptRead.body.data.saleSnapshot.paymentMethod).toBe("CASH");
+    expect(receiptRead.body.data.saleSnapshot.tenderCurrency).toBe("USD");
+    expect(receiptRead.body.data.saleSnapshot.tenderAmount).toBe(8);
+    expect(receiptRead.body.data.saleSnapshot.paidAmount).toBe(8);
+    expect(receiptRead.body.data.saleSnapshot.cashReceivedTenderAmount).toBe(10);
+    expect(receiptRead.body.data.saleSnapshot.cashChangeTenderAmount).toBe(2);
   });
 
   it("does not emit legacy receipt.snapshot.create outbox action on checkout.cash.finalize", async () => {
