@@ -309,6 +309,7 @@ class BakongHttpV0KhqrPaymentProvider implements V0KhqrPaymentProvider {
         signal: controller.signal,
       });
       const text = await response.text();
+      const contentType = normalizeOptionalString(response.headers.get("content-type"));
       let body: Record<string, unknown> = {};
       try {
         body = text ? (JSON.parse(text) as Record<string, unknown>) : {};
@@ -316,7 +317,7 @@ class BakongHttpV0KhqrPaymentProvider implements V0KhqrPaymentProvider {
         throw new V0KhqrProviderError(
           503,
           "KHQR_PROVIDER_UNAVAILABLE",
-          `provider ${op} response is not valid JSON`
+          `provider ${op} response is not valid JSON (status ${response.status}, content-type ${contentType ?? "unknown"}, body ${summarizeProviderResponsePreview(text)})`
         );
       }
       if (!response.ok) {
@@ -602,6 +603,17 @@ function buildBakongHttpProviderConfig(): BakongHttpProviderConfig {
     webhookSecretHeader,
     enableSdkGeneration,
   };
+}
+
+function summarizeProviderResponsePreview(text: string): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "<empty>";
+  }
+  if (normalized.length <= 160) {
+    return JSON.stringify(normalized);
+  }
+  return `${JSON.stringify(normalized.slice(0, 160))}...`;
 }
 
 function parseBooleanWithDefault(value: unknown, fallback: boolean): boolean {

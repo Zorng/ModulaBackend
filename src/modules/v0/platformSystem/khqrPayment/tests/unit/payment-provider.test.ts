@@ -173,6 +173,34 @@ describe("khqr payment provider builder", () => {
     expect(verified.reasonCode).toBe("TRANSACTION_NOT_FOUND");
   });
 
+  it("includes status and content-type when verify response is not JSON", async () => {
+    process.env.V0_KHQR_PROVIDER = "bakong";
+    process.env.V0_KHQR_PROVIDER_BASE_URL = "https://pay.example.com";
+    process.env.V0_KHQR_WEBHOOK_SECRET = "secret";
+
+    jest.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("<html>bad gateway</html>", {
+        status: 502,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      })
+    );
+
+    const provider = buildV0KhqrPaymentProviderFromEnv();
+
+    await expect(
+      provider.verifyByMd5({
+        tenantId: "10000000-0000-4000-8000-000000000001",
+        branchId: "10000000-0000-4000-8000-000000000002",
+        md5: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        expectedAmount: 3.5,
+        expectedCurrency: "USD",
+        expectedToAccountId: "bakong-account-id",
+      })
+    ).rejects.toThrow(
+      "provider verify response is not valid JSON (status 502, content-type text/html; charset=utf-8"
+    );
+  });
+
   it("generates EMV payload locally with Bakong SDK when official base URL is used", async () => {
     process.env.V0_KHQR_PROVIDER = "bakong";
     process.env.V0_KHQR_PROVIDER_BASE_URL = "https://api-bakong.nbc.gov.kh/v1";
