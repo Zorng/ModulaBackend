@@ -2,6 +2,7 @@ import crypto from "crypto";
 import jwt, { SignOptions } from "jsonwebtoken";
 import type { V0AccountRow, V0AuthRepository } from "../infra/repository.js";
 import { parseExpiryToMs, sha256, type V0TokenClaims } from "./common.js";
+import { parseBooleanEnv } from "../../../../platform/config/env.js";
 
 export abstract class V0AuthBaseService {
   protected readonly otpPurpose = "V0_REGISTER";
@@ -16,6 +17,7 @@ export abstract class V0AuthBaseService {
   protected readonly accessTokenExpiry = process.env.V0_AUTH_ACCESS_TOKEN_TTL ?? "12h";
   protected readonly refreshTokenExpiry = process.env.V0_AUTH_REFRESH_TOKEN_TTL ?? "7d";
   protected readonly jwtSecret = process.env.JWT_SECRET ?? "dev-v0-jwt-secret";
+  protected readonly appEnv = String(process.env.APP_ENV ?? "local").trim().toLowerCase();
   protected readonly privilegedRoles = new Set(["OWNER", "ADMIN"]);
   protected readonly assignableRoles = new Set(["ADMIN", "MANAGER", "CASHIER", "CLERK"]);
   protected readonly tenantCountPerAccountHard = this.readPositiveInt(
@@ -31,7 +33,11 @@ export abstract class V0AuthBaseService {
     3600
   );
 
-  constructor(protected readonly repo: V0AuthRepository) {}
+  constructor(protected readonly repo: V0AuthRepository) {
+    if (this.appEnv === "production" && this.isFixedOtpEnabled()) {
+      throw new Error("V0_AUTH_FIXED_OTP_ENABLED must be false in APP_ENV=production.");
+    }
+  }
 
   protected async issueSessionResponse(
     account: V0AccountRow,
@@ -91,19 +97,39 @@ export abstract class V0AuthBaseService {
   }
 
   protected isOtpDebugMode(): boolean {
-    return process.env.NODE_ENV !== "production";
+    return this.appEnv === "local" || this.appEnv === "test";
   }
 
   protected generateOtpCode(): string {
-    const fixed = this.isOtpDebugMode()
-      ? process.env.AUTH_FIXED_OTP ?? "123456"
-      : null;
+    const fixed = this.getFixedOtp();
     if (fixed) {
       return fixed;
     }
 
     const raw = crypto.randomInt(0, 1_000_000);
     return String(raw).padStart(6, "0");
+  }
+
+  protected isFixedOtpEnabled(): boolean {
+    const explicit = parseBooleanEnv(process.env.V0_AUTH_FIXED_OTP_ENABLED);
+    if (explicit !== null) {
+      return explicit;
+    }
+
+    return this.appEnv === "local" || this.appEnv === "test";
+  }
+
+  protected matchesFixedOtp(candidate: string): boolean {
+    const fixed = this.getFixedOtp();
+    return fixed !== null && String(candidate ?? "").trim() === fixed;
+  }
+
+  private getFixedOtp(): string | null {
+    if (!this.isFixedOtpEnabled()) {
+      return null;
+    }
+
+    return process.env.AUTH_FIXED_OTP ?? "123456";
   }
 
   protected async writeAuditEventBestEffort(input: {

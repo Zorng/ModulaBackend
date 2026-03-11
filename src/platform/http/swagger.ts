@@ -678,7 +678,7 @@ export function setupSwagger(app: Express) {
               debugOtp: {
                 type: "string",
                 description:
-                  "Development-only OTP echo (never returned in production)",
+                  "Local/test-only OTP echo when local auth fallback is active",
                 example: "123456",
               },
             },

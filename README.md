@@ -27,11 +27,23 @@ The setup wizard handles everything: environment config, database creation, and 
 
 ## 🔧 Environment File Policy
 
-To avoid ambiguity, use env-scoped local files:
+Use two axes:
 
-- development: `.env.development.local`
-- test: `.env.test.local`
+- `NODE_ENV` = runtime mode (`development`, `test`, `production`)
+- `APP_ENV` = resource target (`local`, `staging`, `production`)
+
+File-backed local usage:
+
+- local development resources: `.env.development.local`
+- local machine against staging resources: `.env.development.staging.local`
+- test resources: `.env.test.local`
 - production (if file-based): `.env.production.local`
+
+OTP policy:
+
+- local/test: fixed OTP fallback is enabled by default
+- staging: enable fallback explicitly with `V0_AUTH_FIXED_OTP_ENABLED=true`
+- production: `V0_AUTH_FIXED_OTP_ENABLED` must remain `false`
 
 `.env.local` is no longer supported and should be removed.
 
@@ -75,8 +87,13 @@ This single comprehensive guide includes:
 ### Daily Commands
 
 ```bash
-pnpm dev           # Start development server
-pnpm migrate       # Run database migrations
+pnpm dev           # Alias of pnpm dev:local
+pnpm dev:local     # Local runtime + local resources
+pnpm dev:staging   # Local runtime + staging resources
+pnpm migrate       # Alias of pnpm migrate:local
+pnpm migrate:local # Migrate local development DB
+pnpm migrate:staging # Migrate staging DB from local machine
+pnpm migrate:prod  # Migrate production DB
 pnpm test          # Run unit tests (fast, DB-free)
 pnpm test:integration # Run integration tests (DB-backed)
 pnpm test:all      # Run unit + integration

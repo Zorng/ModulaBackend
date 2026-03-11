@@ -24,7 +24,7 @@
 ```bash
 pnpm install    # Install dependencies
 pnpm setup      # Run setup wizard
-pnpm dev        # Start server
+pnpm dev        # Start local runtime + local resources
 ```
 
 ✅ **Done!** Your backend is running at <http://localhost:3000>
@@ -41,11 +41,31 @@ Before you begin, install these:
 
 ## Environment File Policy
 
-Use env-scoped local files so runtime behavior is explicit:
+Use two axes so runtime and resource target stay separate:
 
-- `NODE_ENV=development` -> `.env.development.local`
-- `NODE_ENV=test` -> `.env.test.local`
-- `NODE_ENV=production` -> `.env.production.local` (optional; process env is preferred)
+- `NODE_ENV` = runtime mode (`development`, `test`, `production`)
+- `APP_ENV` = resource target (`local`, `staging`, `production`)
+
+Supported file-backed local patterns:
+
+- local development resources:
+  - `NODE_ENV=development APP_ENV=local`
+  - loads `.env.development.local`
+- local machine against staging resources:
+  - `NODE_ENV=development APP_ENV=staging`
+  - loads `.env.development.staging.local`
+- test resources:
+  - `NODE_ENV=test APP_ENV=test`
+  - loads `.env.test.local`
+- production (if file-based):
+  - `NODE_ENV=production APP_ENV=production`
+  - loads `.env.production.local` (process env is preferred for hosted deploys)
+
+OTP policy:
+
+- local/test: fixed OTP fallback is enabled by default
+- staging: keep real OTP active and enable fallback explicitly with `V0_AUTH_FIXED_OTP_ENABLED=true`
+- production: `V0_AUTH_FIXED_OTP_ENABLED` must remain `false`
 
 `.env.local` is no longer supported and must be removed.
 
@@ -81,7 +101,7 @@ It will automatically:
 Then start the server:
 
 ```bash
-pnpm dev
+pnpm dev:local
 ```
 
 ### Manual Setup (Alternative)
@@ -113,13 +133,13 @@ If you prefer to set up manually:
 4. **Run migrations:**
 
    ```bash
-   pnpm migrate
+   pnpm migrate:local
    ```
 
 5. **Start the server:**
 
    ```bash
-   pnpm dev
+   pnpm dev:local
    ```
 
 ---
@@ -293,13 +313,19 @@ You'll see output like:
 ## Daily Commands
 
 ```bash
-pnpm dev           # Start development server with auto-reload
-pnpm migrate       # Run new database migrations
+pnpm dev             # Alias of pnpm dev:local
+pnpm dev:local       # Local runtime + local resources
+pnpm dev:staging     # Local runtime + staging resources
+pnpm migrate         # Alias of pnpm migrate:local
+pnpm migrate:local   # Run new local DB migrations
+pnpm migrate:staging # Run staging DB migrations from local machine
+pnpm migrate:prod    # Run production DB migrations
 pnpm test          # Run unit tests (fast, DB-free)
 pnpm test:integration # Run integration tests (DB-backed)
 pnpm test:all      # Run unit + integration
 pnpm test:watch    # Run tests in watch mode
-pnpm start         # Start production server
+pnpm start:staging # Start staging-style server locally
+pnpm start:prod    # Start production-style server locally
 ```
 
 ---

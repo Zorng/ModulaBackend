@@ -1,7 +1,12 @@
-import { expectedLocalEnvFilename, loadEnvironment } from "./env.js";
+import {
+    expectedLocalEnvFilename,
+    loadEnvironment,
+    parseBooleanEnv,
+} from "./env.js";
 
-const { nodeEnv } = loadEnvironment("development");
-const expectedLocalEnvFile = expectedLocalEnvFilename(nodeEnv);
+const { nodeEnv, appEnv } = loadEnvironment("development");
+const expectedLocalEnvFile = expectedLocalEnvFilename(nodeEnv, appEnv);
+const fixedOtpEnabled = parseBooleanEnv(process.env.V0_AUTH_FIXED_OTP_ENABLED) === true;
 
 // (optional but recommended) validate presence so it fails fast
 // Skip validation in test environment to allow mocking
@@ -22,6 +27,12 @@ if (!isTestEnv && !process.env.JWT_SECRET) {
 if (!isTestEnv && !process.env.JWT_REFRESH_SECRET) {
     throw new Error(
       `JWT_REFRESH_SECRET is missing. Add it to ${expectedLocalEnvFile} at project root (or set it in process env).`
+    );
+}
+
+if (!isTestEnv && appEnv === "production" && fixedOtpEnabled) {
+    throw new Error(
+      "V0_AUTH_FIXED_OTP_ENABLED must be false in APP_ENV=production."
     );
 }
 

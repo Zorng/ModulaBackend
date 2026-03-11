@@ -201,6 +201,7 @@ export function startV0CommandOutboxDispatcher(input: DispatcherInput): {
 } {
   const pollIntervalMs = input.pollIntervalMs ?? 1000;
   const batchSize = input.batchSize ?? 100;
+  let tickInFlight = false;
   const status: DispatcherStatus = {
     pollIntervalMs,
     batchSize,
@@ -211,10 +212,15 @@ export function startV0CommandOutboxDispatcher(input: DispatcherInput): {
   };
 
   const timer = setInterval(async () => {
+    if (tickInFlight) {
+      return;
+    }
+    tickInFlight = true;
     const tickStartedAtMs = Date.now();
     status.lastTickAt = new Date(tickStartedAtMs).toISOString();
-    const client = await input.db.connect();
+    let client: PoolClient | null = null;
     try {
+      client = await input.db.connect();
       await client.query("BEGIN");
       const summary = await processBatch({ client, batchSize });
       await client.query("COMMIT");
@@ -229,7 +235,13 @@ export function startV0CommandOutboxDispatcher(input: DispatcherInput): {
         durationMs: Date.now() - tickStartedAtMs,
       });
     } catch (error) {
-      await client.query("ROLLBACK");
+      if (client) {
+        try {
+          await client.query("ROLLBACK");
+        } catch {
+          // Best-effort rollback only; connection may already be broken.
+        }
+      }
       status.lastFailureAt = new Date().toISOString();
       status.lastError = error instanceof Error ? error.message : String(error);
       log.error("outbox.dispatch.tick_failed", {
@@ -238,7 +250,8 @@ export function startV0CommandOutboxDispatcher(input: DispatcherInput): {
         durationMs: Date.now() - tickStartedAtMs,
       });
     } finally {
-      client.release();
+      client?.release();
+      tickInFlight = false;
     }
   }, pollIntervalMs);
 

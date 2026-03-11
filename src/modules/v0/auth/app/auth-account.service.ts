@@ -320,6 +320,10 @@ export class V0AuthAccountService extends V0AuthBaseService {
       throw new V0AuthError(422, "phone and otp are required");
     }
 
+    if (this.matchesFixedOtp(otp)) {
+      return this.verifyRegistrationOtpWithFixedFallback(phone);
+    }
+
     try {
       const supabase = this.requireSupabase();
       const verified = await supabase.verifyOtp({ phone, otp });
@@ -358,6 +362,31 @@ export class V0AuthAccountService extends V0AuthBaseService {
       });
       throw this.translateSupabaseError(error);
     }
+  }
+
+  private async verifyRegistrationOtpWithFixedFallback(
+    phone: string
+  ): Promise<{ verified: true }> {
+    const account = await this.repo.findAccountByPhone(phone);
+    if (!account) {
+      await this.writeAuditEventBestEffort({
+        phone,
+        eventKey: "AUTH_OTP_VERIFY",
+        outcome: "FAILED",
+        reasonCode: "ACCOUNT_NOT_FOUND",
+      });
+      throw new V0AuthError(404, "account not found");
+    }
+
+    await this.repo.markPhoneVerifiedByAccountId(account.id);
+    await this.writeAuditEventBestEffort({
+      accountId: account.id,
+      phone,
+      eventKey: "AUTH_OTP_VERIFY",
+      outcome: "SUCCESS",
+      metadata: { verificationMode: "FIXED_FALLBACK" },
+    });
+    return { verified: true };
   }
 
   private async loginWithSupabase(input: {

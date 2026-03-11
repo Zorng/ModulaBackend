@@ -3,8 +3,8 @@ import path from "path";
 import { Pool } from "pg";
 import { expectedLocalEnvFilename, loadEnvironment } from "../config/env.js";
 
-const { nodeEnv } = loadEnvironment("development");
-const expectedLocalEnvFile = expectedLocalEnvFilename(nodeEnv);
+const { nodeEnv, appEnv } = loadEnvironment("development");
+const expectedLocalEnvFile = expectedLocalEnvFilename(nodeEnv, appEnv);
 
 async function seedDev() {
   const connectionString = process.env.DATABASE_URL;

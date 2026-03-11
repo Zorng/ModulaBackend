@@ -85,7 +85,9 @@ Success `200`:
 
 Notes:
 - In Supabase mode, OTP delivery is delegated to Supabase SMS provider.
-- In local mode, fixed OTP behavior remains available via `AUTH_FIXED_OTP` (default `123456`).
+- In local/test mode, fixed OTP behavior remains available by default with `AUTH_FIXED_OTP` (default `123456`).
+- In staging, real OTP may remain active while fixed fallback verification is explicitly enabled via `V0_AUTH_FIXED_OTP_ENABLED=true`.
+- In production, fixed OTP fallback must remain disabled.
 
 Errors:
 - `404` account not found

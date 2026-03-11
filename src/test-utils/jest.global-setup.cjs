@@ -74,7 +74,9 @@ async function runMigrations(pool) {
 
 function loadEnvironment(defaultNodeEnv = "test") {
   const nodeEnv = String(process.env.NODE_ENV || "").trim() || defaultNodeEnv;
+  const appEnv = normalizeAppEnv(process.env.APP_ENV, nodeEnv);
   process.env.NODE_ENV = nodeEnv;
+  process.env.APP_ENV = appEnv;
   const lockedKeys = new Set(Object.keys(process.env));
 
   const baseFiles = [".env", `.env.${nodeEnv}`];
@@ -83,20 +85,53 @@ function loadEnvironment(defaultNodeEnv = "test") {
     applyEnvFile(filePath, lockedKeys);
   }
 
-  const scopedLocal = `.env.${nodeEnv}.local`;
-  const scopedLocalPath = path.resolve(process.cwd(), scopedLocal);
-  const hasScopedLocal = fs.existsSync(scopedLocalPath);
   const legacyLocal = ".env.local";
   const legacyLocalPath = path.resolve(process.cwd(), legacyLocal);
   if (fs.existsSync(legacyLocalPath)) {
     throw new Error(
-      `[env] "${legacyLocal}" is no longer supported. Move values into ".env.${nodeEnv}.local" and remove "${legacyLocal}".`
+      `[env] "${legacyLocal}" is no longer supported. Move values into "${expectedLocalEnvFilename(nodeEnv, appEnv)}" and remove "${legacyLocal}".`
     );
   }
 
-  if (hasScopedLocal) {
-    applyEnvFile(scopedLocalPath, lockedKeys);
+  for (const fileName of resolveScopedEnvFiles(nodeEnv, appEnv)) {
+    const filePath = path.resolve(process.cwd(), fileName);
+    if (!fs.existsSync(filePath)) {
+      continue;
+    }
+    applyEnvFile(filePath, lockedKeys);
   }
+}
+
+function normalizeAppEnv(rawAppEnv, nodeEnv) {
+  const normalized = String(rawAppEnv || "").trim().toLowerCase();
+  if (normalized.length > 0) {
+    return normalized;
+  }
+  if (nodeEnv === "test") {
+    return "test";
+  }
+  if (nodeEnv === "production") {
+    return "production";
+  }
+  return "local";
+}
+
+function resolveScopedEnvFiles(nodeEnv, appEnv) {
+  if (appEnv === "local" || appEnv === nodeEnv) {
+    return [`.env.${nodeEnv}.local`];
+  }
+
+  return [
+    `.env.${nodeEnv}.${appEnv}`,
+    `.env.${nodeEnv}.${appEnv}.local`,
+  ];
+}
+
+function expectedLocalEnvFilename(nodeEnv, appEnv) {
+  if (appEnv === "local" || appEnv === nodeEnv) {
+    return `.env.${nodeEnv}.local`;
+  }
+  return `.env.${nodeEnv}.${appEnv}.local`;
 }
 
 function applyEnvFile(filePath, lockedKeys) {
