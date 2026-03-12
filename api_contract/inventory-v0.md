@@ -15,8 +15,8 @@ Implementation status:
   - failure: `{ "success": false, "error": "...", "code": "...", "details"?: {...} }`
 - Auth: `Authorization: Bearer <accessToken>`
 - Context model:
-  - `tenantId` / `branchId` come from working-context token.
-  - No tenant/branch override via query/body/headers.
+  - Inventory management uses tenant working-context token.
+  - Branch-targeted operational endpoints accept explicit `branchId` in query/body.
 - Idempotency:
   - All write endpoints require `Idempotency-Key` (see `api_contract/idempotency-v0.md`).
   - When idempotent replay happens, response includes `Idempotency-Replayed: true`.
@@ -28,11 +28,11 @@ Implementation status:
   - Categories/items: `OWNER|ADMIN|MANAGER`
 - Tenant-catalog writes:
   - Categories/items: `OWNER|ADMIN`
-- Branch operational reads:
+- Tenant-scoped operational reads:
   - Restock list, journal, branch stock: `OWNER|ADMIN|MANAGER`
 - Tenant management reads:
   - Aggregate stock, tenant-wide journal: `OWNER|ADMIN|MANAGER`
-- Branch operational writes:
+- Tenant-scoped operational writes (explicit `branchId` target):
   - Restock create: `OWNER|ADMIN|MANAGER`
   - Restock metadata update/archive + adjustments: `OWNER|ADMIN`
 
@@ -283,12 +283,16 @@ Action key: `inventory.items.restore`
 Errors:
 - `404` `INVENTORY_STOCK_ITEM_NOT_FOUND`
 
-### Restock batches (branch-scoped operations)
+### Restock batches (tenant-scoped management with optional branch filter)
 
 #### 11) List restock batches
-`GET /v0/inventory/restock-batches?status=active|archived|all&stockItemId=uuid&limit=number&offset=number`
+`GET /v0/inventory/restock-batches?branchId=uuid&status=active|archived|all&stockItemId=uuid&limit=number&offset=number`
 
 Action key: `inventory.restockBatches.list`
+
+Notes:
+- Requires tenant context.
+- Optional `branchId` narrows result to one branch.
 
 Response `200`: `RestockBatch[]`
 
@@ -301,6 +305,7 @@ Headers:
 Body:
 ```json
 {
+  "branchId": "uuid",
   "stockItemId": "uuid",
   "quantityInBaseUnit": 1200,
   "receivedAt": "2026-02-20T00:00:00.000Z",
@@ -319,6 +324,7 @@ Response `200`:
   - `branchStockProjection: BranchStockProjection`
 
 Errors:
+- `404` `BRANCH_NOT_FOUND`
 - `404` `INVENTORY_STOCK_ITEM_NOT_FOUND`
 - `409` `INVENTORY_STOCK_ITEM_INACTIVE`
 - `422` `INVENTORY_QUANTITY_INVALID`
@@ -331,17 +337,24 @@ Headers:
 
 Body (any subset; at least 1 field required):
 ```json
-{ "expiryDate": "2026-03-01", "supplierName": "Supplier X", "purchaseCostUsd": 12.5, "note": "Updated" }
+{
+  "branchId": "uuid",
+  "expiryDate": "2026-03-01",
+  "supplierName": "Supplier X",
+  "purchaseCostUsd": 12.5,
+  "note": "Updated"
+}
 ```
 
 Action key: `inventory.restockBatches.updateMeta`
 
 Errors:
+- `404` `BRANCH_NOT_FOUND`
 - `404` `INVENTORY_RESTOCK_BATCH_NOT_FOUND`
 - `409` `INVENTORY_RESTOCK_BATCH_ARCHIVED`
 
 #### 14) Archive restock batch
-`POST /v0/inventory/restock-batches/:batchId/archive`
+`POST /v0/inventory/restock-batches/:batchId/archive?branchId=uuid`
 
 Headers:
 - `Idempotency-Key: <string>`
@@ -349,6 +362,7 @@ Headers:
 Action key: `inventory.restockBatches.archive`
 
 Errors:
+- `404` `BRANCH_NOT_FOUND`
 - `404` `INVENTORY_RESTOCK_BATCH_NOT_FOUND`
 - `409` `INVENTORY_RESTOCK_BATCH_ARCHIVED`
 
@@ -363,6 +377,7 @@ Headers:
 Body (style = `DELTA`):
 ```json
 {
+  "branchId": "uuid",
   "stockItemId": "uuid",
   "style": "DELTA",
   "deltaInBaseUnit": -250,
@@ -374,6 +389,7 @@ Body (style = `DELTA`):
 Body (style = `SET_TO_COUNT`):
 ```json
 {
+  "branchId": "uuid",
   "stockItemId": "uuid",
   "style": "SET_TO_COUNT",
   "countedOnHandInBaseUnit": 3000,
@@ -388,19 +404,20 @@ Response `200` (shape):
 - includes `branchStockProjection: BranchStockProjection`
 
 Errors:
+- `404` `BRANCH_NOT_FOUND`
 - `404` `INVENTORY_STOCK_ITEM_NOT_FOUND`
 - `409` `INVENTORY_STOCK_ITEM_INACTIVE`
 - `422` `INVENTORY_ADJUSTMENT_INVALID`
 
 #### 16) List inventory journal
-`GET /v0/inventory/journal?stockItemId=uuid&reasonCode=RESTOCK|SALE_DEDUCTION|VOID_REVERSAL|ADJUSTMENT|OTHER&limit=number&offset=number`
+`GET /v0/inventory/journal?branchId=uuid&stockItemId=uuid&reasonCode=RESTOCK|SALE_DEDUCTION|VOID_REVERSAL|ADJUSTMENT|OTHER&limit=number&offset=number`
 
 Action key: `inventory.journal.list`
 
 Notes:
-- Branch read lane.
-- Requires branch context.
-- Returns only current branch journal entries.
+- Branch read lane via explicit filter.
+- Requires tenant context.
+- Returns journal entries for the requested branch.
 
 Response `200`: `InventoryJournalEntry[]`
 
@@ -417,9 +434,13 @@ Notes:
 Response `200`: `InventoryJournalEntry[]`
 
 #### 18) Read branch stock projection (fast read)
-`GET /v0/inventory/stock/branch?includeArchivedItems=true|false`
+`GET /v0/inventory/stock/branch?branchId=uuid&includeArchivedItems=true|false`
 
 Action key: `inventory.stock.branch.read`
+
+Notes:
+- Requires tenant context.
+- Returns on-hand for the requested branch.
 
 Response `200`: `BranchStockItem[]`
 
@@ -451,6 +472,7 @@ Response `200`:
 - `INVENTORY_STOCK_CATEGORY_NOT_FOUND`
 - `INVENTORY_RESTOCK_BATCH_NOT_FOUND`
 - `INVENTORY_RESTOCK_BATCH_ARCHIVED`
+- `BRANCH_NOT_FOUND`
 - `INVENTORY_BASE_UNIT_IMMUTABLE`
 - `INVENTORY_QUANTITY_INVALID`
 - `INVENTORY_ADJUSTMENT_INVALID`

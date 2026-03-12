@@ -452,37 +452,37 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     entitlementKey: "module.inventory",
   },
   "inventory.restockBatches.list": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "READ",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "module.inventory",
   },
   "inventory.restockBatches.create": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "module.inventory",
   },
   "inventory.restockBatches.updateMeta": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
     entitlementKey: "module.inventory",
   },
   "inventory.restockBatches.archive": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
     entitlementKey: "module.inventory",
   },
   "inventory.adjustments.apply": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
     entitlementKey: "module.inventory",
   },
   "inventory.journal.list": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "READ",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "module.inventory",
@@ -494,7 +494,7 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     entitlementKey: "module.inventory",
   },
   "inventory.stock.branch.read": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "READ",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "module.inventory",
@@ -502,7 +502,7 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
   "inventory.stock.aggregate.read": {
     scope: "TENANT",
     effect: "READ",
-    allowedRoles: ["OWNER", "ADMIN"],
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "module.inventory",
   },
   "cashSession.open": {

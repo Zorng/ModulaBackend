@@ -100,8 +100,29 @@ export type InventoryAggregateStockViewRow = {
   branch_count: number;
 };
 
+export type InventoryBranchRow = {
+  id: string;
+  tenant_id: string;
+  status: "ACTIVE" | "ARCHIVED";
+};
+
 export class V0InventoryRepository {
   constructor(private readonly db: Queryable) {}
+
+  async getBranchById(input: {
+    tenantId: string;
+    branchId: string;
+  }): Promise<InventoryBranchRow | null> {
+    const result = await this.db.query<InventoryBranchRow>(
+      `SELECT id, tenant_id, status
+       FROM branches
+       WHERE tenant_id = $1
+         AND id = $2
+       LIMIT 1`,
+      [input.tenantId, input.branchId]
+    );
+    return result.rows[0] ?? null;
+  }
 
   async getCategoryById(input: {
     tenantId: string;
@@ -395,7 +416,7 @@ export class V0InventoryRepository {
 
   async listRestockBatches(input: {
     tenantId: string;
-    branchId: string;
+    branchId?: string | null;
     stockItemId?: string | null;
     includeArchived?: boolean;
     limit: number;
@@ -419,7 +440,7 @@ export class V0InventoryRepository {
          updated_at
        FROM v0_inventory_restock_batches
        WHERE tenant_id = $1
-         AND branch_id = $2
+         AND ($2::UUID IS NULL OR branch_id = $2::UUID)
          AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
          AND ($4::BOOLEAN = TRUE OR status = 'ACTIVE')
        ORDER BY received_at DESC, id DESC
@@ -427,7 +448,7 @@ export class V0InventoryRepository {
        OFFSET $6`,
       [
         input.tenantId,
-        input.branchId,
+        input.branchId ?? null,
         input.stockItemId ?? null,
         input.includeArchived ?? false,
         input.limit,

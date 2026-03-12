@@ -291,9 +291,10 @@ describe("v0 inventory integration", () => {
     const receivedAt = new Date().toISOString();
     const restock = await request(app)
       .post("/v0/inventory/restock-batches")
-      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
       .set("Idempotency-Key", `idem-restock-${uniqueSuffix()}`)
       .send({
+        branchId: setup.branchAId,
         stockItemId,
         quantityInBaseUnit: 1200,
         receivedAt,
@@ -312,6 +313,30 @@ describe("v0 inventory integration", () => {
     expect(typeof batchId).toBe("string");
     expect(typeof journalEntryId).toBe("string");
     expect(typeof branchStockProjectionId).toBe("string");
+
+    const listedBatches = await request(app)
+      .get(`/v0/inventory/restock-batches?branchId=${setup.branchAId}&stockItemId=${stockItemId}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(listedBatches.status).toBe(200);
+    expect(listedBatches.body.data).toHaveLength(1);
+    expect(listedBatches.body.data[0]?.branchId).toBe(setup.branchAId);
+
+    const branchStock = await request(app)
+      .get(`/v0/inventory/stock/branch?branchId=${setup.branchAId}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(branchStock.status).toBe(200);
+    expect(
+      (branchStock.body.data as Array<{ stockItemId: string; onHandInBaseUnit: number }>).some(
+        (row) => row.stockItemId === stockItemId && row.onHandInBaseUnit === 1200
+      )
+    ).toBe(true);
+
+    const branchJournal = await request(app)
+      .get(`/v0/inventory/journal?branchId=${setup.branchAId}&stockItemId=${stockItemId}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(branchJournal.status).toBe(200);
+    expect(branchJournal.body.data).toHaveLength(1);
+    expect(branchJournal.body.data[0]?.branchId).toBe(setup.branchAId);
 
     const onHand = await pool.query<{ on_hand_in_base_unit: number }>(
       `SELECT on_hand_in_base_unit::FLOAT8 AS on_hand_in_base_unit
@@ -368,9 +393,10 @@ describe("v0 inventory integration", () => {
 
     const restockA = await request(app)
       .post("/v0/inventory/restock-batches")
-      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
       .set("Idempotency-Key", `idem-restock-a-${uniqueSuffix()}`)
       .send({
+        branchId: setup.branchAId,
         stockItemId,
         quantityInBaseUnit: 1000,
         receivedAt: new Date().toISOString(),
@@ -383,9 +409,10 @@ describe("v0 inventory integration", () => {
 
     const restockB = await request(app)
       .post("/v0/inventory/restock-batches")
-      .set("Authorization", `Bearer ${setup.ownerBranchBToken}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
       .set("Idempotency-Key", `idem-restock-b-${uniqueSuffix()}`)
       .send({
+        branchId: setup.branchBId,
         stockItemId,
         quantityInBaseUnit: 2000,
         receivedAt: new Date().toISOString(),

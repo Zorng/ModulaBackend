@@ -271,6 +271,7 @@ export function createV0InventoryRouter(input: {
 
       const data = await input.service.listRestockBatches({
         actor,
+        branchId: asString(req.query?.branchId),
         status: asString(req.query?.status),
         stockItemId: asString(req.query?.stockItemId),
         limit: asNumber(req.query?.limit),
@@ -293,6 +294,7 @@ export function createV0InventoryRouter(input: {
       entityType: "inventory_restock_batch",
       writeScope: "BRANCH",
       transactionManager,
+      resolveBranchId: (req) => toObject(req.body).branchId,
       handler: async (service, idempotencyKey) =>
         service.createRestockBatch({
           actor: req.v0Auth!,
@@ -317,6 +319,7 @@ export function createV0InventoryRouter(input: {
         entityType: "inventory_restock_batch",
         writeScope: "BRANCH",
         transactionManager,
+        resolveBranchId: (req) => toObject(req.body).branchId,
         handler: async (service) =>
           service.updateRestockBatchMetadata({
             actor: req.v0Auth!,
@@ -342,10 +345,12 @@ export function createV0InventoryRouter(input: {
         entityType: "inventory_restock_batch",
         writeScope: "BRANCH",
         transactionManager,
+        resolveBranchId: (req) => asString(req.query?.branchId),
         handler: async (service) =>
           service.archiveRestockBatch({
             actor: req.v0Auth!,
             batchId: req.params.batchId,
+            branchId: asString(req.query?.branchId) ?? "",
           }),
         commandParts: [req.params.batchId],
       });
@@ -363,6 +368,7 @@ export function createV0InventoryRouter(input: {
       entityType: "inventory_journal_entry",
       writeScope: "BRANCH",
       transactionManager,
+      resolveBranchId: (req) => toObject(req.body).branchId,
       handler: async (service, idempotencyKey) =>
         service.applyAdjustment({
           actor: req.v0Auth!,
@@ -383,6 +389,7 @@ export function createV0InventoryRouter(input: {
 
       const data = await input.service.listJournal({
         actor,
+        branchId: asString(req.query?.branchId),
         stockItemId: asString(req.query?.stockItemId),
         reasonCode: asString(req.query?.reasonCode),
         limit: asNumber(req.query?.limit),
@@ -426,6 +433,7 @@ export function createV0InventoryRouter(input: {
 
       const data = await input.service.readBranchStock({
         actor,
+        branchId: asString(req.query?.branchId),
         includeArchivedItems: asBoolean(req.query?.includeArchivedItems),
       });
       res.status(200).json({ success: true, data });
@@ -464,6 +472,7 @@ export function createV0InventoryRouter(input: {
     endpoint: string;
     writeScope: WriteScope;
     transactionManager: TransactionManager;
+    resolveBranchId?: (req: V0AuthRequest) => unknown;
     handler: (service: V0InventoryService, idempotencyKey: string) => Promise<unknown>;
     commandParts: ReadonlyArray<unknown>;
   }): Promise<void> {
@@ -479,16 +488,20 @@ export function createV0InventoryRouter(input: {
       }
 
       const tenantId = String(actor.tenantId ?? "").trim();
-      const branchId = String(actor.branchId ?? "").trim();
+      const branchId =
+        inputWrite.writeScope === "BRANCH"
+          ? normalizeOptionalString(inputWrite.resolveBranchId?.(inputWrite.req))
+          : null;
 
       const result = await inputWrite.idempotencyService.execute<InventoryResponseBody>({
         idempotencyKey,
         actionKey,
         scope: inputWrite.writeScope,
         tenantId,
-        branchId: inputWrite.writeScope === "BRANCH" ? branchId : null,
+        branchId,
         payload: {
           params: inputWrite.req.params,
+          query: inputWrite.req.query,
           body: inputWrite.req.body,
         },
         handler: async () => {
@@ -620,6 +633,21 @@ function asString(value: unknown): string | undefined {
     return typeof value[0] === "string" ? value[0] : undefined;
   }
   return typeof value === "string" ? value : undefined;
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function toObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
 }
 
 function asNumber(value: unknown): number | undefined {
