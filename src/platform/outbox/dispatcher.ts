@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from "pg";
 import { eventBus } from "../events/index.js";
 import { log } from "#logger";
 import { recordOutboxEventProcessed, setOutboxBacklogCount } from "../observability/metrics.js";
+import { formatError } from "../errors/format.js";
 
 type V0OutboxRow = {
   id: string;
@@ -176,7 +177,7 @@ async function processBatch(input: { client: PoolClient; batchSize: number }): P
         actionKey: row.action_key,
         eventType: row.event_type,
         outcome: row.outcome,
-        error: error instanceof Error ? error.message : String(error),
+        error: formatError(error),
         durationMs: Date.now() - publishStartedAtMs,
       });
       recordOutboxEventProcessed({
@@ -243,10 +244,10 @@ export function startV0CommandOutboxDispatcher(input: DispatcherInput): {
         }
       }
       status.lastFailureAt = new Date().toISOString();
-      status.lastError = error instanceof Error ? error.message : String(error);
+      status.lastError = formatError(error);
       log.error("outbox.dispatch.tick_failed", {
         event: "outbox.dispatch.tick_failed",
-        error: error instanceof Error ? error.message : String(error),
+        error: formatError(error),
         durationMs: Date.now() - tickStartedAtMs,
       });
     } finally {

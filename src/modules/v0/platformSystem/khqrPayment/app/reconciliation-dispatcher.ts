@@ -5,6 +5,7 @@ import { buildV0KhqrPaymentProviderFromEnv } from "./payment-provider.js";
 import { V0KhqrPaymentService } from "./service.js";
 import { V0KhqrPaymentRepository } from "../infra/repository.js";
 import { V0_KHQR_PAYMENT_ACTION_KEYS } from "./command-contract.js";
+import { formatError } from "../../../../../platform/errors/format.js";
 
 type DispatcherInput = {
   db: Pool;
@@ -34,6 +35,7 @@ export function startV0KhqrReconciliationDispatcher(input: DispatcherInput): {
   const pollIntervalMs = input.pollIntervalMs ?? 30_000;
   const batchSize = input.batchSize ?? 50;
   const recheckWindowMinutes = input.recheckWindowMinutes ?? 2;
+  let tickInFlight = false;
 
   const status: DispatcherStatus = {
     pollIntervalMs,
@@ -53,6 +55,10 @@ export function startV0KhqrReconciliationDispatcher(input: DispatcherInput): {
   const txManager = new TransactionManager(input.db);
 
   const timer = setInterval(async () => {
+    if (tickInFlight) {
+      return;
+    }
+    tickInFlight = true;
     const startedAt = Date.now();
     status.lastTickAt = new Date(startedAt).toISOString();
 
@@ -98,7 +104,7 @@ export function startV0KhqrReconciliationDispatcher(input: DispatcherInput): {
             attemptId: candidate.id,
             tenantId: candidate.tenant_id,
             branchId: candidate.branch_id,
-            error: error instanceof Error ? error.message : String(error),
+            error: formatError(error),
           });
         }
       }
@@ -122,16 +128,18 @@ export function startV0KhqrReconciliationDispatcher(input: DispatcherInput): {
       }
     } catch (error) {
       status.lastFailureAt = new Date().toISOString();
-      status.lastError = error instanceof Error ? error.message : String(error);
+      status.lastError = formatError(error);
       status.lastScannedCount = 0;
       status.lastAppliedCount = 0;
       status.lastSkippedCount = 0;
       status.lastFailedCount = 0;
       log.error("khqr.reconcile.tick_failed", {
         event: "khqr.reconcile.tick_failed",
-        error: error instanceof Error ? error.message : String(error),
+        error: formatError(error),
         durationMs: Date.now() - startedAt,
       });
+    } finally {
+      tickInFlight = false;
     }
   }, pollIntervalMs);
 

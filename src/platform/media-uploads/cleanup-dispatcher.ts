@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import { log } from "#logger";
 import { V0MediaUploadRepository } from "./repository.js";
 import { deleteObjectFromR2 } from "../storage/r2-image-storage.js";
+import { formatError } from "../errors/format.js";
 
 type DispatcherInput = {
   db: Pool;
@@ -30,6 +31,7 @@ export function startV0MediaUploadCleanupDispatcher(input: DispatcherInput): {
   const pollIntervalMs = input.pollIntervalMs ?? 60_000;
   const batchSize = input.batchSize ?? 100;
   const pendingAgeMinutes = input.pendingAgeMinutes ?? 24 * 60;
+  let tickInFlight = false;
 
   const status: DispatcherStatus = {
     pollIntervalMs,
@@ -45,6 +47,10 @@ export function startV0MediaUploadCleanupDispatcher(input: DispatcherInput): {
   };
 
   const timer = setInterval(async () => {
+    if (tickInFlight) {
+      return;
+    }
+    tickInFlight = true;
     const tickStartedAtMs = Date.now();
     status.lastTickAt = new Date(tickStartedAtMs).toISOString();
 
@@ -72,7 +78,7 @@ export function startV0MediaUploadCleanupDispatcher(input: DispatcherInput): {
             tenantId: upload.tenant_id,
             area: upload.area,
             objectKey: upload.object_key,
-            error: error instanceof Error ? error.message : String(error),
+            error: formatError(error),
           });
         }
       }
@@ -95,15 +101,17 @@ export function startV0MediaUploadCleanupDispatcher(input: DispatcherInput): {
       }
     } catch (error) {
       status.lastFailureAt = new Date().toISOString();
-      status.lastError = error instanceof Error ? error.message : String(error);
+      status.lastError = formatError(error);
       status.lastClaimedCount = 0;
       status.lastDeletedCount = 0;
       status.lastFailedCount = 0;
       log.error("media.cleanup.tick_failed", {
         event: "media.cleanup.tick_failed",
-        error: error instanceof Error ? error.message : String(error),
+        error: formatError(error),
         durationMs: Date.now() - tickStartedAtMs,
       });
+    } finally {
+      tickInFlight = false;
     }
   }, pollIntervalMs);
 
