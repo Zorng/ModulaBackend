@@ -212,6 +212,7 @@ export class V0KhqrPaymentService {
         amount: sale.tender_amount,
         currency: sale.tender_currency,
         toAccountId: receiver.toAccountId,
+        receiverName: receiver.receiverName,
         expiresAt,
       }),
     };
@@ -324,6 +325,7 @@ export class V0KhqrPaymentService {
         amount: input.tenderAmount,
         currency: input.tenderCurrency,
         toAccountId: receiver.toAccountId,
+        receiverName: receiver.receiverName,
         expiresAt,
       }),
     };
@@ -1156,6 +1158,7 @@ export type V0KhqrGenerateResult = {
     amount: number;
     currency: V0KhqrCurrency;
     toAccountId: string;
+    receiverName: string | null;
     expiresAt: string | null;
     provider: "BAKONG" | "STUB";
     providerReference: string | null;
@@ -1312,6 +1315,7 @@ function mapGeneratedRequest(input: {
   amount: number;
   currency: V0KhqrCurrency;
   toAccountId: string;
+  receiverName: string | null;
   expiresAt: Date | null;
 }): V0KhqrGenerateResult["paymentRequest"] {
   return {
@@ -1323,6 +1327,7 @@ function mapGeneratedRequest(input: {
     amount: input.amount,
     currency: input.currency,
     toAccountId: input.toAccountId,
+    receiverName: input.receiverName,
     expiresAt: input.expiresAt ? input.expiresAt.toISOString() : null,
     provider: input.generated.provider,
     providerReference: input.generated.providerReference,

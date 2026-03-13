@@ -1296,6 +1296,8 @@ describe("v0 sale-order integration", () => {
     expect(initiated.body.data.intent.status).toBe("WAITING_FOR_PAYMENT");
     expect(initiated.body.data.attempt.status).toBe("WAITING_FOR_PAYMENT");
     expect(initiated.body.data.attempt.saleId).toBeNull();
+    expect(initiated.body.data.paymentRequest.toAccountId).toBe("khqr-receiver");
+    expect(initiated.body.data.paymentRequest.receiverName).toBe("KHQR Receiver");
     const paymentIntentId = initiated.body.data.intent.paymentIntentId as string;
     const md5 = initiated.body.data.attempt.md5 as string;
 

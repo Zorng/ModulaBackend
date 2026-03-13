@@ -176,7 +176,9 @@ Response `200`:
     "paymentRequest": {
       "md5": "khqr-md5",
       "payload": "....",
-      "payloadType": "EMV_KHQR_STRING"
+      "payloadType": "EMV_KHQR_STRING",
+      "toAccountId": "bakong-account-id",
+      "receiverName": "Main Branch Receiver"
     },
     "preview": {
       "itemCount": 1,

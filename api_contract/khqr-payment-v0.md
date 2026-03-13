@@ -191,6 +191,7 @@ Success `201`:
       "amount": 3.5,
       "currency": "USD",
       "toAccountId": "bakong-account-id",
+      "receiverName": "Main Branch Receiver",
       "expiresAt": "2026-02-21T10:30:00.000Z",
       "provider": "STUB",
       "providerReference": "stub:..."
@@ -201,6 +202,7 @@ Success `201`:
 
 Notes:
 - `toAccountId` is resolved by backend from current branch KHQR receiver configuration.
+- `receiverName` is also resolved by backend from current branch KHQR receiver configuration.
 - Frontend must not supply receiver account during generation.
 - `payloadType` indicates how client should consume `payload`:
   - `DEEPLINK_URL`: launch/link flow
