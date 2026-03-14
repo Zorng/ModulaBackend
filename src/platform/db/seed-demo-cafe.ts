@@ -1411,12 +1411,12 @@ async function insertShiftInstance(
        $5::DATE,
        $6::TIME,
        $7::TIME,
-       $8,
-       $9,
-       $10,
-       $11,
-       $11,
-       CASE WHEN $8 = 'CANCELLED' THEN NOW() ELSE NULL END
+       $8::VARCHAR(20),
+       $9::TEXT,
+       $10::TEXT,
+       $11::UUID,
+       $11::UUID,
+       CASE WHEN $8::VARCHAR(20) = 'CANCELLED' THEN NOW() ELSE NULL END
      )`,
     [
       input.tenantId,
