@@ -755,6 +755,8 @@ export class V0InventoryRepository {
     branchId: string;
     stockItemId?: string | null;
     reasonCode?: InventoryReasonCode | null;
+    fromInclusive?: Date | null;
+    toExclusive?: Date | null;
     limit: number;
     offset: number;
   }): Promise<InventoryJournalEntryRow[]> {
@@ -779,14 +781,18 @@ export class V0InventoryRepository {
          AND branch_id = $2
          AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
          AND ($4::VARCHAR IS NULL OR reason_code = $4::VARCHAR)
+         AND ($5::TIMESTAMPTZ IS NULL OR occurred_at >= $5::TIMESTAMPTZ)
+         AND ($6::TIMESTAMPTZ IS NULL OR occurred_at < $6::TIMESTAMPTZ)
        ORDER BY occurred_at DESC, id DESC
-       LIMIT $5
-       OFFSET $6`,
+       LIMIT $7
+       OFFSET $8`,
       [
         input.tenantId,
         input.branchId,
         input.stockItemId ?? null,
         input.reasonCode ?? null,
+        input.fromInclusive ?? null,
+        input.toExclusive ?? null,
         input.limit,
         input.offset,
       ]
@@ -799,6 +805,8 @@ export class V0InventoryRepository {
     branchId?: string | null;
     stockItemId?: string | null;
     reasonCode?: InventoryReasonCode | null;
+    fromInclusive?: Date | null;
+    toExclusive?: Date | null;
     limit: number;
     offset: number;
   }): Promise<InventoryJournalEntryRow[]> {
@@ -823,14 +831,18 @@ export class V0InventoryRepository {
          AND ($2::UUID IS NULL OR branch_id = $2::UUID)
          AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
          AND ($4::VARCHAR IS NULL OR reason_code = $4::VARCHAR)
+         AND ($5::TIMESTAMPTZ IS NULL OR occurred_at >= $5::TIMESTAMPTZ)
+         AND ($6::TIMESTAMPTZ IS NULL OR occurred_at < $6::TIMESTAMPTZ)
        ORDER BY occurred_at DESC, id DESC
-       LIMIT $5
-       OFFSET $6`,
+       LIMIT $7
+       OFFSET $8`,
       [
         input.tenantId,
         input.branchId ?? null,
         input.stockItemId ?? null,
         input.reasonCode ?? null,
+        input.fromInclusive ?? null,
+        input.toExclusive ?? null,
         input.limit,
         input.offset,
       ]

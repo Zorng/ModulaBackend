@@ -392,6 +392,9 @@ export function createV0InventoryRouter(input: {
         branchId: asString(req.query?.branchId),
         stockItemId: asString(req.query?.stockItemId),
         reasonCode: asString(req.query?.reasonCode),
+        date: asString(req.query?.date),
+        from: asString(req.query?.from),
+        to: asString(req.query?.to),
         limit: asNumber(req.query?.limit),
         offset: asNumber(req.query?.offset),
       });
@@ -414,6 +417,9 @@ export function createV0InventoryRouter(input: {
         branchId: asString(req.query?.branchId),
         stockItemId: asString(req.query?.stockItemId),
         reasonCode: asString(req.query?.reasonCode),
+        date: asString(req.query?.date),
+        from: asString(req.query?.from),
+        to: asString(req.query?.to),
         limit: asNumber(req.query?.limit),
         offset: asNumber(req.query?.offset),
       });

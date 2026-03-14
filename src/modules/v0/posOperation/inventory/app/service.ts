@@ -630,6 +630,9 @@ export class V0InventoryService {
     branchId?: string;
     stockItemId?: string;
     reasonCode?: string;
+    date?: string;
+    from?: string;
+    to?: string;
     limit?: number;
     offset?: number;
   }): Promise<Array<Record<string, unknown>>> {
@@ -637,6 +640,11 @@ export class V0InventoryService {
     const branchId = await this.requireBranchIdInTenant(scope.tenantId, input.branchId);
     const stockItemId = parseOptionalUuid(input.stockItemId, "stockItemId");
     const reasonCode = parseOptionalInventoryReasonCode(input.reasonCode);
+    const dateFilter = resolveJournalDateFilter({
+      date: input.date,
+      from: input.from,
+      to: input.to,
+    });
     const limit = normalizeLimit(input.limit);
     const offset = normalizeOffset(input.offset);
 
@@ -645,6 +653,8 @@ export class V0InventoryService {
       branchId,
       stockItemId,
       reasonCode,
+      fromInclusive: dateFilter.fromInclusive,
+      toExclusive: dateFilter.toExclusive,
       limit,
       offset,
     });
@@ -657,6 +667,9 @@ export class V0InventoryService {
     branchId?: string;
     stockItemId?: string;
     reasonCode?: string;
+    date?: string;
+    from?: string;
+    to?: string;
     limit?: number;
     offset?: number;
   }): Promise<Array<Record<string, unknown>>> {
@@ -664,6 +677,11 @@ export class V0InventoryService {
     const branchId = parseOptionalUuid(input.branchId, "branchId");
     const stockItemId = parseOptionalUuid(input.stockItemId, "stockItemId");
     const reasonCode = parseOptionalInventoryReasonCode(input.reasonCode);
+    const dateFilter = resolveJournalDateFilter({
+      date: input.date,
+      from: input.from,
+      to: input.to,
+    });
     const limit = normalizeLimit(input.limit);
     const offset = normalizeOffset(input.offset);
 
@@ -672,6 +690,8 @@ export class V0InventoryService {
       branchId,
       stockItemId,
       reasonCode,
+      fromInclusive: dateFilter.fromInclusive,
+      toExclusive: dateFilter.toExclusive,
       limit,
       offset,
     });
@@ -1044,6 +1064,51 @@ function parseOptionalDateOnly(raw: unknown, field: string): string | null {
     throw new V0InventoryError(422, `${field} must be YYYY-MM-DD`, "INVENTORY_INVALID_INPUT");
   }
   return value;
+}
+
+function resolveJournalDateFilter(input: {
+  date?: string;
+  from?: string;
+  to?: string;
+}): {
+  fromInclusive: Date | null;
+  toExclusive: Date | null;
+} {
+  const date = parseOptionalDateOnly(input.date, "date");
+  const from = parseOptionalDateOnly(input.from, "from");
+  const to = parseOptionalDateOnly(input.to, "to");
+
+  if (date && (from || to)) {
+    throw new V0InventoryError(
+      422,
+      "date cannot be combined with from or to",
+      "INVENTORY_INVALID_FILTER"
+    );
+  }
+  if (from && to && from > to) {
+    throw new V0InventoryError(422, "from must be <= to", "INVENTORY_INVALID_FILTER");
+  }
+
+  if (date) {
+    const fromInclusive = startOfCambodiaDay(date);
+    return {
+      fromInclusive,
+      toExclusive: addDays(fromInclusive, 1),
+    };
+  }
+
+  return {
+    fromInclusive: from ? startOfCambodiaDay(from) : null,
+    toExclusive: to ? addDays(startOfCambodiaDay(to), 1) : null,
+  };
+}
+
+function startOfCambodiaDay(date: string): Date {
+  return new Date(`${date}T00:00:00+07:00`);
+}
+
+function addDays(value: Date, days: number): Date {
+  return new Date(value.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 function normalizeLimit(value: number | undefined): number {

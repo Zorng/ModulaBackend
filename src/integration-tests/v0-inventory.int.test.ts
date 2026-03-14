@@ -445,6 +445,121 @@ describe("v0 inventory integration", () => {
     expect(branchRows[0]?.branchId).toBe(setup.branchAId);
   });
 
+  it("filters inventory journal by exact date and inclusive date range", async () => {
+    const setup = await setupOwnerTenantContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Inventory Journal Date Tenant ${uniqueSuffix()}`,
+    });
+
+    const createdItem = await request(app)
+      .post("/v0/inventory/items")
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", `idem-item-date-${uniqueSuffix()}`)
+      .send({
+        name: `Condensed Milk ${uniqueSuffix()}`,
+        baseUnit: "ml",
+        categoryId: null,
+        imageUrl: null,
+        lowStockThreshold: null,
+      });
+    expect(createdItem.status).toBe(200);
+    const stockItemId = createdItem.body.data.id as string;
+
+    const branchADayOne = await request(app)
+      .post("/v0/inventory/restock-batches")
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", `idem-restock-date-a1-${uniqueSuffix()}`)
+      .send({
+        branchId: setup.branchAId,
+        stockItemId,
+        quantityInBaseUnit: 800,
+        receivedAt: "2026-03-10T09:15:00+07:00",
+        expiryDate: null,
+        supplierName: "Supplier A",
+        purchaseCostUsd: 8,
+        note: "Branch A day one",
+      });
+    expect(branchADayOne.status).toBe(200);
+
+    const branchADayThree = await request(app)
+      .post("/v0/inventory/restock-batches")
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", `idem-restock-date-a3-${uniqueSuffix()}`)
+      .send({
+        branchId: setup.branchAId,
+        stockItemId,
+        quantityInBaseUnit: 900,
+        receivedAt: "2026-03-12T11:45:00+07:00",
+        expiryDate: null,
+        supplierName: "Supplier A",
+        purchaseCostUsd: 9,
+        note: "Branch A day three",
+      });
+    expect(branchADayThree.status).toBe(200);
+
+    const branchBDayThree = await request(app)
+      .post("/v0/inventory/restock-batches")
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", `idem-restock-date-b3-${uniqueSuffix()}`)
+      .send({
+        branchId: setup.branchBId,
+        stockItemId,
+        quantityInBaseUnit: 700,
+        receivedAt: "2026-03-12T08:00:00+07:00",
+        expiryDate: null,
+        supplierName: "Supplier B",
+        purchaseCostUsd: 7,
+        note: "Branch B day three",
+      });
+    expect(branchBDayThree.status).toBe(200);
+
+    const exactDate = await request(app)
+      .get(
+        `/v0/inventory/journal?branchId=${setup.branchAId}&stockItemId=${stockItemId}&date=2026-03-10`
+      )
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(exactDate.status).toBe(200);
+
+    const exactRows = exactDate.body.data as Array<{ branchId: string; note: string; occurredAt: string }>;
+    expect(exactRows).toHaveLength(1);
+    expect(exactRows[0]?.branchId).toBe(setup.branchAId);
+    expect(exactRows[0]?.note).toBe("Branch A day one");
+    expect(exactRows[0]?.occurredAt.startsWith("2026-03-10")).toBe(true);
+
+    const range = await request(app)
+      .get(
+        `/v0/inventory/journal?branchId=${setup.branchAId}&stockItemId=${stockItemId}&from=2026-03-11&to=2026-03-12`
+      )
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(range.status).toBe(200);
+
+    const rangeRows = range.body.data as Array<{ branchId: string; note: string }>;
+    expect(rangeRows).toHaveLength(1);
+    expect(rangeRows[0]?.branchId).toBe(setup.branchAId);
+    expect(rangeRows[0]?.note).toBe("Branch A day three");
+
+    const tenantExactDate = await request(app)
+      .get(`/v0/inventory/journal/all?stockItemId=${stockItemId}&date=2026-03-12`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(tenantExactDate.status).toBe(200);
+
+    const tenantRows = tenantExactDate.body.data as Array<{ branchId: string }>;
+    expect(tenantRows).toHaveLength(2);
+    expect(tenantRows.map((row) => row.branchId).sort()).toEqual(
+      [setup.branchAId, setup.branchBId].sort()
+    );
+
+    const invalidMixedFilter = await request(app)
+      .get(
+        `/v0/inventory/journal?branchId=${setup.branchAId}&stockItemId=${stockItemId}&date=2026-03-10&from=2026-03-10`
+      )
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(invalidMixedFilter.status).toBe(422);
+    expect(invalidMixedFilter.body.code).toBe("INVENTORY_INVALID_FILTER");
+  });
+
   it("rolls back business writes when outbox insert fails (atomic command contract)", async () => {
     const setup = await setupOwnerTenantContext({
       app,

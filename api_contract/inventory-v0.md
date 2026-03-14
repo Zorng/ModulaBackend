@@ -410,7 +410,7 @@ Errors:
 - `422` `INVENTORY_ADJUSTMENT_INVALID`
 
 #### 16) List inventory journal
-`GET /v0/inventory/journal?branchId=uuid&stockItemId=uuid&reasonCode=RESTOCK|SALE_DEDUCTION|VOID_REVERSAL|ADJUSTMENT|OTHER&limit=number&offset=number`
+`GET /v0/inventory/journal?branchId=uuid&stockItemId=uuid&reasonCode=RESTOCK|SALE_DEDUCTION|VOID_REVERSAL|ADJUSTMENT|OTHER&date=YYYY-MM-DD&from=YYYY-MM-DD&to=YYYY-MM-DD&limit=number&offset=number`
 
 Action key: `inventory.journal.list`
 
@@ -418,11 +418,14 @@ Notes:
 - Branch read lane via explicit filter.
 - Requires tenant context.
 - Returns journal entries for the requested branch.
+- `date` filters one exact Cambodia business day.
+- `from` / `to` filter an inclusive Cambodia date range.
+- `date` cannot be combined with `from` or `to`.
 
 Response `200`: `InventoryJournalEntry[]`
 
 #### 17) List tenant inventory journal (management lane)
-`GET /v0/inventory/journal/all?branchId=uuid&stockItemId=uuid&reasonCode=RESTOCK|SALE_DEDUCTION|VOID_REVERSAL|ADJUSTMENT|OTHER&limit=number&offset=number`
+`GET /v0/inventory/journal/all?branchId=uuid&stockItemId=uuid&reasonCode=RESTOCK|SALE_DEDUCTION|VOID_REVERSAL|ADJUSTMENT|OTHER&date=YYYY-MM-DD&from=YYYY-MM-DD&to=YYYY-MM-DD&limit=number&offset=number`
 
 Action key: `inventory.journal.listAll`
 
@@ -430,6 +433,9 @@ Notes:
 - Tenant management read lane.
 - Branch context not required.
 - Optional `branchId` narrows result to one branch while keeping tenant-scope access model.
+- `date` filters one exact Cambodia business day.
+- `from` / `to` filter an inclusive Cambodia date range.
+- `date` cannot be combined with `from` or `to`.
 
 Response `200`: `InventoryJournalEntry[]`
 
