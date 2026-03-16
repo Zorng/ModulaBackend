@@ -54,6 +54,5 @@ export const DISCOUNT_ROUTES: ProtectedRoute[] = [
     pattern: /^\/discount\/eligibility\/resolve$/,
     actionKey: "discount.eligibility.resolve",
     tenantSource: "token",
-    branchSource: "token",
   },
 ];

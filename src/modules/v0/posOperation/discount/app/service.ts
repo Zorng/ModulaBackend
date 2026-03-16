@@ -70,6 +70,9 @@ export class V0DiscountService {
     const status = parseStatusFilter(input.status);
     const ruleScope = parseScopeFilter(input.scope);
     const branchId = parseOptionalUuid(input.branchId, "branchId");
+    if (branchId) {
+      await this.assertBranchActive(actor.tenantId, branchId);
+    }
     const search = normalizeOptionalString(input.search);
     const limit = normalizeLimit(input.limit);
     const offset = normalizeOffset(input.offset);
@@ -332,11 +335,12 @@ export class V0DiscountService {
     actor: ActorContext;
     body: unknown;
   }): Promise<{ rules: DiscountEligibilityRuleDto[] }> {
-    const actor = assertBranchContext(input.actor);
+    const actor = assertTenantContext(input.actor);
     const payload = parseEligibilityBody(input.body);
+    await this.assertBranchActive(actor.tenantId, payload.branchId);
     const activeRules = await this.repo.listActiveRulesForBranchAt({
       tenantId: actor.tenantId,
-      branchId: actor.branchId,
+      branchId: payload.branchId,
       occurredAt: payload.occurredAt,
     });
     if (activeRules.length === 0) {
@@ -504,23 +508,6 @@ function assertTenantContext(actor: ActorContext): {
   return { accountId, tenantId };
 }
 
-function assertBranchContext(actor: ActorContext): {
-  accountId: string;
-  tenantId: string;
-  branchId: string;
-} {
-  const tenantScope = assertTenantContext(actor);
-  const branchId = String(actor.branchId ?? "").trim();
-  if (!branchId) {
-    throw new V0DiscountError(403, "branch context required", "BRANCH_CONTEXT_REQUIRED");
-  }
-  return {
-    accountId: tenantScope.accountId,
-    tenantId: tenantScope.tenantId,
-    branchId,
-  };
-}
-
 function mapRuleRow(row: DiscountRuleRow, itemIds: string[]): DiscountRuleDto {
   return {
     id: row.id,
@@ -664,10 +651,12 @@ function parsePreflightBody(body: unknown): { branchId: string; itemIds: string[
 }
 
 function parseEligibilityBody(body: unknown): {
+  branchId: string;
   occurredAt: Date;
   lines: Array<{ menuItemId: string }>;
 } {
   const source = toObject(body);
+  const branchId = parseRequiredUuid(source.branchId, "branchId");
   const occurredAt = parseIsoDate(source.occurredAt, "occurredAt");
   if (!Array.isArray(source.lines)) {
     throw new V0DiscountError(422, "lines must be an array", "DISCOUNT_RULE_INVALID");
@@ -687,7 +676,7 @@ function parseEligibilityBody(body: unknown): {
     };
   });
 
-  return { occurredAt, lines };
+  return { branchId, occurredAt, lines };
 }
 
 function parseStatusFilter(value: string | undefined): ListStatusFilter {

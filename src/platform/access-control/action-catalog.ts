@@ -387,7 +387,7 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     entitlementKey: "core.pos",
   },
   "discount.eligibility.resolve": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "READ",
     entitlementKey: "core.pos",
   },
