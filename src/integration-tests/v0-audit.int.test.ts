@@ -189,8 +189,8 @@ describe("v0 audit (phase f5)", () => {
       .set("Authorization", `Bearer ${ownerTenantToken}`);
 
     expect(listed.status).toBe(200);
-    expect(Array.isArray(listed.body.data)).toBe(true);
-    expect(listed.body.data).toHaveLength(2);
+    expect(Array.isArray(listed.body.data.items)).toBe(true);
+    expect(listed.body.data.items).toHaveLength(2);
 
     await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [ownerPhone, cashierPhone]);
   });

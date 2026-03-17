@@ -1,5 +1,9 @@
 import { normalizeOptionalString } from "../../../../../shared/utils/string.js";
 import {
+  buildOffsetPaginatedResult,
+  type OffsetPaginatedResult,
+} from "../../../../../shared/pagination.js";
+import {
   type V0OrderManualPaymentClaimedMethod,
   type V0OrderManualPaymentClaimRow,
   type V0OrderManualPaymentClaimStatus,
@@ -121,17 +125,29 @@ export class V0SaleOrderService {
     status?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const actor = assertBranchContext(input.actor);
     const status = parseOrderStatusFilter(input.status);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+    const total = await this.repo.countOrderTickets({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      status,
+    });
     const rows = await this.repo.listOrderTickets({
       tenantId: actor.tenantId,
       branchId: actor.branchId,
       status,
-      limit: normalizeLimit(input.limit),
-      offset: normalizeOffset(input.offset),
+      limit,
+      offset,
     });
-    return rows.map(mapOrderTicketSummary);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapOrderTicketSummary),
+      limit,
+      offset,
+      total,
+    });
   }
 
   async getOrder(input: {
@@ -816,17 +832,29 @@ export class V0SaleOrderService {
     status?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const actor = assertBranchContext(input.actor);
     const status = parseSaleStatusFilter(input.status);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+    const total = await this.repo.countSales({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      status,
+    });
     const rows = await this.repo.listSales({
       tenantId: actor.tenantId,
       branchId: actor.branchId,
       status,
-      limit: normalizeLimit(input.limit),
-      offset: normalizeOffset(input.offset),
+      limit,
+      offset,
     });
-    return rows.map(mapSaleSummary);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapSaleSummary),
+      limit,
+      offset,
+      total,
+    });
   }
 
   async getSale(input: {

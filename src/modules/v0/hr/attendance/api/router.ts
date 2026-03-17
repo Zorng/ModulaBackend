@@ -605,7 +605,8 @@ export function createV0AttendanceRouter(
 
       const data = await service.listMine({
         actor,
-        limit: Number(req.query?.limit ?? 50),
+        limit: asNumber(req.query?.limit),
+        offset: asNumber(req.query?.offset),
       });
       res.status(200).json({ success: true, data });
     } catch (error) {

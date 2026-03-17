@@ -224,7 +224,16 @@ Notes:
 
 Response `200` shape:
 ```ts
-{ success: true; data: MenuItem[] }
+{
+  success: true;
+  data: {
+    items: MenuItem[];
+    limit: number;
+    offset: number;
+    total: number;
+    hasMore: boolean;
+  };
+}
 ```
 
 Errors:
@@ -245,7 +254,16 @@ Notes:
 
 Response `200` shape:
 ```ts
-{ success: true; data: MenuItem[] }
+{
+  success: true;
+  data: {
+    items: MenuItem[];
+    limit: number;
+    offset: number;
+    total: number;
+    hasMore: boolean;
+  };
+}
 ```
 
 #### 4) Management Read Lane — Get menu item detail

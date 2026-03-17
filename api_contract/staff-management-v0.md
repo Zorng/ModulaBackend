@@ -115,27 +115,33 @@ Success `200`:
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "membershipId": "52f73995-5cee-43de-8c63-067f38a8536a",
-      "tenantId": "cc4eb8c7-3db6-4bec-a8ff-f0bb36b404a4",
-      "accountId": "0b5f0eca-a5de-4f11-9cad-455602b1e80a",
-      "roleKey": "CASHIER",
-      "membershipStatus": "INVITED",
-      "phone": "+10000000002",
-      "firstName": null,
-      "lastName": null,
-      "staffProfileStatus": null,
-      "invitedAt": "2026-02-24T10:00:00.000Z",
-      "acceptedAt": null,
-      "rejectedAt": null,
-      "revokedAt": null,
-      "pendingBranchIds": [
-        "8d5a4b9d-9ce4-4d6b-adf7-a7e2ae1361dc"
-      ],
-      "activeBranchIds": []
-    }
-  ]
+  "data": {
+    "items": [
+      {
+        "membershipId": "52f73995-5cee-43de-8c63-067f38a8536a",
+        "tenantId": "cc4eb8c7-3db6-4bec-a8ff-f0bb36b404a4",
+        "accountId": "0b5f0eca-a5de-4f11-9cad-455602b1e80a",
+        "roleKey": "CASHIER",
+        "membershipStatus": "INVITED",
+        "phone": "+10000000002",
+        "firstName": null,
+        "lastName": null,
+        "staffProfileStatus": null,
+        "invitedAt": "2026-02-24T10:00:00.000Z",
+        "acceptedAt": null,
+        "rejectedAt": null,
+        "revokedAt": null,
+        "pendingBranchIds": [
+          "8d5a4b9d-9ce4-4d6b-adf7-a7e2ae1361dc"
+        ],
+        "activeBranchIds": []
+      }
+    ],
+    "limit": 50,
+    "offset": 0,
+    "total": 1,
+    "hasMore": false
+  }
 }
 ```
 

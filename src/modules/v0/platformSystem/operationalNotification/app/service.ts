@@ -8,6 +8,10 @@ import {
   type V0OperationalNotificationRealtimeEvent,
 } from "./realtime.js";
 import { V0PullSyncRepository } from "../../pullSync/infra/repository.js";
+import {
+  buildOffsetPaginatedResult,
+  type OffsetPaginatedResult,
+} from "../../../../../shared/pagination.js";
 
 export class V0OperationalNotificationService {
   constructor(
@@ -136,8 +140,24 @@ export class V0OperationalNotificationService {
     type: string | null;
     limit: number;
     offset: number;
-  }): Promise<V0OperationalNotificationInboxRow[]> {
-    return this.repo.listInbox(input);
+  }): Promise<
+    OffsetPaginatedResult<{
+      id: string;
+      tenantId: string;
+      branchId: string;
+      type: string;
+      subjectType: string;
+      subjectId: string;
+      title: string;
+      body: string;
+      dedupeKey: string;
+      payload: Record<string, unknown> | null;
+      createdAt: string;
+      isRead: boolean;
+      readAt: string | null;
+    }>
+  > {
+    return this.listInboxWithMeta(input);
   }
 
   getUnreadCount(input: {
@@ -237,4 +257,59 @@ export class V0OperationalNotificationService {
     }
     return updatedRows.length;
   }
+
+  private async listInboxWithMeta(input: {
+    tenantId: string;
+    branchId: string;
+    recipientAccountId: string;
+    unreadOnly: boolean;
+    type: string | null;
+    limit: number;
+    offset: number;
+  }): Promise<
+    OffsetPaginatedResult<{
+      id: string;
+      tenantId: string;
+      branchId: string;
+      type: string;
+      subjectType: string;
+      subjectId: string;
+      title: string;
+      body: string;
+      dedupeKey: string;
+      payload: Record<string, unknown> | null;
+      createdAt: string;
+      isRead: boolean;
+      readAt: string | null;
+    }>
+  > {
+    const [rows, total] = await Promise.all([
+      this.repo.listInbox(input),
+      this.repo.countInbox(input),
+    ]);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapInboxItem),
+      limit: input.limit,
+      offset: input.offset,
+      total,
+    });
+  }
+}
+
+function mapInboxItem(row: V0OperationalNotificationInboxRow) {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    branchId: row.branch_id,
+    type: row.type,
+    subjectType: row.subject_type,
+    subjectId: row.subject_id,
+    title: row.title,
+    body: row.body,
+    dedupeKey: row.dedupe_key,
+    payload: row.payload,
+    createdAt: row.created_at.toISOString(),
+    isRead: Boolean(row.read_at),
+    readAt: row.read_at ? row.read_at.toISOString() : null,
+  };
 }

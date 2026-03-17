@@ -57,24 +57,30 @@ Success `200`:
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": "uuid",
-      "tenantId": "uuid",
-      "branchId": "uuid",
-      "actorAccountId": "uuid",
-      "actionKey": "attendance.checkIn",
-      "outcome": "SUCCESS",
-      "reasonCode": null,
-      "entityType": "attendance_record",
-      "entityId": "uuid",
-      "metadata": {
-        "replayed": false,
-        "endpoint": "/v0/attendance/check-in"
-      },
-      "createdAt": "2026-02-15T12:00:00.000Z"
-    }
-  ]
+  "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "tenantId": "uuid",
+        "branchId": "uuid",
+        "actorAccountId": "uuid",
+        "actionKey": "attendance.checkIn",
+        "outcome": "SUCCESS",
+        "reasonCode": null,
+        "entityType": "attendance_record",
+        "entityId": "uuid",
+        "metadata": {
+          "replayed": false,
+          "endpoint": "/v0/attendance/check-in"
+        },
+        "createdAt": "2026-02-15T12:00:00.000Z"
+      }
+    ],
+    "limit": 50,
+    "offset": 0,
+    "total": 1,
+    "hasMore": false
+  }
 }
 ```
 

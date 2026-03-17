@@ -702,15 +702,21 @@ Response example (`200`):
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-      "status": "OPEN",
-      "sourceMode": "STANDARD",
-      "createdAt": "2026-02-22T10:00:00.000Z",
-      "updatedAt": "2026-02-22T10:03:00.000Z"
-    }
-  ]
+  "data": {
+    "items": [
+      {
+        "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+        "status": "OPEN",
+        "sourceMode": "STANDARD",
+        "createdAt": "2026-02-22T10:00:00.000Z",
+        "updatedAt": "2026-02-22T10:03:00.000Z"
+      }
+    ],
+    "limit": 20,
+    "offset": 0,
+    "total": 1,
+    "hasMore": false
+  }
 }
 ```
 
@@ -1019,20 +1025,26 @@ Response example (`200`):
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-      "status": "FINALIZED",
-      "paymentMethod": "KHQR",
-      "tenderCurrency": "USD",
-      "grandTotalUsd": 8,
-      "grandTotalKhr": 32800,
-      "finalizedAt": "2026-02-22T10:10:01.000Z",
-      "voidedAt": null,
-      "createdAt": "2026-02-22T10:05:00.000Z",
-      "updatedAt": "2026-02-22T10:10:01.000Z"
-    }
-  ]
+  "data": {
+    "items": [
+      {
+        "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+        "status": "FINALIZED",
+        "paymentMethod": "KHQR",
+        "tenderCurrency": "USD",
+        "grandTotalUsd": 8,
+        "grandTotalKhr": 32800,
+        "finalizedAt": "2026-02-22T10:10:01.000Z",
+        "voidedAt": null,
+        "createdAt": "2026-02-22T10:05:00.000Z",
+        "updatedAt": "2026-02-22T10:10:01.000Z"
+      }
+    ],
+    "limit": 20,
+    "offset": 0,
+    "total": 1,
+    "hasMore": false
+  }
 }
 ```
 

@@ -211,15 +211,27 @@ Event: `HR_SHIFT_INSTANCE_CANCELLED`
 ### Queries
 
 #### 7) Schedule view (branch/team)
-`GET /v0/hr/shifts/schedule?branchId=<uuid>&from=YYYY-MM-DD&to=YYYY-MM-DD&membershipId=<uuid?>`
+`GET /v0/hr/shifts/schedule?branchId=<uuid>&from=YYYY-MM-DD&to=YYYY-MM-DD&membershipId=<uuid?>&limit=50&offset=0`
 
 Response `200`:
 ```json
 {
   "success": true,
   "data": {
-    "patterns": [],
-    "instances": []
+    "patterns": {
+      "items": [],
+      "limit": 50,
+      "offset": 0,
+      "total": 0,
+      "hasMore": false
+    },
+    "instances": {
+      "items": [],
+      "limit": 50,
+      "offset": 0,
+      "total": 0,
+      "hasMore": false
+    }
   }
 }
 ```
@@ -227,7 +239,7 @@ Response `200`:
 Action key: `hr.shift.schedule.read`
 
 #### 8) Membership shift view
-`GET /v0/hr/shifts/memberships/:membershipId?from=YYYY-MM-DD&to=YYYY-MM-DD`
+`GET /v0/hr/shifts/memberships/:membershipId?from=YYYY-MM-DD&to=YYYY-MM-DD&limit=50&offset=0`
 
 Response `200`:
 ```json
@@ -235,8 +247,20 @@ Response `200`:
   "success": true,
   "data": {
     "membershipId": "uuid",
-    "patterns": [],
-    "instances": []
+    "patterns": {
+      "items": [],
+      "limit": 50,
+      "offset": 0,
+      "total": 0,
+      "hasMore": false
+    },
+    "instances": {
+      "items": [],
+      "limit": 50,
+      "offset": 0,
+      "total": 0,
+      "hasMore": false
+    }
   }
 }
 ```

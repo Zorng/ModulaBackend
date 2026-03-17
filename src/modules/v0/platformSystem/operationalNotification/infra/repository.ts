@@ -173,6 +173,34 @@ export class V0OperationalNotificationRepository {
     return result.rows;
   }
 
+  async countInbox(input: {
+    tenantId: string;
+    branchId: string;
+    recipientAccountId: string;
+    unreadOnly: boolean;
+    type: string | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_operational_notification_recipients r
+       JOIN v0_operational_notifications n
+         ON n.id = r.notification_id
+       WHERE r.tenant_id = $1
+         AND r.branch_id = $2
+         AND r.recipient_account_id = $3
+         AND ($4::BOOLEAN = FALSE OR r.read_at IS NULL)
+         AND ($5::VARCHAR IS NULL OR n.type = $5)`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.recipientAccountId,
+        input.unreadOnly,
+        input.type,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async getInboxItem(input: {
     tenantId: string;
     branchId: string;

@@ -127,6 +127,32 @@ export class V0DiscountRepository {
     return result.rows;
   }
 
+  async countRules(input: {
+    tenantId: string;
+    status?: DiscountRuleStatus | null;
+    scope?: DiscountScope | null;
+    branchId?: string | null;
+    search?: string | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_discount_rules r
+       WHERE r.tenant_id = $1
+         AND ($2::VARCHAR IS NULL OR r.status = $2)
+         AND ($3::VARCHAR IS NULL OR r.scope = $3)
+         AND ($4::UUID IS NULL OR r.branch_id = $4)
+         AND ($5::TEXT IS NULL OR r.name ILIKE '%' || $5 || '%')`,
+      [
+        input.tenantId,
+        input.status ?? null,
+        input.scope ?? null,
+        input.branchId ?? null,
+        input.search ?? null,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async updateRuleDefinition(input: {
     tenantId: string;
     ruleId: string;

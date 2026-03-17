@@ -373,6 +373,35 @@ export class V0ShiftRepository {
     return result.rows;
   }
 
+  async countShiftPatterns(input: {
+    tenantId: string;
+    branchId: string | null;
+    membershipId: string | null;
+    fromDate: string | null;
+    toDate: string | null;
+    status: V0ShiftPatternStatus | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_shift_patterns
+       WHERE tenant_id = $1
+         AND ($2::UUID IS NULL OR branch_id = $2)
+         AND ($3::UUID IS NULL OR membership_id = $3)
+         AND ($4::DATE IS NULL OR COALESCE(effective_to, DATE '9999-12-31') >= $4::DATE)
+         AND ($5::DATE IS NULL OR COALESCE(effective_from, DATE '0001-01-01') <= $5::DATE)
+         AND ($6::VARCHAR IS NULL OR status = $6)`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.membershipId,
+        input.fromDate,
+        input.toDate,
+        input.status,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async findShiftInstanceByIdInTenant(input: {
     instanceId: string;
     tenantId: string;
@@ -604,5 +633,34 @@ export class V0ShiftRepository {
       ]
     );
     return result.rows;
+  }
+
+  async countShiftInstances(input: {
+    tenantId: string;
+    branchId: string | null;
+    membershipId: string | null;
+    fromDate: string | null;
+    toDate: string | null;
+    status: V0ShiftInstanceStatus | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_shift_instances
+       WHERE tenant_id = $1
+         AND ($2::UUID IS NULL OR branch_id = $2)
+         AND ($3::UUID IS NULL OR membership_id = $3)
+         AND ($4::DATE IS NULL OR shift_date >= $4::DATE)
+         AND ($5::DATE IS NULL OR shift_date <= $5::DATE)
+         AND ($6::VARCHAR IS NULL OR status = $6)`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.membershipId,
+        input.fromDate,
+        input.toDate,
+        input.status,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 }

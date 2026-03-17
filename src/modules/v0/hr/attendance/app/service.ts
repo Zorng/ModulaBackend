@@ -3,6 +3,10 @@ import {
   type V0AttendanceScopedRecordRow,
   type V0BranchLocationVerificationSettingsRow,
 } from "../infra/repository.js";
+import {
+  buildOffsetPaginatedResult,
+  type OffsetPaginatedResult,
+} from "../../../../../shared/pagination.js";
 
 export class V0AttendanceError extends Error {
   constructor(
@@ -147,17 +151,32 @@ export class V0AttendanceService {
   async listMine(input: {
     actor: ActorContext;
     limit?: number;
-  }) {
+    offset?: number;
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertBranchContext(input.actor);
     const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
 
-    const rows = await this.repo.listRecordsForActor({
-      tenantId: scope.tenantId,
-      branchId: scope.branchId,
-      accountId: scope.accountId,
+    const [rows, total] = await Promise.all([
+      this.repo.listRecordsForActor({
+        tenantId: scope.tenantId,
+        branchId: scope.branchId,
+        accountId: scope.accountId,
+        limit,
+        offset,
+      }),
+      this.repo.countRecordsForActor({
+        tenantId: scope.tenantId,
+        branchId: scope.branchId,
+        accountId: scope.accountId,
+      }),
+    ]);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapRecord),
       limit,
+      offset,
+      total,
     });
-    return rows.map(mapRecord);
   }
 
   async forceEndWork(input: {
@@ -223,7 +242,7 @@ export class V0AttendanceService {
     occurredTo?: unknown;
     limit?: number;
     offset?: number;
-  }) {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertBranchContext(input.actor);
     const accountId = parseOptionalUuid(input.accountId, "accountId");
     const occurredFrom = parseOptionalOccurredAt(input.occurredFrom, "occurredFrom");
@@ -232,16 +251,30 @@ export class V0AttendanceService {
     const limit = normalizeLimit(input.limit);
     const offset = normalizeOffset(input.offset);
 
-    const rows = await this.repo.listRecordsForBranch({
-      tenantId: scope.tenantId,
-      branchId: scope.branchId,
-      accountId,
-      occurredFrom,
-      occurredTo,
+    const [rows, total] = await Promise.all([
+      this.repo.listRecordsForBranch({
+        tenantId: scope.tenantId,
+        branchId: scope.branchId,
+        accountId,
+        occurredFrom,
+        occurredTo,
+        limit,
+        offset,
+      }),
+      this.repo.countRecordsForBranch({
+        tenantId: scope.tenantId,
+        branchId: scope.branchId,
+        accountId,
+        occurredFrom,
+        occurredTo,
+      }),
+    ]);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapScopedRecord),
       limit,
       offset,
+      total,
     });
-    return rows.map(mapScopedRecord);
   }
 
   async listTenant(input: {
@@ -252,7 +285,7 @@ export class V0AttendanceService {
     occurredTo?: unknown;
     limit?: number;
     offset?: number;
-  }) {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertTenantContext(input.actor);
     const branchId = parseOptionalUuid(input.branchId, "branchId");
     const accountId = parseOptionalUuid(input.accountId, "accountId");
@@ -262,16 +295,30 @@ export class V0AttendanceService {
     const limit = normalizeLimit(input.limit);
     const offset = normalizeOffset(input.offset);
 
-    const rows = await this.repo.listRecordsForTenant({
-      tenantId: scope.tenantId,
-      branchId,
-      accountId,
-      occurredFrom,
-      occurredTo,
+    const [rows, total] = await Promise.all([
+      this.repo.listRecordsForTenant({
+        tenantId: scope.tenantId,
+        branchId,
+        accountId,
+        occurredFrom,
+        occurredTo,
+        limit,
+        offset,
+      }),
+      this.repo.countRecordsForTenant({
+        tenantId: scope.tenantId,
+        branchId,
+        accountId,
+        occurredFrom,
+        occurredTo,
+      }),
+    ]);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapScopedRecord),
       limit,
       offset,
+      total,
     });
-    return rows.map(mapScopedRecord);
   }
 }
 

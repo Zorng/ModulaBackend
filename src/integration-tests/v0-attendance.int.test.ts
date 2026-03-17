@@ -176,10 +176,10 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
       .get("/v0/attendance/me?limit=10")
       .set("Authorization", `Bearer ${branchToken}`);
     expect(listMine.status).toBe(200);
-    expect(Array.isArray(listMine.body.data)).toBe(true);
-    expect(listMine.body.data).toHaveLength(2);
-    expect(listMine.body.data[0].type).toBe("CHECK_OUT");
-    expect(listMine.body.data[1].type).toBe("CHECK_IN");
+    expect(Array.isArray(listMine.body.data.items)).toBe(true);
+    expect(listMine.body.data.items).toHaveLength(2);
+    expect(listMine.body.data.items[0].type).toBe("CHECK_OUT");
+    expect(listMine.body.data.items[1].type).toBe("CHECK_IN");
 
     await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [
       ownerPhone,
@@ -414,18 +414,18 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
       .get("/v0/attendance/branch?limit=10")
       .set("Authorization", `Bearer ${managerBranchToken}`);
     expect(branchList.status).toBe(200);
-    expect(Array.isArray(branchList.body.data)).toBe(true);
-    expect(branchList.body.data.length).toBeGreaterThanOrEqual(2);
-    expect(branchList.body.data[0].account).toBeDefined();
-    expect(branchList.body.data[0].branch).toBeDefined();
+    expect(Array.isArray(branchList.body.data.items)).toBe(true);
+    expect(branchList.body.data.items.length).toBeGreaterThanOrEqual(2);
+    expect(branchList.body.data.items[0].account).toBeDefined();
+    expect(branchList.body.data.items[0].branch).toBeDefined();
 
     const tenantList = await request(app)
       .get("/v0/attendance/tenant?limit=20")
       .set("Authorization", `Bearer ${ownerTenantToken}`);
     expect(tenantList.status).toBe(200);
-    expect(Array.isArray(tenantList.body.data)).toBe(true);
+    expect(Array.isArray(tenantList.body.data.items)).toBe(true);
     expect(
-      tenantList.body.data.some(
+      tenantList.body.data.items.some(
         (row: { accountId: string; type: string }) =>
           row.accountId === cashierCheckIn.body.data.accountId && row.type === "CHECK_OUT"
       )

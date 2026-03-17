@@ -9,6 +9,10 @@ import {
   type InventoryStockCategoryRow,
   type InventoryStockItemRow,
 } from "../infra/repository.js";
+import {
+  buildOffsetPaginatedResult,
+  type OffsetPaginatedResult,
+} from "../../../../../shared/pagination.js";
 
 type ActorContext = {
   accountId: string;
@@ -122,7 +126,7 @@ export class V0InventoryService {
     search?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertTenantContext(input.actor);
     const status = parseStatusFilter(input.status);
     const categoryId = parseOptionalUuid(input.categoryId, "categoryId");
@@ -146,7 +150,12 @@ export class V0InventoryService {
       return true;
     });
 
-    return filtered.slice(offset, offset + limit).map(mapStockItemRow);
+    return buildOffsetPaginatedResult({
+      items: filtered.slice(offset, offset + limit).map(mapStockItemRow),
+      limit,
+      offset,
+      total: filtered.length,
+    });
   }
 
   async getStockItem(input: {
@@ -314,7 +323,7 @@ export class V0InventoryService {
     stockItemId?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertTenantContext(input.actor);
     const status = parseStatusFilter(input.status);
     const branchId = await this.requireOptionalBranchIdInTenant(scope.tenantId, input.branchId);
@@ -331,9 +340,19 @@ export class V0InventoryService {
       offset,
     });
 
-    return rows
-      .filter((row) => (status === "archived" ? row.status === "ARCHIVED" : true))
-      .map(mapRestockBatchRow);
+    const filtered = rows.filter((row) => (status === "archived" ? row.status === "ARCHIVED" : true));
+    return buildOffsetPaginatedResult({
+      items: filtered.map(mapRestockBatchRow),
+      limit,
+      offset,
+      total: await this.repo.countRestockBatches({
+        tenantId: scope.tenantId,
+        branchId,
+        stockItemId,
+        includeArchived: status === "all" || status === "archived",
+        archivedOnly: status === "archived",
+      }),
+    });
   }
 
   async createRestockBatch(input: {
@@ -635,7 +654,7 @@ export class V0InventoryService {
     to?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertTenantContext(input.actor);
     const branchId = await this.requireBranchIdInTenant(scope.tenantId, input.branchId);
     const stockItemId = parseOptionalUuid(input.stockItemId, "stockItemId");
@@ -659,7 +678,19 @@ export class V0InventoryService {
       offset,
     });
 
-    return rows.map(mapJournalRow);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapJournalRow),
+      limit,
+      offset,
+      total: await this.repo.countJournal({
+        tenantId: scope.tenantId,
+        branchId,
+        stockItemId,
+        reasonCode,
+        fromInclusive: dateFilter.fromInclusive,
+        toExclusive: dateFilter.toExclusive,
+      }),
+    });
   }
 
   async listJournalAll(input: {
@@ -672,7 +703,7 @@ export class V0InventoryService {
     to?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertTenantContext(input.actor);
     const branchId = parseOptionalUuid(input.branchId, "branchId");
     const stockItemId = parseOptionalUuid(input.stockItemId, "stockItemId");
@@ -696,7 +727,19 @@ export class V0InventoryService {
       offset,
     });
 
-    return rows.map(mapJournalRow);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapJournalRow),
+      limit,
+      offset,
+      total: await this.repo.countJournalByTenant({
+        tenantId: scope.tenantId,
+        branchId,
+        stockItemId,
+        reasonCode,
+        fromInclusive: dateFilter.fromInclusive,
+        toExclusive: dateFilter.toExclusive,
+      }),
+    });
   }
 
   async readBranchStock(input: {

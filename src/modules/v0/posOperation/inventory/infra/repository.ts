@@ -458,6 +458,37 @@ export class V0InventoryRepository {
     return result.rows;
   }
 
+  async countRestockBatches(input: {
+    tenantId: string;
+    branchId?: string | null;
+    stockItemId?: string | null;
+    includeArchived?: boolean;
+    archivedOnly?: boolean;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_inventory_restock_batches
+       WHERE tenant_id = $1
+         AND ($2::UUID IS NULL OR branch_id = $2::UUID)
+         AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
+         AND (
+           CASE
+             WHEN $5::BOOLEAN = TRUE THEN status = 'ARCHIVED'
+             WHEN $4::BOOLEAN = TRUE THEN TRUE
+             ELSE status = 'ACTIVE'
+           END
+         )`,
+      [
+        input.tenantId,
+        input.branchId ?? null,
+        input.stockItemId ?? null,
+        input.includeArchived ?? false,
+        input.archivedOnly ?? false,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async getRestockBatchById(input: {
     tenantId: string;
     batchId: string;
@@ -800,6 +831,35 @@ export class V0InventoryRepository {
     return result.rows;
   }
 
+  async countJournal(input: {
+    tenantId: string;
+    branchId: string;
+    stockItemId?: string | null;
+    reasonCode?: InventoryReasonCode | null;
+    fromInclusive?: Date | null;
+    toExclusive?: Date | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_inventory_journal_entries
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
+         AND ($4::VARCHAR IS NULL OR reason_code = $4::VARCHAR)
+         AND ($5::TIMESTAMPTZ IS NULL OR occurred_at >= $5::TIMESTAMPTZ)
+         AND ($6::TIMESTAMPTZ IS NULL OR occurred_at < $6::TIMESTAMPTZ)`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.stockItemId ?? null,
+        input.reasonCode ?? null,
+        input.fromInclusive ?? null,
+        input.toExclusive ?? null,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async listJournalByTenant(input: {
     tenantId: string;
     branchId?: string | null;
@@ -848,6 +908,35 @@ export class V0InventoryRepository {
       ]
     );
     return result.rows;
+  }
+
+  async countJournalByTenant(input: {
+    tenantId: string;
+    branchId?: string | null;
+    stockItemId?: string | null;
+    reasonCode?: InventoryReasonCode | null;
+    fromInclusive?: Date | null;
+    toExclusive?: Date | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_inventory_journal_entries
+       WHERE tenant_id = $1
+         AND ($2::UUID IS NULL OR branch_id = $2::UUID)
+         AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
+         AND ($4::VARCHAR IS NULL OR reason_code = $4::VARCHAR)
+         AND ($5::TIMESTAMPTZ IS NULL OR occurred_at >= $5::TIMESTAMPTZ)
+         AND ($6::TIMESTAMPTZ IS NULL OR occurred_at < $6::TIMESTAMPTZ)`,
+      [
+        input.tenantId,
+        input.branchId ?? null,
+        input.stockItemId ?? null,
+        input.reasonCode ?? null,
+        input.fromInclusive ?? null,
+        input.toExclusive ?? null,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async applyBranchStockDelta(input: {

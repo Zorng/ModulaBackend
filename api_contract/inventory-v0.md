@@ -202,7 +202,19 @@ Errors:
 
 Action key: `inventory.items.list`
 
-Response `200`: `StockItem[]`
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [],
+    "limit": 50,
+    "offset": 0,
+    "total": 0,
+    "hasMore": false
+  }
+}
+```
 
 #### 6) Read stock item
 `GET /v0/inventory/items/:stockItemId`
@@ -294,7 +306,19 @@ Notes:
 - Requires tenant context.
 - Optional `branchId` narrows result to one branch.
 
-Response `200`: `RestockBatch[]`
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [],
+    "limit": 50,
+    "offset": 0,
+    "total": 0,
+    "hasMore": false
+  }
+}
+```
 
 #### 12) Create restock batch (records journal + updates projection)
 `POST /v0/inventory/restock-batches`
@@ -422,7 +446,19 @@ Notes:
 - `from` / `to` filter an inclusive Cambodia date range.
 - `date` cannot be combined with `from` or `to`.
 
-Response `200`: `InventoryJournalEntry[]`
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [],
+    "limit": 50,
+    "offset": 0,
+    "total": 0,
+    "hasMore": false
+  }
+}
+```
 
 #### 17) List tenant inventory journal (management lane)
 `GET /v0/inventory/journal/all?branchId=uuid&stockItemId=uuid&reasonCode=RESTOCK|SALE_DEDUCTION|VOID_REVERSAL|ADJUSTMENT|OTHER&date=YYYY-MM-DD&from=YYYY-MM-DD&to=YYYY-MM-DD&limit=number&offset=number`
@@ -437,7 +473,19 @@ Notes:
 - `from` / `to` filter an inclusive Cambodia date range.
 - `date` cannot be combined with `from` or `to`.
 
-Response `200`: `InventoryJournalEntry[]`
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [],
+    "limit": 50,
+    "offset": 0,
+    "total": 0,
+    "hasMore": false
+  }
+}
+```
 
 #### 18) Read branch stock projection (fast read)
 `GET /v0/inventory/stock/branch?branchId=uuid&includeArchivedItems=true|false`

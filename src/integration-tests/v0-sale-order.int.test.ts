@@ -1025,10 +1025,10 @@ describe("v0 sale-order integration", () => {
     expect(finalized.body.data.receipt.statusDisplay).toBe("NORMAL");
     expect(finalized.body.data.receipt.saleSnapshot.paymentMethod).toBe("CASH");
     expect(finalized.body.data.receipt.saleSnapshot.tenderCurrency).toBe("USD");
-    expect(finalized.body.data.receipt.saleSnapshot.tenderAmount).toBe(8);
-    expect(finalized.body.data.receipt.saleSnapshot.paidAmount).toBe(8);
+    expect(finalized.body.data.receipt.saleSnapshot.tenderAmount).toBe(7);
+    expect(finalized.body.data.receipt.saleSnapshot.paidAmount).toBe(7);
     expect(finalized.body.data.receipt.saleSnapshot.cashReceivedTenderAmount).toBe(10);
-    expect(finalized.body.data.receipt.saleSnapshot.cashChangeTenderAmount).toBe(2);
+    expect(finalized.body.data.receipt.saleSnapshot.cashChangeTenderAmount).toBe(3);
     expect(Array.isArray(finalized.body.data.receipt.lines)).toBe(true);
     expect(finalized.body.data.receipt.lines.length).toBe(1);
 
@@ -1040,10 +1040,10 @@ describe("v0 sale-order integration", () => {
     expect(receiptRead.body.data.receiptId).toBe(saleId);
     expect(receiptRead.body.data.saleSnapshot.paymentMethod).toBe("CASH");
     expect(receiptRead.body.data.saleSnapshot.tenderCurrency).toBe("USD");
-    expect(receiptRead.body.data.saleSnapshot.tenderAmount).toBe(8);
-    expect(receiptRead.body.data.saleSnapshot.paidAmount).toBe(8);
+    expect(receiptRead.body.data.saleSnapshot.tenderAmount).toBe(7);
+    expect(receiptRead.body.data.saleSnapshot.paidAmount).toBe(7);
     expect(receiptRead.body.data.saleSnapshot.cashReceivedTenderAmount).toBe(10);
-    expect(receiptRead.body.data.saleSnapshot.cashChangeTenderAmount).toBe(2);
+    expect(receiptRead.body.data.saleSnapshot.cashChangeTenderAmount).toBe(3);
   });
 
   it("does not emit legacy receipt.snapshot.create outbox action on checkout.cash.finalize", async () => {

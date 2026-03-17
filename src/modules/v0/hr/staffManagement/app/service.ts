@@ -2,6 +2,10 @@ import {
   V0StaffManagementRepository,
   type V0StaffMembershipStatus,
 } from "../infra/repository.js";
+import {
+  buildOffsetPaginatedResult,
+  type OffsetPaginatedResult,
+} from "../../../../../shared/pagination.js";
 
 export class V0StaffManagementError extends Error {
   constructor(
@@ -105,7 +109,7 @@ export class V0StaffManagementService {
     limit?: number;
     offset?: number;
   }): Promise<
-    Array<{
+    OffsetPaginatedResult<{
       membershipId: string;
       tenantId: string;
       accountId: string;
@@ -137,15 +141,22 @@ export class V0StaffManagementService {
     const limit = normalizeLimit(input.limit);
     const offset = normalizeOffset(input.offset);
 
-    const rows = await this.repo.listMembershipProfilesForTenant({
-      tenantId: scope.tenantId,
-      status,
-      search,
-      limit,
-      offset,
-    });
+    const [rows, total] = await Promise.all([
+      this.repo.listMembershipProfilesForTenant({
+        tenantId: scope.tenantId,
+        status,
+        search,
+        limit,
+        offset,
+      }),
+      this.repo.countMembershipProfilesForTenant({
+        tenantId: scope.tenantId,
+        status,
+        search,
+      }),
+    ]);
 
-    return Promise.all(
+    const items = await Promise.all(
       rows.map(async (row) => {
         const [pendingBranchIds, activeBranchIds] = await Promise.all([
           this.repo.listPendingBranchIdsForMembership(row.membership_id),
@@ -154,6 +165,13 @@ export class V0StaffManagementService {
         return mapMembershipProfile(row, pendingBranchIds, activeBranchIds);
       })
     );
+
+    return buildOffsetPaginatedResult({
+      items,
+      limit,
+      offset,
+      total,
+    });
   }
 
   async getStaffMember(input: {

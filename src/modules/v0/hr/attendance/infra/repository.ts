@@ -153,6 +153,7 @@ export class V0AttendanceRepository {
     branchId: string;
     accountId: string;
     limit: number;
+    offset: number;
   }): Promise<V0AttendanceRecordRow[]> {
     const result = await this.db.query<V0AttendanceRecordRow>(
       `SELECT
@@ -177,10 +178,27 @@ export class V0AttendanceRepository {
          AND branch_id = $2
          AND account_id = $3
        ORDER BY occurred_at DESC, created_at DESC
-       LIMIT $4`,
-      [input.tenantId, input.branchId, input.accountId, input.limit]
+       LIMIT $4
+       OFFSET $5`,
+      [input.tenantId, input.branchId, input.accountId, input.limit, input.offset]
     );
     return result.rows;
+  }
+
+  async countRecordsForActor(input: {
+    tenantId: string;
+    branchId: string;
+    accountId: string;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_attendance_records
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND account_id = $3`,
+      [input.tenantId, input.branchId, input.accountId]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async listRecordsForBranch(input: {
@@ -238,6 +256,32 @@ export class V0AttendanceRepository {
     return result.rows;
   }
 
+  async countRecordsForBranch(input: {
+    tenantId: string;
+    branchId: string;
+    accountId: string | null;
+    occurredFrom: Date | null;
+    occurredTo: Date | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_attendance_records r
+       WHERE r.tenant_id = $1
+         AND r.branch_id = $2
+         AND ($3::uuid IS NULL OR r.account_id = $3::uuid)
+         AND ($4::timestamptz IS NULL OR r.occurred_at >= $4::timestamptz)
+         AND ($5::timestamptz IS NULL OR r.occurred_at <= $5::timestamptz)`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.accountId,
+        input.occurredFrom,
+        input.occurredTo,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async listRecordsForTenant(input: {
     tenantId: string;
     branchId: string | null;
@@ -291,6 +335,32 @@ export class V0AttendanceRepository {
       ]
     );
     return result.rows;
+  }
+
+  async countRecordsForTenant(input: {
+    tenantId: string;
+    branchId: string | null;
+    accountId: string | null;
+    occurredFrom: Date | null;
+    occurredTo: Date | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_attendance_records r
+       WHERE r.tenant_id = $1
+         AND ($2::uuid IS NULL OR r.branch_id = $2::uuid)
+         AND ($3::uuid IS NULL OR r.account_id = $3::uuid)
+         AND ($4::timestamptz IS NULL OR r.occurred_at >= $4::timestamptz)
+         AND ($5::timestamptz IS NULL OR r.occurred_at <= $5::timestamptz)`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.accountId,
+        input.occurredFrom,
+        input.occurredTo,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async getBranchLocationVerificationSettings(input: {

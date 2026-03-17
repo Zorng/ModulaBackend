@@ -4,6 +4,10 @@ import {
   type DiscountRuleStatus,
   V0DiscountRepository,
 } from "../infra/repository.js";
+import {
+  buildOffsetPaginatedResult,
+  type OffsetPaginatedResult,
+} from "../../../../../shared/pagination.js";
 
 type ActorContext = {
   accountId: string;
@@ -65,7 +69,7 @@ export class V0DiscountService {
     search?: string;
     limit?: number;
     offset?: number;
-  }): Promise<DiscountRuleDto[]> {
+  }): Promise<OffsetPaginatedResult<DiscountRuleDto>> {
     const actor = assertTenantContext(input.actor);
     const status = parseStatusFilter(input.status);
     const ruleScope = parseScopeFilter(input.scope);
@@ -87,7 +91,20 @@ export class V0DiscountService {
       offset,
     });
 
-    return this.hydrateRules(actor.tenantId, rows);
+    const items = await this.hydrateRules(actor.tenantId, rows);
+    const total = await this.repo.countRules({
+      tenantId: actor.tenantId,
+      status: mapStatusFilter(status),
+      scope: mapScopeFilter(ruleScope),
+      branchId,
+      search,
+    });
+    return buildOffsetPaginatedResult({
+      items,
+      limit,
+      offset,
+      total,
+    });
   }
 
   async getRule(input: {

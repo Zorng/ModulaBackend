@@ -318,8 +318,8 @@ describe("v0 inventory integration", () => {
       .get(`/v0/inventory/restock-batches?branchId=${setup.branchAId}&stockItemId=${stockItemId}`)
       .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
     expect(listedBatches.status).toBe(200);
-    expect(listedBatches.body.data).toHaveLength(1);
-    expect(listedBatches.body.data[0]?.branchId).toBe(setup.branchAId);
+    expect(listedBatches.body.data.items).toHaveLength(1);
+    expect(listedBatches.body.data.items[0]?.branchId).toBe(setup.branchAId);
 
     const branchStock = await request(app)
       .get(`/v0/inventory/stock/branch?branchId=${setup.branchAId}`)
@@ -335,8 +335,8 @@ describe("v0 inventory integration", () => {
       .get(`/v0/inventory/journal?branchId=${setup.branchAId}&stockItemId=${stockItemId}`)
       .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
     expect(branchJournal.status).toBe(200);
-    expect(branchJournal.body.data).toHaveLength(1);
-    expect(branchJournal.body.data[0]?.branchId).toBe(setup.branchAId);
+    expect(branchJournal.body.data.items).toHaveLength(1);
+    expect(branchJournal.body.data.items[0]?.branchId).toBe(setup.branchAId);
 
     const onHand = await pool.query<{ on_hand_in_base_unit: number }>(
       `SELECT on_hand_in_base_unit::FLOAT8 AS on_hand_in_base_unit
@@ -428,7 +428,7 @@ describe("v0 inventory integration", () => {
       .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
     expect(listedAll.status).toBe(200);
 
-    const allRows = listedAll.body.data as Array<{ branchId: string; stockItemId: string }>;
+    const allRows = listedAll.body.data.items as Array<{ branchId: string; stockItemId: string }>;
     expect(allRows).toHaveLength(2);
     expect(allRows.every((row) => row.stockItemId === stockItemId)).toBe(true);
     expect(allRows.map((row) => row.branchId).sort()).toEqual(
@@ -440,7 +440,7 @@ describe("v0 inventory integration", () => {
       .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
     expect(listedBranchA.status).toBe(200);
 
-    const branchRows = listedBranchA.body.data as Array<{ branchId: string }>;
+    const branchRows = listedBranchA.body.data.items as Array<{ branchId: string }>;
     expect(branchRows).toHaveLength(1);
     expect(branchRows[0]?.branchId).toBe(setup.branchAId);
   });
@@ -522,7 +522,11 @@ describe("v0 inventory integration", () => {
       .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
     expect(exactDate.status).toBe(200);
 
-    const exactRows = exactDate.body.data as Array<{ branchId: string; note: string; occurredAt: string }>;
+    const exactRows = exactDate.body.data.items as Array<{
+      branchId: string;
+      note: string;
+      occurredAt: string;
+    }>;
     expect(exactRows).toHaveLength(1);
     expect(exactRows[0]?.branchId).toBe(setup.branchAId);
     expect(exactRows[0]?.note).toBe("Branch A day one");
@@ -535,7 +539,7 @@ describe("v0 inventory integration", () => {
       .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
     expect(range.status).toBe(200);
 
-    const rangeRows = range.body.data as Array<{ branchId: string; note: string }>;
+    const rangeRows = range.body.data.items as Array<{ branchId: string; note: string }>;
     expect(rangeRows).toHaveLength(1);
     expect(rangeRows[0]?.branchId).toBe(setup.branchAId);
     expect(rangeRows[0]?.note).toBe("Branch A day three");
@@ -545,7 +549,7 @@ describe("v0 inventory integration", () => {
       .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
     expect(tenantExactDate.status).toBe(200);
 
-    const tenantRows = tenantExactDate.body.data as Array<{ branchId: string }>;
+    const tenantRows = tenantExactDate.body.data.items as Array<{ branchId: string }>;
     expect(tenantRows).toHaveLength(2);
     expect(tenantRows.map((row) => row.branchId).sort()).toEqual(
       [setup.branchAId, setup.branchBId].sort()

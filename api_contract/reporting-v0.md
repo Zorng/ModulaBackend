@@ -258,7 +258,9 @@ Success `200`:
       }
     ],
     "limit": 50,
-    "offset": 0
+    "offset": 0,
+    "total": 1,
+    "hasMore": false
   }
 }
 ```
@@ -368,7 +370,9 @@ Success `200`:
       }
     ],
     "limit": 50,
-    "offset": 0
+    "offset": 0,
+    "total": 1,
+    "hasMore": false
   }
 }
 ```

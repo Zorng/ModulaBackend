@@ -79,6 +79,20 @@ Notes:
 - `branchId` filters by rule owner branch.
 - If `branchId` is supplied, it must belong to an active branch in the current tenant.
 
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [],
+    "limit": 50,
+    "offset": 0,
+    "total": 0,
+    "hasMore": false
+  }
+}
+```
+
 ### 2) Get rule detail
 
 `GET /v0/discount/rules/:ruleId`

@@ -539,6 +539,22 @@ export class V0SaleOrderRepository {
     return result.rows;
   }
 
+  async countOrderTickets(input: {
+    tenantId: string;
+    branchId: string;
+    status?: V0OrderTicketStatus | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_order_tickets
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND ($3::VARCHAR IS NULL OR status = $3::VARCHAR)`,
+      [input.tenantId, input.branchId, input.status ?? null]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async markOrderTicketCheckedOut(input: {
     tenantId: string;
     branchId: string;
@@ -821,14 +837,14 @@ export class V0SaleOrderRepository {
   }): Promise<V0OrderManualPaymentClaimRow | null> {
     const result = await this.db.query<V0OrderManualPaymentClaimRow>(
       `UPDATE v0_order_manual_payment_claims
-       SET status = $5,
+       SET status = $5::VARCHAR(20),
            reviewed_by_account_id = $4,
-           review_note = $6,
+           review_note = $6::TEXT,
            sale_id = CASE
-             WHEN $5 = 'APPROVED' THEN COALESCE($7, sale_id)
+             WHEN $5::VARCHAR(20) = 'APPROVED' THEN COALESCE($7::UUID, sale_id)
              ELSE sale_id
            END,
-           reviewed_at = COALESCE($8, NOW()),
+           reviewed_at = COALESCE($8::TIMESTAMPTZ, NOW()),
            updated_at = NOW()
        WHERE tenant_id = $1
          AND branch_id = $2
@@ -1041,6 +1057,22 @@ export class V0SaleOrderRepository {
       ]
     );
     return result.rows;
+  }
+
+  async countSales(input: {
+    tenantId: string;
+    branchId: string;
+    status?: V0SaleStatus | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_sales
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND ($3::VARCHAR IS NULL OR status = $3::VARCHAR)`,
+      [input.tenantId, input.branchId, input.status ?? null]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async markSaleFinalized(input: {
