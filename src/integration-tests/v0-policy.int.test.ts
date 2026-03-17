@@ -163,6 +163,7 @@ describe("v0 policy integration", () => {
       saleKhrRoundingMode: "NEAREST",
       saleKhrRoundingGranularity: "100",
       saleAllowPayLater: false,
+      saleAllowManualExternalPaymentClaim: false,
     });
   });
 
@@ -182,6 +183,7 @@ describe("v0 policy integration", () => {
       saleKhrRoundingMode: "UP",
       saleKhrRoundingGranularity: "1000",
       saleAllowPayLater: true,
+      saleAllowManualExternalPaymentClaim: true,
     };
 
     const first = await request(app)

@@ -61,3 +61,5 @@ Standardize offline-first acceptance criteria across POS modules so we avoid per
 
 - Read-only modules can mark replay parity as N/A, but still must define pull/hydration and deterministic query/validation error behavior.
 - Inventory checklist (`05_inventory-offline-first-dod-checklist-v0.md`) is the first concrete instantiation of this template.
+- Modules that depend on external payment rails may satisfy offline-first through offline intent/order capture plus deferred online settlement.
+- Do not fake non-cash payments as cash to force replay parity; cash-ledger truth is non-negotiable.

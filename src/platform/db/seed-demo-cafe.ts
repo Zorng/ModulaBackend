@@ -656,6 +656,7 @@ async function seedTenantDefaults(
     await client.query(
       `UPDATE v0_branch_policies
        SET sale_allow_pay_later = TRUE,
+           sale_allow_manual_external_payment_claim = TRUE,
            updated_at = NOW()
        WHERE tenant_id = $1
          AND branch_id = $2`,

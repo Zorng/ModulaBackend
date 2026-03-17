@@ -33,7 +33,8 @@ Canonical route prefixes: `/v0/orders`, `/v0/sales`
 
 ## 3) Consumed Facts
 
-- `policy`: VAT/FX/rounding and pay-later toggles
+- `policy`: VAT/FX/rounding, pay-later toggle, and manual external-payment-claim toggle
+- current sale-order module does not yet enforce a manual external-payment-claim workflow despite the separate policy key existing
 - `menu`: item + modifier pricing snapshots
 - `discount`: eligibility metadata only (no ownership transfer)
 - `cashSession`: open-session precondition + movement hooks
@@ -88,17 +89,25 @@ Notification trigger lock:
 
 ## 7) Replay / Offline Lock
 
-- Replay-enabled target commands:
-  - `sale.finalize`
-  - `sale.void.execute`
-- Online-only commands must reject replay with deterministic failure:
+- Current replay-enabled target commands:
+  - none for `sale-order`
+- Current online-only commands must reject replay with deterministic failure:
   - `order.place`
   - `order.items.add`
   - `order.checkout`
+  - `sale.finalize`
+  - `sale.void.execute`
   - `order.fulfillment.status.update`
   - `sale.void.request`
   - `sale.void.approve`
   - `sale.void.reject`
+
+Locked direction:
+- Offline-first sale-order should use `order_ticket(status=OPEN)` as the offline capture unit.
+- Payment settlement remains online/server-truth.
+- KHQR remains online-only; payload generation and verification are not replay-safe offline.
+- If outage fallback is needed for external transfers, model it as a manual external-payment claim linked to an open order, not as cash settlement.
+- Keep normal `saleAllowPayLater` semantics separate from any future outage/manual-claim policy.
 
 ## 8) Failure Codes (locked set)
 

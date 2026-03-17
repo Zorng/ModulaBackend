@@ -349,6 +349,7 @@ describe("v0 sync integration", () => {
       .set("Idempotency-Key", `sync-policy-${uniqueSuffix()}`)
       .send({
         saleAllowPayLater: true,
+        saleAllowManualExternalPaymentClaim: true,
       });
     expect(policyRes.status).toBe(200);
 

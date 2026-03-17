@@ -3,11 +3,14 @@ import type { Pool, PoolClient } from "pg";
 type Queryable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
 
 export type V0OrderTicketStatus = "OPEN" | "CHECKED_OUT" | "CANCELLED";
+export type V0OrderTicketSourceMode = "STANDARD" | "MANUAL_EXTERNAL_PAYMENT_CLAIM";
 export type V0SaleStatus = "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
 export type V0SalePaymentMethod = "CASH" | "KHQR";
 export type V0TenderCurrency = "USD" | "KHR";
 export type V0SaleType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
 export type V0VoidRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type V0OrderManualPaymentClaimStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type V0OrderManualPaymentClaimedMethod = "KHQR";
 export type V0OrderFulfillmentBatchStatus =
   | "PENDING"
   | "PREPARING"
@@ -21,6 +24,7 @@ export type V0OrderTicketRow = {
   branch_id: string;
   opened_by_account_id: string;
   status: V0OrderTicketStatus;
+  source_mode: V0OrderTicketSourceMode;
   checked_out_at: Date | null;
   checked_out_by_account_id: string | null;
   cancelled_at: Date | null;
@@ -42,6 +46,29 @@ export type V0OrderTicketLineRow = {
   line_subtotal: number;
   modifier_snapshot: unknown;
   note: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+export type V0OrderManualPaymentClaimRow = {
+  id: string;
+  tenant_id: string;
+  branch_id: string;
+  order_ticket_id: string;
+  sale_id: string | null;
+  requested_by_account_id: string;
+  reviewed_by_account_id: string | null;
+  status: V0OrderManualPaymentClaimStatus;
+  claimed_payment_method: V0OrderManualPaymentClaimedMethod;
+  sale_type: V0SaleType;
+  tender_currency: V0TenderCurrency;
+  claimed_tender_amount: number;
+  proof_image_url: string;
+  customer_reference: string | null;
+  note: string | null;
+  review_note: string | null;
+  requested_at: Date;
+  reviewed_at: Date | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -165,11 +192,35 @@ const ORDER_TICKET_SELECT = `
   branch_id,
   opened_by_account_id,
   status,
+  source_mode,
   checked_out_at,
   checked_out_by_account_id,
   cancelled_at,
   cancelled_by_account_id,
   cancel_reason,
+  created_at,
+  updated_at
+`;
+
+const ORDER_MANUAL_PAYMENT_CLAIM_SELECT = `
+  id,
+  tenant_id,
+  branch_id,
+  order_ticket_id,
+  sale_id,
+  requested_by_account_id,
+  reviewed_by_account_id,
+  status,
+  claimed_payment_method,
+  sale_type,
+  tender_currency,
+  claimed_tender_amount::FLOAT8 AS claimed_tender_amount,
+  proof_image_url,
+  customer_reference,
+  note,
+  review_note,
+  requested_at,
+  reviewed_at,
   created_at,
   updated_at
 `;
@@ -313,6 +364,21 @@ export class V0SaleOrderRepository {
     return result.rows[0]?.sale_allow_pay_later === true;
   }
 
+  async isManualExternalPaymentClaimEnabledForBranch(input: {
+    tenantId: string;
+    branchId: string;
+  }): Promise<boolean> {
+    const result = await this.db.query<{ sale_allow_manual_external_payment_claim: boolean }>(
+      `SELECT sale_allow_manual_external_payment_claim
+       FROM v0_branch_policies
+       WHERE tenant_id = $1
+         AND branch_id = $2
+       LIMIT 1`,
+      [input.tenantId, input.branchId]
+    );
+    return result.rows[0]?.sale_allow_manual_external_payment_claim === true;
+  }
+
   async getBranchEntitlementEnforcement(input: {
     tenantId: string;
     branchId: string;
@@ -411,16 +477,18 @@ export class V0SaleOrderRepository {
     tenantId: string;
     branchId: string;
     openedByAccountId: string;
+    sourceMode: V0OrderTicketSourceMode;
   }): Promise<V0OrderTicketRow> {
     const result = await this.db.query<V0OrderTicketRow>(
       `INSERT INTO v0_order_tickets (
          tenant_id,
          branch_id,
-         opened_by_account_id
+         opened_by_account_id,
+         source_mode
        )
-       VALUES ($1, $2, $3)
+       VALUES ($1, $2, $3, $4)
        RETURNING ${ORDER_TICKET_SELECT}`,
-      [input.tenantId, input.branchId, input.openedByAccountId]
+      [input.tenantId, input.branchId, input.openedByAccountId, input.sourceMode]
     );
     return result.rows[0];
   }
@@ -604,6 +672,181 @@ export class V0SaleOrderRepository {
       [input.tenantId, input.orderTicketId]
     );
     return result.rows;
+  }
+
+  async listManualPaymentClaimsByOrder(input: {
+    tenantId: string;
+    orderTicketId: string;
+  }): Promise<V0OrderManualPaymentClaimRow[]> {
+    const result = await this.db.query<V0OrderManualPaymentClaimRow>(
+      `SELECT
+         ${ORDER_MANUAL_PAYMENT_CLAIM_SELECT}
+       FROM v0_order_manual_payment_claims
+       WHERE tenant_id = $1
+         AND order_ticket_id = $2
+       ORDER BY requested_at DESC, id DESC`,
+      [input.tenantId, input.orderTicketId]
+    );
+    return result.rows;
+  }
+
+  async getManualPaymentClaimById(input: {
+    tenantId: string;
+    branchId: string;
+    orderTicketId: string;
+    claimId: string;
+  }): Promise<V0OrderManualPaymentClaimRow | null> {
+    const result = await this.db.query<V0OrderManualPaymentClaimRow>(
+      `SELECT
+         ${ORDER_MANUAL_PAYMENT_CLAIM_SELECT}
+       FROM v0_order_manual_payment_claims
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND order_ticket_id = $3
+         AND id = $4
+       LIMIT 1`,
+      [input.tenantId, input.branchId, input.orderTicketId, input.claimId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async getPendingManualPaymentClaimByOrder(input: {
+    tenantId: string;
+    branchId: string;
+    orderTicketId: string;
+  }): Promise<V0OrderManualPaymentClaimRow | null> {
+    const result = await this.db.query<V0OrderManualPaymentClaimRow>(
+      `SELECT
+         ${ORDER_MANUAL_PAYMENT_CLAIM_SELECT}
+       FROM v0_order_manual_payment_claims
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND order_ticket_id = $3
+         AND status = 'PENDING'
+       ORDER BY requested_at DESC, id DESC
+       LIMIT 1`,
+      [input.tenantId, input.branchId, input.orderTicketId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async getLatestManualPaymentClaimByOrder(input: {
+    tenantId: string;
+    branchId: string;
+    orderTicketId: string;
+  }): Promise<V0OrderManualPaymentClaimRow | null> {
+    const result = await this.db.query<V0OrderManualPaymentClaimRow>(
+      `SELECT
+         ${ORDER_MANUAL_PAYMENT_CLAIM_SELECT}
+       FROM v0_order_manual_payment_claims
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND order_ticket_id = $3
+       ORDER BY requested_at DESC, id DESC
+       LIMIT 1`,
+      [input.tenantId, input.branchId, input.orderTicketId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async createManualPaymentClaim(input: {
+    tenantId: string;
+    branchId: string;
+    orderTicketId: string;
+    requestedByAccountId: string;
+    claimedPaymentMethod: V0OrderManualPaymentClaimedMethod;
+    saleType: V0SaleType;
+    tenderCurrency: V0TenderCurrency;
+    claimedTenderAmount: number;
+    proofImageUrl: string;
+    customerReference?: string | null;
+    note?: string | null;
+  }): Promise<V0OrderManualPaymentClaimRow> {
+    const result = await this.db.query<V0OrderManualPaymentClaimRow>(
+      `INSERT INTO v0_order_manual_payment_claims (
+         tenant_id,
+         branch_id,
+         order_ticket_id,
+         requested_by_account_id,
+         status,
+         claimed_payment_method,
+         sale_type,
+         tender_currency,
+         claimed_tender_amount,
+         proof_image_url,
+         customer_reference,
+         note
+       )
+       VALUES (
+         $1,
+         $2,
+         $3,
+         $4,
+         'PENDING',
+         $5,
+         $6,
+         $7,
+         $8::NUMERIC(14,2),
+         $9,
+         $10,
+         $11
+       )
+       RETURNING ${ORDER_MANUAL_PAYMENT_CLAIM_SELECT}`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.orderTicketId,
+        input.requestedByAccountId,
+        input.claimedPaymentMethod,
+        input.saleType,
+        input.tenderCurrency,
+        input.claimedTenderAmount,
+        input.proofImageUrl,
+        input.customerReference ?? null,
+        input.note ?? null,
+      ]
+    );
+    return result.rows[0];
+  }
+
+  async resolveManualPaymentClaim(input: {
+    tenantId: string;
+    branchId: string;
+    claimId: string;
+    reviewedByAccountId: string;
+    status: Extract<V0OrderManualPaymentClaimStatus, "APPROVED" | "REJECTED">;
+    reviewNote?: string | null;
+    saleId?: string | null;
+    reviewedAt?: Date;
+  }): Promise<V0OrderManualPaymentClaimRow | null> {
+    const result = await this.db.query<V0OrderManualPaymentClaimRow>(
+      `UPDATE v0_order_manual_payment_claims
+       SET status = $5,
+           reviewed_by_account_id = $4,
+           review_note = $6,
+           sale_id = CASE
+             WHEN $5 = 'APPROVED' THEN COALESCE($7, sale_id)
+             ELSE sale_id
+           END,
+           reviewed_at = COALESCE($8, NOW()),
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3
+         AND status = 'PENDING'
+       RETURNING ${ORDER_MANUAL_PAYMENT_CLAIM_SELECT}`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.claimId,
+        input.reviewedByAccountId,
+        input.status,
+        input.reviewNote ?? null,
+        input.saleId ?? null,
+        input.reviewedAt ?? null,
+      ]
+    );
+    return result.rows[0] ?? null;
   }
 
   async createSale(input: {

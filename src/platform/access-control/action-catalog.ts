@@ -642,6 +642,30 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
     entitlementKey: "core.pos",
   },
+  "order.manualPaymentClaim.list": {
+    scope: "BRANCH",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "order.manualPaymentClaim.create": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "order.manualPaymentClaim.approve": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
+  "order.manualPaymentClaim.reject": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
   "order.fulfillment.status.update": {
     scope: "BRANCH",
     effect: "WRITE",

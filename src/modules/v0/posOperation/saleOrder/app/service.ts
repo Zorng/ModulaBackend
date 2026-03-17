@@ -1,5 +1,8 @@
 import { normalizeOptionalString } from "../../../../../shared/utils/string.js";
 import {
+  type V0OrderManualPaymentClaimedMethod,
+  type V0OrderManualPaymentClaimRow,
+  type V0OrderManualPaymentClaimStatus,
   type V0OrderMenuItemRow,
   type V0OrderMenuModifierGroupRow,
   type V0OrderMenuModifierOptionRow,
@@ -8,6 +11,7 @@ import {
   type V0OrderFulfillmentBatchStatus,
   type V0OrderTicketLineRow,
   type V0OrderTicketRow,
+  type V0OrderTicketSourceMode,
   type V0OrderTicketStatus,
   type V0SaleLineRow,
   type V0SalePaymentMethod,
@@ -88,6 +92,16 @@ type SaleFinalizeInput = {
   khqrConfirmedAt: Date | null;
 };
 
+type ManualPaymentClaimInput = {
+  claimedPaymentMethod: V0OrderManualPaymentClaimedMethod;
+  saleType: V0SaleType;
+  tenderCurrency: V0TenderCurrency;
+  claimedTenderAmount: number;
+  proofImageUrl: string;
+  customerReference: string | null;
+  note: string | null;
+};
+
 export class V0SaleOrderError extends Error {
   constructor(
     readonly statusCode: number,
@@ -142,11 +156,16 @@ export class V0SaleOrderService {
       tenantId: actor.tenantId,
       orderTicketId: order.id,
     });
+    const manualPaymentClaims = await this.repo.listManualPaymentClaimsByOrder({
+      tenantId: actor.tenantId,
+      orderTicketId: order.id,
+    });
 
     return {
       ...mapOrderTicket(order),
       lines: lines.map(mapOrderTicketLine),
       fulfillmentBatches: fulfillmentBatches.map(mapFulfillmentBatch),
+      manualPaymentClaims: manualPaymentClaims.map(mapManualPaymentClaim),
     };
   }
 
@@ -155,9 +174,10 @@ export class V0SaleOrderService {
     body: unknown;
   }): Promise<Record<string, unknown>> {
     const actor = assertBranchContext(input.actor);
-    await this.requirePayLaterEnabled(actor);
-    await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
     const body = toRecord(input.body);
+    const sourceMode = parseOrderSourceMode(body.sourceMode);
+    await this.requireOrderPlacementEnabled(actor, sourceMode);
+    await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
     const itemDrafts = parseOrderItems(body.items, false);
     const items = await this.hydrateOrderItems({
       tenantId: actor.tenantId,
@@ -169,6 +189,7 @@ export class V0SaleOrderService {
       tenantId: actor.tenantId,
       branchId: actor.branchId,
       openedByAccountId: actor.accountId,
+      sourceMode,
     });
 
     const lines: V0OrderTicketLineRow[] = [];
@@ -201,7 +222,6 @@ export class V0SaleOrderService {
     body: unknown;
   }): Promise<Record<string, unknown>> {
     const actor = assertBranchContext(input.actor);
-    await this.requirePayLaterEnabled(actor);
     const orderId = requireUuid(input.orderId, "orderId");
     const order = await this.repo.getOrderTicketById({
       tenantId: actor.tenantId,
@@ -214,6 +234,12 @@ export class V0SaleOrderService {
     if (order.status !== "OPEN") {
       throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
     }
+    await this.requireOrderPlacementEnabled(actor, order.source_mode);
+    await this.requireNoPendingManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
     await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
 
     const body = toRecord(input.body);
@@ -243,6 +269,7 @@ export class V0SaleOrderService {
     return {
       id: order.id,
       status: order.status,
+      sourceMode: order.source_mode,
       addedLines: createdLines.map(mapOrderTicketLine),
     };
   }
@@ -279,6 +306,11 @@ export class V0SaleOrderService {
         "ORDER_CANCEL_NOT_ALLOWED"
       );
     }
+    await this.requireNoPendingManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
 
     const body = toRecord(input.body);
     const reason = normalizeOptionalString(body.reason);
@@ -347,6 +379,11 @@ export class V0SaleOrderService {
     if (existingSale) {
       throw new V0SaleOrderError(409, "order already checked out", "ORDER_NOT_UNPAID");
     }
+    await this.requireNoPendingManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
 
     const lines = await this.repo.listOrderTicketLines({
       tenantId: actor.tenantId,
@@ -442,6 +479,304 @@ export class V0SaleOrderService {
       order: mapOrderTicket(checkedOutOrder),
       lines: saleLines.map(mapSaleLine),
     };
+  }
+
+  async listManualPaymentClaims(input: {
+    actor: ActorContext;
+    orderId: string;
+  }): Promise<Array<Record<string, unknown>>> {
+    const actor = assertBranchContext(input.actor);
+    const order = await this.requireOrder(actor, input.orderId);
+    const claims = await this.repo.listManualPaymentClaimsByOrder({
+      tenantId: actor.tenantId,
+      orderTicketId: order.id,
+    });
+    return claims.map(mapManualPaymentClaim);
+  }
+
+  async createManualPaymentClaim(input: {
+    actor: ActorContext;
+    orderId: string;
+    body: unknown;
+  }): Promise<Record<string, unknown>> {
+    const actor = assertBranchContext(input.actor);
+    await this.requireManualExternalPaymentClaimEnabled(actor);
+    const order = await this.requireOrder(actor, input.orderId);
+    if (order.status !== "OPEN") {
+      throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
+    }
+    const existingSale = await this.repo.getSaleByOrderTicketId({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
+    if (existingSale) {
+      throw new V0SaleOrderError(409, "order already checked out", "ORDER_NOT_UNPAID");
+    }
+    const lines = await this.repo.listOrderTicketLines({
+      tenantId: actor.tenantId,
+      orderTicketId: order.id,
+    });
+    if (lines.length === 0) {
+      throw new V0SaleOrderError(422, "order has no items", "ORDER_NO_ITEMS");
+    }
+
+    const pending = await this.repo.getPendingManualPaymentClaimByOrder({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
+    if (pending) {
+      return mapManualPaymentClaim(pending);
+    }
+
+    const body = toRecord(input.body);
+    const claim = parseManualPaymentClaimBody(body);
+    const created = await this.repo.createManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+      requestedByAccountId: actor.accountId,
+      claimedPaymentMethod: claim.claimedPaymentMethod,
+      saleType: claim.saleType,
+      tenderCurrency: claim.tenderCurrency,
+      claimedTenderAmount: claim.claimedTenderAmount,
+      proofImageUrl: claim.proofImageUrl,
+      customerReference: claim.customerReference,
+      note: claim.note,
+    });
+    return mapManualPaymentClaim(created);
+  }
+
+  async approveManualPaymentClaim(input: {
+    actor: ActorContext;
+    orderId: string;
+    claimId: string;
+    body: unknown;
+  }): Promise<Record<string, unknown>> {
+    const actor = assertBranchContext(input.actor);
+    const order = await this.requireOrder(actor, input.orderId);
+    const claimId = requireUuid(input.claimId, "claimId");
+    const claim = await this.repo.getManualPaymentClaimById({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+      claimId,
+    });
+    if (!claim) {
+      throw new V0SaleOrderError(
+        404,
+        "manual payment claim not found",
+        "ORDER_MANUAL_PAYMENT_CLAIM_NOT_FOUND"
+      );
+    }
+    if (claim.status === "APPROVED") {
+      if (claim.sale_id) {
+        const sale = await this.repo.getSaleById({
+          tenantId: actor.tenantId,
+          branchId: actor.branchId,
+          saleId: claim.sale_id,
+        });
+        if (sale) {
+          const saleLines = await this.repo.listSaleLines({
+            tenantId: actor.tenantId,
+            saleId: sale.id,
+          });
+          return {
+            ...mapSale(sale),
+            order: mapOrderTicket(order),
+            lines: saleLines.map(mapSaleLine),
+            manualPaymentClaim: mapManualPaymentClaim(claim),
+          };
+        }
+      }
+      throw new V0SaleOrderError(
+        409,
+        "manual payment claim already resolved",
+        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
+      );
+    }
+    if (claim.status === "REJECTED") {
+      throw new V0SaleOrderError(
+        409,
+        "manual payment claim already resolved",
+        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
+      );
+    }
+    if (order.status !== "OPEN") {
+      throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
+    }
+    const existingSale = await this.repo.getSaleByOrderTicketId({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
+    if (existingSale) {
+      throw new V0SaleOrderError(409, "order already checked out", "ORDER_NOT_UNPAID");
+    }
+    const lines = await this.repo.listOrderTicketLines({
+      tenantId: actor.tenantId,
+      orderTicketId: order.id,
+    });
+    if (lines.length === 0) {
+      throw new V0SaleOrderError(422, "order has no items", "ORDER_NO_ITEMS");
+    }
+
+    const checkout = buildCheckoutFromManualPaymentClaim({
+      claim,
+      lines,
+    });
+    const reviewNote = normalizeOptionalString(toRecord(input.body).note);
+
+    const sale = await this.repo.createSale({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+      saleType: checkout.saleType,
+      paymentMethod: "KHQR",
+      tenderCurrency: checkout.tenderCurrency,
+      tenderAmount: checkout.tenderAmount,
+      cashReceivedTenderAmount: null,
+      cashChangeTenderAmount: 0,
+      khqrMd5: null,
+      khqrToAccountId: null,
+      khqrHash: null,
+      khqrConfirmedAt: null,
+      subtotalUsd: checkout.subtotalUsd,
+      subtotalKhr: checkout.subtotalKhr,
+      discountUsd: checkout.discountUsd,
+      discountKhr: checkout.discountKhr,
+      vatUsd: checkout.vatUsd,
+      vatKhr: checkout.vatKhr,
+      grandTotalUsd: checkout.grandTotalUsd,
+      grandTotalKhr: checkout.grandTotalKhr,
+      saleFxRateKhrPerUsd: checkout.saleFxRateKhrPerUsd,
+      saleKhrRoundingEnabled: checkout.saleKhrRoundingEnabled,
+      saleKhrRoundingMode: checkout.saleKhrRoundingMode,
+      saleKhrRoundingGranularity: checkout.saleKhrRoundingGranularity,
+      paidAmount: checkout.paidAmount,
+    });
+
+    const saleLines: V0SaleLineRow[] = [];
+    for (const line of lines) {
+      const saleLine = await this.repo.createSaleLine({
+        tenantId: actor.tenantId,
+        branchId: actor.branchId,
+        saleId: sale.id,
+        orderTicketLineId: line.id,
+        menuItemId: line.menu_item_id,
+        menuItemNameSnapshot: line.menu_item_name_snapshot,
+        unitPrice: line.unit_price,
+        quantity: line.quantity,
+        lineDiscountAmount: 0,
+        lineTotalAmount: line.line_subtotal,
+        modifierSnapshot: line.modifier_snapshot,
+      });
+      saleLines.push(saleLine);
+    }
+
+    const checkedOutOrder = await this.repo.markOrderTicketCheckedOut({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+      checkedOutByAccountId: actor.accountId,
+    });
+    if (!checkedOutOrder) {
+      throw new V0SaleOrderError(409, "order checkout failed", "ORDER_NOT_UNPAID");
+    }
+
+    const finalized = await this.repo.markSaleFinalized({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      saleId: sale.id,
+      finalizedByAccountId: actor.accountId,
+      paidAmount: checkout.paidAmount,
+      tenderAmount: checkout.tenderAmount,
+      cashReceivedTenderAmount: null,
+      cashChangeTenderAmount: 0,
+      khqrHash: null,
+      khqrConfirmedAt: new Date(),
+    });
+    if (!finalized) {
+      throw new V0SaleOrderError(409, "sale finalize failed", "SALE_NOT_FOUND");
+    }
+
+    const approvedClaim = await this.repo.resolveManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      claimId: claim.id,
+      reviewedByAccountId: actor.accountId,
+      status: "APPROVED",
+      reviewNote,
+      saleId: finalized.id,
+      reviewedAt: new Date(),
+    });
+    if (!approvedClaim) {
+      throw new V0SaleOrderError(
+        409,
+        "manual payment claim already resolved",
+        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
+      );
+    }
+
+    return {
+      ...mapSale(finalized),
+      order: mapOrderTicket(checkedOutOrder),
+      lines: saleLines.map(mapSaleLine),
+      manualPaymentClaim: mapManualPaymentClaim(approvedClaim),
+    };
+  }
+
+  async rejectManualPaymentClaim(input: {
+    actor: ActorContext;
+    orderId: string;
+    claimId: string;
+    body: unknown;
+  }): Promise<Record<string, unknown>> {
+    const actor = assertBranchContext(input.actor);
+    const order = await this.requireOrder(actor, input.orderId);
+    const claimId = requireUuid(input.claimId, "claimId");
+    const claim = await this.repo.getManualPaymentClaimById({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+      claimId,
+    });
+    if (!claim) {
+      throw new V0SaleOrderError(
+        404,
+        "manual payment claim not found",
+        "ORDER_MANUAL_PAYMENT_CLAIM_NOT_FOUND"
+      );
+    }
+    if (claim.status === "REJECTED") {
+      return mapManualPaymentClaim(claim);
+    }
+    if (claim.status === "APPROVED") {
+      throw new V0SaleOrderError(
+        409,
+        "manual payment claim already resolved",
+        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
+      );
+    }
+    const reviewNote = normalizeOptionalString(toRecord(input.body).note);
+    const rejected = await this.repo.resolveManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      claimId: claim.id,
+      reviewedByAccountId: actor.accountId,
+      status: "REJECTED",
+      reviewNote,
+      reviewedAt: new Date(),
+    });
+    if (!rejected) {
+      throw new V0SaleOrderError(
+        409,
+        "manual payment claim already resolved",
+        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
+      );
+    }
+    return mapManualPaymentClaim(rejected);
   }
 
   async updateFulfillmentStatus(input: {
@@ -1102,6 +1437,19 @@ export class V0SaleOrderService {
     return hydrated;
   }
 
+  private async requireOrder(actor: { tenantId: string; branchId: string }, orderId: string) {
+    const id = requireUuid(orderId, "orderId");
+    const order = await this.repo.getOrderTicketById({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: id,
+    });
+    if (!order) {
+      throw new V0SaleOrderError(404, "order not found", "ORDER_NOT_FOUND");
+    }
+    return order;
+  }
+
   private async requireSale(actor: { tenantId: string; branchId: string }, saleId: string) {
     const id = requireUuid(saleId, "saleId");
     const sale = await this.repo.getSaleById({
@@ -1153,6 +1501,53 @@ export class V0SaleOrderService {
         422,
         "pay-later is disabled for this branch",
         "ORDER_PAY_LATER_DISABLED"
+      );
+    }
+  }
+
+  private async requireManualExternalPaymentClaimEnabled(actor: {
+    tenantId: string;
+    branchId: string;
+  }): Promise<void> {
+    const enabled = await this.repo.isManualExternalPaymentClaimEnabledForBranch({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+    });
+    if (!enabled) {
+      throw new V0SaleOrderError(
+        422,
+        "manual external payment claim is disabled for this branch",
+        "ORDER_MANUAL_PAYMENT_CLAIM_DISABLED"
+      );
+    }
+  }
+
+  private async requireOrderPlacementEnabled(
+    actor: { tenantId: string; branchId: string },
+    sourceMode: V0OrderTicketSourceMode
+  ): Promise<void> {
+    if (sourceMode === "MANUAL_EXTERNAL_PAYMENT_CLAIM") {
+      await this.requireManualExternalPaymentClaimEnabled(actor);
+      return;
+    }
+    await this.requirePayLaterEnabled(actor);
+  }
+
+  private async requireNoPendingManualPaymentClaim(input: {
+    tenantId: string;
+    branchId: string;
+    orderTicketId: string;
+  }): Promise<void> {
+    const pending = await this.repo.getPendingManualPaymentClaimByOrder({
+      tenantId: input.tenantId,
+      branchId: input.branchId,
+      orderTicketId: input.orderTicketId,
+    });
+    if (pending) {
+      throw new V0SaleOrderError(
+        409,
+        "order has pending manual payment claim",
+        "ORDER_MANUAL_PAYMENT_CLAIM_PENDING"
       );
     }
   }
@@ -1536,6 +1931,21 @@ function parseOrderStatusFilter(input: string | undefined): V0OrderTicketStatus 
   throw new V0SaleOrderError(422, "invalid order status", "ORDER_STATUS_INVALID");
 }
 
+function parseOrderSourceMode(input: unknown): V0OrderTicketSourceMode {
+  const value = normalizeOptionalString(input)?.toUpperCase();
+  if (!value || value === "STANDARD") {
+    return "STANDARD";
+  }
+  if (value === "MANUAL_EXTERNAL_PAYMENT_CLAIM") {
+    return "MANUAL_EXTERNAL_PAYMENT_CLAIM";
+  }
+  throw new V0SaleOrderError(
+    422,
+    "sourceMode must be STANDARD or MANUAL_EXTERNAL_PAYMENT_CLAIM",
+    "ORDER_SOURCE_MODE_INVALID"
+  );
+}
+
 function parseSaleStatusFilter(input: string | undefined): V0SaleStatus | null {
   const status = normalizeOptionalString(input)?.toUpperCase();
   if (!status || status === "ALL") {
@@ -1564,6 +1974,46 @@ function parseTenderCurrency(input: unknown): V0TenderCurrency {
     return "KHR";
   }
   throw new V0SaleOrderError(422, "tenderCurrency must be USD or KHR", "SALE_TENDER_CURRENCY_INVALID");
+}
+
+function parseManualPaymentClaimBody(body: Record<string, unknown>): ManualPaymentClaimInput {
+  const claimedPaymentMethod = parseManualPaymentClaimedMethod(body.claimedPaymentMethod);
+  return {
+    claimedPaymentMethod,
+    saleType: parseSaleType(body.saleType),
+    tenderCurrency: parseTenderCurrency(body.tenderCurrency),
+    claimedTenderAmount: requirePositiveNumber(body.claimedTenderAmount, "claimedTenderAmount"),
+    proofImageUrl: requireNonEmptyString(body.proofImageUrl, "proofImageUrl"),
+    customerReference: normalizeOptionalString(body.customerReference) ?? null,
+    note: normalizeOptionalString(body.note) ?? null,
+  };
+}
+
+function parseManualPaymentClaimedMethod(input: unknown): V0OrderManualPaymentClaimedMethod {
+  const value = normalizeOptionalString(input)?.toUpperCase();
+  if (!value || value === "KHQR") {
+    return "KHQR";
+  }
+  throw new V0SaleOrderError(
+    422,
+    "claimedPaymentMethod must be KHQR",
+    "ORDER_MANUAL_PAYMENT_CLAIM_METHOD_INVALID"
+  );
+}
+
+function buildCheckoutFromManualPaymentClaim(input: {
+  claim: V0OrderManualPaymentClaimRow;
+  lines: V0OrderTicketLineRow[];
+}): CheckoutInput {
+  return parseCheckoutBody(
+    {
+      paymentMethod: input.claim.claimed_payment_method,
+      saleType: input.claim.sale_type,
+      tenderCurrency: input.claim.tender_currency,
+      tenderAmount: input.claim.claimed_tender_amount,
+    },
+    input.lines
+  );
 }
 
 function parseSaleType(input: unknown): V0SaleType {
@@ -1742,6 +2192,7 @@ function mapOrderTicketSummary(row: V0OrderTicketRow): Record<string, unknown> {
   return {
     id: row.id,
     status: row.status,
+    sourceMode: row.source_mode,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -1754,11 +2205,37 @@ function mapOrderTicket(row: V0OrderTicketRow): Record<string, unknown> {
     branchId: row.branch_id,
     openedByAccountId: row.opened_by_account_id,
     status: row.status,
+    sourceMode: row.source_mode,
     checkedOutAt: row.checked_out_at?.toISOString() ?? null,
     checkedOutByAccountId: row.checked_out_by_account_id,
     cancelledAt: row.cancelled_at?.toISOString() ?? null,
     cancelledByAccountId: row.cancelled_by_account_id,
     cancelReason: row.cancel_reason,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function mapManualPaymentClaim(row: V0OrderManualPaymentClaimRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    branchId: row.branch_id,
+    orderId: row.order_ticket_id,
+    saleId: row.sale_id,
+    requestedByAccountId: row.requested_by_account_id,
+    reviewedByAccountId: row.reviewed_by_account_id,
+    status: row.status,
+    claimedPaymentMethod: row.claimed_payment_method,
+    saleType: row.sale_type,
+    tenderCurrency: row.tender_currency,
+    claimedTenderAmount: row.claimed_tender_amount,
+    proofImageUrl: row.proof_image_url,
+    customerReference: row.customer_reference,
+    note: row.note,
+    reviewNote: row.review_note,
+    requestedAt: row.requested_at.toISOString(),
+    reviewedAt: row.reviewed_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };

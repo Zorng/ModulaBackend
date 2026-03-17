@@ -21,6 +21,14 @@ Frontend rollout note:
 - Always send `Idempotency-Key` for write endpoints.
 - Do not route full sale/order flow through `pushSync` yet.
 
+Offline-first clarification:
+- Current backend does not support offline replay for full sale/order settlement yet.
+- Offline-first direction for this module is order-first:
+  - capture `OPEN` order tickets offline
+  - settle/finalize payment online when connectivity returns
+- KHQR remains online-only and must not be modeled as cash during outages.
+- If outage/manual-proof fallback is introduced later, it should be a separate manual external-payment-claim lane, not a reinterpretation of normal cash checkout.
+
 Frontend cutover map (online lane):
 - Cashier checkout:
   - `POST /v0/checkout/cash/finalize`
@@ -32,6 +40,12 @@ Frontend cutover map (online lane):
   - `PATCH /v0/orders/:orderId/fulfillment`
   - `POST /v0/orders/:orderId/cancel`
   - Requires branch policy `saleAllowPayLater = true` for place/add writes
+- Manual external-payment-claim lane:
+  - `POST /v0/orders` with `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`
+  - `GET|POST /v0/orders/:orderId/manual-payment-claims`
+  - `POST /v0/orders/:orderId/manual-payment-claims/:claimId/approve`
+  - `POST /v0/orders/:orderId/manual-payment-claims/:claimId/reject`
+  - Requires branch policy `saleAllowManualExternalPaymentClaim = true`
 
 ## Checkout Rule (Locked)
 
@@ -48,6 +62,13 @@ Use this rule to avoid ambiguous behavior:
 - Endpoints: `/v0/orders`, `/v0/orders/:orderId/items`, `/v0/orders/:orderId/cancel`
 - Result: backend records an **OPEN order ticket** that can be updated before payment
 - Sale: **not created yet**
+
+2a) **Manual external-payment-claim order**
+- Source: outage/manual proof workflow
+- Endpoint: `POST /v0/orders` with `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`
+- Result: backend records an `OPEN` order ticket reserved for later manual claim review
+- Normal `saleAllowPayLater` policy is not used for this source mode
+- Branch must enable `saleAllowManualExternalPaymentClaim`
 
 3) **Pay-later settlement**
 - Endpoint: `/v0/orders/:orderId/checkout` (settlement from an existing open ticket)
@@ -325,6 +346,7 @@ Response example (`200`):
     "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
     "openedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
     "status": "OPEN",
+    "sourceMode": "STANDARD",
     "checkedOutAt": null,
     "checkedOutByAccountId": null,
     "cancelledAt": null,
@@ -355,7 +377,9 @@ Rules:
 - requires open cash session (`ORDER_REQUIRES_OPEN_CASH_SESSION`)
 - server ignores client price/name snapshots and resolves canonical values from menu catalog
 - server validates branch visibility + modifier selections; invalid combos are rejected
-- denied when branch policy `saleAllowPayLater = false` (`ORDER_PAY_LATER_DISABLED`)
+- default `sourceMode` is `STANDARD`
+- `STANDARD` source mode is denied when branch policy `saleAllowPayLater = false` (`ORDER_PAY_LATER_DISABLED`)
+- `MANUAL_EXTERNAL_PAYMENT_CLAIM` source mode is denied when branch policy `saleAllowManualExternalPaymentClaim = false` (`ORDER_MANUAL_PAYMENT_CLAIM_DISABLED`)
 
 ---
 
@@ -384,6 +408,7 @@ Response example (`200`):
   "data": {
     "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
     "status": "OPEN",
+    "sourceMode": "STANDARD",
     "addedLines": [
       {
         "id": "38432852-4d11-43e9-b2ec-f5dfce3d8ef8",
@@ -405,7 +430,9 @@ Response example (`200`):
 
 Rules:
 - requires open cash session (`ORDER_REQUIRES_OPEN_CASH_SESSION`)
-- denied when branch policy `saleAllowPayLater = false` (`ORDER_PAY_LATER_DISABLED`)
+- `STANDARD` source mode is denied when branch policy `saleAllowPayLater = false` (`ORDER_PAY_LATER_DISABLED`)
+- `MANUAL_EXTERNAL_PAYMENT_CLAIM` source mode is denied when branch policy `saleAllowManualExternalPaymentClaim = false` (`ORDER_MANUAL_PAYMENT_CLAIM_DISABLED`)
+- denied when order has pending manual claim (`ORDER_MANUAL_PAYMENT_CLAIM_PENDING`)
 
 ---
 
@@ -536,10 +563,107 @@ Rules:
 - Allowed only for unpaid/open tickets.
 - Requires non-empty `reason`.
 - Retrying cancel on an already cancelled ticket returns success (idempotent no-op).
+- denied when order has pending manual claim (`ORDER_MANUAL_PAYMENT_CLAIM_PENDING`)
 
 ---
 
-### 5) Update fulfillment status
+### 5) Create manual payment claim
+`POST /v0/orders/:orderId/manual-payment-claims`  
+Action key: `order.manualPaymentClaim.create`
+
+Body example:
+```json
+{
+  "claimedPaymentMethod": "KHQR",
+  "saleType": "TAKEAWAY",
+  "tenderCurrency": "USD",
+  "claimedTenderAmount": 3.5,
+  "proofImageUrl": "https://cdn.example.com/proof/khqr-001.jpg",
+  "customerReference": "ABA-REF-001",
+  "note": "Customer showed transfer screenshot"
+}
+```
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "54a9f58a-4d3a-4fb3-8a7d-78f23254a59d",
+    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+    "saleId": null,
+    "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+    "reviewedByAccountId": null,
+    "status": "PENDING",
+    "claimedPaymentMethod": "KHQR",
+    "saleType": "TAKEAWAY",
+    "tenderCurrency": "USD",
+    "claimedTenderAmount": 3.5,
+    "proofImageUrl": "https://cdn.example.com/proof/khqr-001.jpg",
+    "customerReference": "ABA-REF-001",
+    "note": "Customer showed transfer screenshot",
+    "reviewNote": null,
+    "requestedAt": "2026-02-22T10:06:00.000Z",
+    "reviewedAt": null,
+    "createdAt": "2026-02-22T10:06:00.000Z",
+    "updatedAt": "2026-02-22T10:06:00.000Z"
+  }
+}
+```
+
+Rules:
+- requires branch policy `saleAllowManualExternalPaymentClaim = true`
+- order must remain `OPEN`
+- order must still have no sale
+- order must have at least one line
+- if a pending claim already exists, backend returns that pending claim instead of creating a second pending row
+
+---
+
+### 6) Approve manual payment claim
+`POST /v0/orders/:orderId/manual-payment-claims/:claimId/approve`  
+Action key: `order.manualPaymentClaim.approve`
+
+Body example:
+```json
+{
+  "note": "Verified against bank evidence"
+}
+```
+
+Rules:
+- allowed only for `OWNER|ADMIN|MANAGER`
+- approving a pending claim creates and finalizes a `KHQR` sale in one transaction
+- approved manual claims emit finalized-sale side effects as non-cash payment, so cash-session `SALE_IN` must not be appended
+
+---
+
+### 7) Reject manual payment claim
+`POST /v0/orders/:orderId/manual-payment-claims/:claimId/reject`  
+Action key: `order.manualPaymentClaim.reject`
+
+Body example:
+```json
+{
+  "note": "Proof was not sufficient"
+}
+```
+
+Rules:
+- allowed only for `OWNER|ADMIN|MANAGER`
+- rejection keeps the order open and unpaid
+
+---
+
+### 8) List manual payment claims
+`GET /v0/orders/:orderId/manual-payment-claims`  
+Action key: `order.manualPaymentClaim.list`
+
+---
+
+### 9) Update fulfillment status
 `PATCH /v0/orders/:orderId/fulfillment`  
 Action key: `order.fulfillment.status.update`
 
@@ -570,7 +694,7 @@ Response example (`200`):
 
 ---
 
-### 6) List orders
+### 10) List orders
 `GET /v0/orders?status=OPEN&limit=20&offset=0`  
 Action key: `order.list`
 
@@ -582,6 +706,7 @@ Response example (`200`):
     {
       "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
       "status": "OPEN",
+      "sourceMode": "STANDARD",
       "createdAt": "2026-02-22T10:00:00.000Z",
       "updatedAt": "2026-02-22T10:03:00.000Z"
     }
@@ -591,7 +716,7 @@ Response example (`200`):
 
 ---
 
-### 7) Get order detail
+### 11) Get order detail
 `GET /v0/orders/:orderId`  
 Action key: `order.read`
 
@@ -605,6 +730,7 @@ Response example (`200`):
     "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
     "openedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
     "status": "OPEN",
+    "sourceMode": "STANDARD",
     "checkedOutAt": null,
     "checkedOutByAccountId": null,
     "cancelledAt": null,
@@ -627,7 +753,8 @@ Response example (`200`):
         "updatedAt": "2026-02-22T10:00:00.000Z"
       }
     ],
-    "fulfillmentBatches": []
+    "fulfillmentBatches": [],
+    "manualPaymentClaims": []
   }
 }
 ```
@@ -636,7 +763,7 @@ Response example (`200`):
 
 ## Sales
 
-### 8) Finalize sale
+### 12) Finalize sale
 `POST /v0/sales/:saleId/finalize`  
 Action key: `sale.finalize`
 

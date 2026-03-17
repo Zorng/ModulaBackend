@@ -9,6 +9,7 @@ export type BranchPolicyDefaults = {
   saleKhrRoundingMode: SaleKhrRoundingMode;
   saleKhrRoundingGranularity: SaleKhrRoundingGranularity;
   saleAllowPayLater: boolean;
+  saleAllowManualExternalPaymentClaim: boolean;
 };
 
 export const V0_BRANCH_POLICY_DEFAULTS: BranchPolicyDefaults = {
@@ -19,4 +20,5 @@ export const V0_BRANCH_POLICY_DEFAULTS: BranchPolicyDefaults = {
   saleKhrRoundingMode: "NEAREST",
   saleKhrRoundingGranularity: 100,
   saleAllowPayLater: false,
+  saleAllowManualExternalPaymentClaim: false,
 };
