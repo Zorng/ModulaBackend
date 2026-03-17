@@ -985,6 +985,8 @@ export class V0InventoryRepository {
     tenantId: string;
     branchId: string;
     includeArchivedItems?: boolean;
+    limit: number;
+    offset: number;
   }): Promise<InventoryBranchStockViewRow[]> {
     const result = await this.db.query<InventoryBranchStockViewRow>(
       `SELECT
@@ -1005,10 +1007,37 @@ export class V0InventoryRepository {
        WHERE bs.tenant_id = $1
          AND bs.branch_id = $2
          AND ($3::BOOLEAN = TRUE OR si.status = 'ACTIVE')
-       ORDER BY si.name ASC`,
-      [input.tenantId, input.branchId, input.includeArchivedItems ?? false]
+       ORDER BY si.name ASC
+       LIMIT $4::INTEGER
+       OFFSET $5::INTEGER`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.includeArchivedItems ?? false,
+        input.limit,
+        input.offset,
+      ]
     );
     return result.rows;
+  }
+
+  async countBranchStock(input: {
+    tenantId: string;
+    branchId: string;
+    includeArchivedItems?: boolean;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_inventory_branch_stock bs
+       JOIN v0_inventory_stock_items si
+         ON si.tenant_id = bs.tenant_id
+        AND si.id = bs.stock_item_id
+       WHERE bs.tenant_id = $1
+         AND bs.branch_id = $2
+         AND ($3::BOOLEAN = TRUE OR si.status = 'ACTIVE')`,
+      [input.tenantId, input.branchId, input.includeArchivedItems ?? false]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async getBranchStockOnHand(input: {
@@ -1032,6 +1061,8 @@ export class V0InventoryRepository {
   async listAggregateStock(input: {
     tenantId: string;
     includeArchivedItems?: boolean;
+    limit: number;
+    offset: number;
   }): Promise<InventoryAggregateStockViewRow[]> {
     const result = await this.db.query<InventoryAggregateStockViewRow>(
       `SELECT
@@ -1051,9 +1082,36 @@ export class V0InventoryRepository {
          AND b.status = 'ACTIVE'
          AND ($2::BOOLEAN = TRUE OR si.status = 'ACTIVE')
        GROUP BY bs.stock_item_id, si.name, si.base_unit
-       ORDER BY si.name ASC`,
-      [input.tenantId, input.includeArchivedItems ?? false]
+       ORDER BY si.name ASC
+       LIMIT $3::INTEGER
+       OFFSET $4::INTEGER`,
+      [input.tenantId, input.includeArchivedItems ?? false, input.limit, input.offset]
     );
     return result.rows;
+  }
+
+  async countAggregateStock(input: {
+    tenantId: string;
+    includeArchivedItems?: boolean;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM (
+         SELECT bs.stock_item_id
+         FROM v0_inventory_branch_stock bs
+         JOIN branches b
+           ON b.tenant_id = bs.tenant_id
+          AND b.id = bs.branch_id
+         JOIN v0_inventory_stock_items si
+           ON si.tenant_id = bs.tenant_id
+          AND si.id = bs.stock_item_id
+         WHERE bs.tenant_id = $1
+           AND b.status = 'ACTIVE'
+           AND ($2::BOOLEAN = TRUE OR si.status = 'ACTIVE')
+         GROUP BY bs.stock_item_id
+       ) aggregated`,
+      [input.tenantId, input.includeArchivedItems ?? false]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 }

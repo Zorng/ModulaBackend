@@ -488,7 +488,7 @@ Response `200`:
 ```
 
 #### 18) Read branch stock projection (fast read)
-`GET /v0/inventory/stock/branch?branchId=uuid&includeArchivedItems=true|false`
+`GET /v0/inventory/stock/branch?branchId=uuid&includeArchivedItems=true|false&limit=number&offset=number`
 
 Action key: `inventory.stock.branch.read`
 
@@ -496,10 +496,22 @@ Notes:
 - Requires tenant context.
 - Returns on-hand for the requested branch.
 
-Response `200`: `BranchStockItem[]`
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [],
+    "limit": 50,
+    "offset": 0,
+    "total": 0,
+    "hasMore": false
+  }
+}
+```
 
 #### 19) Read aggregate stock across active branches
-`GET /v0/inventory/stock/aggregate?includeArchivedItems=true|false`
+`GET /v0/inventory/stock/aggregate?includeArchivedItems=true|false&limit=number&offset=number`
 
 Action key: `inventory.stock.aggregate.read`
 
@@ -507,15 +519,13 @@ Response `200`:
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "stockItemId": "uuid",
-      "stockItemName": "Milk",
-      "baseUnit": "ml",
-      "totalOnHandInBaseUnit": 2000,
-      "branchCount": 2
-    }
-  ]
+  "data": {
+    "items": [],
+    "limit": 50,
+    "offset": 0,
+    "total": 0,
+    "hasMore": false
+  }
 }
 ```
 

@@ -441,6 +441,8 @@ export function createV0InventoryRouter(input: {
         actor,
         branchId: asString(req.query?.branchId),
         includeArchivedItems: asBoolean(req.query?.includeArchivedItems),
+        limit: asNumber(req.query?.limit),
+        offset: asNumber(req.query?.offset),
       });
       res.status(200).json({ success: true, data });
     } catch (error) {
@@ -459,6 +461,8 @@ export function createV0InventoryRouter(input: {
       const data = await input.service.readAggregateStock({
         actor,
         includeArchivedItems: asBoolean(req.query?.includeArchivedItems),
+        limit: asNumber(req.query?.limit),
+        offset: asNumber(req.query?.offset),
       });
       res.status(200).json({ success: true, data });
     } catch (error) {

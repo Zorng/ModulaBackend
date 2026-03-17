@@ -746,43 +746,72 @@ export class V0InventoryService {
     actor: ActorContext;
     branchId?: string;
     includeArchivedItems?: boolean;
-  }): Promise<Array<Record<string, unknown>>> {
+    limit?: number;
+    offset?: number;
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertTenantContext(input.actor);
     const branchId = await this.requireBranchIdInTenant(scope.tenantId, input.branchId);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
     const rows = await this.repo.listBranchStock({
       tenantId: scope.tenantId,
       branchId,
       includeArchivedItems: input.includeArchivedItems ?? false,
+      limit,
+      offset,
     });
 
-    return rows.map((row) => ({
-      stockItemId: row.stock_item_id,
-      stockItemName: row.stock_item_name,
-      baseUnit: row.base_unit,
-      onHandInBaseUnit: row.on_hand_in_base_unit,
-      lowStockThreshold: row.low_stock_threshold,
-      isLowStock: row.is_low_stock,
-      updatedAt: row.updated_at.toISOString(),
-    }));
+    return buildOffsetPaginatedResult({
+      items: rows.map((row) => ({
+        stockItemId: row.stock_item_id,
+        stockItemName: row.stock_item_name,
+        baseUnit: row.base_unit,
+        onHandInBaseUnit: row.on_hand_in_base_unit,
+        lowStockThreshold: row.low_stock_threshold,
+        isLowStock: row.is_low_stock,
+        updatedAt: row.updated_at.toISOString(),
+      })),
+      limit,
+      offset,
+      total: await this.repo.countBranchStock({
+        tenantId: scope.tenantId,
+        branchId,
+        includeArchivedItems: input.includeArchivedItems ?? false,
+      }),
+    });
   }
 
   async readAggregateStock(input: {
     actor: ActorContext;
     includeArchivedItems?: boolean;
-  }): Promise<Array<Record<string, unknown>>> {
+    limit?: number;
+    offset?: number;
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertTenantContext(input.actor);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
     const rows = await this.repo.listAggregateStock({
       tenantId: scope.tenantId,
       includeArchivedItems: input.includeArchivedItems ?? false,
+      limit,
+      offset,
     });
 
-    return rows.map((row) => ({
-      stockItemId: row.stock_item_id,
-      stockItemName: row.stock_item_name,
-      baseUnit: row.base_unit,
-      totalOnHandInBaseUnit: row.total_on_hand_in_base_unit,
-      branchCount: row.branch_count,
-    }));
+    return buildOffsetPaginatedResult({
+      items: rows.map((row) => ({
+        stockItemId: row.stock_item_id,
+        stockItemName: row.stock_item_name,
+        baseUnit: row.base_unit,
+        totalOnHandInBaseUnit: row.total_on_hand_in_base_unit,
+        branchCount: row.branch_count,
+      })),
+      limit,
+      offset,
+      total: await this.repo.countAggregateStock({
+        tenantId: scope.tenantId,
+        includeArchivedItems: input.includeArchivedItems ?? false,
+      }),
+    });
   }
 
   private async setStockItemStatus(input: {

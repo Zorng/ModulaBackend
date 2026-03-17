@@ -322,12 +322,41 @@ describe("v0 inventory integration", () => {
     expect(listedBatches.body.data.items[0]?.branchId).toBe(setup.branchAId);
 
     const branchStock = await request(app)
-      .get(`/v0/inventory/stock/branch?branchId=${setup.branchAId}`)
+      .get(`/v0/inventory/stock/branch?branchId=${setup.branchAId}&limit=10&offset=0`)
       .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
     expect(branchStock.status).toBe(200);
+    expect(branchStock.body.data.limit).toBe(10);
+    expect(branchStock.body.data.offset).toBe(0);
+    expect(branchStock.body.data.total).toBe(1);
+    expect(branchStock.body.data.hasMore).toBe(false);
     expect(
-      (branchStock.body.data as Array<{ stockItemId: string; onHandInBaseUnit: number }>).some(
+      (
+        branchStock.body.data.items as Array<{ stockItemId: string; onHandInBaseUnit: number }>
+      ).some(
         (row) => row.stockItemId === stockItemId && row.onHandInBaseUnit === 1200
+      )
+    ).toBe(true);
+
+    const aggregateStock = await request(app)
+      .get("/v0/inventory/stock/aggregate?limit=10&offset=0")
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(aggregateStock.status).toBe(200);
+    expect(aggregateStock.body.data.limit).toBe(10);
+    expect(aggregateStock.body.data.offset).toBe(0);
+    expect(aggregateStock.body.data.total).toBe(1);
+    expect(aggregateStock.body.data.hasMore).toBe(false);
+    expect(
+      (
+        aggregateStock.body.data.items as Array<{
+          stockItemId: string;
+          totalOnHandInBaseUnit: number;
+          branchCount: number;
+        }>
+      ).some(
+        (row) =>
+          row.stockItemId === stockItemId &&
+          row.totalOnHandInBaseUnit === 1200 &&
+          row.branchCount === 1
       )
     ).toBe(true);
 
