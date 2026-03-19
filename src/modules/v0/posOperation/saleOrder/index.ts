@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import { V0IdempotencyRepository } from "../../../../platform/idempotency/repository.js";
 import { V0IdempotencyService } from "../../../../platform/idempotency/service.js";
+import { V0MediaUploadRepository } from "../../../../platform/media-uploads/repository.js";
 import { createV0SaleOrderRouter } from "./api/router.js";
 import { V0SaleOrderService } from "./app/service.js";
 import { buildV0KhqrPaymentProviderFromEnv } from "../../platformSystem/khqrPayment/app/payment-provider.js";
@@ -35,7 +36,8 @@ export { V0SaleOrderError } from "./app/service.js";
 
 export function bootstrapV0SaleOrderModule(pool: Pool) {
   const repo = new V0SaleOrderRepository(pool);
-  const service = new V0SaleOrderService(repo);
+  const mediaUploadsRepo = new V0MediaUploadRepository(pool);
+  const service = new V0SaleOrderService(repo, mediaUploadsRepo);
   const idempotencyRepo = new V0IdempotencyRepository(pool);
   const idempotencyService = new V0IdempotencyService(idempotencyRepo);
   const khqrProvider = buildV0KhqrPaymentProviderFromEnv();

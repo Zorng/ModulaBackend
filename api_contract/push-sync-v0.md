@@ -29,6 +29,7 @@ Implementation status:
 
 ```ts
 type PushSyncOperationType =
+  | "checkout.cash.finalize"
   | "sale.finalize"
   | "cashSession.open"
   | "cashSession.movement"
@@ -225,6 +226,9 @@ Propagated from underlying command checks:
   - `CASH_SESSION_NOT_FOUND`
   - `CASH_SESSION_ALREADY_OPEN`
   - `CASH_SESSION_NOT_OPEN`
+  - `SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION`
+  - `SALE_CASH_TENDER_AMOUNT_INVALID`
+  - `SALE_CASH_RECEIVED_INSUFFICIENT`
   - `ATTENDANCE_ALREADY_CHECKED_IN`
   - `ATTENDANCE_NO_ACTIVE_CHECKIN`
   - `BRANCH_FROZEN`
@@ -248,7 +252,10 @@ Propagated from underlying command checks:
 - Treat `DUPLICATE` as successful replay (already applied).
 - For `FAILED` with deterministic codes (for example `BRANCH_FROZEN`), mark op as permanent failure and stop blind retries.
 - Current implementation note:
-  - `sale.finalize` is accepted as a replay operation type but currently returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED` until sale-order module rollout is complete.
+  - `checkout.cash.finalize` is supported for offline pay-first cash replay.
+  - replay payload must carry immutable priced checkout snapshot data plus client-generated `orderId` and `saleId`.
+  - successful replay materializes `CHECKED_OUT order + FINALIZED sale + initial PENDING fulfillment batch`.
+  - `sale.finalize` is still accepted as a replay operation type but currently returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`; KHQR confirmation checks still run before that fallback.
 
 ## Frontend Retry Policy (Recommended)
 

@@ -20,6 +20,12 @@ export type V0KhqrVerificationStatus =
 export type V0KhqrCurrency = "USD" | "KHR";
 export type V0SaleType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
 export type V0KhqrProvider = "BAKONG" | "STUB";
+export type V0OrderFulfillmentBatchStatus =
+  | "PENDING"
+  | "PREPARING"
+  | "READY"
+  | "COMPLETED"
+  | "CANCELLED";
 export type V0PaymentIntentStatus =
   | "WAITING_FOR_PAYMENT"
   | "PAID_CONFIRMED"
@@ -113,6 +119,7 @@ export type V0SaleKhqrSnapshotRow = {
   id: string;
   tenant_id: string;
   branch_id: string;
+  order_ticket_id: string | null;
   sale_type: V0SaleType;
   status: "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
   payment_method: "CASH" | "KHQR";
@@ -134,9 +141,23 @@ export type V0SaleKhqrLineSnapshotInput = {
   menuItemNameSnapshot: string;
   unitPrice: number;
   quantity: number;
+  lineSubtotal: number;
   lineDiscountAmount: number;
   lineTotalAmount: number;
   modifierSnapshot: unknown;
+  note: string | null;
+};
+
+type V0DirectCheckoutOrderTicketRow = {
+  id: string;
+};
+
+type V0DirectCheckoutOrderTicketLineRow = {
+  id: string;
+};
+
+type V0DirectCheckoutFulfillmentBatchRow = {
+  id: string;
 };
 
 const ATTEMPT_SELECT_FIELDS = `
@@ -255,6 +276,7 @@ export class V0KhqrPaymentRepository {
          id,
          tenant_id,
          branch_id,
+         order_ticket_id,
          sale_type,
          status,
          payment_method,
@@ -336,6 +358,7 @@ export class V0KhqrPaymentRepository {
          id,
          tenant_id,
          branch_id,
+         order_ticket_id,
          sale_type,
          status,
          payment_method,
@@ -367,6 +390,7 @@ export class V0KhqrPaymentRepository {
   async createPendingSaleForKhqrIntent(input: {
     tenantId: string;
     branchId: string;
+    orderTicketId?: string | null;
     saleType: V0SaleType;
     tenderCurrency: V0KhqrCurrency;
     tenderAmount: number;
@@ -425,18 +449,17 @@ export class V0KhqrPaymentRepository {
        VALUES (
          $1,
          $2,
-         NULL,
+         $3::UUID,
          'PENDING',
          'KHQR',
-         $3,
-         $4::NUMERIC(14,2),
+         $4,
+         $5::NUMERIC(14,2),
          NULL,
          0::NUMERIC(14,2),
-         $5,
          $6,
          $7,
          $8,
-         $9::NUMERIC(14,2),
+         $9,
          $10::NUMERIC(14,2),
          $11::NUMERIC(14,2),
          $12::NUMERIC(14,2),
@@ -444,21 +467,23 @@ export class V0KhqrPaymentRepository {
          $14::NUMERIC(14,2),
          $15::NUMERIC(14,2),
          $16::NUMERIC(14,2),
-         $17::NUMERIC(14,4),
-         $18,
+         $17::NUMERIC(14,2),
+         $18::NUMERIC(14,4),
          $19,
          $20,
-         $9::NUMERIC(14,2),
-         $11::NUMERIC(14,2),
-         $13::NUMERIC(14,2),
-         $15::NUMERIC(14,2),
-         $21::NUMERIC(14,2),
-         $22
+         $21,
+         $10::NUMERIC(14,2),
+         $12::NUMERIC(14,2),
+         $14::NUMERIC(14,2),
+         $16::NUMERIC(14,2),
+         $22::NUMERIC(14,2),
+         $23
        )
        RETURNING
          id,
          tenant_id,
          branch_id,
+         order_ticket_id,
          sale_type,
          status,
          payment_method,
@@ -476,6 +501,7 @@ export class V0KhqrPaymentRepository {
       [
         input.tenantId,
         input.branchId,
+        input.orderTicketId ?? null,
         input.tenderCurrency,
         input.tenderAmount,
         input.khqrMd5,
@@ -505,6 +531,7 @@ export class V0KhqrPaymentRepository {
     tenantId: string;
     branchId: string;
     saleId: string;
+    orderTicketLineId?: string | null;
     line: V0SaleKhqrLineSnapshotInput;
   }): Promise<void> {
     await this.db.query(
@@ -525,19 +552,20 @@ export class V0KhqrPaymentRepository {
          $1,
          $2,
          $3,
-         NULL,
          $4::UUID,
-         $5,
-         $6::NUMERIC(14,2),
-         $7::NUMERIC(12,3),
-         $8::NUMERIC(14,2),
+         $5::UUID,
+         $6,
+         $7::NUMERIC(14,2),
+         $8::NUMERIC(12,3),
          $9::NUMERIC(14,2),
-         $10::JSONB
+         $10::NUMERIC(14,2),
+         $11::JSONB
        )`,
       [
         input.tenantId,
         input.branchId,
         input.saleId,
+        input.orderTicketLineId ?? null,
         input.line.menuItemId,
         input.line.menuItemNameSnapshot,
         input.line.unitPrice,
@@ -547,6 +575,137 @@ export class V0KhqrPaymentRepository {
         JSON.stringify(input.line.modifierSnapshot ?? []),
       ]
     );
+  }
+
+  async createDirectCheckoutOrderTicket(input: {
+    tenantId: string;
+    branchId: string;
+    openedByAccountId: string;
+  }): Promise<V0DirectCheckoutOrderTicketRow> {
+    const result = await this.db.query<V0DirectCheckoutOrderTicketRow>(
+      `INSERT INTO v0_order_tickets (
+         tenant_id,
+         branch_id,
+         opened_by_account_id,
+         source_mode
+       )
+       VALUES ($1, $2, $3, 'DIRECT_CHECKOUT')
+       RETURNING id`,
+      [input.tenantId, input.branchId, input.openedByAccountId]
+    );
+    return result.rows[0];
+  }
+
+  async createDirectCheckoutOrderTicketLine(input: {
+    tenantId: string;
+    branchId: string;
+    orderTicketId: string;
+    menuItemId: string;
+    menuItemNameSnapshot: string;
+    unitPrice: number;
+    quantity: number;
+    lineSubtotal: number;
+    modifierSnapshot?: unknown;
+    note?: string | null;
+  }): Promise<V0DirectCheckoutOrderTicketLineRow> {
+    const result = await this.db.query<V0DirectCheckoutOrderTicketLineRow>(
+      `INSERT INTO v0_order_ticket_lines (
+         tenant_id,
+         branch_id,
+         order_ticket_id,
+         menu_item_id,
+         menu_item_name_snapshot,
+         unit_price,
+         quantity,
+         line_subtotal,
+         modifier_snapshot,
+         note
+       )
+       VALUES (
+         $1,
+         $2,
+         $3,
+         $4::UUID,
+         $5,
+         $6::NUMERIC(14,2),
+         $7::NUMERIC(12,3),
+         $8::NUMERIC(14,2),
+         $9::JSONB,
+         $10
+       )
+       RETURNING id`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.orderTicketId,
+        input.menuItemId,
+        input.menuItemNameSnapshot,
+        input.unitPrice,
+        input.quantity,
+        input.lineSubtotal,
+        JSON.stringify(input.modifierSnapshot ?? []),
+        input.note ?? null,
+      ]
+    );
+    return result.rows[0];
+  }
+
+  async markDirectCheckoutOrderCheckedOut(input: {
+    tenantId: string;
+    branchId: string;
+    orderTicketId: string;
+    checkedOutByAccountId: string;
+  }): Promise<boolean> {
+    const result = await this.db.query<{ id: string }>(
+      `UPDATE v0_order_tickets
+       SET status = 'CHECKED_OUT',
+           checked_out_at = NOW(),
+           checked_out_by_account_id = $4,
+           updated_at = NOW()
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3
+         AND status = 'OPEN'
+       RETURNING id`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.orderTicketId,
+        input.checkedOutByAccountId,
+      ]
+    );
+    return Boolean(result.rows[0]?.id);
+  }
+
+  async createDirectCheckoutFulfillmentBatch(input: {
+    tenantId: string;
+    branchId: string;
+    orderTicketId: string;
+    status: V0OrderFulfillmentBatchStatus;
+    createdByAccountId: string;
+    note?: string | null;
+  }): Promise<V0DirectCheckoutFulfillmentBatchRow> {
+    const result = await this.db.query<V0DirectCheckoutFulfillmentBatchRow>(
+      `INSERT INTO v0_order_fulfillment_batches (
+         tenant_id,
+         branch_id,
+         order_ticket_id,
+         status,
+         note,
+         created_by_account_id
+       )
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.orderTicketId,
+        input.status,
+        input.note ?? null,
+        input.createdByAccountId,
+      ]
+    );
+    return result.rows[0];
   }
 
   async markPaymentIntentFinalized(input: {

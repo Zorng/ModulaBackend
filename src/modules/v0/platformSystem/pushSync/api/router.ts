@@ -1,12 +1,22 @@
 import { Router, type Response } from "express";
 import type { PoolClient } from "pg";
 import { requireV0Auth, type V0AuthRequest } from "../../../auth/api/middleware.js";
+import { V0AuditService } from "../../../audit/app/service.js";
+import { V0AuditRepository } from "../../../audit/infra/repository.js";
 import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
+import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
 import { hashJsonPayload } from "../../../../../shared/utils/hash.js";
 import { V0AttendanceService } from "../../../hr/attendance/app/service.js";
 import { V0AttendanceRepository } from "../../../hr/attendance/infra/repository.js";
 import { V0CashSessionError, V0CashSessionService } from "../../../posOperation/cashSession/app/service.js";
 import { V0CashSessionRepository } from "../../../posOperation/cashSession/infra/repository.js";
+import {
+  buildSaleOrderCommandDedupeKey,
+  V0_SALE_ORDER_ACTION_KEYS,
+  V0_SALE_ORDER_EVENT_TYPES,
+} from "../../../posOperation/saleOrder/app/command-contract.js";
+import { V0SaleOrderError, V0SaleOrderService } from "../../../posOperation/saleOrder/app/service.js";
+import { V0SaleOrderRepository } from "../../../posOperation/saleOrder/infra/repository.js";
 import {
   V0KhqrPaymentError,
   V0KhqrPaymentService,
@@ -16,6 +26,7 @@ import {
   type V0KhqrPaymentProvider,
 } from "../../khqrPayment/app/payment-provider.js";
 import { V0KhqrPaymentRepository } from "../../khqrPayment/infra/repository.js";
+import { V0PullSyncRepository } from "../../pullSync/infra/repository.js";
 import {
   V0_PUSH_SYNC_ACTION_KEYS,
   V0_PUSH_SYNC_OPERATION_TYPES,
@@ -361,6 +372,9 @@ async function applyOperation(input: {
 
   try {
     switch (input.operation.operationType) {
+      case "checkout.cash.finalize": {
+        return await applyCashCheckoutReplay(input);
+      }
       case "sale.finalize": {
         const paymentMethod = normalizePaymentMethod(
           input.operation.payload.paymentMethod ??
@@ -483,6 +497,13 @@ async function applyOperation(input: {
         failureMessage: error.message,
       };
     }
+    if (error instanceof V0SaleOrderError) {
+      return {
+        status: "FAILED",
+        failureCode: error.code ?? "OFFLINE_SYNC_OPERATION_REJECTED",
+        failureMessage: error.message,
+      };
+    }
     if (error instanceof V0KhqrPaymentError) {
       return {
         status: "FAILED",
@@ -503,6 +524,165 @@ async function applyOperation(input: {
       failureMessage: error instanceof Error ? error.message : "offline replay failed",
     };
   }
+}
+
+async function applyCashCheckoutReplay(input: {
+  client: PoolClient;
+  actor: ActorScope;
+  operation: ReplayOperation;
+}): Promise<ApplyOutcome> {
+  const saleOrderService = new V0SaleOrderService(new V0SaleOrderRepository(input.client));
+  const auditService = new V0AuditService(new V0AuditRepository(input.client));
+  const outboxRepo = new V0CommandOutboxRepository(input.client);
+  const syncRepo = new V0PullSyncRepository(input.client);
+  const commandData = await saleOrderService.cashFinalizeFromOfflineSnapshot({
+    actor: input.actor,
+    body: input.operation.payload,
+    occurredAt: input.operation.occurredAt,
+  });
+  const entityId = typeof (commandData as { id?: unknown }).id === "string"
+    ? ((commandData as { id: string }).id)
+    : null;
+  if (!entityId) {
+    throw new Error("offline cash checkout replay did not return sale id");
+  }
+
+  const idempotencyKey = `push-sync:${input.operation.clientOpId}`;
+  const dedupeKey = buildSaleOrderCommandDedupeKey(
+    V0_SALE_ORDER_ACTION_KEYS.checkoutCashFinalize,
+    idempotencyKey,
+    "SUCCESS",
+    []
+  );
+  const replayMetadata = {
+    endpoint: "/v0/sync/push",
+    replayed: true,
+    clientOpId: input.operation.clientOpId,
+    offlineOccurredAt: input.operation.occurredAt.toISOString(),
+    deviceId: input.operation.deviceId,
+  };
+
+  await auditService.recordEvent({
+    tenantId: input.actor.tenantId,
+    branchId: input.actor.branchId,
+    actorAccountId: input.actor.accountId,
+    actionKey: V0_SALE_ORDER_ACTION_KEYS.checkoutCashFinalize,
+    outcome: "SUCCESS",
+    reasonCode: null,
+    entityType: "sale",
+    entityId,
+    dedupeKey,
+    metadata: replayMetadata,
+  });
+
+  const outbox = await outboxRepo.insertEvent({
+    tenantId: input.actor.tenantId,
+    branchId: input.actor.branchId,
+    actionKey: V0_SALE_ORDER_ACTION_KEYS.checkoutCashFinalize,
+    eventType: V0_SALE_ORDER_EVENT_TYPES.checkoutCashFinalized,
+    actorType: "ACCOUNT",
+    actorId: input.actor.accountId,
+    entityType: "sale",
+    entityId,
+    outcome: "SUCCESS",
+    dedupeKey,
+    payload: replayMetadata,
+    occurredAt: input.operation.occurredAt,
+  });
+
+  if (outbox.inserted && outbox.row) {
+    await syncRepo.appendChange({
+      tenantId: input.actor.tenantId,
+      branchId: input.actor.branchId,
+      moduleKey: "saleOrder",
+      entityType: "sale",
+      entityId,
+      operation: "UPSERT",
+      revision: `saleOrder:${outbox.row.id}`,
+      data: toSyncData(commandData),
+      changedAt: outbox.row.occurred_at,
+      sourceOutboxId: outbox.row.id,
+    });
+
+    const extraChanges = collectExtraSyncChanges(commandData);
+    for (const extra of extraChanges) {
+      await syncRepo.appendChange({
+        tenantId: input.actor.tenantId,
+        branchId: input.actor.branchId,
+        moduleKey: "saleOrder",
+        entityType: extra.entityType,
+        entityId: extra.entityId,
+        operation: "UPSERT",
+        revision: `saleOrder:${outbox.row.id}:${extra.entityType}`,
+        data: extra.data,
+        changedAt: outbox.row.occurred_at,
+        sourceOutboxId: outbox.row.id,
+      });
+    }
+  }
+
+  return {
+    status: "APPLIED",
+    resultRefId: entityId,
+  };
+}
+
+function toSyncData(data: unknown): Record<string, unknown> {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    return data as Record<string, unknown>;
+  }
+  return { value: data };
+}
+
+function collectExtraSyncChanges(
+  commandData: unknown
+): Array<{ entityType: string; entityId: string; data: Record<string, unknown> }> {
+  if (!commandData || typeof commandData !== "object" || Array.isArray(commandData)) {
+    return [];
+  }
+  const record = commandData as Record<string, unknown>;
+  const extra: Array<{ entityType: string; entityId: string; data: Record<string, unknown> }> = [];
+
+  collectArrayEntity(record.lines, "sale_line", extra);
+  collectArrayEntity(record.orderLines, "order_ticket_line", extra);
+  collectArrayEntity(record.addedLines, "order_ticket_line", extra);
+  collectArrayEntity(record.fulfillmentBatches, "order_fulfillment_batch", extra);
+  collectArrayEntity(record.manualPaymentClaims, "order_manual_payment_claim", extra);
+  collectEntity(record.order, "order_ticket", extra);
+  collectEntity(record.manualPaymentClaim, "order_manual_payment_claim", extra);
+  collectEntity(record.voidRequest, "void_request", extra);
+  collectEntity(record.batch, "order_fulfillment_batch", extra);
+
+  return extra;
+}
+
+function collectArrayEntity(
+  value: unknown,
+  entityType: string,
+  extra: Array<{ entityType: string; entityId: string; data: Record<string, unknown> }>
+): void {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  for (const item of value) {
+    collectEntity(item, entityType, extra);
+  }
+}
+
+function collectEntity(
+  value: unknown,
+  entityType: string,
+  extra: Array<{ entityType: string; entityId: string; data: Record<string, unknown> }>
+): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id : null;
+  if (!id) {
+    return;
+  }
+  extra.push({ entityType, entityId: id, data: record });
 }
 
 function mapAttendanceMessageToCode(message: string): string {
@@ -726,8 +906,11 @@ function buildResolutionHint(code: string): ReplayResolutionHint {
     normalized === "NO_MEMBERSHIP" ||
     normalized === "NO_BRANCH_ACCESS" ||
     normalized === "PERMISSION_DENIED" ||
+    normalized === "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION" ||
     normalized === "SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED" ||
-    normalized === "SALE_FINALIZE_KHQR_PROOF_MISMATCH"
+    normalized === "SALE_FINALIZE_KHQR_PROOF_MISMATCH" ||
+    normalized === "SALE_CASH_TENDER_AMOUNT_INVALID" ||
+    normalized === "SALE_CASH_RECEIVED_INSUFFICIENT"
   ) {
     return {
       category: "MANUAL",

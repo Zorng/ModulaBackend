@@ -22,7 +22,14 @@ import { V0KhqrPaymentRepository } from "../infra/repository.js";
 import type { V0KhqrPaymentProvider } from "../app/payment-provider.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
 import { V0AuditService } from "../../../audit/app/service.js";
-import { V0SaleOrderRepository } from "../../../posOperation/saleOrder/infra/repository.js";
+import {
+  V0SaleOrderRepository,
+  type V0OrderFulfillmentBatchRow,
+  type V0OrderTicketLineRow,
+  type V0OrderTicketRow,
+  type V0SaleLineRow,
+  type V0SaleRow,
+} from "../../../posOperation/saleOrder/infra/repository.js";
 import { buildSaleReceiptPreview } from "../../../posOperation/receipt/app/preview.js";
 
 type KhqrResponseBody =
@@ -465,6 +472,39 @@ async function appendSaleFinalizedSideEffects(input: {
   const auditService = new V0AuditService(new V0AuditRepository(input.client));
   const outboxRepo = new V0CommandOutboxRepository(input.client);
   const syncRepo = new V0PullSyncRepository(input.client);
+  const saleOrderRepo = new V0SaleOrderRepository(input.client);
+
+  const saleRow = await saleOrderRepo.getSaleById({
+    tenantId,
+    branchId,
+    saleId: input.sale.saleId,
+  });
+  const saleLines = saleRow
+    ? await saleOrderRepo.listSaleLines({
+        tenantId,
+        saleId: saleRow.id,
+      })
+    : [];
+  const orderRow =
+    saleRow?.order_ticket_id
+      ? await saleOrderRepo.getOrderTicketById({
+          tenantId,
+          branchId,
+          orderTicketId: saleRow.order_ticket_id,
+        })
+      : null;
+  const orderLines = orderRow
+    ? await saleOrderRepo.listOrderTicketLines({
+        tenantId,
+        orderTicketId: orderRow.id,
+      })
+    : [];
+  const fulfillmentBatches = orderRow
+    ? await saleOrderRepo.listFulfillmentBatchesByOrder({
+        tenantId,
+        orderTicketId: orderRow.id,
+      })
+    : [];
 
   await auditService.recordEvent({
     tenantId,
@@ -503,26 +543,196 @@ async function appendSaleFinalizedSideEffects(input: {
       entityId: input.sale.saleId,
       operation: "UPSERT",
       revision: `saleOrder:${outbox.row.id}`,
-      data: {
-        id: input.sale.saleId,
-        status: input.sale.status,
-        paymentMethod: input.sale.paymentMethod,
-        tenderCurrency: input.sale.tenderCurrency,
-        tenderAmount: input.sale.tenderAmount,
-        paidAmount: input.sale.paidAmount,
-        grandTotalUsd: input.sale.grandTotalUsd,
-        grandTotalKhr: input.sale.grandTotalKhr,
-        khqrMd5: input.sale.khqrMd5,
-        khqrToAccountId: input.sale.khqrToAccountId,
-        khqrHash: input.sale.khqrHash,
-        khqrConfirmedAt: input.sale.khqrConfirmedAt,
-        finalizedAt: input.sale.finalizedAt,
-        finalizedByAccountId: input.sale.finalizedByAccountId,
-      },
+      data: saleRow ? mapSaleSyncData(saleRow) : mapFinalizedSaleSyncData(input.sale),
       changedAt: outbox.row.occurred_at,
       sourceOutboxId: outbox.row.id,
     });
+
+    for (const saleLine of saleLines) {
+      await syncRepo.appendChange({
+        tenantId,
+        branchId,
+        moduleKey: "saleOrder",
+        entityType: "sale_line",
+        entityId: saleLine.id,
+        operation: "UPSERT",
+        revision: `saleOrder:${outbox.row.id}`,
+        data: mapSaleLineSyncData(saleLine),
+        changedAt: outbox.row.occurred_at,
+        sourceOutboxId: outbox.row.id,
+      });
+    }
+
+    if (orderRow) {
+      await syncRepo.appendChange({
+        tenantId,
+        branchId,
+        moduleKey: "saleOrder",
+        entityType: "order_ticket",
+        entityId: orderRow.id,
+        operation: "UPSERT",
+        revision: `saleOrder:${outbox.row.id}`,
+        data: mapOrderSyncData(orderRow),
+        changedAt: outbox.row.occurred_at,
+        sourceOutboxId: outbox.row.id,
+      });
+
+      for (const orderLine of orderLines) {
+        await syncRepo.appendChange({
+          tenantId,
+          branchId,
+          moduleKey: "saleOrder",
+          entityType: "order_ticket_line",
+          entityId: orderLine.id,
+          operation: "UPSERT",
+          revision: `saleOrder:${outbox.row.id}`,
+          data: mapOrderLineSyncData(orderLine),
+          changedAt: outbox.row.occurred_at,
+          sourceOutboxId: outbox.row.id,
+        });
+      }
+
+      for (const fulfillmentBatch of fulfillmentBatches) {
+        await syncRepo.appendChange({
+          tenantId,
+          branchId,
+          moduleKey: "saleOrder",
+          entityType: "order_fulfillment_batch",
+          entityId: fulfillmentBatch.id,
+          operation: "UPSERT",
+          revision: `saleOrder:${outbox.row.id}`,
+          data: mapFulfillmentBatchSyncData(fulfillmentBatch),
+          changedAt: outbox.row.occurred_at,
+          sourceOutboxId: outbox.row.id,
+        });
+      }
+    }
   }
+}
+
+function mapFinalizedSaleSyncData(sale: V0KhqrFinalizedSaleView): Record<string, unknown> {
+  return {
+    id: sale.saleId,
+    orderId: sale.orderId,
+    status: sale.status,
+    saleType: sale.saleType,
+    paymentMethod: sale.paymentMethod,
+    tenderCurrency: sale.tenderCurrency,
+    tenderAmount: sale.tenderAmount,
+    paidAmount: sale.paidAmount,
+    grandTotalUsd: sale.grandTotalUsd,
+    grandTotalKhr: sale.grandTotalKhr,
+    khqrMd5: sale.khqrMd5,
+    khqrToAccountId: sale.khqrToAccountId,
+    khqrHash: sale.khqrHash,
+    khqrConfirmedAt: sale.khqrConfirmedAt,
+    finalizedAt: sale.finalizedAt,
+    finalizedByAccountId: sale.finalizedByAccountId,
+  };
+}
+
+function mapSaleSyncData(row: V0SaleRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    branchId: row.branch_id,
+    orderId: row.order_ticket_id,
+    status: row.status,
+    saleType: row.sale_type,
+    paymentMethod: row.payment_method,
+    tenderCurrency: row.tender_currency,
+    tenderAmount: row.tender_amount,
+    cashReceivedTenderAmount: row.cash_received_tender_amount,
+    cashChangeTenderAmount: row.cash_change_tender_amount,
+    khqrMd5: row.khqr_md5,
+    khqrToAccountId: row.khqr_to_account_id,
+    khqrHash: row.khqr_hash,
+    khqrConfirmedAt: row.khqr_confirmed_at ? row.khqr_confirmed_at.toISOString() : null,
+    subtotalUsd: row.subtotal_usd,
+    subtotalKhr: row.subtotal_khr,
+    discountUsd: row.discount_usd,
+    discountKhr: row.discount_khr,
+    vatUsd: row.vat_usd,
+    vatKhr: row.vat_khr,
+    grandTotalUsd: row.grand_total_usd,
+    grandTotalKhr: row.grand_total_khr,
+    saleFxRateKhrPerUsd: row.sale_fx_rate_khr_per_usd,
+    saleKhrRoundingEnabled: row.sale_khr_rounding_enabled,
+    saleKhrRoundingMode: row.sale_khr_rounding_mode,
+    saleKhrRoundingGranularity: row.sale_khr_rounding_granularity,
+    finalizedAt: row.finalized_at ? row.finalized_at.toISOString() : null,
+    finalizedByAccountId: row.finalized_by_account_id,
+    voidedAt: row.voided_at ? row.voided_at.toISOString() : null,
+    voidReason: row.void_reason,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function mapSaleLineSyncData(row: V0SaleLineRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    saleId: row.sale_id,
+    orderLineId: row.order_ticket_line_id,
+    menuItemId: row.menu_item_id,
+    menuItemNameSnapshot: row.menu_item_name_snapshot,
+    unitPrice: row.unit_price,
+    quantity: row.quantity,
+    lineDiscountAmount: row.line_discount_amount,
+    lineTotalAmount: row.line_total_amount,
+    modifierSnapshot: row.modifier_snapshot,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function mapOrderSyncData(row: V0OrderTicketRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    branchId: row.branch_id,
+    openedByAccountId: row.opened_by_account_id,
+    status: row.status,
+    sourceMode: row.source_mode,
+    checkedOutAt: row.checked_out_at ? row.checked_out_at.toISOString() : null,
+    checkedOutByAccountId: row.checked_out_by_account_id,
+    cancelledAt: row.cancelled_at ? row.cancelled_at.toISOString() : null,
+    cancelledByAccountId: row.cancelled_by_account_id,
+    cancelReason: row.cancel_reason,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function mapOrderLineSyncData(row: V0OrderTicketLineRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    orderId: row.order_ticket_id,
+    menuItemId: row.menu_item_id,
+    menuItemNameSnapshot: row.menu_item_name_snapshot,
+    unitPrice: row.unit_price,
+    quantity: row.quantity,
+    lineSubtotal: row.line_subtotal,
+    modifierSnapshot: row.modifier_snapshot,
+    note: row.note,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function mapFulfillmentBatchSyncData(row: V0OrderFulfillmentBatchRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    branchId: row.branch_id,
+    orderId: row.order_ticket_id,
+    status: row.status,
+    note: row.note,
+    createdByAccountId: row.created_by_account_id,
+    completedAt: row.completed_at?.toISOString() ?? null,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
 }
 
 function parseRegisterBody(body: unknown): {

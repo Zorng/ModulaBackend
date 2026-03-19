@@ -14,27 +14,43 @@ Implementation status:
   - `GET /v0/checkout/khqr/intents/:intentId`
   - `POST /v0/checkout/khqr/intents/:intentId/cancel`
 - Pay-later lane remains on `/v0/orders*` (open ticket lifecycle).
-- Push replay remains partial for sale/order writes.
+- Push replay remains partial for sale/order writes, but offline pay-first cash replay is now implemented via `checkout.cash.finalize`.
 
 Frontend rollout note:
 - Treat all listed `/v0/orders` + `/v0/sales` endpoints as online-ready.
 - Always send `Idempotency-Key` for write endpoints.
-- Do not route full sale/order flow through `pushSync` yet.
+- Do not route general sale/order flow through `pushSync` yet.
+- Supported exception: offline pay-first cash replay uses push sync operation `checkout.cash.finalize`.
+- Cash quick checkout now materializes an order anchor and starts fulfillment at `PENDING`.
+- Quick-pay KHQR remains payment-intent-first at initiate, but successful confirmation now materializes an order anchor and starts fulfillment at `PENDING`.
 
 Offline-first clarification:
-- Current backend does not support offline replay for full sale/order settlement yet.
+- Current backend supports offline replay for pay-first cash settlement via push sync operation `checkout.cash.finalize`.
+- Full sale/order replay still remains partial:
+  - pay-later/order-mutation writes do not support offline replay
+  - general sale settlement should not be routed through push sync yet
 - Offline-first direction for this module is order-first:
   - capture `OPEN` order tickets offline
   - settle/finalize payment online when connectivity returns
 - KHQR remains online-only and must not be modeled as cash during outages.
-- If outage/manual-proof fallback is introduced later, it should be a separate manual external-payment-claim lane, not a reinterpretation of normal cash checkout.
+- If outage/manual-proof fallback is used, it must be a separate manual external-payment-claim lane, not a reinterpretation of normal cash checkout.
+- For outage static-QR / external-transfer handling, staff must capture a photo of the customer's transaction proof during downtime and submit it as claim evidence when connectivity returns.
 
 Frontend cutover map (online lane):
+- Fulfillment queue:
+  - `GET /v0/orders?view=FULFILLMENT_ACTIVE`
+- Pay-later management queue:
+  - `GET /v0/orders?view=PAY_LATER_EDITABLE`
+- Manual-claim review queue:
+  - `GET /v0/orders?view=MANUAL_CLAIM_REVIEW`
 - Cashier checkout:
   - `POST /v0/checkout/cash/finalize`
   - `POST /v0/checkout/khqr/initiate`
   - `GET /v0/checkout/khqr/intents/:intentId`
   - `POST /v0/checkout/khqr/intents/:intentId/cancel`
+- Fulfillment/kitchen queue:
+  - `GET /v0/orders?view=FULFILLMENT_ACTIVE`
+  - `PATCH /v0/orders/:orderId/fulfillment`
 - Pay-later ticket lane:
   - `GET|POST /v0/orders*`
   - `PATCH /v0/orders/:orderId/fulfillment`
@@ -54,8 +70,13 @@ Use this rule to avoid ambiguous behavior:
 1) **Not pay-later (pay-now checkout)**
 - Source: local cart
 - Endpoints: `/v0/checkout/cash/finalize` or `/v0/checkout/khqr/*`
-- Result: on successful payment commit, backend records a **FINALIZED sale**
-- Order ticket: **not created**
+- `POST /v0/checkout/cash/finalize`:
+  - backend records a **FINALIZED sale**
+  - backend also records a **CHECKED_OUT order** for fulfillment continuity
+- `POST /v0/checkout/khqr/*`:
+  - backend still starts from payment intent lifecycle at initiate
+  - on successful KHQR confirmation/finalization, backend records a **FINALIZED sale**
+  - backend also records a **CHECKED_OUT order** for fulfillment continuity
 
 2) **Pay-later**
 - Source: open ticket workflow
@@ -69,6 +90,7 @@ Use this rule to avoid ambiguous behavior:
 - Result: backend records an `OPEN` order ticket reserved for later manual claim review
 - Normal `saleAllowPayLater` policy is not used for this source mode
 - Branch must enable `saleAllowManualExternalPaymentClaim`
+- If the claim comes from outage static-QR / external-transfer handling, staff should capture transaction photo evidence during downtime and attach/upload it when later submitting the claim online.
 
 3) **Pay-later settlement**
 - Endpoint: `/v0/orders/:orderId/checkout` (settlement from an existing open ticket)
@@ -119,11 +141,48 @@ Response `200`:
 {
   "success": true,
   "data": {
-    "sale": { "id": "uuid", "status": "FINALIZED", "saleType": "DINE_IN" },
+    "id": "sale-uuid",
+    "orderId": "order-uuid",
+    "status": "FINALIZED",
+    "saleType": "TAKEAWAY",
+    "paymentMethod": "CASH",
+    "tenderCurrency": "USD",
+    "tenderAmount": 8,
+    "cashReceivedTenderAmount": 10,
+    "cashChangeTenderAmount": 2,
+    "subtotalUsd": 8,
+    "subtotalKhr": 32800,
+    "discountUsd": 0,
+    "discountKhr": 0,
+    "vatUsd": 0,
+    "vatKhr": 0,
+    "grandTotalUsd": 8,
+    "grandTotalKhr": 32800,
+    "saleFxRateKhrPerUsd": 4100,
+    "saleKhrRoundingEnabled": true,
+    "saleKhrRoundingMode": "NEAREST",
+    "saleKhrRoundingGranularity": "100",
+    "finalizedAt": "2026-02-23T18:00:00.000Z",
+    "order": {
+      "id": "order-uuid",
+      "status": "CHECKED_OUT",
+      "sourceMode": "DIRECT_CHECKOUT",
+      "checkedOutAt": "2026-02-23T18:00:00.000Z"
+    },
+    "batch": {
+      "id": "batch-uuid",
+      "orderId": "order-uuid",
+      "status": "PENDING",
+      "note": null,
+      "completedAt": null,
+      "createdAt": "2026-02-23T18:00:00.000Z",
+      "updatedAt": "2026-02-23T18:00:00.000Z"
+    },
+    "orderLines": [],
     "lines": [],
     "receipt": {
-      "receiptId": "uuid",
-      "saleId": "uuid",
+      "receiptId": "sale-uuid",
+      "saleId": "sale-uuid",
       "statusDisplay": "NORMAL",
       "issuedAt": "2026-02-23T18:00:00.000Z",
       "saleSnapshot": {
@@ -150,9 +209,11 @@ Response `200`:
 
 Rules:
 - Server reprices from catalog/policy and ignores client price snapshots.
-- Atomic write: sale + sale lines + side effects (inventory/cash movement/outbox).
+- Atomic write: checked-out order + order lines + sale + sale lines + side effects (inventory/cash movement/outbox).
 - `saleType` defaults to `DINE_IN` when omitted.
 - For `paymentMethod = CASH`, `tenderAmount` must match grand total and `cashReceivedTenderAmount` must be `>= tenderAmount`.
+- Successful cash finalize materializes `order.sourceMode = DIRECT_CHECKOUT` and creates an initial fulfillment batch with `status = PENDING`.
+- The response includes that initial fulfillment batch as `data.batch`.
 - Finalized responses include `data.receipt` for local immediate print (no extra receipt API call required).
 - For cash receipts, use `cashReceivedTenderAmount` and `cashChangeTenderAmount` from the receipt payload.
 
@@ -214,6 +275,9 @@ Rules:
 - No `sale` row is created at initiate.
 - Intent stores immutable checkout snapshot for later finalization.
 - `saleType` defaults to `DINE_IN` when omitted and is applied when sale is materialized after KHQR confirmation.
+- Successful KHQR confirmation/finalization materializes `CHECKED_OUT order + order lines + sale + sale lines` atomically.
+- Successful KHQR confirmation/finalization also creates an initial fulfillment batch with `status = PENDING`.
+- The finalized sale is linked to `order.sourceMode = DIRECT_CHECKOUT`, so fulfillment can continue on `PATCH /v0/orders/:orderId/fulfillment`.
 
 #### 3) Read intent status
 `GET /v0/checkout/khqr/intents/:intentId`
@@ -290,6 +354,10 @@ Content-Type: application/json
 
 ```ts
 type OrderStatus = "OPEN" | "CHECKED_OUT" | "CANCELLED";
+type OrderSourceMode =
+  | "STANDARD"
+  | "MANUAL_EXTERNAL_PAYMENT_CLAIM"
+  | "DIRECT_CHECKOUT";
 type SaleStatus = "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
 type VoidRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
 type SaleType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
@@ -619,6 +687,12 @@ Rules:
 - order must still have no sale
 - order must have at least one line
 - if a pending claim already exists, backend returns that pending claim instead of creating a second pending row
+- `proofImageUrl` is the submitted evidence reference.
+- For outage/static-QR handling, the expected reconnect flow is:
+  1. capture the customer's transaction photo locally during downtime
+  2. after connectivity returns, upload it via `POST /v0/media/images/upload` with `area = payment-proof`
+  3. submit the returned `imageUrl` as `proofImageUrl`
+- When `proofImageUrl` references a pending `payment-proof` upload for the same tenant, backend marks that upload as `LINKED` to the created manual claim.
 
 ---
 
@@ -695,7 +769,7 @@ Response example (`200`):
 ---
 
 ### 10) List orders
-`GET /v0/orders?status=OPEN&limit=20&offset=0`  
+`GET /v0/orders?status=OPEN|CHECKED_OUT|CANCELLED|ALL&sourceMode=STANDARD|DIRECT_CHECKOUT|MANUAL_EXTERNAL_PAYMENT_CLAIM|ALL&view=FULFILLMENT_ACTIVE|PAY_LATER_EDITABLE|MANUAL_CLAIM_REVIEW|ALL&limit=20&offset=0`  
 Action key: `order.list`
 
 Response example (`200`):
@@ -708,6 +782,19 @@ Response example (`200`):
         "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
         "status": "OPEN",
         "sourceMode": "STANDARD",
+        "fulfillmentStatus": "PREPARING",
+        "totalUsdExact": 5,
+        "linesPreview": [
+          {
+            "menuItemNameSnapshot": "Iced Latte",
+            "quantity": 2,
+            "modifierLabels": ["Less ice"]
+          }
+        ],
+        "checkedOutAt": null,
+        "paymentMethod": null,
+        "manualPaymentClaimId": null,
+        "manualPaymentClaimStatus": null,
         "createdAt": "2026-02-22T10:00:00.000Z",
         "updatedAt": "2026-02-22T10:03:00.000Z"
       }
@@ -719,6 +806,32 @@ Response example (`200`):
   }
 }
 ```
+
+Rules:
+- `sourceMode` narrows the list to an exact order source mode when provided.
+- `view = FULFILLMENT_ACTIVE` returns orders that still need fulfillment work:
+  - includes `OPEN` and `CHECKED_OUT` orders
+  - excludes `CANCELLED` orders
+  - excludes orders whose latest fulfillment status is `COMPLETED` or `CANCELLED`
+  - can be combined with `status` and `sourceMode` as additional narrowing filters
+- `view = PAY_LATER_EDITABLE` returns the mutable unpaid pay-later queue:
+  - includes only `OPEN` orders
+  - includes only `sourceMode = STANDARD`
+  - excludes orders whose latest manual payment claim already exists
+  - can be combined with `status` and `sourceMode` as additional narrowing filters
+- `view = MANUAL_CLAIM_REVIEW` returns the payment-proof review queue:
+  - includes only `OPEN` orders
+  - includes `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`
+  - also includes any open order whose latest manual payment claim exists
+  - can be combined with `status` and `sourceMode` as additional narrowing filters
+- `fulfillmentStatus` reflects the latest fulfillment batch status for the order.
+- `fulfillmentStatus = null` when no fulfillment batch has been created yet.
+- Quick-pay `DIRECT_CHECKOUT` orders start with `fulfillmentStatus = PENDING` immediately after successful cash finalize or KHQR finalization.
+- `totalUsdExact` is the exact USD total computed from current order lines (`sum(lineSubtotal)`).
+- `linesPreview` is a lightweight line summary for list rendering and includes readable modifier labels when present.
+- `checkedOutAt` and `paymentMethod` are `null` until the order has an associated sale/checkout state.
+- `manualPaymentClaimId` and `manualPaymentClaimStatus` reflect the latest manual payment claim for the order, or `null` when no claim exists.
+- `sourceMode = DIRECT_CHECKOUT` indicates a pay-now order anchor materialized by quick cash or quick KHQR checkout finalization.
 
 ---
 
@@ -1143,8 +1256,10 @@ Response example (`200`):
 ## Push Sync + Pull Sync Notes
 
 - Replay-enabled target operations:
-  - `sale.finalize`
+  - `checkout.cash.finalize`
   - `sale.void.execute`
+- Accepted but not yet replay-implemented:
+  - `sale.finalize` (currently returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`; KHQR confirmation checks still run before that fallback)
 - Online-only operations (replay returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`):
   - `order.place`
   - `order.items.add`
@@ -1174,6 +1289,8 @@ Response example (`200`):
 - `ORDER_PAY_LATER_DISABLED`
 - `ORDER_CANCEL_NOT_ALLOWED`
 - `ORDER_CANCEL_REASON_REQUIRED`
+- `ORDER_LIST_VIEW_INVALID`
+- `ORDER_LIST_SOURCE_MODE_INVALID`
 - `VOID_REQUEST_NOT_FOUND`
 - `VOID_REQUEST_ALREADY_RESOLVED`
 - `VOID_APPROVAL_REQUIRED`

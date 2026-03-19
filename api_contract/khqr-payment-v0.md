@@ -52,6 +52,7 @@ Target response `200`:
     },
     "sale": {
       "id": "uuid",
+      "orderId": "uuid",
       "status": "FINALIZED",
       "saleType": "DINE_IN"
     }
@@ -268,6 +269,7 @@ Notes:
 - This endpoint only records attempt truth; it does not finalize sale.
 - `toAccountId` is resolved by backend from current branch KHQR receiver configuration.
 - `saleId` can be `null` for checkout-intent initiated KHQR flows until payment confirmation finalizes sale.
+- For checkout-intent initiated KHQR flows, successful finalization now also materializes a `DIRECT_CHECKOUT` order anchor and an initial `PENDING` fulfillment batch; the order link is exposed as `sale.orderId` on finalize responses.
 
 Errors:
 - `422` validation errors (`KHQR_ATTEMPT_PAYLOAD_INVALID`)
@@ -421,6 +423,7 @@ Success `200` (proof confirmed):
     },
     "sale": {
       "saleId": "uuid",
+      "orderId": "uuid",
       "status": "FINALIZED",
       "saleType": "DINE_IN"
     },
@@ -563,6 +566,7 @@ Success `200` (applied):
     },
     "sale": {
       "saleId": "uuid",
+      "orderId": "uuid",
       "status": "FINALIZED",
       "saleType": "DINE_IN"
     }

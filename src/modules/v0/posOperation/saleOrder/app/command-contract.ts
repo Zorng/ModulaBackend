@@ -74,6 +74,7 @@ export const V0_SALE_ORDER_IDEMPOTENCY_SCOPE = {
 } as const;
 
 export const V0_SALE_ORDER_PUSH_SYNC_OPERATION_TYPES = [
+  "checkout.cash.finalize",
   "sale.finalize",
   "sale.void.execute",
 ] as const;

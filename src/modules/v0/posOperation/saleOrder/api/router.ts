@@ -8,6 +8,7 @@ import {
   V0IdempotencyService,
 } from "../../../../../platform/idempotency/service.js";
 import { V0CommandOutboxRepository } from "../../../../../platform/outbox/repository.js";
+import { V0MediaUploadRepository } from "../../../../../platform/media-uploads/repository.js";
 import { V0PullSyncRepository } from "../../../platformSystem/pullSync/infra/repository.js";
 import { V0AuditService } from "../../../audit/app/service.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
@@ -180,6 +181,8 @@ export function createV0SaleOrderRouter(input: {
         const data = await input.service.listOrders({
           actor,
           status: asString(req.query?.status),
+          sourceMode: asString(req.query?.sourceMode),
+          view: asString(req.query?.view),
           limit: asNumber(req.query?.limit),
           offset: asNumber(req.query?.offset),
         });
@@ -685,7 +688,10 @@ export function createV0SaleOrderRouter(input: {
         },
         handler: async () => {
           const data = await inputWrite.transactionManager.withTransaction(async (client) => {
-            const txService = new V0SaleOrderService(new V0SaleOrderRepository(client));
+            const txService = new V0SaleOrderService(
+              new V0SaleOrderRepository(client),
+              new V0MediaUploadRepository(client)
+            );
             const txAuditService = new V0AuditService(new V0AuditRepository(client));
             const txOutboxRepository = new V0CommandOutboxRepository(client);
             const txSyncRepository = new V0PullSyncRepository(client);
@@ -840,6 +846,7 @@ function collectExtraSyncChanges(
   const extra: Array<{ entityType: string; entityId: string; data: Record<string, unknown> }> = [];
 
   collectArrayEntity(record.lines, "sale_line", extra);
+  collectArrayEntity(record.orderLines, "order_ticket_line", extra);
   collectArrayEntity(record.addedLines, "order_ticket_line", extra);
   collectArrayEntity(record.fulfillmentBatches, "order_fulfillment_batch", extra);
   collectArrayEntity(record.manualPaymentClaims, "order_manual_payment_claim", extra);

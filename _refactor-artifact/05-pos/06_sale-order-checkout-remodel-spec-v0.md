@@ -5,18 +5,22 @@ Owner context: POSOperation + PlatformSystem(KHQR)
 
 ## Purpose
 
-Define a flow-first remodel so checkout no longer depends on server-side cart/order ticket for normal cashier payment flow.
+Define a flow-first remodel so checkout no longer depends on a server-side
+pre-payment cart/order ticket for normal cashier payment flow, while still
+materializing an order anchor at payment commit when fulfillment tracking is
+required.
 
 ## Problem statement
 
-Current live flow persists:
-- `order_tickets` + `order_ticket_lines` before payment, and
-- `sales(status=PENDING)` before KHQR confirmation.
+Current live flow now splits in two:
+- pay-later uses `order_tickets` + `order_ticket_lines` before payment, and
+- pay-now can finalize directly into `sale` without an `order_ticket`.
 
 This causes:
 - abandoned pending sales when KHQR is never paid,
 - mismatch with target UX (cart should stay local until payment commit),
-- extra server-side pre-payment state noise.
+- extra server-side pre-payment state noise,
+- no fulfillment anchor for quick-pay checkout after sale finalization.
 
 ## Locked decisions
 
@@ -25,6 +29,8 @@ This causes:
 3. If webhook is missed, successful manual confirm must reconcile and finalize.
 4. **Late webhook is accepted** and must converge idempotently.
 5. Unpaid/expired/cancelled KHQR flow must **not** create sale.
+6. Pay-now checkout may skip the `OPEN` ticket phase, but must still create a
+   persisted order anchor once payment is committed so fulfillment can continue.
 
 ## Target UX flow
 
@@ -33,7 +39,7 @@ This causes:
 2. Cashier initiates KHQR.
 3. Customer scans/pays.
 4. Backend confirms (webhook or manual confirm fallback).
-5. Backend writes finalized sale.
+5. Backend writes finalized sale and a checked-out order anchor.
 
 ### Path B: Unsuccessful KHQR
 1. Cashier builds cart locally.
@@ -50,6 +56,16 @@ type SaleStatus = "FINALIZED" | "VOID_PENDING" | "VOIDED";
 
 Rule:
 - `sale` is a committed business event, never a pre-payment placeholder.
+
+### Order lifecycle
+```ts
+type OrderStatus = "OPEN" | "CHECKED_OUT" | "CANCELLED";
+```
+
+Rule:
+- `order` is the operational and fulfillment anchor.
+- Pay-later creates `OPEN` first, then settles later.
+- Pay-now creates `CHECKED_OUT` directly at payment commit.
 
 ### Payment intent lifecycle
 ```ts
@@ -82,8 +98,14 @@ Transition intent:
 - `khqr.intent.cancel` sets `CANCELLED` if not finalized.
 - Proof mismatch sets `FAILED_PROOF` (or keeps retryable status based on policy).
 
-### Sale creation trigger
-- Sale is created only in finalize transaction after confirmed proof (or immediate cash finalization).
+### Sale and order creation trigger
+- Sale is created only in finalize transaction after confirmed proof (or
+  immediate cash finalization).
+- If checkout comes from local cart pay-now flow, the same transaction also
+  creates:
+  - `order_ticket(status=CHECKED_OUT)`
+  - `order_ticket_lines`
+  - `sale_lines` linked back to those order lines
 
 ## Endpoint remodel (target contract)
 
@@ -98,8 +120,10 @@ Transition intent:
 - Keep `POST /v0/payments/khqr/confirm` as secondary/manual fallback.
 
 ### Existing order endpoints
-- `/v0/orders*` moves out of default cashier checkout lane.
-- Can remain for explicit order/fulfillment workflows if product still needs them.
+- `/v0/orders*` remains the explicit open-ticket/pay-later lane.
+- `PATCH /v0/orders/:orderId/fulfillment` remains the fulfillment write path.
+- Pay-now checkout still uses `/v0/checkout/*`, but successful finalization must
+  materialize a checked-out order so fulfillment stays order-based.
 
 ## Data model delta (target)
 
@@ -114,14 +138,23 @@ Add `v0_payment_intents` (name can vary, concept is fixed) with:
   - pricing metadata/policy version
 - audit fields: `created_at`, `updated_at`
 
-Rewire KHQR attempts/evidences to reference `payment_intent_id` (not `sale_id`) in target model.
+Rewire KHQR attempts/evidences to reference `payment_intent_id` (not `sale_id`)
+in target model.
+
+Extend order model for direct checkout materialization:
+- add a new `order_ticket.source_mode` for pay-now materialization
+  - suggested: `DIRECT_CHECKOUT`
+- ensure pay-now-created `sale.order_ticket_id` is populated
+- ensure pay-now-created `sale_lines.order_ticket_line_id` is populated
+- preserve compatibility for legacy sales where `order_ticket_id` is still null
 
 ## Atomicity and idempotency contract
 
-Finalization (KHQR confirmed) must be single routine shared by webhook/manual-confirm:
+Finalization (KHQR confirmed) must be single routine shared by
+webhook/manual-confirm:
 1. lock payment intent row,
 2. if already finalized, return existing sale (idempotent),
-3. create `sale + sale_lines + side effects` in one transaction,
+3. create `order_ticket + order_lines + sale + sale_lines + side effects` in one transaction,
 4. link `sale_id` on intent and set `FINALIZED`,
 5. append audit + outbox in same transaction.
 
@@ -147,9 +180,15 @@ Finalization (KHQR confirmed) must be single routine shared by webhook/manual-co
 ### Phase R3 — Cash finalize lane
 - Add direct cash finalize checkout from local cart payload.
 
-### Phase R4 — Deprecate server-cart checkout lane
-- Stop using `/v0/orders*` for cashier payment path.
-- Keep or remove order endpoints based on explicit fulfillment requirements.
+### Phase R4 — Direct checkout order materialization
+- On cash finalize, create checked-out order + lines + sale atomically.
+- On KHQR finalize, create checked-out order + lines + sale atomically.
+- Keep local cart client-side; do not reintroduce pre-payment server-cart state.
+
+### Phase R5 — Query and fulfillment convergence
+- Ensure quick-pay orders appear in order/fulfillment reads.
+- Keep fulfillment updates strictly order-based.
+- Keep `/v0/orders*` as the open-ticket/pay-later lane.
 
 ## Test matrix (must-pass before cutover)
 
@@ -159,6 +198,7 @@ Finalization (KHQR confirmed) must be single routine shared by webhook/manual-co
 4. Expired unpaid intent -> no sale.
 5. Late webhook after expired -> sale finalized once (accepted).
 6. Cancelled intent -> no sale, cannot finalize.
-7. Cash finalize -> sale finalized atomically with side effects.
-8. Pull sync emits finalized sale changes only for committed sale writes.
-
+7. Cash finalize -> checked-out order + finalized sale created atomically.
+8. KHQR finalize -> checked-out order + finalized sale created once.
+9. Fulfillment update works for pay-later orders and quick-pay orders.
+10. Pull sync emits finalized sale and order changes only for committed writes.

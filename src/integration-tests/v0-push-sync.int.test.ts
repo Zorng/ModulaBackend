@@ -859,6 +859,267 @@ describe("v0 push sync integration", () => {
     });
   });
 
+  it("replays offline checkout.cash.finalize exactly once and emits sale-order pull changes", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const openOccurredAt = "2026-03-19T09:00:00.000Z";
+    const checkoutOccurredAt = "2026-03-19T09:05:00.000Z";
+    const clientOpId = "10000000-0000-4000-8000-000000000052";
+    const orderId = "10000000-0000-4000-8000-000000000911";
+    const saleId = "10000000-0000-4000-8000-000000000912";
+
+    const openResponse = await request(app)
+      .post("/v0/sync/push")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000053",
+            operationType: "cashSession.open",
+            occurredAt: openOccurredAt,
+            payload: {
+              openingFloatUsd: 25,
+              openingFloatKhr: 0,
+              note: "offline sale open",
+            },
+          },
+        ],
+      });
+    expect(openResponse.status).toBe(200);
+    expect(openResponse.body.data.results[0]).toMatchObject({
+      status: "APPLIED",
+      operationType: "cashSession.open",
+    });
+
+    const payload = {
+      orderId,
+      saleId,
+      paymentMethod: "CASH",
+      saleType: "TAKEAWAY",
+      tenderCurrency: "USD",
+      cashReceivedTenderAmount: 10,
+      subtotalUsd: 7,
+      subtotalKhr: 28700,
+      discountUsd: 0,
+      discountKhr: 0,
+      vatUsd: 0,
+      vatKhr: 0,
+      grandTotalUsd: 7,
+      grandTotalKhr: 28700,
+      saleFxRateKhrPerUsd: 4100,
+      saleKhrRoundingEnabled: true,
+      saleKhrRoundingMode: "NEAREST",
+      saleKhrRoundingGranularity: 100,
+      items: [
+        {
+          menuItemId: "10000000-0000-4000-8000-000000000913",
+          menuItemNameSnapshot: "Offline Latte",
+          unitPrice: 3.5,
+          quantity: 2,
+          modifierSnapshot: [],
+          note: "Less ice",
+        },
+      ],
+    };
+
+    const first = await request(app)
+      .post("/v0/sync/push")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId,
+            operationType: "checkout.cash.finalize",
+            occurredAt: checkoutOccurredAt,
+            payload,
+          },
+        ],
+      });
+    expect(first.status).toBe(200);
+    expect(first.body.data.results[0]).toMatchObject({
+      status: "APPLIED",
+      operationType: "checkout.cash.finalize",
+      clientOpId,
+      resultRefId: saleId,
+    });
+
+    const saleRows = await pool.query<{
+      id: string;
+      status: string;
+      order_ticket_id: string | null;
+      created_at: Date;
+      finalized_at: Date | null;
+    }>(
+      `SELECT id, status, order_ticket_id, created_at, finalized_at
+       FROM v0_sales
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3`,
+      [setup.tenantId, setup.branchId, saleId]
+    );
+    expect(saleRows.rows).toHaveLength(1);
+    expect(saleRows.rows[0]).toMatchObject({
+      id: saleId,
+      status: "FINALIZED",
+      order_ticket_id: orderId,
+    });
+    expect(saleRows.rows[0].created_at.toISOString()).toBe(checkoutOccurredAt);
+    expect(saleRows.rows[0].finalized_at?.toISOString()).toBe(checkoutOccurredAt);
+
+    const orderRows = await pool.query<{
+      id: string;
+      status: string;
+      source_mode: string;
+      created_at: Date;
+      checked_out_at: Date | null;
+    }>(
+      `SELECT id, status, source_mode, created_at, checked_out_at
+       FROM v0_order_tickets
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3`,
+      [setup.tenantId, setup.branchId, orderId]
+    );
+    expect(orderRows.rows).toHaveLength(1);
+    expect(orderRows.rows[0]).toMatchObject({
+      id: orderId,
+      status: "CHECKED_OUT",
+      source_mode: "DIRECT_CHECKOUT",
+    });
+    expect(orderRows.rows[0].created_at.toISOString()).toBe(checkoutOccurredAt);
+    expect(orderRows.rows[0].checked_out_at?.toISOString()).toBe(checkoutOccurredAt);
+
+    const batchRows = await pool.query<{ status: string; created_at: Date }>(
+      `SELECT status, created_at
+       FROM v0_order_fulfillment_batches
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND order_ticket_id = $3`,
+      [setup.tenantId, setup.branchId, orderId]
+    );
+    expect(batchRows.rows).toHaveLength(1);
+    expect(batchRows.rows[0].status).toBe("PENDING");
+    expect(batchRows.rows[0].created_at.toISOString()).toBe(checkoutOccurredAt);
+
+    const syncChanges = await pool.query<{ entity_type: string; entity_id: string }>(
+      `SELECT entity_type, entity_id
+       FROM v0_sync_changes
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND module_key = 'saleOrder'`,
+      [setup.tenantId, setup.branchId]
+    );
+    expect(syncChanges.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ entity_type: "sale", entity_id: saleId }),
+        expect.objectContaining({ entity_type: "order_ticket", entity_id: orderId }),
+        expect.objectContaining({ entity_type: "order_fulfillment_batch" }),
+      ])
+    );
+
+    const replay = await request(app)
+      .post("/v0/sync/push")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId,
+            operationType: "checkout.cash.finalize",
+            occurredAt: checkoutOccurredAt,
+            payload,
+          },
+        ],
+      });
+    expect(replay.status).toBe(200);
+    expect(replay.body.data.results[0]).toMatchObject({
+      status: "DUPLICATE",
+      operationType: "checkout.cash.finalize",
+      clientOpId,
+      resultRefId: saleId,
+    });
+
+    const conflict = await request(app)
+      .post("/v0/sync/push")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId,
+            operationType: "checkout.cash.finalize",
+            occurredAt: checkoutOccurredAt,
+            payload: {
+              ...payload,
+              cashReceivedTenderAmount: 20,
+            },
+          },
+        ],
+      });
+    expect(conflict.status).toBe(200);
+    expect(conflict.body.data.results[0]).toMatchObject({
+      status: "FAILED",
+      code: "OFFLINE_SYNC_PAYLOAD_CONFLICT",
+      operationType: "checkout.cash.finalize",
+      clientOpId,
+    });
+  });
+
+  it("rejects offline checkout.cash.finalize when no cash session is open at replay time", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const occurredAt = "2026-03-19T10:00:00.000Z";
+
+    const response = await request(app)
+      .post("/v0/sync/push")
+      .set("Authorization", `Bearer ${setup.branchToken}`)
+      .send({
+        operations: [
+          {
+            clientOpId: "10000000-0000-4000-8000-000000000054",
+            operationType: "checkout.cash.finalize",
+            occurredAt,
+            payload: {
+              orderId: "10000000-0000-4000-8000-000000000921",
+              saleId: "10000000-0000-4000-8000-000000000922",
+              paymentMethod: "CASH",
+              saleType: "DINE_IN",
+              tenderCurrency: "USD",
+              cashReceivedTenderAmount: 5,
+              subtotalUsd: 3.5,
+              subtotalKhr: 14350,
+              discountUsd: 0,
+              discountKhr: 0,
+              vatUsd: 0,
+              vatKhr: 0,
+              grandTotalUsd: 3.5,
+              grandTotalKhr: 14350,
+              saleFxRateKhrPerUsd: 4100,
+              saleKhrRoundingEnabled: true,
+              saleKhrRoundingMode: "NEAREST",
+              saleKhrRoundingGranularity: 100,
+              items: [
+                {
+                  menuItemId: "10000000-0000-4000-8000-000000000923",
+                  menuItemNameSnapshot: "Offline Mocha",
+                  unitPrice: 3.5,
+                  quantity: 1,
+                  modifierSnapshot: [],
+                  note: null,
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.results[0]).toMatchObject({
+      status: "FAILED",
+      code: "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION",
+      resolution: {
+        category: "MANUAL",
+        action: "requires_user_intervention",
+      },
+    });
+  });
+
   it("marks attendance invariant denial as MANUAL in resolution hint", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     const occurredAt = new Date().toISOString();

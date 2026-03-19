@@ -3,7 +3,14 @@ import type { Pool, PoolClient } from "pg";
 type Queryable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
 
 export type V0OrderTicketStatus = "OPEN" | "CHECKED_OUT" | "CANCELLED";
-export type V0OrderTicketSourceMode = "STANDARD" | "MANUAL_EXTERNAL_PAYMENT_CLAIM";
+export type V0OrderTicketSourceMode =
+  | "STANDARD"
+  | "MANUAL_EXTERNAL_PAYMENT_CLAIM"
+  | "DIRECT_CHECKOUT";
+export type V0OrderListView =
+  | "FULFILLMENT_ACTIVE"
+  | "PAY_LATER_EDITABLE"
+  | "MANUAL_CLAIM_REVIEW";
 export type V0SaleStatus = "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
 export type V0SalePaymentMethod = "CASH" | "KHQR";
 export type V0TenderCurrency = "USD" | "KHR";
@@ -32,6 +39,10 @@ export type V0OrderTicketRow = {
   cancel_reason: string | null;
   created_at: Date;
   updated_at: Date;
+};
+
+export type V0OrderTicketSummaryRow = V0OrderTicketRow & {
+  fulfillment_status: V0OrderFulfillmentBatchStatus | null;
 };
 
 export type V0OrderTicketLineRow = {
@@ -201,6 +212,11 @@ const ORDER_TICKET_SELECT = `
   created_at,
   updated_at
 `;
+
+const ORDER_TICKET_SELECT_WITH_ALIAS = ORDER_TICKET_SELECT.trim()
+  .split("\n")
+  .map((line) => `t.${line.trim()}`)
+  .join("\n         ");
 
 const ORDER_MANUAL_PAYMENT_CLAIM_SELECT = `
   id,
@@ -474,21 +490,43 @@ export class V0SaleOrderRepository {
   }
 
   async createOrderTicket(input: {
+    id?: string | null;
     tenantId: string;
     branchId: string;
     openedByAccountId: string;
     sourceMode: V0OrderTicketSourceMode;
+    createdAt?: Date | null;
+    updatedAt?: Date | null;
   }): Promise<V0OrderTicketRow> {
     const result = await this.db.query<V0OrderTicketRow>(
       `INSERT INTO v0_order_tickets (
+         id,
          tenant_id,
          branch_id,
          opened_by_account_id,
-         source_mode
+         source_mode,
+         created_at,
+         updated_at
        )
-       VALUES ($1, $2, $3, $4)
+       VALUES (
+         COALESCE($1::UUID, gen_random_uuid()),
+         $2,
+         $3,
+         $4,
+         $5,
+         COALESCE($6, NOW()),
+         COALESCE($7, COALESCE($6, NOW()))
+       )
        RETURNING ${ORDER_TICKET_SELECT}`,
-      [input.tenantId, input.branchId, input.openedByAccountId, input.sourceMode]
+      [
+        input.id ?? null,
+        input.tenantId,
+        input.branchId,
+        input.openedByAccountId,
+        input.sourceMode,
+        input.createdAt ?? null,
+        input.updatedAt ?? null,
+      ]
     );
     return result.rows[0];
   }
@@ -515,23 +553,71 @@ export class V0SaleOrderRepository {
     tenantId: string;
     branchId: string;
     status?: V0OrderTicketStatus | null;
+    sourceMode?: V0OrderTicketSourceMode | null;
+    view?: V0OrderListView | null;
     limit: number;
     offset: number;
-  }): Promise<V0OrderTicketRow[]> {
-    const result = await this.db.query<V0OrderTicketRow>(
+  }): Promise<V0OrderTicketSummaryRow[]> {
+    const result = await this.db.query<V0OrderTicketSummaryRow>(
       `SELECT
-         ${ORDER_TICKET_SELECT}
-       FROM v0_order_tickets
-       WHERE tenant_id = $1
-         AND branch_id = $2
-         AND ($3::VARCHAR IS NULL OR status = $3::VARCHAR)
-       ORDER BY created_at DESC, id DESC
-       LIMIT $4
-       OFFSET $5`,
+         ${ORDER_TICKET_SELECT_WITH_ALIAS},
+         latest_fulfillment.status AS fulfillment_status
+       FROM v0_order_tickets t
+       LEFT JOIN LATERAL (
+         SELECT status
+         FROM v0_order_fulfillment_batches
+         WHERE tenant_id = t.tenant_id
+           AND order_ticket_id = t.id
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1
+       ) AS latest_fulfillment ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT id, status
+         FROM v0_order_manual_payment_claims
+         WHERE tenant_id = t.tenant_id
+           AND branch_id = t.branch_id
+           AND order_ticket_id = t.id
+         ORDER BY requested_at DESC, id DESC
+         LIMIT 1
+       ) AS latest_manual_claim ON TRUE
+       WHERE t.tenant_id = $1
+         AND t.branch_id = $2
+         AND ($3::VARCHAR IS NULL OR t.status = $3::VARCHAR)
+         AND ($4::VARCHAR IS NULL OR t.source_mode = $4::VARCHAR)
+         AND (
+           $5::VARCHAR IS NULL
+           OR (
+             $5::VARCHAR = 'FULFILLMENT_ACTIVE'
+             AND t.status IN ('OPEN', 'CHECKED_OUT')
+             AND (
+               latest_fulfillment.status IS NULL
+               OR latest_fulfillment.status NOT IN ('COMPLETED', 'CANCELLED')
+             )
+           )
+           OR (
+             $5::VARCHAR = 'PAY_LATER_EDITABLE'
+             AND t.status = 'OPEN'
+             AND t.source_mode = 'STANDARD'
+             AND latest_manual_claim.id IS NULL
+           )
+           OR (
+             $5::VARCHAR = 'MANUAL_CLAIM_REVIEW'
+             AND t.status = 'OPEN'
+             AND (
+               t.source_mode = 'MANUAL_EXTERNAL_PAYMENT_CLAIM'
+               OR latest_manual_claim.id IS NOT NULL
+             )
+           )
+         )
+       ORDER BY t.created_at DESC, t.id DESC
+       LIMIT $6
+       OFFSET $7`,
       [
         input.tenantId,
         input.branchId,
         input.status ?? null,
+        input.sourceMode ?? null,
+        input.view ?? null,
         input.limit,
         input.offset,
       ]
@@ -543,14 +629,65 @@ export class V0SaleOrderRepository {
     tenantId: string;
     branchId: string;
     status?: V0OrderTicketStatus | null;
+    sourceMode?: V0OrderTicketSourceMode | null;
+    view?: V0OrderListView | null;
   }): Promise<number> {
     const result = await this.db.query<{ count: string }>(
       `SELECT COUNT(*)::TEXT AS count
-       FROM v0_order_tickets
-       WHERE tenant_id = $1
-         AND branch_id = $2
-         AND ($3::VARCHAR IS NULL OR status = $3::VARCHAR)`,
-      [input.tenantId, input.branchId, input.status ?? null]
+       FROM v0_order_tickets t
+       LEFT JOIN LATERAL (
+         SELECT status
+         FROM v0_order_fulfillment_batches
+         WHERE tenant_id = t.tenant_id
+           AND order_ticket_id = t.id
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1
+       ) AS latest_fulfillment ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT id, status
+         FROM v0_order_manual_payment_claims
+         WHERE tenant_id = t.tenant_id
+           AND branch_id = t.branch_id
+           AND order_ticket_id = t.id
+         ORDER BY requested_at DESC, id DESC
+         LIMIT 1
+       ) AS latest_manual_claim ON TRUE
+       WHERE t.tenant_id = $1
+         AND t.branch_id = $2
+         AND ($3::VARCHAR IS NULL OR t.status = $3::VARCHAR)
+         AND ($4::VARCHAR IS NULL OR t.source_mode = $4::VARCHAR)
+         AND (
+           $5::VARCHAR IS NULL
+           OR (
+             $5::VARCHAR = 'FULFILLMENT_ACTIVE'
+             AND t.status IN ('OPEN', 'CHECKED_OUT')
+             AND (
+               latest_fulfillment.status IS NULL
+               OR latest_fulfillment.status NOT IN ('COMPLETED', 'CANCELLED')
+             )
+           )
+           OR (
+             $5::VARCHAR = 'PAY_LATER_EDITABLE'
+             AND t.status = 'OPEN'
+             AND t.source_mode = 'STANDARD'
+             AND latest_manual_claim.id IS NULL
+           )
+           OR (
+             $5::VARCHAR = 'MANUAL_CLAIM_REVIEW'
+             AND t.status = 'OPEN'
+             AND (
+               t.source_mode = 'MANUAL_EXTERNAL_PAYMENT_CLAIM'
+               OR latest_manual_claim.id IS NOT NULL
+             )
+           )
+         )`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.status ?? null,
+        input.sourceMode ?? null,
+        input.view ?? null,
+      ]
     );
     return Number(result.rows[0]?.count ?? "0");
   }
@@ -560,13 +697,15 @@ export class V0SaleOrderRepository {
     branchId: string;
     orderTicketId: string;
     checkedOutByAccountId: string;
+    checkedOutAt?: Date | null;
+    updatedAt?: Date | null;
   }): Promise<V0OrderTicketRow | null> {
     const result = await this.db.query<V0OrderTicketRow>(
       `UPDATE v0_order_tickets
        SET status = 'CHECKED_OUT',
-           checked_out_at = NOW(),
+           checked_out_at = COALESCE($5, NOW()),
            checked_out_by_account_id = $4,
-           updated_at = NOW()
+           updated_at = COALESCE($6, COALESCE($5, NOW()))
        WHERE tenant_id = $1
          AND branch_id = $2
          AND id = $3
@@ -577,6 +716,8 @@ export class V0SaleOrderRepository {
         input.branchId,
         input.orderTicketId,
         input.checkedOutByAccountId,
+        input.checkedOutAt ?? null,
+        input.updatedAt ?? null,
       ]
     );
     return result.rows[0] ?? null;
@@ -866,6 +1007,7 @@ export class V0SaleOrderRepository {
   }
 
   async createSale(input: {
+    id?: string | null;
     tenantId: string;
     branchId: string;
     orderTicketId?: string | null;
@@ -892,9 +1034,12 @@ export class V0SaleOrderRepository {
     saleKhrRoundingMode: "NEAREST" | "UP" | "DOWN";
     saleKhrRoundingGranularity: 100 | 1000;
     paidAmount?: number;
+    createdAt?: Date | null;
+    updatedAt?: Date | null;
   }): Promise<V0SaleRow> {
     const result = await this.db.query<V0SaleRow>(
       `INSERT INTO v0_sales (
+         id,
          tenant_id,
          branch_id,
          order_ticket_id,
@@ -924,22 +1069,24 @@ export class V0SaleOrderRepository {
          vat_amount,
          total_amount,
          paid_amount,
-         sale_type
+         sale_type,
+         created_at,
+         updated_at
        )
        VALUES (
-         $1,
+         COALESCE($1::UUID, gen_random_uuid()),
          $2,
          $3,
          $4,
          $5,
-         $6::NUMERIC(14,2),
+         $6,
          $7::NUMERIC(14,2),
          $8::NUMERIC(14,2),
-         $9,
+         $9::NUMERIC(14,2),
          $10,
          $11,
          $12,
-         $13::NUMERIC(14,2),
+         $13,
          $14::NUMERIC(14,2),
          $15::NUMERIC(14,2),
          $16::NUMERIC(14,2),
@@ -947,19 +1094,23 @@ export class V0SaleOrderRepository {
          $18::NUMERIC(14,2),
          $19::NUMERIC(14,2),
          $20::NUMERIC(14,2),
-         $21::NUMERIC(14,4),
-         $22,
+         $21::NUMERIC(14,2),
+         $22::NUMERIC(14,4),
          $23,
          $24,
-         $25::NUMERIC(14,2),
+         $25,
          $26::NUMERIC(14,2),
          $27::NUMERIC(14,2),
          $28::NUMERIC(14,2),
          $29::NUMERIC(14,2),
-         $30
+         $30::NUMERIC(14,2),
+         $31,
+         COALESCE($32, NOW()),
+         COALESCE($33, COALESCE($32, NOW()))
        )
        RETURNING ${SALE_SELECT}`,
       [
+        input.id ?? null,
         input.tenantId,
         input.branchId,
         input.orderTicketId ?? null,
@@ -990,6 +1141,8 @@ export class V0SaleOrderRepository {
         input.grandTotalUsd,
         input.paidAmount ?? 0,
         input.saleType,
+        input.createdAt ?? null,
+        input.updatedAt ?? null,
       ]
     );
     return result.rows[0];
@@ -1086,6 +1239,8 @@ export class V0SaleOrderRepository {
     cashChangeTenderAmount?: number;
     khqrHash?: string | null;
     khqrConfirmedAt?: Date | null;
+    finalizedAt?: Date | null;
+    updatedAt?: Date | null;
   }): Promise<V0SaleRow | null> {
     const result = await this.db.query<V0SaleRow>(
       `UPDATE v0_sales
@@ -1099,9 +1254,9 @@ export class V0SaleOrderRepository {
            cash_change_tender_amount = COALESCE($8::NUMERIC(14,2), cash_change_tender_amount),
            khqr_hash = COALESCE($9, khqr_hash),
            khqr_confirmed_at = COALESCE($10, khqr_confirmed_at),
-           finalized_at = NOW(),
+           finalized_at = COALESCE($11, NOW()),
            finalized_by_account_id = $4,
-           updated_at = NOW()
+           updated_at = COALESCE($12, COALESCE($11, NOW()))
        WHERE tenant_id = $1
          AND branch_id = $2
          AND id = $3
@@ -1118,6 +1273,8 @@ export class V0SaleOrderRepository {
         input.cashChangeTenderAmount ?? null,
         input.khqrHash ?? null,
         input.khqrConfirmedAt ?? null,
+        input.finalizedAt ?? null,
+        input.updatedAt ?? null,
       ]
     );
     return result.rows[0] ?? null;
@@ -1352,6 +1509,8 @@ export class V0SaleOrderRepository {
     status: V0OrderFulfillmentBatchStatus;
     note?: string | null;
     createdByAccountId: string;
+    createdAt?: Date | null;
+    updatedAt?: Date | null;
   }): Promise<V0OrderFulfillmentBatchRow> {
     const result = await this.db.query<V0OrderFulfillmentBatchRow>(
       `INSERT INTO v0_order_fulfillment_batches (
@@ -1360,9 +1519,20 @@ export class V0SaleOrderRepository {
          order_ticket_id,
          status,
          note,
-         created_by_account_id
+         created_by_account_id,
+         created_at,
+         updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6)
+       VALUES (
+         $1,
+         $2,
+         $3,
+         $4,
+         $5,
+         $6,
+         COALESCE($7, NOW()),
+         COALESCE($8, COALESCE($7, NOW()))
+       )
        RETURNING ${FULFILLMENT_BATCH_SELECT}`,
       [
         input.tenantId,
@@ -1371,6 +1541,8 @@ export class V0SaleOrderRepository {
         input.status,
         input.note ?? null,
         input.createdByAccountId,
+        input.createdAt ?? null,
+        input.updatedAt ?? null,
       ]
     );
     return result.rows[0];

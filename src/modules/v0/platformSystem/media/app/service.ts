@@ -10,6 +10,7 @@ export const V0_MEDIA_IMAGE_AREAS: ReadonlyArray<TenantImageArea> = [
   "inventory",
   "tenant",
   "profile",
+  "payment-proof",
 ] as const;
 
 export class V0MediaError extends Error {
