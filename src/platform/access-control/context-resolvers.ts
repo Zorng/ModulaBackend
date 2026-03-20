@@ -52,6 +52,9 @@ export function resolveBranchId(input: {
   if (source === "body.branchId") {
     return normalizeId(input.req.body?.branchId);
   }
+  if (source === "path.branchId") {
+    return extractBranchId(input.req.path);
+  }
   return null;
 }
 
@@ -62,6 +65,14 @@ function extractMembershipId(path: string): string | null {
     return null;
   }
   return normalizeId(match[2] ?? match[1]);
+}
+
+function extractBranchId(path: string): string | null {
+  const match = path.match(/^\/org\/branches\/([^/]+)\/profile\/?$/);
+  if (!match) {
+    return null;
+  }
+  return normalizeId(match[1]);
 }
 
 function normalizeId(value: unknown): string | null {

@@ -375,6 +375,9 @@ async function applyOperation(input: {
       case "checkout.cash.finalize": {
         return await applyCashCheckoutReplay(input);
       }
+      case "order.manualExternalPaymentClaim.capture": {
+        return await applyManualExternalPaymentClaimCaptureReplay(input);
+      }
       case "sale.finalize": {
         const paymentMethod = normalizePaymentMethod(
           input.operation.payload.paymentMethod ??
@@ -532,30 +535,80 @@ async function applyCashCheckoutReplay(input: {
   operation: ReplayOperation;
 }): Promise<ApplyOutcome> {
   const saleOrderService = new V0SaleOrderService(new V0SaleOrderRepository(input.client));
-  const auditService = new V0AuditService(new V0AuditRepository(input.client));
-  const outboxRepo = new V0CommandOutboxRepository(input.client);
-  const syncRepo = new V0PullSyncRepository(input.client);
   const commandData = await saleOrderService.cashFinalizeFromOfflineSnapshot({
     actor: input.actor,
     body: input.operation.payload,
     occurredAt: input.operation.occurredAt,
   });
-  const entityId = typeof (commandData as { id?: unknown }).id === "string"
-    ? ((commandData as { id: string }).id)
-    : null;
+  return recordSaleOrderReplaySuccess({
+    client: input.client,
+    actor: input.actor,
+    operation: input.operation,
+    actionKey: V0_SALE_ORDER_ACTION_KEYS.checkoutCashFinalize,
+    eventType: V0_SALE_ORDER_EVENT_TYPES.checkoutCashFinalized,
+    endpoint: "/v0/sync/push",
+    entityType: "sale",
+    commandData,
+    errorContext: "offline cash checkout replay did not return sale id",
+  });
+}
+
+async function applyManualExternalPaymentClaimCaptureReplay(input: {
+  client: PoolClient;
+  actor: ActorScope;
+  operation: ReplayOperation;
+}): Promise<ApplyOutcome> {
+  const saleOrderService = new V0SaleOrderService(new V0SaleOrderRepository(input.client));
+  const commandData = await saleOrderService.captureManualExternalPaymentClaimOrderFromOfflineSnapshot({
+    actor: input.actor,
+    body: input.operation.payload,
+    occurredAt: input.operation.occurredAt,
+  });
+  return recordSaleOrderReplaySuccess({
+    client: input.client,
+    actor: input.actor,
+    operation: input.operation,
+    actionKey: V0_SALE_ORDER_ACTION_KEYS.orderPlace,
+    eventType: V0_SALE_ORDER_EVENT_TYPES.orderTicketPlaced,
+    endpoint: "/v0/sync/push",
+    entityType: "order_ticket",
+    commandData,
+    errorContext: "offline manual external payment claim capture did not return order id",
+  });
+}
+
+async function recordSaleOrderReplaySuccess(input: {
+  client: PoolClient;
+  actor: ActorScope;
+  operation: ReplayOperation;
+  actionKey: string;
+  eventType: string;
+  endpoint: string;
+  entityType: string;
+  commandData: unknown;
+  errorContext: string;
+}): Promise<ApplyOutcome> {
+  const auditService = new V0AuditService(new V0AuditRepository(input.client));
+  const outboxRepo = new V0CommandOutboxRepository(input.client);
+  const syncRepo = new V0PullSyncRepository(input.client);
+  const commandRecord =
+    input.commandData && typeof input.commandData === "object" && !Array.isArray(input.commandData)
+      ? (input.commandData as { id?: unknown })
+      : null;
+  const entityId = typeof commandRecord?.id === "string" ? commandRecord.id : null;
   if (!entityId) {
-    throw new Error("offline cash checkout replay did not return sale id");
+    throw new Error(input.errorContext);
   }
 
   const idempotencyKey = `push-sync:${input.operation.clientOpId}`;
   const dedupeKey = buildSaleOrderCommandDedupeKey(
-    V0_SALE_ORDER_ACTION_KEYS.checkoutCashFinalize,
+    input.actionKey,
     idempotencyKey,
     "SUCCESS",
     []
   );
   const replayMetadata = {
-    endpoint: "/v0/sync/push",
+    endpoint: input.endpoint,
     replayed: true,
     clientOpId: input.operation.clientOpId,
     offlineOccurredAt: input.operation.occurredAt.toISOString(),
@@ -566,10 +619,10 @@ async function applyCashCheckoutReplay(input: {
     tenantId: input.actor.tenantId,
     branchId: input.actor.branchId,
     actorAccountId: input.actor.accountId,
-    actionKey: V0_SALE_ORDER_ACTION_KEYS.checkoutCashFinalize,
+    actionKey: input.actionKey,
     outcome: "SUCCESS",
     reasonCode: null,
-    entityType: "sale",
+    entityType: input.entityType,
     entityId,
     dedupeKey,
     metadata: replayMetadata,
@@ -578,11 +631,11 @@ async function applyCashCheckoutReplay(input: {
   const outbox = await outboxRepo.insertEvent({
     tenantId: input.actor.tenantId,
     branchId: input.actor.branchId,
-    actionKey: V0_SALE_ORDER_ACTION_KEYS.checkoutCashFinalize,
-    eventType: V0_SALE_ORDER_EVENT_TYPES.checkoutCashFinalized,
+    actionKey: input.actionKey,
+    eventType: input.eventType,
     actorType: "ACCOUNT",
     actorId: input.actor.accountId,
-    entityType: "sale",
+    entityType: input.entityType,
     entityId,
     outcome: "SUCCESS",
     dedupeKey,
@@ -595,16 +648,16 @@ async function applyCashCheckoutReplay(input: {
       tenantId: input.actor.tenantId,
       branchId: input.actor.branchId,
       moduleKey: "saleOrder",
-      entityType: "sale",
+      entityType: input.entityType,
       entityId,
       operation: "UPSERT",
       revision: `saleOrder:${outbox.row.id}`,
-      data: toSyncData(commandData),
+      data: toSyncData(input.commandData),
       changedAt: outbox.row.occurred_at,
       sourceOutboxId: outbox.row.id,
     });
 
-    const extraChanges = collectExtraSyncChanges(commandData);
+    const extraChanges = collectExtraSyncChanges(input.commandData, input.actionKey);
     for (const extra of extraChanges) {
       await syncRepo.appendChange({
         tenantId: input.actor.tenantId,
@@ -635,7 +688,8 @@ function toSyncData(data: unknown): Record<string, unknown> {
 }
 
 function collectExtraSyncChanges(
-  commandData: unknown
+  commandData: unknown,
+  actionKey?: string
 ): Array<{ entityType: string; entityId: string; data: Record<string, unknown> }> {
   if (!commandData || typeof commandData !== "object" || Array.isArray(commandData)) {
     return [];
@@ -643,7 +697,11 @@ function collectExtraSyncChanges(
   const record = commandData as Record<string, unknown>;
   const extra: Array<{ entityType: string; entityId: string; data: Record<string, unknown> }> = [];
 
-  collectArrayEntity(record.lines, "sale_line", extra);
+  collectArrayEntity(
+    record.lines,
+    actionKey === V0_SALE_ORDER_ACTION_KEYS.orderPlace ? "order_ticket_line" : "sale_line",
+    extra
+  );
   collectArrayEntity(record.orderLines, "order_ticket_line", extra);
   collectArrayEntity(record.addedLines, "order_ticket_line", extra);
   collectArrayEntity(record.fulfillmentBatches, "order_fulfillment_batch", extra);
@@ -906,6 +964,7 @@ function buildResolutionHint(code: string): ReplayResolutionHint {
     normalized === "NO_MEMBERSHIP" ||
     normalized === "NO_BRANCH_ACCESS" ||
     normalized === "PERMISSION_DENIED" ||
+    normalized === "ORDER_REQUIRES_OPEN_CASH_SESSION" ||
     normalized === "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION" ||
     normalized === "SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED" ||
     normalized === "SALE_FINALIZE_KHQR_PROOF_MISMATCH" ||

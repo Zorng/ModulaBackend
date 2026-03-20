@@ -58,6 +58,10 @@ Area prefix mapping:
 - `profile` -> `profile-images`
 - `payment-proof` -> `payment-proof-images`
 
+Role notes:
+- `payment-proof` is allowed for staff handling reconnect-time outage/manual external-payment-claim workflow, including `CASHIER`.
+- This does not imply broader cashier upload rights for unrelated areas such as `tenant`, `menu`, or `inventory`.
+
 Errors:
 - `400` `UPLOAD_FILE_TOO_LARGE`
 - `400` `UPLOAD_INVALID_FIELD`

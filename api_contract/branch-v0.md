@@ -163,6 +163,53 @@ Errors:
 - `422` `ORG_BRANCH_NAME_INVALID`
 - `404` branch not found
 
+### 3a) Update targeted branch profile in current tenant
+
+`PATCH /v0/org/branches/:branchId/profile`
+
+Body:
+```json
+{
+  "branchName": "Olympic Downtown",
+  "branchAddress": "Street 2004",
+  "contactNumber": "+85512000009"
+}
+```
+
+Notes:
+- Tenant context in token is required.
+- `branchId` comes from the path and is the target branch inside the current tenant.
+- Branch context selection in token is not required for this endpoint.
+- Caller must still have active access to the target branch.
+- Partial patch is allowed.
+- `branchName`, if supplied, must be non-empty.
+- `branchAddress` and `contactNumber` can be set to `null` to clear them.
+
+Success `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "branchId": "uuid",
+    "tenantId": "uuid",
+    "branchName": "Olympic Downtown",
+    "branchAddress": "Street 2004",
+    "contactNumber": "+85512000009",
+    "khqrReceiverAccountId": "khqr-receiver",
+    "khqrReceiverName": "Main Branch Receiver",
+    "attendanceLocationVerificationMode": "disabled",
+    "workplaceLocation": null,
+    "status": "ACTIVE"
+  }
+}
+```
+
+Errors:
+- `401` missing/invalid access token
+- `403` `TENANT_CONTEXT_REQUIRED`, `NO_MEMBERSHIP`, or `NO_BRANCH_ACCESS`
+- `422` `ORG_BRANCH_NAME_INVALID`
+- `404` branch not found
+
 ### 4) Set current branch KHQR receiver account
 
 `PATCH /v0/org/branch/current/khqr-receiver`

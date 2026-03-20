@@ -170,7 +170,7 @@ Errors:
 - This contract intentionally excludes removed legacy policy keys (attendance/cash/inventory toggles) per patched KB scope.
 - Policy updates are branch-scoped and auditable; historical sale/receipt/reporting values remain snapshot-based and must not be rewritten by later policy edits.
 - `saleAllowPayLater` currently governs normal open-ticket/pay-later behavior only.
-- `saleAllowManualExternalPaymentClaim` is a separate policy toggle reserved for outage/manual external-payment claim workflows and remains distinct from `saleAllowPayLater`.
+- `saleAllowManualExternalPaymentClaim` remains in policy payloads for backward compatibility, but current sale-order runtime no longer denies outage/manual external-payment claim workflows per branch based on this flag.
 - Current backend policy support does not by itself imply the full manual-claim workflow is implemented.
 
 ## Frontend Rollout Notes
@@ -178,3 +178,4 @@ Errors:
 - Use `GET /v0/policy/current-branch` after login and after every branch context switch.
 - For updates, always send `Idempotency-Key` and treat `Idempotency-Replayed: true` as a successful replay (do not show duplicate-error UI).
 - On successful `PATCH`, replace local policy cache with response `data` (source of truth), then re-evaluate pricing/checkout UI toggles.
+- Frontend should not use `saleAllowManualExternalPaymentClaim` to hide or block the outage external-payment-claim reconnect flow.

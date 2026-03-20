@@ -30,6 +30,7 @@ Implementation status:
 ```ts
 type PushSyncOperationType =
   | "checkout.cash.finalize"
+  | "order.manualExternalPaymentClaim.capture"
   | "sale.finalize"
   | "cashSession.open"
   | "cashSession.movement"
@@ -226,6 +227,7 @@ Propagated from underlying command checks:
   - `CASH_SESSION_NOT_FOUND`
   - `CASH_SESSION_ALREADY_OPEN`
   - `CASH_SESSION_NOT_OPEN`
+  - `ORDER_REQUIRES_OPEN_CASH_SESSION`
   - `SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION`
   - `SALE_CASH_TENDER_AMOUNT_INVALID`
   - `SALE_CASH_RECEIVED_INSUFFICIENT`
@@ -255,6 +257,9 @@ Propagated from underlying command checks:
   - `checkout.cash.finalize` is supported for offline pay-first cash replay.
   - replay payload must carry immutable priced checkout snapshot data plus client-generated `orderId` and `saleId`.
   - successful replay materializes `CHECKED_OUT order + FINALIZED sale + initial PENDING fulfillment batch`.
+  - `order.manualExternalPaymentClaim.capture` is supported for outage/static-QR reconnect replay.
+  - replay payload must carry client-generated `orderId` plus immutable order-line snapshot data.
+  - successful replay materializes an `OPEN` order with `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`, making the ticket branch-visible before proof upload and manual-claim submission.
   - `sale.finalize` is still accepted as a replay operation type but currently returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`; KHQR confirmation checks still run before that fallback.
 
 ## Frontend Retry Policy (Recommended)

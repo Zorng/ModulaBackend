@@ -165,6 +165,15 @@ export class V0SaleOrderService {
       limit,
       offset,
     });
+    const nameMap = await this.repo.listAccountDisplayNames({
+      accountIds: uniq(
+        rows.flatMap((row) =>
+          [row.opened_by_account_id, row.manual_payment_claim_requested_by_account_id].filter(
+            (value): value is string => Boolean(value)
+          )
+        )
+      ),
+    });
     const items = await Promise.all(
       rows.map((row) =>
         buildOrderTicketSummary({
@@ -172,6 +181,7 @@ export class V0SaleOrderService {
           tenantId: actor.tenantId,
           branchId: actor.branchId,
           row,
+          nameMap,
         })
       )
     );
@@ -263,6 +273,50 @@ export class V0SaleOrderService {
       lines: lines.map(mapOrderTicketLine),
     };
     return payload;
+  }
+
+  async captureManualExternalPaymentClaimOrderFromOfflineSnapshot(input: {
+    actor: ActorContext;
+    body: unknown;
+    occurredAt: Date;
+  }): Promise<Record<string, unknown>> {
+    const actor = assertBranchContext(input.actor);
+    await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
+    const body = toRecord(input.body);
+    const orderId = requireUuid(body.orderId, "orderId");
+    const items = parseOfflineCheckoutSnapshotItems(body.items);
+
+    const order = await this.repo.createOrderTicket({
+      id: orderId,
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      openedByAccountId: actor.accountId,
+      sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+      createdAt: input.occurredAt,
+      updatedAt: input.occurredAt,
+    });
+
+    const lines: V0OrderTicketLineRow[] = [];
+    for (const item of items) {
+      const created = await this.repo.createOrderTicketLine({
+        tenantId: actor.tenantId,
+        branchId: actor.branchId,
+        orderTicketId: order.id,
+        menuItemId: item.menuItemId,
+        menuItemNameSnapshot: item.menuItemNameSnapshot,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        lineSubtotal: roundMoney(item.unitPrice * item.quantity),
+        modifierSnapshot: item.modifierSnapshot,
+        note: item.note,
+      });
+      lines.push(created);
+    }
+
+    return {
+      ...mapOrderTicket(order),
+      lines: lines.map(mapOrderTicketLine),
+    };
   }
 
   async addOrderItems(input: {
@@ -549,7 +603,6 @@ export class V0SaleOrderService {
     body: unknown;
   }): Promise<Record<string, unknown>> {
     const actor = assertBranchContext(input.actor);
-    await this.requireManualExternalPaymentClaimEnabled(actor);
     const order = await this.requireOrder(actor, input.orderId);
     if (order.status !== "OPEN") {
       throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
@@ -1744,29 +1797,11 @@ export class V0SaleOrderService {
     }
   }
 
-  private async requireManualExternalPaymentClaimEnabled(actor: {
-    tenantId: string;
-    branchId: string;
-  }): Promise<void> {
-    const enabled = await this.repo.isManualExternalPaymentClaimEnabledForBranch({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-    });
-    if (!enabled) {
-      throw new V0SaleOrderError(
-        422,
-        "manual external payment claim is disabled for this branch",
-        "ORDER_MANUAL_PAYMENT_CLAIM_DISABLED"
-      );
-    }
-  }
-
   private async requireOrderPlacementEnabled(
     actor: { tenantId: string; branchId: string },
     sourceMode: V0OrderTicketSourceMode
   ): Promise<void> {
     if (sourceMode === "MANUAL_EXTERNAL_PAYMENT_CLAIM") {
-      await this.requireManualExternalPaymentClaimEnabled(actor);
       return;
     }
     await this.requirePayLaterEnabled(actor);
@@ -2521,20 +2556,20 @@ function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function uniq(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
 async function buildOrderTicketSummary(input: {
   repo: V0SaleOrderRepository;
   tenantId: string;
   branchId: string;
   row: V0OrderTicketSummaryRow;
+  nameMap: Map<string, string>;
 }): Promise<Record<string, unknown>> {
-  const [lines, latestClaim, sale] = await Promise.all([
+  const [lines, sale] = await Promise.all([
     input.repo.listOrderTicketLines({
       tenantId: input.tenantId,
-      orderTicketId: input.row.id,
-    }),
-    input.repo.getLatestManualPaymentClaimByOrder({
-      tenantId: input.tenantId,
-      branchId: input.branchId,
       orderTicketId: input.row.id,
     }),
     input.repo.getSaleByOrderTicketId({
@@ -2545,18 +2580,32 @@ async function buildOrderTicketSummary(input: {
   ]);
 
   const totalUsdExact = roundMoney(lines.reduce((sum, line) => sum + line.line_subtotal, 0));
+  const openedByDisplayName =
+    input.nameMap.get(input.row.opened_by_account_id) ?? input.row.opened_by_account_id;
+  const manualPaymentClaimRequestedByAccountId =
+    input.row.manual_payment_claim_requested_by_account_id;
+  const manualPaymentClaimRequestedByDisplayName = manualPaymentClaimRequestedByAccountId
+    ? input.nameMap.get(manualPaymentClaimRequestedByAccountId) ??
+      manualPaymentClaimRequestedByAccountId
+    : null;
 
   return {
     id: input.row.id,
     status: input.row.status,
     sourceMode: input.row.source_mode,
+    openedByAccountId: input.row.opened_by_account_id,
+    openedByDisplayName,
     fulfillmentStatus: input.row.fulfillment_status,
     totalUsdExact,
     linesPreview: lines.map(mapOrderTicketLinePreview),
     checkedOutAt: input.row.checked_out_at?.toISOString() ?? null,
     paymentMethod: sale?.payment_method ?? null,
-    manualPaymentClaimId: latestClaim?.id ?? null,
-    manualPaymentClaimStatus: latestClaim?.status ?? null,
+    manualPaymentClaimId: input.row.manual_payment_claim_id,
+    manualPaymentClaimStatus: input.row.manual_payment_claim_status,
+    manualPaymentClaimRequestedByAccountId,
+    manualPaymentClaimRequestedByDisplayName,
+    manualPaymentClaimRequestedAt:
+      input.row.manual_payment_claim_requested_at?.toISOString() ?? null,
     createdAt: input.row.created_at.toISOString(),
     updatedAt: input.row.updated_at.toISOString(),
   };

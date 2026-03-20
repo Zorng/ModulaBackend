@@ -64,6 +64,9 @@ Rules:
 - If webhook never arrives but manual confirm succeeds, backend must reconcile + finalize.
 - Endpoint remains available for frontend as secondary/manual action.
 - Late webhook is accepted and must converge idempotently.
+- For checkout-intent KHQR flows:
+  - frontend should keep the initiate `attempt.md5`
+  - if `GET /v0/checkout/khqr/intents/:intentId` later shows `status = PAID_CONFIRMED` but `saleId = null`, call this endpoint as the cashier fallback to materialize the finalized sale/order
 
 Intent lifecycle (target):
 ```ts
@@ -659,5 +662,11 @@ These denial codes are intentionally owned by sale-order orchestration, while th
 
 - Generation of KHQR payload/QR is frontend-side; payment truth is backend confirmation.
 - Register every attempt before waiting for payment confirmation.
+- For checkout-intent KHQR:
+  - keep both `paymentIntentId` and `md5` from initiate
+  - poll `GET /v0/checkout/khqr/intents/:intentId`
+  - if intent becomes `FINALIZED` with non-null `saleId`, finalization is already complete
+  - if intent becomes `PAID_CONFIRMED` with `saleId = null`, call `POST /v0/payments/khqr/confirm` with `md5`
+- `GET /v0/checkout/khqr/intents/:intentId` is payment-intent status truth, but it is not itself a finalize command.
 - On reconnect, re-confirm by `md5` and then continue finalize flow.
 - Treat `UNPAID` as retryable polling; treat `MISMATCH` as manual intervention required.

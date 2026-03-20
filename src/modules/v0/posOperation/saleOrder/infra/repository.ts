@@ -43,6 +43,10 @@ export type V0OrderTicketRow = {
 
 export type V0OrderTicketSummaryRow = V0OrderTicketRow & {
   fulfillment_status: V0OrderFulfillmentBatchStatus | null;
+  manual_payment_claim_id: string | null;
+  manual_payment_claim_status: V0OrderManualPaymentClaimStatus | null;
+  manual_payment_claim_requested_by_account_id: string | null;
+  manual_payment_claim_requested_at: Date | null;
 };
 
 export type V0OrderTicketLineRow = {
@@ -561,7 +565,11 @@ export class V0SaleOrderRepository {
     const result = await this.db.query<V0OrderTicketSummaryRow>(
       `SELECT
          ${ORDER_TICKET_SELECT_WITH_ALIAS},
-         latest_fulfillment.status AS fulfillment_status
+         latest_fulfillment.status AS fulfillment_status,
+         latest_manual_claim.id AS manual_payment_claim_id,
+         latest_manual_claim.status AS manual_payment_claim_status,
+         latest_manual_claim.requested_by_account_id AS manual_payment_claim_requested_by_account_id,
+         latest_manual_claim.requested_at AS manual_payment_claim_requested_at
        FROM v0_order_tickets t
        LEFT JOIN LATERAL (
          SELECT status
@@ -572,7 +580,7 @@ export class V0SaleOrderRepository {
          LIMIT 1
        ) AS latest_fulfillment ON TRUE
        LEFT JOIN LATERAL (
-         SELECT id, status
+         SELECT id, status, requested_by_account_id, requested_at
          FROM v0_order_manual_payment_claims
          WHERE tenant_id = t.tenant_id
            AND branch_id = t.branch_id
@@ -1582,5 +1590,31 @@ export class V0SaleOrderRepository {
       [input.tenantId, input.orderTicketId]
     );
     return result.rows;
+  }
+
+  async listAccountDisplayNames(input: {
+    accountIds: readonly string[];
+  }): Promise<Map<string, string>> {
+    if (input.accountIds.length === 0) {
+      return new Map();
+    }
+    const result = await this.db.query<{
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+    }>(
+      `SELECT id, first_name, last_name
+       FROM accounts
+       WHERE id = ANY($1::UUID[])`,
+      [input.accountIds]
+    );
+    const map = new Map<string, string>();
+    for (const row of result.rows) {
+      const first = String(row.first_name ?? "").trim();
+      const last = String(row.last_name ?? "").trim();
+      const display = [first, last].filter(Boolean).join(" ").trim();
+      map.set(row.id, display || row.id);
+    }
+    return map;
   }
 }

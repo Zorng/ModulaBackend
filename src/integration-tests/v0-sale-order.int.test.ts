@@ -1433,7 +1433,7 @@ describe("v0 sale-order integration", () => {
       pool,
       tenantId: setup.tenantId,
       branchId: setup.branchId,
-      enabled: true,
+      enabled: false,
     });
 
     const editablePlaced = await request(app)
@@ -1541,6 +1541,105 @@ describe("v0 sale-order integration", () => {
     expect(listed.body).toMatchObject({
       success: false,
       code: "ORDER_LIST_SOURCE_MODE_INVALID",
+    });
+  });
+
+  it("includes opener and latest claim requester identities in manual-claim review summaries", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+    const cashier = await setupMemberBranchContext({
+      app,
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+    });
+    await pool.query(
+      `UPDATE accounts
+       SET first_name = 'Order',
+           last_name = 'Capturer'
+       WHERE id = $1`,
+      [setup.ownerAccountId]
+    );
+    await pool.query(
+      `UPDATE accounts
+       SET first_name = 'Claim',
+           last_name = 'Submitter'
+       WHERE id = $1`,
+      [cashier.accountId]
+    );
+
+    const claimedPlaced = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-claim-summary-standard-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(claimedPlaced.status).toBe(200);
+    const claimedOrderId = claimedPlaced.body.data.id as string;
+
+    const createdClaim = await request(app)
+      .post(`/v0/orders/${claimedOrderId}/manual-payment-claims`)
+      .set("Authorization", `Bearer ${cashier.branchToken}`)
+      .set("Idempotency-Key", `sale-order-claim-summary-create-${uniqueSuffix()}`)
+      .send({
+        claimedPaymentMethod: "KHQR",
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        claimedTenderAmount: 3.5,
+        proofImageUrl: "https://example.com/proof.png",
+        customerReference: "ABA-REF-CLAIM-SUMMARY",
+        note: "Customer transfer screenshot",
+      });
+    expect(createdClaim.status).toBe(200);
+
+    const manualSourcePlaced = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-claim-summary-source-${uniqueSuffix()}`)
+      .send({
+        ...buildOrderPayload({ menuItemId: setup.defaultMenuItemId }),
+        sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+      });
+    expect(manualSourcePlaced.status).toBe(200);
+    const manualSourceOrderId = manualSourcePlaced.body.data.id as string;
+
+    const listed = await request(app)
+      .get("/v0/orders?view=MANUAL_CLAIM_REVIEW")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(listed.status).toBe(200);
+    expect(listed.body.success).toBe(true);
+
+    const claimedItem = listed.body.data.items.find(
+      (item: { id: string }) => item.id === claimedOrderId
+    );
+    expect(claimedItem).toMatchObject({
+      id: claimedOrderId,
+      openedByAccountId: setup.ownerAccountId,
+      openedByDisplayName: "Order Capturer",
+      manualPaymentClaimId: createdClaim.body.data.id,
+      manualPaymentClaimStatus: "PENDING",
+      manualPaymentClaimRequestedByAccountId: cashier.accountId,
+      manualPaymentClaimRequestedByDisplayName: "Claim Submitter",
+    });
+    expect(typeof claimedItem.manualPaymentClaimRequestedAt).toBe("string");
+
+    const manualSourceItem = listed.body.data.items.find(
+      (item: { id: string }) => item.id === manualSourceOrderId
+    );
+    expect(manualSourceItem).toMatchObject({
+      id: manualSourceOrderId,
+      openedByAccountId: setup.ownerAccountId,
+      openedByDisplayName: "Order Capturer",
+      manualPaymentClaimId: null,
+      manualPaymentClaimStatus: null,
+      manualPaymentClaimRequestedByAccountId: null,
+      manualPaymentClaimRequestedByDisplayName: null,
+      manualPaymentClaimRequestedAt: null,
     });
   });
 
@@ -2032,7 +2131,7 @@ describe("v0 sale-order integration", () => {
     });
   });
 
-  it("allows manual-claim order placement when pay-later is disabled but manual-claim policy is enabled", async () => {
+  it("allows manual-claim order placement when pay-later is disabled even if manual-claim branch policy is false", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     await openCashSession({
       pool,
@@ -2050,7 +2149,7 @@ describe("v0 sale-order integration", () => {
       pool,
       tenantId: setup.tenantId,
       branchId: setup.branchId,
-      enabled: true,
+      enabled: false,
     });
 
     const standard = await request(app)
@@ -2075,6 +2174,25 @@ describe("v0 sale-order integration", () => {
     expect(placed.status).toBe(200);
     expect(placed.body.success).toBe(true);
     expect(placed.body.data.sourceMode).toBe("MANUAL_EXTERNAL_PAYMENT_CLAIM");
+
+    const orderId = placed.body.data.id as string;
+    const orderLineId = placed.body.data.lines[0]?.id as string | undefined;
+    expect(orderLineId).toBeTruthy();
+
+    const syncChanges = await pool.query<{ entity_type: string; entity_id: string }>(
+      `SELECT entity_type, entity_id
+       FROM v0_sync_changes
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND module_key = 'saleOrder'`,
+      [setup.tenantId, setup.branchId]
+    );
+    expect(syncChanges.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ entity_type: "order_ticket", entity_id: orderId }),
+        expect.objectContaining({ entity_type: "order_ticket_line", entity_id: orderLineId }),
+      ])
+    );
   });
 
   it("creates manual payment claim, lists it, and blocks order mutation while pending", async () => {
@@ -2095,7 +2213,7 @@ describe("v0 sale-order integration", () => {
       pool,
       tenantId: setup.tenantId,
       branchId: setup.branchId,
-      enabled: true,
+      enabled: false,
     });
 
     const placed = await request(app)
@@ -2209,7 +2327,7 @@ describe("v0 sale-order integration", () => {
       pool,
       tenantId: setup.tenantId,
       branchId: setup.branchId,
-      enabled: true,
+      enabled: false,
     });
 
     const manager = await setupMemberBranchContext({

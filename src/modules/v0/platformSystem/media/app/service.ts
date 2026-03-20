@@ -3,7 +3,10 @@ import {
   type TenantImageArea,
   uploadTenantScopedImageToR2,
 } from "../../../../../platform/storage/r2-image-storage.js";
-import { V0MediaUploadRepository } from "../../../../../platform/media-uploads/repository.js";
+import {
+  V0MediaUploadRepository,
+  type MediaUploadMembershipRole,
+} from "../../../../../platform/media-uploads/repository.js";
 
 export const V0_MEDIA_IMAGE_AREAS: ReadonlyArray<TenantImageArea> = [
   "menu",
@@ -51,6 +54,12 @@ export class V0MediaService {
       );
     }
 
+    await this.assertAreaUploadAllowed({
+      tenantId,
+      area,
+      accountId: input.uploadedByAccountId,
+    });
+
     const uploaded = await uploadTenantScopedImageToR2({
       tenantId,
       area,
@@ -76,8 +85,48 @@ export class V0MediaService {
 
     return uploaded;
   }
+
+  private async assertAreaUploadAllowed(input: {
+    tenantId: string;
+    area: TenantImageArea;
+    accountId: string | null;
+  }): Promise<void> {
+    const accountId = String(input.accountId ?? "").trim();
+    if (!accountId) {
+      throw new V0MediaError(403, "PERMISSION_DENIED", "permission denied");
+    }
+
+    const role = await this.uploadsRepo.findActiveMembershipRole({
+      tenantId: input.tenantId,
+      accountId,
+    });
+    if (!role) {
+      throw new V0MediaError(403, "PERMISSION_DENIED", "permission denied");
+    }
+
+    const allowedRoles =
+      input.area === "payment-proof"
+        ? PAYMENT_PROOF_UPLOAD_ROLES
+        : STANDARD_IMAGE_UPLOAD_ROLES;
+    if (!allowedRoles.has(role)) {
+      throw new V0MediaError(403, "PERMISSION_DENIED", "permission denied");
+    }
+  }
 }
 
 function isTenantImageArea(value: string): value is TenantImageArea {
   return (V0_MEDIA_IMAGE_AREAS as ReadonlyArray<string>).includes(value);
 }
+
+const STANDARD_IMAGE_UPLOAD_ROLES = new Set<MediaUploadMembershipRole>([
+  "OWNER",
+  "ADMIN",
+  "MANAGER",
+]);
+
+const PAYMENT_PROOF_UPLOAD_ROLES = new Set<MediaUploadMembershipRole>([
+  "OWNER",
+  "ADMIN",
+  "MANAGER",
+  "CASHIER",
+]);

@@ -14,18 +14,23 @@ Implementation status:
   - `GET /v0/checkout/khqr/intents/:intentId`
   - `POST /v0/checkout/khqr/intents/:intentId/cancel`
 - Pay-later lane remains on `/v0/orders*` (open ticket lifecycle).
-- Push replay remains partial for sale/order writes, but offline pay-first cash replay is now implemented via `checkout.cash.finalize`.
+- Push replay remains partial for sale/order writes, but offline pay-first cash replay is now implemented via `checkout.cash.finalize`, and offline outage manual-claim capture is implemented via `order.manualExternalPaymentClaim.capture`.
 
 Frontend rollout note:
 - Treat all listed `/v0/orders` + `/v0/sales` endpoints as online-ready.
 - Always send `Idempotency-Key` for write endpoints.
 - Do not route general sale/order flow through `pushSync` yet.
 - Supported exception: offline pay-first cash replay uses push sync operation `checkout.cash.finalize`.
+- Supported exception: offline outage/manual-proof claim capture uses push sync operation `order.manualExternalPaymentClaim.capture`.
 - Cash quick checkout now materializes an order anchor and starts fulfillment at `PENDING`.
 - Quick-pay KHQR remains payment-intent-first at initiate, but successful confirmation now materializes an order anchor and starts fulfillment at `PENDING`.
+- For quick-pay KHQR, keep both `paymentIntentId` and `attempt.md5` from initiate:
+  - webhook is the primary finalization path
+  - if poll later shows `status = PAID_CONFIRMED` but `saleId = null`, call `POST /v0/payments/khqr/confirm` with `md5` as the cashier fallback to materialize the finalized sale/order
 
 Offline-first clarification:
 - Current backend supports offline replay for pay-first cash settlement via push sync operation `checkout.cash.finalize`.
+- Current backend supports offline replay for outage/manual-proof order capture via push sync operation `order.manualExternalPaymentClaim.capture`.
 - Full sale/order replay still remains partial:
   - pay-later/order-mutation writes do not support offline replay
   - general sale settlement should not be routed through push sync yet
@@ -47,6 +52,7 @@ Frontend cutover map (online lane):
   - `POST /v0/checkout/cash/finalize`
   - `POST /v0/checkout/khqr/initiate`
   - `GET /v0/checkout/khqr/intents/:intentId`
+  - `POST /v0/payments/khqr/confirm` as manual fallback when payment is confirmed but sale materialization is still pending
   - `POST /v0/checkout/khqr/intents/:intentId/cancel`
 - Fulfillment/kitchen queue:
   - `GET /v0/orders?view=FULFILLMENT_ACTIVE`
@@ -58,10 +64,10 @@ Frontend cutover map (online lane):
   - Requires branch policy `saleAllowPayLater = true` for place/add writes
 - Manual external-payment-claim lane:
   - `POST /v0/orders` with `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`
+  - offline reconnect capture may materialize this order early via push sync operation `order.manualExternalPaymentClaim.capture`
   - `GET|POST /v0/orders/:orderId/manual-payment-claims`
   - `POST /v0/orders/:orderId/manual-payment-claims/:claimId/approve`
   - `POST /v0/orders/:orderId/manual-payment-claims/:claimId/reject`
-  - Requires branch policy `saleAllowManualExternalPaymentClaim = true`
 
 ## Checkout Rule (Locked)
 
@@ -75,7 +81,10 @@ Use this rule to avoid ambiguous behavior:
   - backend also records a **CHECKED_OUT order** for fulfillment continuity
 - `POST /v0/checkout/khqr/*`:
   - backend still starts from payment intent lifecycle at initiate
-  - on successful KHQR confirmation/finalization, backend records a **FINALIZED sale**
+  - webhook is the primary finalization path
+  - `POST /v0/payments/khqr/confirm` remains the cashier/manual fallback
+  - if `GET /v0/checkout/khqr/intents/:intentId` reaches `PAID_CONFIRMED` but `saleId` is still `null`, frontend should call the confirm endpoint with the initiate `md5`
+  - after successful KHQR finalization, backend records a **FINALIZED sale**
   - backend also records a **CHECKED_OUT order** for fulfillment continuity
 
 2) **Pay-later**
@@ -89,7 +98,6 @@ Use this rule to avoid ambiguous behavior:
 - Endpoint: `POST /v0/orders` with `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`
 - Result: backend records an `OPEN` order ticket reserved for later manual claim review
 - Normal `saleAllowPayLater` policy is not used for this source mode
-- Branch must enable `saleAllowManualExternalPaymentClaim`
 - If the claim comes from outage static-QR / external-transfer handling, staff should capture transaction photo evidence during downtime and attach/upload it when later submitting the claim online.
 
 3) **Pay-later settlement**
@@ -275,6 +283,9 @@ Rules:
 - No `sale` row is created at initiate.
 - Intent stores immutable checkout snapshot for later finalization.
 - `saleType` defaults to `DINE_IN` when omitted and is applied when sale is materialized after KHQR confirmation.
+- Frontend should keep both:
+  - `intent.paymentIntentId` for polling
+  - `attempt.md5` for manual confirm fallback
 - Successful KHQR confirmation/finalization materializes `CHECKED_OUT order + order lines + sale + sale lines` atomically.
 - Successful KHQR confirmation/finalization also creates an initial fulfillment batch with `status = PENDING`.
 - The finalized sale is linked to `order.sourceMode = DIRECT_CHECKOUT`, so fulfillment can continue on `PATCH /v0/orders/:orderId/fulfillment`.
@@ -294,6 +305,14 @@ Response `200`:
   }
 }
 ```
+
+Rules:
+- This endpoint is a payment-intent status read, not a finalize command.
+- If response shows:
+  - `status = FINALIZED` and `saleId != null`, sale/order materialization is complete.
+  - `status = PAID_CONFIRMED` and `saleId = null`, payment proof is already confirmed but sale/order materialization is still pending.
+- In the `PAID_CONFIRMED` + `saleId = null` case, frontend should call `POST /v0/payments/khqr/confirm` with the initiate `attempt.md5` as the cashier/manual fallback.
+- Webhook may finalize the intent without frontend calling confirm. Polling alone must not be treated as the only finalization step.
 
 #### 4) Cancel intent
 `POST /v0/checkout/khqr/intents/:intentId/cancel`  
@@ -447,7 +466,7 @@ Rules:
 - server validates branch visibility + modifier selections; invalid combos are rejected
 - default `sourceMode` is `STANDARD`
 - `STANDARD` source mode is denied when branch policy `saleAllowPayLater = false` (`ORDER_PAY_LATER_DISABLED`)
-- `MANUAL_EXTERNAL_PAYMENT_CLAIM` source mode is denied when branch policy `saleAllowManualExternalPaymentClaim = false` (`ORDER_MANUAL_PAYMENT_CLAIM_DISABLED`)
+- `MANUAL_EXTERNAL_PAYMENT_CLAIM` is a supported outage/manual-proof workflow and is not denied by branch policy
 
 ---
 
@@ -499,7 +518,6 @@ Response example (`200`):
 Rules:
 - requires open cash session (`ORDER_REQUIRES_OPEN_CASH_SESSION`)
 - `STANDARD` source mode is denied when branch policy `saleAllowPayLater = false` (`ORDER_PAY_LATER_DISABLED`)
-- `MANUAL_EXTERNAL_PAYMENT_CLAIM` source mode is denied when branch policy `saleAllowManualExternalPaymentClaim = false` (`ORDER_MANUAL_PAYMENT_CLAIM_DISABLED`)
 - denied when order has pending manual claim (`ORDER_MANUAL_PAYMENT_CLAIM_PENDING`)
 
 ---
@@ -682,7 +700,6 @@ Response example (`200`):
 ```
 
 Rules:
-- requires branch policy `saleAllowManualExternalPaymentClaim = true`
 - order must remain `OPEN`
 - order must still have no sale
 - order must have at least one line
@@ -692,6 +709,7 @@ Rules:
   1. capture the customer's transaction photo locally during downtime
   2. after connectivity returns, upload it via `POST /v0/media/images/upload` with `area = payment-proof`
   3. submit the returned `imageUrl` as `proofImageUrl`
+- Staff handling this reconnect flow, including `CASHIER`, are allowed to upload `payment-proof` media for claim evidence.
 - When `proofImageUrl` references a pending `payment-proof` upload for the same tenant, backend marks that upload as `LINKED` to the created manual claim.
 
 ---
@@ -782,6 +800,8 @@ Response example (`200`):
         "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
         "status": "OPEN",
         "sourceMode": "STANDARD",
+        "openedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+        "openedByDisplayName": "Sale Order",
         "fulfillmentStatus": "PREPARING",
         "totalUsdExact": 5,
         "linesPreview": [
@@ -795,6 +815,9 @@ Response example (`200`):
         "paymentMethod": null,
         "manualPaymentClaimId": null,
         "manualPaymentClaimStatus": null,
+        "manualPaymentClaimRequestedByAccountId": null,
+        "manualPaymentClaimRequestedByDisplayName": null,
+        "manualPaymentClaimRequestedAt": null,
         "createdAt": "2026-02-22T10:00:00.000Z",
         "updatedAt": "2026-02-22T10:03:00.000Z"
       }
@@ -829,8 +852,10 @@ Rules:
 - Quick-pay `DIRECT_CHECKOUT` orders start with `fulfillmentStatus = PENDING` immediately after successful cash finalize or KHQR finalization.
 - `totalUsdExact` is the exact USD total computed from current order lines (`sum(lineSubtotal)`).
 - `linesPreview` is a lightweight line summary for list rendering and includes readable modifier labels when present.
+- `openedByAccountId` and `openedByDisplayName` identify the staff who created the order.
 - `checkedOutAt` and `paymentMethod` are `null` until the order has an associated sale/checkout state.
 - `manualPaymentClaimId` and `manualPaymentClaimStatus` reflect the latest manual payment claim for the order, or `null` when no claim exists.
+- `manualPaymentClaimRequestedByAccountId`, `manualPaymentClaimRequestedByDisplayName`, and `manualPaymentClaimRequestedAt` reflect the latest manual payment claim requester, or `null` when no claim exists yet.
 - `sourceMode = DIRECT_CHECKOUT` indicates a pay-now order anchor materialized by quick cash or quick KHQR checkout finalization.
 
 ---
@@ -1257,6 +1282,7 @@ Response example (`200`):
 
 - Replay-enabled target operations:
   - `checkout.cash.finalize`
+  - `order.manualExternalPaymentClaim.capture`
   - `sale.void.execute`
 - Accepted but not yet replay-implemented:
   - `sale.finalize` (currently returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`; KHQR confirmation checks still run before that fallback)

@@ -126,6 +126,11 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
   },
+  "org.branch.profile.update": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+  },
   "org.branch.current.khqrReceiver.update": {
     scope: "BRANCH",
     effect: "WRITE",
@@ -180,7 +185,7 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
   "media.images.upload": {
     scope: "TENANT",
     effect: "WRITE",
-    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
   },
   "payment.khqr.attempt.register": {
     scope: "BRANCH",

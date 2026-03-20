@@ -759,7 +759,7 @@ export function createV0SaleOrderRouter(input: {
                 sourceOutboxId: outbox.row.id,
               });
 
-              const extraChanges = collectExtraSyncChanges(commandData);
+              const extraChanges = collectExtraSyncChanges(commandData, inputWrite.actionKey);
               for (const extra of extraChanges) {
                 await txSyncRepository.appendChange({
                   tenantId,
@@ -837,7 +837,8 @@ function asNumber(value: unknown): number | undefined {
 }
 
 function collectExtraSyncChanges(
-  commandData: unknown
+  commandData: unknown,
+  actionKey?: string
 ): Array<{ entityType: string; entityId: string; data: Record<string, unknown> }> {
   if (!commandData || typeof commandData !== "object" || Array.isArray(commandData)) {
     return [];
@@ -845,7 +846,11 @@ function collectExtraSyncChanges(
   const record = commandData as Record<string, unknown>;
   const extra: Array<{ entityType: string; entityId: string; data: Record<string, unknown> }> = [];
 
-  collectArrayEntity(record.lines, "sale_line", extra);
+  collectArrayEntity(
+    record.lines,
+    actionKey === V0_SALE_ORDER_ACTION_KEYS.orderPlace ? "order_ticket_line" : "sale_line",
+    extra
+  );
   collectArrayEntity(record.orderLines, "order_ticket_line", extra);
   collectArrayEntity(record.addedLines, "order_ticket_line", extra);
   collectArrayEntity(record.fulfillmentBatches, "order_fulfillment_batch", extra);

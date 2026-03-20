@@ -61,8 +61,8 @@ Locked direction:
 
 Policy direction:
 - Keep `saleAllowPayLater` as the normal business control for open-ticket behavior.
-- Separate policy `saleAllowManualExternalPaymentClaim` is now reserved for outage/manual external-payment claim workflows.
-- The policy exists, but the dedicated claim/review/settlement workflow is still pending implementation.
+- Outage/manual external-payment claim is a product workflow and must not be branch-blocked when used as the reconnect fallback for static-KHQR / external transfer.
+- `saleAllowManualExternalPaymentClaim` may remain in policy payloads for backward compatibility, but it is no longer the runtime gate for the outage reconnect-submit lane.
 
 ## Execution phases
 
