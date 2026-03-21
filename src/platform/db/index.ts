@@ -1,6 +1,8 @@
 import { Pool } from 'pg';
 import { config } from '../config/index.js';
 import { parseBooleanEnv } from "../config/env.js";
+import { log } from "#logger";
+import { formatError } from "../errors/format.js";
 
 const connectionTimeoutMillis = parsePositiveInteger(
   process.env.DB_CONNECTION_TIMEOUT_MS,
@@ -19,6 +21,15 @@ export const pool = new Pool({
   idleTimeoutMillis,
   max: maxConnections,
   keepAlive,
+});
+
+// pg emits pool-level client errors for idle/broken connections. Without a listener,
+// EventEmitter treats them as unhandled and the process can exit.
+pool.on("error", (error) => {
+  log.error("db.pool.client_error", {
+    event: "db.pool.client_error",
+    error: formatError(error),
+  });
 });
 
 export async function ping() {

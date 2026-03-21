@@ -290,30 +290,21 @@ export class V0AuthAccountService extends V0AuthBaseService {
       throw new V0AuthError(422, "phone is required");
     }
 
-    const account = await this.repo.findAccountByPhone(phone);
-    if (!account || !account.supabase_user_id) {
-      await this.writeAuditEventBestEffort({
-        phone,
-        eventKey: "AUTH_OTP_SEND",
-        outcome: "FAILED",
-        reasonCode: "ACCOUNT_NOT_FOUND",
-      });
-      throw new V0AuthError(404, "account not found");
-    }
-
     try {
       const supabase = this.requireSupabase();
       await supabase.sendOtp(phone);
+      const account = await this.findAccountByPhoneBestEffort(phone);
       await this.writeAuditEventBestEffort({
-        accountId: account.id,
+        accountId: account?.id ?? null,
         phone,
         eventKey: "AUTH_OTP_SEND",
         outcome: "SUCCESS",
       });
       return { expiresInMinutes: this.otpExpiryMinutes };
     } catch (error) {
+      const account = await this.findAccountByPhoneBestEffort(phone);
       await this.writeAuditEventBestEffort({
-        accountId: account.id,
+        accountId: account?.id ?? null,
         phone,
         eventKey: "AUTH_OTP_SEND",
         outcome: "FAILED",
@@ -782,6 +773,14 @@ export class V0AuthAccountService extends V0AuthBaseService {
       outcome: "SUCCESS",
     });
     return this.issueSessionResponse(account, context, activeMembershipsCount);
+  }
+
+  private async findAccountByPhoneBestEffort(phone: string) {
+    try {
+      return await this.repo.findAccountByPhone(phone);
+    } catch {
+      return null;
+    }
   }
 
   private translateSupabaseError(
