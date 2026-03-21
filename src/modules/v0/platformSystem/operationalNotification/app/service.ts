@@ -2,6 +2,7 @@ import {
   V0OperationalNotificationRepository,
   type V0CashSessionCloseContextRow,
   type V0OperationalNotificationInboxRow,
+  type V0VoidRequestNotificationContextRow,
 } from "../infra/repository.js";
 import {
   V0OperationalNotificationRealtimeBroker,
@@ -220,11 +221,26 @@ export class V0OperationalNotificationService {
     return this.repo.listOperationalRecipientAccountIdsForCashSessionZView(input);
   }
 
+  listOperationalRecipientAccountIdsForBranchManagerialReview(input: {
+    tenantId: string;
+    branchId: string;
+  }): Promise<string[]> {
+    return this.repo.listOperationalRecipientAccountIdsForBranchManagerialReview(input);
+  }
+
   getCashSessionCloseContext(input: {
     tenantId: string;
     cashSessionId: string;
   }): Promise<V0CashSessionCloseContextRow | null> {
     return this.repo.getCashSessionCloseContext(input);
+  }
+
+  getVoidRequestNotificationContext(input: {
+    tenantId: string;
+    branchId: string;
+    voidRequestId: string;
+  }): Promise<V0VoidRequestNotificationContextRow | null> {
+    return this.repo.getVoidRequestNotificationContext(input);
   }
 
   private async markAllReadWithSync(input: {

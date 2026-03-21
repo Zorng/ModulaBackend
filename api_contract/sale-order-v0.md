@@ -1331,3 +1331,5 @@ Response example (`200`):
 
 - ON-01 (`void requires attention`) is emitted on `VoidRequest(status=PENDING)` creation.
 - Do not emit ON-01 from `sale.status=VOID_PENDING` transition alone.
+- ON-02 (`void approved`) is emitted on `VoidRequest(status=APPROVED)`.
+- ON-03 (`void rejected`) is emitted on `VoidRequest(status=REJECTED)`.

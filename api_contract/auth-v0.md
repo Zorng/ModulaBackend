@@ -11,7 +11,7 @@ Base path: `/v0/auth`
   - success: `{ "success": true, "data": ... }`
   - failure: `{ "success": false, "error": "..." }`
 - Auth provider:
-  - production target: Supabase Auth (`V0_AUTH_PROVIDER=supabase`)
+  - staging/production target: Supabase Auth (`V0_AUTH_PROVIDER=supabase`)
   - local/integration fallback: internal provider (`V0_AUTH_PROVIDER=local`)
 - Access-control reason codes for protected endpoints:
   - see `api_contract/access-control-v0.md`

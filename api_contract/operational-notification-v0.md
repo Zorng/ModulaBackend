@@ -5,7 +5,7 @@ This document locks the target `/v0/notifications` HTTP contract for in-app oper
 Base path: `/v0/notifications`
 
 Implementation status:
-- Phase N1-N5 completed (contract + schema + query/command surface + ACL mapping + cash-session close emission integration + reliability close-out).
+- Phase N1-N5 completed (contract + schema + query/command surface + ACL mapping + cash-session close emission integration + sale-void emission integration + reliability close-out).
 
 ## Conventions
 
@@ -59,6 +59,12 @@ type NotificationItem = {
 - Therefore:
   - `VOID_APPROVAL_NEEDED` (ON-01) must be emitted only when a `VoidRequest` is created with `status=PENDING`.
   - Do not emit ON-01 purely from `sale.status=VOID_PENDING`.
+  - `VOID_APPROVED` must be emitted when a `VoidRequest` transitions to `status=APPROVED`.
+  - `VOID_REJECTED` must be emitted when a `VoidRequest` transitions to `status=REJECTED`.
+
+Recipient semantics:
+- `VOID_APPROVAL_NEEDED` targets branch managerial reviewers (`OWNER|ADMIN|MANAGER` assigned to the branch).
+- `VOID_APPROVED` and `VOID_REJECTED` target the original void requester.
 
 ## Endpoints
 

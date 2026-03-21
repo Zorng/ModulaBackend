@@ -9,7 +9,7 @@ describe("v0 auth account service fixed OTP policy", () => {
     jest.restoreAllMocks();
   });
 
-  it("accepts fixed OTP fallback in supabase mode when explicitly enabled", async () => {
+  it("accepts fixed OTP fallback in staging when explicitly enabled", async () => {
     process.env.V0_AUTH_PROVIDER = "supabase";
     process.env.APP_ENV = "staging";
     process.env.V0_AUTH_FIXED_OTP_ENABLED = "true";
@@ -51,6 +51,15 @@ describe("v0 auth account service fixed OTP policy", () => {
 
     expect(() => new V0AuthAccountService({} as any)).toThrow(
       "V0_AUTH_FIXED_OTP_ENABLED must be false in APP_ENV=production."
+    );
+  });
+
+  it("rejects local auth provider in APP_ENV=staging", () => {
+    process.env.V0_AUTH_PROVIDER = "local";
+    process.env.APP_ENV = "staging";
+
+    expect(() => new V0AuthAccountService({} as any)).toThrow(
+      "V0_AUTH_PROVIDER must be supabase unless APP_ENV is local or test."
     );
   });
 });
