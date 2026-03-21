@@ -99,4 +99,62 @@ describe("v0 auth account service fixed OTP policy", () => {
       })
     );
   });
+
+  it("rebuilds missing local account projection after supabase otp verify", async () => {
+    process.env.V0_AUTH_PROVIDER = "supabase";
+    process.env.APP_ENV = "staging";
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          user: {
+            id: "supabase-user-2",
+            phone: "+85598765432",
+            phone_confirmed_at: "2026-03-22T07:00:00.000Z",
+          },
+        }),
+    } as Response);
+
+    const createdAccount = {
+      id: "acc-recovered",
+      supabase_user_id: null,
+      phone: "+85598765432",
+      phone_verified_at: null,
+    };
+
+    const repo = {
+      findAccountBySupabaseUserId: jest.fn().mockResolvedValue(null),
+      findAccountByPhone: jest.fn().mockResolvedValue(null),
+      createInvitedAccount: jest.fn().mockResolvedValue(createdAccount),
+      attachSupabaseUserId: jest.fn().mockResolvedValue(undefined),
+      markPhoneVerifiedByAccountId: jest.fn().mockResolvedValue(undefined),
+      createAuditEvent: jest.fn().mockResolvedValue(undefined),
+    } as any;
+
+    const service = new V0AuthAccountService(repo);
+    const result = await service.verifyRegistrationOtp({
+      phone: "+85598765432",
+      otp: "654321",
+    });
+
+    expect(result).toEqual({ verified: true });
+    expect(repo.createInvitedAccount).toHaveBeenCalledWith({
+      phone: "+85598765432",
+    });
+    expect(repo.attachSupabaseUserId).toHaveBeenCalledWith({
+      accountId: "acc-recovered",
+      supabaseUserId: "supabase-user-2",
+    });
+    expect(repo.markPhoneVerifiedByAccountId).toHaveBeenCalledWith("acc-recovered");
+    expect(repo.createAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "acc-recovered",
+        eventKey: "AUTH_OTP_VERIFY",
+        outcome: "SUCCESS",
+      })
+    );
+  });
 });
