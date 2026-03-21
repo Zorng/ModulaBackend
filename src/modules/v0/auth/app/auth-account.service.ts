@@ -6,6 +6,7 @@ import {
   normalizePhone,
   sha256,
 } from "./common.js";
+import type { V0AuthRepository } from "../infra/repository.js";
 import {
   SupabaseAuthClient,
   SupabaseAuthError,
@@ -14,6 +15,14 @@ import {
 export class V0AuthAccountService extends V0AuthBaseService {
   private readonly authProvider = process.env.V0_AUTH_PROVIDER ?? "supabase";
   private readonly supabase = SupabaseAuthClient.fromEnv();
+
+  constructor(repo: V0AuthRepository) {
+    super(repo);
+
+    if (this.requiresSupabaseProvider() && !this.isSupabaseEnabled()) {
+      throw new Error("V0_AUTH_PROVIDER must be supabase unless APP_ENV is local or test.");
+    }
+  }
 
   async register(input: {
     phone: string;
@@ -154,6 +163,10 @@ export class V0AuthAccountService extends V0AuthBaseService {
 
   private isSupabaseEnabled(): boolean {
     return this.authProvider === "supabase";
+  }
+
+  private requiresSupabaseProvider(): boolean {
+    return this.appEnv !== "local" && this.appEnv !== "test";
   }
 
   private requireSupabase(): SupabaseAuthClient {

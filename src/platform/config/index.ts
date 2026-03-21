@@ -7,6 +7,8 @@ import {
 const { nodeEnv, appEnv } = loadEnvironment("development");
 const expectedLocalEnvFile = expectedLocalEnvFilename(nodeEnv, appEnv);
 const fixedOtpEnabled = parseBooleanEnv(process.env.V0_AUTH_FIXED_OTP_ENABLED) === true;
+const authProvider = String(process.env.V0_AUTH_PROVIDER ?? "supabase").trim().toLowerCase();
+const requiresRealOtp = appEnv === "staging" || appEnv === "production";
 
 // (optional but recommended) validate presence so it fails fast
 // Skip validation in test environment to allow mocking
@@ -33,6 +35,12 @@ if (!isTestEnv && !process.env.JWT_REFRESH_SECRET) {
 if (!isTestEnv && appEnv === "production" && fixedOtpEnabled) {
     throw new Error(
       "V0_AUTH_FIXED_OTP_ENABLED must be false in APP_ENV=production."
+    );
+}
+
+if (!isTestEnv && requiresRealOtp && authProvider !== "supabase") {
+    throw new Error(
+      "V0_AUTH_PROVIDER must be supabase unless APP_ENV is local or test."
     );
 }
 

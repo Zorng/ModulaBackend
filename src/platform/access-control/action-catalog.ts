@@ -126,6 +126,11 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
   },
+  "org.branch.profile.update": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN"],
+  },
   "org.branch.current.khqrReceiver.update": {
     scope: "BRANCH",
     effect: "WRITE",
@@ -180,7 +185,7 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
   "media.images.upload": {
     scope: "TENANT",
     effect: "WRITE",
-    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
   },
   "payment.khqr.attempt.register": {
     scope: "BRANCH",
@@ -387,7 +392,7 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     entitlementKey: "core.pos",
   },
   "discount.eligibility.resolve": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "READ",
     entitlementKey: "core.pos",
   },
@@ -452,37 +457,37 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     entitlementKey: "module.inventory",
   },
   "inventory.restockBatches.list": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "READ",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "module.inventory",
   },
   "inventory.restockBatches.create": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "module.inventory",
   },
   "inventory.restockBatches.updateMeta": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
     entitlementKey: "module.inventory",
   },
   "inventory.restockBatches.archive": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
     entitlementKey: "module.inventory",
   },
   "inventory.adjustments.apply": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN"],
     entitlementKey: "module.inventory",
   },
   "inventory.journal.list": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "READ",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "module.inventory",
@@ -494,7 +499,7 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     entitlementKey: "module.inventory",
   },
   "inventory.stock.branch.read": {
-    scope: "BRANCH",
+    scope: "TENANT",
     effect: "READ",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "module.inventory",
@@ -502,7 +507,7 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
   "inventory.stock.aggregate.read": {
     scope: "TENANT",
     effect: "READ",
-    allowedRoles: ["OWNER", "ADMIN"],
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "module.inventory",
   },
   "cashSession.open": {
@@ -640,6 +645,30 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     scope: "BRANCH",
     effect: "WRITE",
     allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "order.manualPaymentClaim.list": {
+    scope: "BRANCH",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "order.manualPaymentClaim.create": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER", "CASHIER"],
+    entitlementKey: "core.pos",
+  },
+  "order.manualPaymentClaim.approve": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
+  "order.manualPaymentClaim.reject": {
+    scope: "BRANCH",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "core.pos",
   },
   "order.fulfillment.status.update": {

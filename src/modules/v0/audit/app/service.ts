@@ -1,4 +1,8 @@
 import { V0AuditRepository } from "../infra/repository.js";
+import {
+  buildOffsetPaginatedResult,
+  type OffsetPaginatedResult,
+} from "../../../../shared/pagination.js";
 
 export class V0AuditError extends Error {
   constructor(
@@ -64,35 +68,51 @@ export class V0AuditService {
     outcome?: string;
     limit?: number;
     offset?: number;
-  }) {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const tenantId = assertTenantContext(input.actor);
     const branchId = normalizeOptional(input.branchId);
     if (branchId && !isUuid(branchId)) {
       throw new V0AuditError(422, "branchId must be a valid UUID");
     }
     const outcome = normalizeOutcome(input.outcome);
-    const rows = await this.repo.listTenantEvents({
-      tenantId,
-      branchId,
-      actionKey: normalizeOptional(input.actionKey),
-      outcome,
-      limit: normalizeLimit(input.limit),
-      offset: normalizeOffset(input.offset),
-    });
+    const actionKey = normalizeOptional(input.actionKey);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+    const [rows, total] = await Promise.all([
+      this.repo.listTenantEvents({
+        tenantId,
+        branchId,
+        actionKey,
+        outcome,
+        limit,
+        offset,
+      }),
+      this.repo.countTenantEvents({
+        tenantId,
+        branchId,
+        actionKey,
+        outcome,
+      }),
+    ]);
 
-    return rows.map((row) => ({
-      id: row.id,
-      tenantId: row.tenant_id,
-      branchId: row.branch_id,
-      actorAccountId: row.actor_account_id,
-      actionKey: row.action_key,
-      outcome: row.outcome,
-      reasonCode: row.reason_code,
-      entityType: row.entity_type,
-      entityId: row.entity_id,
-      metadata: row.metadata,
-      createdAt: row.created_at.toISOString(),
-    }));
+    return buildOffsetPaginatedResult({
+      items: rows.map((row) => ({
+        id: row.id,
+        tenantId: row.tenant_id,
+        branchId: row.branch_id,
+        actorAccountId: row.actor_account_id,
+        actionKey: row.action_key,
+        outcome: row.outcome,
+        reasonCode: row.reason_code,
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        metadata: row.metadata,
+        createdAt: row.created_at.toISOString(),
+      })),
+      limit,
+      offset,
+      total,
+    });
   }
 }
 

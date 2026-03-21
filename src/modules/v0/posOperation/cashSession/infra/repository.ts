@@ -251,6 +251,35 @@ export class V0CashSessionRepository {
     return result.rows;
   }
 
+  async countSessions(input: {
+    tenantId: string;
+    branchId: string;
+    status?: CashSessionStatus | null;
+    from?: Date | null;
+    to?: Date | null;
+    openedByAccountId?: string | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_cash_sessions s
+       WHERE s.tenant_id = $1
+         AND s.branch_id = $2
+         AND ($3::VARCHAR IS NULL OR s.status = $3)
+         AND ($4::TIMESTAMPTZ IS NULL OR s.opened_at >= $4)
+         AND ($5::TIMESTAMPTZ IS NULL OR s.opened_at <= $5)
+         AND ($6::UUID IS NULL OR s.opened_by_account_id = $6)`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.status ?? null,
+        input.from ?? null,
+        input.to ?? null,
+        input.openedByAccountId ?? null,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async closeSession(input: {
     tenantId: string;
     sessionId: string;
@@ -379,6 +408,20 @@ export class V0CashSessionRepository {
       [input.tenantId, input.sessionId, input.limit, input.offset]
     );
     return result.rows;
+  }
+
+  async countMovementsBySession(input: {
+    tenantId: string;
+    sessionId: string;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_cash_movements
+       WHERE tenant_id = $1
+         AND cash_session_id = $2`,
+      [input.tenantId, input.sessionId]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async listSalesBySession(input: {

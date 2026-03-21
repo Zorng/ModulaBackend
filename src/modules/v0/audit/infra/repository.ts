@@ -108,4 +108,27 @@ export class V0AuditRepository {
     );
     return result.rows;
   }
+
+  async countTenantEvents(input: {
+    tenantId: string;
+    branchId?: string | null;
+    actionKey?: string | null;
+    outcome?: "SUCCESS" | "REJECTED" | "FAILED" | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_audit_events
+       WHERE tenant_id = $1
+         AND ($2::uuid IS NULL OR branch_id = $2)
+         AND ($3::text IS NULL OR action_key = $3)
+         AND ($4::text IS NULL OR outcome = $4)`,
+      [
+        input.tenantId,
+        input.branchId ?? null,
+        input.actionKey ?? null,
+        input.outcome ?? null,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
 }

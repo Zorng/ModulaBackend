@@ -4,6 +4,8 @@ export const V0_PUSH_SYNC_ACTION_KEYS = {
 } as const;
 
 export const V0_PUSH_SYNC_OPERATION_TYPES = [
+  "checkout.cash.finalize",
+  "order.manualExternalPaymentClaim.capture",
   "sale.finalize",
   "cashSession.open",
   "cashSession.movement",

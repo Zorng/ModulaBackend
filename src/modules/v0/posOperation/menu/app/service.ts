@@ -6,6 +6,10 @@ import {
 } from "../infra/repository.js";
 import { V0MediaUploadRepository } from "../../../../../platform/media-uploads/repository.js";
 import { deriveObjectKeyFromImageUrl } from "../../../../../platform/storage/r2-image-storage.js";
+import {
+  buildOffsetPaginatedResult,
+  type OffsetPaginatedResult,
+} from "../../../../../shared/pagination.js";
 
 type ActorContext = {
   accountId: string;
@@ -45,7 +49,7 @@ export class V0MenuService {
     search?: string;
     limit?: number;
     offset?: number;
-  }) {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertBranchContext(input.actor);
     const status = normalizeStatusFilter(input.status);
     const categoryId = normalizeOptionalString(input.categoryId);
@@ -70,7 +74,7 @@ export class V0MenuService {
     });
 
     const page = filtered.slice(offset, offset + limit);
-    return Promise.all(
+    const items = await Promise.all(
       page.map(async (row) => {
         const visibleBranchIds = await this.repo.listVisibleBranchIdsForMenuItem({
           tenantId: scope.tenantId,
@@ -95,6 +99,12 @@ export class V0MenuService {
         };
       })
     );
+    return buildOffsetPaginatedResult({
+      items,
+      limit,
+      offset,
+      total: filtered.length,
+    });
   }
 
   async listAllItems(input: {
@@ -105,7 +115,7 @@ export class V0MenuService {
     branchId?: string;
     limit?: number;
     offset?: number;
-  }) {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertTenantContext(input.actor);
     const status = normalizeStatusFilter(input.status);
     const categoryId = normalizeOptionalString(input.categoryId);
@@ -158,7 +168,12 @@ export class V0MenuService {
       return true;
     });
 
-    return filtered.slice(offset, offset + limit);
+    return buildOffsetPaginatedResult({
+      items: filtered.slice(offset, offset + limit),
+      limit,
+      offset,
+      total: filtered.length,
+    });
   }
 
   async getItem(input: { actor: ActorContext; menuItemId: string }) {

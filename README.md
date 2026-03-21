@@ -42,7 +42,8 @@ File-backed local usage:
 OTP policy:
 
 - local/test: fixed OTP fallback is enabled by default
-- staging: enable fallback explicitly with `V0_AUTH_FIXED_OTP_ENABLED=true`
+- staging: use `V0_AUTH_PROVIDER=supabase` and enable fallback explicitly with `V0_AUTH_FIXED_OTP_ENABLED=true` only if telecom delivery is unreliable
+- production: use `V0_AUTH_PROVIDER=supabase`
 - production: `V0_AUTH_FIXED_OTP_ENABLED` must remain `false`
 
 `.env.local` is no longer supported and should be removed.

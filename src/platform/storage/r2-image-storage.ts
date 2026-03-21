@@ -1,13 +1,19 @@
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 
-export type TenantImageArea = "menu" | "inventory" | "tenant" | "profile";
+export type TenantImageArea =
+  | "menu"
+  | "inventory"
+  | "tenant"
+  | "profile"
+  | "payment-proof";
 
 const TENANT_IMAGE_AREA_PREFIX: Record<TenantImageArea, string> = {
   menu: "menu-item-images",
   inventory: "stock-item-images",
   tenant: "tenant-logo",
   profile: "profile-images",
+  "payment-proof": "payment-proof-images",
 };
 
 type UploadInput = {

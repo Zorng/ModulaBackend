@@ -1,13 +1,25 @@
 import { normalizeOptionalString } from "../../../../../shared/utils/string.js";
+import { V0MediaUploadRepository } from "../../../../../platform/media-uploads/repository.js";
+import { deriveObjectKeyFromImageUrl } from "../../../../../platform/storage/r2-image-storage.js";
 import {
+  buildOffsetPaginatedResult,
+  type OffsetPaginatedResult,
+} from "../../../../../shared/pagination.js";
+import {
+  type V0OrderManualPaymentClaimedMethod,
+  type V0OrderManualPaymentClaimRow,
+  type V0OrderManualPaymentClaimStatus,
   type V0OrderMenuItemRow,
   type V0OrderMenuModifierGroupRow,
   type V0OrderMenuModifierOptionRow,
+  type V0OrderListView,
   V0SaleOrderRepository,
   type V0OrderFulfillmentBatchRow,
   type V0OrderFulfillmentBatchStatus,
   type V0OrderTicketLineRow,
   type V0OrderTicketRow,
+  type V0OrderTicketSummaryRow,
+  type V0OrderTicketSourceMode,
   type V0OrderTicketStatus,
   type V0SaleLineRow,
   type V0SalePaymentMethod,
@@ -88,6 +100,24 @@ type SaleFinalizeInput = {
   khqrConfirmedAt: Date | null;
 };
 
+type ManualPaymentClaimInput = {
+  claimedPaymentMethod: V0OrderManualPaymentClaimedMethod;
+  saleType: V0SaleType;
+  tenderCurrency: V0TenderCurrency;
+  claimedTenderAmount: number;
+  proofImageUrl: string;
+  customerReference: string | null;
+  note: string | null;
+};
+
+type MaterializedCheckoutResult = {
+  order: V0OrderTicketRow;
+  orderLines: V0OrderTicketLineRow[];
+  fulfillmentBatch: V0OrderFulfillmentBatchRow;
+  sale: V0SaleRow;
+  saleLines: V0SaleLineRow[];
+};
+
 export class V0SaleOrderError extends Error {
   constructor(
     readonly statusCode: number,
@@ -100,24 +130,67 @@ export class V0SaleOrderError extends Error {
 }
 
 export class V0SaleOrderService {
-  constructor(private readonly repo: V0SaleOrderRepository) {}
+  constructor(
+    private readonly repo: V0SaleOrderRepository,
+    private readonly mediaUploadsRepo?: V0MediaUploadRepository
+  ) {}
 
   async listOrders(input: {
     actor: ActorContext;
     status?: string;
+    sourceMode?: string;
+    view?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const actor = assertBranchContext(input.actor);
     const status = parseOrderStatusFilter(input.status);
+    const sourceMode = parseOrderSourceModeFilter(input.sourceMode);
+    const view = parseOrderListView(input.view);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+    const total = await this.repo.countOrderTickets({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      status,
+      sourceMode,
+      view,
+    });
     const rows = await this.repo.listOrderTickets({
       tenantId: actor.tenantId,
       branchId: actor.branchId,
       status,
-      limit: normalizeLimit(input.limit),
-      offset: normalizeOffset(input.offset),
+      sourceMode,
+      view,
+      limit,
+      offset,
     });
-    return rows.map(mapOrderTicketSummary);
+    const nameMap = await this.repo.listAccountDisplayNames({
+      accountIds: uniq(
+        rows.flatMap((row) =>
+          [row.opened_by_account_id, row.manual_payment_claim_requested_by_account_id].filter(
+            (value): value is string => Boolean(value)
+          )
+        )
+      ),
+    });
+    const items = await Promise.all(
+      rows.map((row) =>
+        buildOrderTicketSummary({
+          repo: this.repo,
+          tenantId: actor.tenantId,
+          branchId: actor.branchId,
+          row,
+          nameMap,
+        })
+      )
+    );
+    return buildOffsetPaginatedResult({
+      items,
+      limit,
+      offset,
+      total,
+    });
   }
 
   async getOrder(input: {
@@ -142,11 +215,16 @@ export class V0SaleOrderService {
       tenantId: actor.tenantId,
       orderTicketId: order.id,
     });
+    const manualPaymentClaims = await this.repo.listManualPaymentClaimsByOrder({
+      tenantId: actor.tenantId,
+      orderTicketId: order.id,
+    });
 
     return {
       ...mapOrderTicket(order),
       lines: lines.map(mapOrderTicketLine),
       fulfillmentBatches: fulfillmentBatches.map(mapFulfillmentBatch),
+      manualPaymentClaims: manualPaymentClaims.map(mapManualPaymentClaim),
     };
   }
 
@@ -155,9 +233,10 @@ export class V0SaleOrderService {
     body: unknown;
   }): Promise<Record<string, unknown>> {
     const actor = assertBranchContext(input.actor);
-    await this.requirePayLaterEnabled(actor);
-    await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
     const body = toRecord(input.body);
+    const sourceMode = parseOrderSourceMode(body.sourceMode);
+    await this.requireOrderPlacementEnabled(actor, sourceMode);
+    await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
     const itemDrafts = parseOrderItems(body.items, false);
     const items = await this.hydrateOrderItems({
       tenantId: actor.tenantId,
@@ -169,6 +248,7 @@ export class V0SaleOrderService {
       tenantId: actor.tenantId,
       branchId: actor.branchId,
       openedByAccountId: actor.accountId,
+      sourceMode,
     });
 
     const lines: V0OrderTicketLineRow[] = [];
@@ -195,13 +275,56 @@ export class V0SaleOrderService {
     return payload;
   }
 
+  async captureManualExternalPaymentClaimOrderFromOfflineSnapshot(input: {
+    actor: ActorContext;
+    body: unknown;
+    occurredAt: Date;
+  }): Promise<Record<string, unknown>> {
+    const actor = assertBranchContext(input.actor);
+    await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
+    const body = toRecord(input.body);
+    const orderId = requireUuid(body.orderId, "orderId");
+    const items = parseOfflineCheckoutSnapshotItems(body.items);
+
+    const order = await this.repo.createOrderTicket({
+      id: orderId,
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      openedByAccountId: actor.accountId,
+      sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+      createdAt: input.occurredAt,
+      updatedAt: input.occurredAt,
+    });
+
+    const lines: V0OrderTicketLineRow[] = [];
+    for (const item of items) {
+      const created = await this.repo.createOrderTicketLine({
+        tenantId: actor.tenantId,
+        branchId: actor.branchId,
+        orderTicketId: order.id,
+        menuItemId: item.menuItemId,
+        menuItemNameSnapshot: item.menuItemNameSnapshot,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        lineSubtotal: roundMoney(item.unitPrice * item.quantity),
+        modifierSnapshot: item.modifierSnapshot,
+        note: item.note,
+      });
+      lines.push(created);
+    }
+
+    return {
+      ...mapOrderTicket(order),
+      lines: lines.map(mapOrderTicketLine),
+    };
+  }
+
   async addOrderItems(input: {
     actor: ActorContext;
     orderId: string;
     body: unknown;
   }): Promise<Record<string, unknown>> {
     const actor = assertBranchContext(input.actor);
-    await this.requirePayLaterEnabled(actor);
     const orderId = requireUuid(input.orderId, "orderId");
     const order = await this.repo.getOrderTicketById({
       tenantId: actor.tenantId,
@@ -214,6 +337,12 @@ export class V0SaleOrderService {
     if (order.status !== "OPEN") {
       throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
     }
+    await this.requireOrderPlacementEnabled(actor, order.source_mode);
+    await this.requireNoPendingManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
     await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
 
     const body = toRecord(input.body);
@@ -243,6 +372,7 @@ export class V0SaleOrderService {
     return {
       id: order.id,
       status: order.status,
+      sourceMode: order.source_mode,
       addedLines: createdLines.map(mapOrderTicketLine),
     };
   }
@@ -279,6 +409,11 @@ export class V0SaleOrderService {
         "ORDER_CANCEL_NOT_ALLOWED"
       );
     }
+    await this.requireNoPendingManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
 
     const body = toRecord(input.body);
     const reason = normalizeOptionalString(body.reason);
@@ -347,6 +482,11 @@ export class V0SaleOrderService {
     if (existingSale) {
       throw new V0SaleOrderError(409, "order already checked out", "ORDER_NOT_UNPAID");
     }
+    await this.requireNoPendingManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
 
     const lines = await this.repo.listOrderTicketLines({
       tenantId: actor.tenantId,
@@ -444,6 +584,308 @@ export class V0SaleOrderService {
     };
   }
 
+  async listManualPaymentClaims(input: {
+    actor: ActorContext;
+    orderId: string;
+  }): Promise<Array<Record<string, unknown>>> {
+    const actor = assertBranchContext(input.actor);
+    const order = await this.requireOrder(actor, input.orderId);
+    const claims = await this.repo.listManualPaymentClaimsByOrder({
+      tenantId: actor.tenantId,
+      orderTicketId: order.id,
+    });
+    return claims.map(mapManualPaymentClaim);
+  }
+
+  async createManualPaymentClaim(input: {
+    actor: ActorContext;
+    orderId: string;
+    body: unknown;
+  }): Promise<Record<string, unknown>> {
+    const actor = assertBranchContext(input.actor);
+    const order = await this.requireOrder(actor, input.orderId);
+    if (order.status !== "OPEN") {
+      throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
+    }
+    const existingSale = await this.repo.getSaleByOrderTicketId({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
+    if (existingSale) {
+      throw new V0SaleOrderError(409, "order already checked out", "ORDER_NOT_UNPAID");
+    }
+    const lines = await this.repo.listOrderTicketLines({
+      tenantId: actor.tenantId,
+      orderTicketId: order.id,
+    });
+    if (lines.length === 0) {
+      throw new V0SaleOrderError(422, "order has no items", "ORDER_NO_ITEMS");
+    }
+
+    const pending = await this.repo.getPendingManualPaymentClaimByOrder({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
+    if (pending) {
+      return mapManualPaymentClaim(pending);
+    }
+
+    const body = toRecord(input.body);
+    const claim = parseManualPaymentClaimBody(body);
+    const created = await this.repo.createManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+      requestedByAccountId: actor.accountId,
+      claimedPaymentMethod: claim.claimedPaymentMethod,
+      saleType: claim.saleType,
+      tenderCurrency: claim.tenderCurrency,
+      claimedTenderAmount: claim.claimedTenderAmount,
+      proofImageUrl: claim.proofImageUrl,
+      customerReference: claim.customerReference,
+      note: claim.note,
+    });
+    await this.linkManualPaymentClaimProofUpload({
+      tenantId: actor.tenantId,
+      claimId: created.id,
+      proofImageUrl: created.proof_image_url,
+    });
+    return mapManualPaymentClaim(created);
+  }
+
+  async approveManualPaymentClaim(input: {
+    actor: ActorContext;
+    orderId: string;
+    claimId: string;
+    body: unknown;
+  }): Promise<Record<string, unknown>> {
+    const actor = assertBranchContext(input.actor);
+    const order = await this.requireOrder(actor, input.orderId);
+    const claimId = requireUuid(input.claimId, "claimId");
+    const claim = await this.repo.getManualPaymentClaimById({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+      claimId,
+    });
+    if (!claim) {
+      throw new V0SaleOrderError(
+        404,
+        "manual payment claim not found",
+        "ORDER_MANUAL_PAYMENT_CLAIM_NOT_FOUND"
+      );
+    }
+    if (claim.status === "APPROVED") {
+      if (claim.sale_id) {
+        const sale = await this.repo.getSaleById({
+          tenantId: actor.tenantId,
+          branchId: actor.branchId,
+          saleId: claim.sale_id,
+        });
+        if (sale) {
+          const saleLines = await this.repo.listSaleLines({
+            tenantId: actor.tenantId,
+            saleId: sale.id,
+          });
+          return {
+            ...mapSale(sale),
+            order: mapOrderTicket(order),
+            lines: saleLines.map(mapSaleLine),
+            manualPaymentClaim: mapManualPaymentClaim(claim),
+          };
+        }
+      }
+      throw new V0SaleOrderError(
+        409,
+        "manual payment claim already resolved",
+        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
+      );
+    }
+    if (claim.status === "REJECTED") {
+      throw new V0SaleOrderError(
+        409,
+        "manual payment claim already resolved",
+        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
+      );
+    }
+    if (order.status !== "OPEN") {
+      throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
+    }
+    const existingSale = await this.repo.getSaleByOrderTicketId({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
+    if (existingSale) {
+      throw new V0SaleOrderError(409, "order already checked out", "ORDER_NOT_UNPAID");
+    }
+    const lines = await this.repo.listOrderTicketLines({
+      tenantId: actor.tenantId,
+      orderTicketId: order.id,
+    });
+    if (lines.length === 0) {
+      throw new V0SaleOrderError(422, "order has no items", "ORDER_NO_ITEMS");
+    }
+
+    const checkout = buildCheckoutFromManualPaymentClaim({
+      claim,
+      lines,
+    });
+    const reviewNote = normalizeOptionalString(toRecord(input.body).note);
+
+    const sale = await this.repo.createSale({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+      saleType: checkout.saleType,
+      paymentMethod: "KHQR",
+      tenderCurrency: checkout.tenderCurrency,
+      tenderAmount: checkout.tenderAmount,
+      cashReceivedTenderAmount: null,
+      cashChangeTenderAmount: 0,
+      khqrMd5: null,
+      khqrToAccountId: null,
+      khqrHash: null,
+      khqrConfirmedAt: null,
+      subtotalUsd: checkout.subtotalUsd,
+      subtotalKhr: checkout.subtotalKhr,
+      discountUsd: checkout.discountUsd,
+      discountKhr: checkout.discountKhr,
+      vatUsd: checkout.vatUsd,
+      vatKhr: checkout.vatKhr,
+      grandTotalUsd: checkout.grandTotalUsd,
+      grandTotalKhr: checkout.grandTotalKhr,
+      saleFxRateKhrPerUsd: checkout.saleFxRateKhrPerUsd,
+      saleKhrRoundingEnabled: checkout.saleKhrRoundingEnabled,
+      saleKhrRoundingMode: checkout.saleKhrRoundingMode,
+      saleKhrRoundingGranularity: checkout.saleKhrRoundingGranularity,
+      paidAmount: checkout.paidAmount,
+    });
+
+    const saleLines: V0SaleLineRow[] = [];
+    for (const line of lines) {
+      const saleLine = await this.repo.createSaleLine({
+        tenantId: actor.tenantId,
+        branchId: actor.branchId,
+        saleId: sale.id,
+        orderTicketLineId: line.id,
+        menuItemId: line.menu_item_id,
+        menuItemNameSnapshot: line.menu_item_name_snapshot,
+        unitPrice: line.unit_price,
+        quantity: line.quantity,
+        lineDiscountAmount: 0,
+        lineTotalAmount: line.line_subtotal,
+        modifierSnapshot: line.modifier_snapshot,
+      });
+      saleLines.push(saleLine);
+    }
+
+    const checkedOutOrder = await this.repo.markOrderTicketCheckedOut({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+      checkedOutByAccountId: actor.accountId,
+    });
+    if (!checkedOutOrder) {
+      throw new V0SaleOrderError(409, "order checkout failed", "ORDER_NOT_UNPAID");
+    }
+
+    const finalized = await this.repo.markSaleFinalized({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      saleId: sale.id,
+      finalizedByAccountId: actor.accountId,
+      paidAmount: checkout.paidAmount,
+      tenderAmount: checkout.tenderAmount,
+      cashReceivedTenderAmount: null,
+      cashChangeTenderAmount: 0,
+      khqrHash: null,
+      khqrConfirmedAt: new Date(),
+    });
+    if (!finalized) {
+      throw new V0SaleOrderError(409, "sale finalize failed", "SALE_NOT_FOUND");
+    }
+
+    const approvedClaim = await this.repo.resolveManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      claimId: claim.id,
+      reviewedByAccountId: actor.accountId,
+      status: "APPROVED",
+      reviewNote,
+      saleId: finalized.id,
+      reviewedAt: new Date(),
+    });
+    if (!approvedClaim) {
+      throw new V0SaleOrderError(
+        409,
+        "manual payment claim already resolved",
+        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
+      );
+    }
+
+    return {
+      ...mapSale(finalized),
+      order: mapOrderTicket(checkedOutOrder),
+      lines: saleLines.map(mapSaleLine),
+      manualPaymentClaim: mapManualPaymentClaim(approvedClaim),
+    };
+  }
+
+  async rejectManualPaymentClaim(input: {
+    actor: ActorContext;
+    orderId: string;
+    claimId: string;
+    body: unknown;
+  }): Promise<Record<string, unknown>> {
+    const actor = assertBranchContext(input.actor);
+    const order = await this.requireOrder(actor, input.orderId);
+    const claimId = requireUuid(input.claimId, "claimId");
+    const claim = await this.repo.getManualPaymentClaimById({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+      claimId,
+    });
+    if (!claim) {
+      throw new V0SaleOrderError(
+        404,
+        "manual payment claim not found",
+        "ORDER_MANUAL_PAYMENT_CLAIM_NOT_FOUND"
+      );
+    }
+    if (claim.status === "REJECTED") {
+      return mapManualPaymentClaim(claim);
+    }
+    if (claim.status === "APPROVED") {
+      throw new V0SaleOrderError(
+        409,
+        "manual payment claim already resolved",
+        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
+      );
+    }
+    const reviewNote = normalizeOptionalString(toRecord(input.body).note);
+    const rejected = await this.repo.resolveManualPaymentClaim({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      claimId: claim.id,
+      reviewedByAccountId: actor.accountId,
+      status: "REJECTED",
+      reviewNote,
+      reviewedAt: new Date(),
+    });
+    if (!rejected) {
+      throw new V0SaleOrderError(
+        409,
+        "manual payment claim already resolved",
+        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
+      );
+    }
+    return mapManualPaymentClaim(rejected);
+  }
+
   async updateFulfillmentStatus(input: {
     actor: ActorContext;
     orderId: string;
@@ -481,17 +923,29 @@ export class V0SaleOrderService {
     status?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const actor = assertBranchContext(input.actor);
     const status = parseSaleStatusFilter(input.status);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+    const total = await this.repo.countSales({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      status,
+    });
     const rows = await this.repo.listSales({
       tenantId: actor.tenantId,
       branchId: actor.branchId,
       status,
-      limit: normalizeLimit(input.limit),
-      offset: normalizeOffset(input.offset),
+      limit,
+      offset,
     });
-    return rows.map(mapSaleSummary);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapSaleSummary),
+      limit,
+      offset,
+      total,
+    });
   }
 
   async getSale(input: {
@@ -834,75 +1288,30 @@ export class V0SaleOrderService {
       body: input.body,
       forcedPaymentMethod: "CASH",
     });
-
-    const sale = await this.repo.createSale({
-      tenantId: prepared.actor.tenantId,
-      branchId: prepared.actor.branchId,
-      orderTicketId: null,
-      saleType: prepared.checkout.saleType,
-      paymentMethod: "CASH",
-      tenderCurrency: prepared.checkout.tenderCurrency,
-      tenderAmount: prepared.checkout.tenderAmount,
-      cashReceivedTenderAmount: prepared.checkout.cashReceivedTenderAmount,
-      cashChangeTenderAmount: prepared.checkout.cashChangeTenderAmount,
-      khqrMd5: null,
-      khqrToAccountId: null,
-      khqrHash: null,
-      khqrConfirmedAt: null,
-      subtotalUsd: prepared.checkout.subtotalUsd,
-      subtotalKhr: prepared.checkout.subtotalKhr,
-      discountUsd: prepared.checkout.discountUsd,
-      discountKhr: prepared.checkout.discountKhr,
-      vatUsd: prepared.checkout.vatUsd,
-      vatKhr: prepared.checkout.vatKhr,
-      grandTotalUsd: prepared.checkout.grandTotalUsd,
-      grandTotalKhr: prepared.checkout.grandTotalKhr,
-      saleFxRateKhrPerUsd: prepared.checkout.saleFxRateKhrPerUsd,
-      saleKhrRoundingEnabled: prepared.checkout.saleKhrRoundingEnabled,
-      saleKhrRoundingMode: prepared.checkout.saleKhrRoundingMode,
-      saleKhrRoundingGranularity: prepared.checkout.saleKhrRoundingGranularity,
-      paidAmount: prepared.checkout.paidAmount,
+    return this.finalizeDirectCashCheckout({
+      actor: prepared.actor,
+      items: prepared.items,
+      checkout: prepared.checkout,
     });
+  }
 
-    const saleLines: V0SaleLineRow[] = [];
-    for (const item of prepared.items) {
-      const lineSubtotal = roundMoney(item.unitPrice * item.quantity);
-      const saleLine = await this.repo.createSaleLine({
-        tenantId: prepared.actor.tenantId,
-        branchId: prepared.actor.branchId,
-        saleId: sale.id,
-        orderTicketLineId: null,
-        menuItemId: item.menuItemId,
-        menuItemNameSnapshot: item.menuItemNameSnapshot,
-        unitPrice: item.unitPrice,
-        quantity: item.quantity,
-        lineDiscountAmount: 0,
-        lineTotalAmount: lineSubtotal,
-        modifierSnapshot: item.modifierSnapshot,
-      });
-      saleLines.push(saleLine);
-    }
-
-    const finalized = await this.repo.markSaleFinalized({
-      tenantId: prepared.actor.tenantId,
-      branchId: prepared.actor.branchId,
-      saleId: sale.id,
-      finalizedByAccountId: prepared.actor.accountId,
-      paidAmount: prepared.checkout.paidAmount,
-      tenderAmount: prepared.checkout.tenderAmount,
-      cashReceivedTenderAmount: prepared.checkout.cashReceivedTenderAmount,
-      cashChangeTenderAmount: prepared.checkout.cashChangeTenderAmount,
-      khqrHash: null,
-      khqrConfirmedAt: null,
+  async cashFinalizeFromOfflineSnapshot(input: {
+    actor: ActorContext;
+    body: unknown;
+    occurredAt: Date;
+  }): Promise<Record<string, unknown>> {
+    const prepared = await this.prepareCashCheckoutFromOfflineSnapshot({
+      actor: input.actor,
+      body: input.body,
     });
-    if (!finalized) {
-      throw new V0SaleOrderError(409, "sale finalize failed", "SALE_NOT_FOUND");
-    }
-
-    return {
-      ...mapSale(finalized),
-      lines: saleLines.map(mapSaleLine),
-    };
+    return this.finalizeDirectCashCheckout({
+      actor: prepared.actor,
+      items: prepared.items,
+      checkout: prepared.checkout,
+      orderId: prepared.orderId,
+      saleId: prepared.saleId,
+      occurredAt: input.occurredAt,
+    });
   }
 
   async prepareKhqrCheckoutIntent(input: {
@@ -1035,6 +1444,224 @@ export class V0SaleOrderService {
     };
   }
 
+  private async prepareCashCheckoutFromOfflineSnapshot(input: {
+    actor: ActorContext;
+    body: unknown;
+  }): Promise<
+    CheckoutPreparation & {
+      orderId: string;
+      saleId: string;
+    }
+  > {
+    const actor = assertBranchContext(input.actor);
+    await this.requireOpenCashSession(actor, "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION");
+    const body = toRecord(input.body);
+    const orderId = requireUuid(body.orderId, "orderId");
+    const saleId = requireUuid(body.saleId, "saleId");
+    const items = parseOfflineCheckoutSnapshotItems(body.items);
+
+    const virtualLines: V0OrderTicketLineRow[] = items.map((item, index) => ({
+      id: `offline-line-${index + 1}`,
+      tenant_id: actor.tenantId,
+      branch_id: actor.branchId,
+      order_ticket_id: orderId,
+      menu_item_id: item.menuItemId,
+      menu_item_name_snapshot: item.menuItemNameSnapshot,
+      unit_price: item.unitPrice,
+      quantity: item.quantity,
+      line_subtotal: roundMoney(item.unitPrice * item.quantity),
+      modifier_snapshot: item.modifierSnapshot,
+      note: item.note,
+      created_at: new Date(0),
+      updated_at: new Date(0),
+    }));
+
+    const checkout = parseCheckoutBody(
+      {
+        ...body,
+        paymentMethod: "CASH",
+      },
+      virtualLines
+    );
+    if (checkout.paymentMethod !== "CASH") {
+      throw new V0SaleOrderError(
+        422,
+        "paymentMethod must be CASH",
+        "SALE_PAYMENT_METHOD_INVALID"
+      );
+    }
+
+    return {
+      actor,
+      body,
+      items,
+      checkout,
+      orderId,
+      saleId,
+    };
+  }
+
+  private async finalizeDirectCashCheckout(input: {
+    actor: { accountId: string; tenantId: string; branchId: string };
+    items: ItemInput[];
+    checkout: CheckoutInput;
+    orderId?: string;
+    saleId?: string;
+    occurredAt?: Date;
+  }): Promise<Record<string, unknown>> {
+    const materialized = await this.materializeDirectCheckout({
+      actor: input.actor,
+      items: input.items,
+      checkout: input.checkout,
+      orderId: input.orderId,
+      saleId: input.saleId,
+      occurredAt: input.occurredAt,
+    });
+
+    const finalized = await this.repo.markSaleFinalized({
+      tenantId: input.actor.tenantId,
+      branchId: input.actor.branchId,
+      saleId: materialized.sale.id,
+      finalizedByAccountId: input.actor.accountId,
+      paidAmount: input.checkout.paidAmount,
+      tenderAmount: input.checkout.tenderAmount,
+      cashReceivedTenderAmount: input.checkout.cashReceivedTenderAmount,
+      cashChangeTenderAmount: input.checkout.cashChangeTenderAmount,
+      khqrHash: null,
+      khqrConfirmedAt: null,
+      finalizedAt: input.occurredAt ?? null,
+      updatedAt: input.occurredAt ?? null,
+    });
+    if (!finalized) {
+      throw new V0SaleOrderError(409, "sale finalize failed", "SALE_NOT_FOUND");
+    }
+
+    return {
+      ...mapSale(finalized),
+      order: mapOrderTicket(materialized.order),
+      batch: mapFulfillmentBatch(materialized.fulfillmentBatch),
+      orderLines: materialized.orderLines.map(mapOrderTicketLine),
+      lines: materialized.saleLines.map(mapSaleLine),
+    };
+  }
+
+  private async materializeDirectCheckout(input: {
+    actor: { accountId: string; tenantId: string; branchId: string };
+    items: ItemInput[];
+    checkout: CheckoutInput;
+    orderId?: string;
+    saleId?: string;
+    occurredAt?: Date;
+  }): Promise<MaterializedCheckoutResult> {
+    const order = await this.repo.createOrderTicket({
+      id: input.orderId ?? null,
+      tenantId: input.actor.tenantId,
+      branchId: input.actor.branchId,
+      openedByAccountId: input.actor.accountId,
+      sourceMode: "DIRECT_CHECKOUT",
+      createdAt: input.occurredAt ?? null,
+      updatedAt: input.occurredAt ?? null,
+    });
+
+    const orderLines: V0OrderTicketLineRow[] = [];
+    for (const item of input.items) {
+      const orderLine = await this.repo.createOrderTicketLine({
+        tenantId: input.actor.tenantId,
+        branchId: input.actor.branchId,
+        orderTicketId: order.id,
+        menuItemId: item.menuItemId,
+        menuItemNameSnapshot: item.menuItemNameSnapshot,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        lineSubtotal: roundMoney(item.unitPrice * item.quantity),
+        modifierSnapshot: item.modifierSnapshot,
+        note: item.note,
+      });
+      orderLines.push(orderLine);
+    }
+
+    const sale = await this.repo.createSale({
+      id: input.saleId ?? null,
+      tenantId: input.actor.tenantId,
+      branchId: input.actor.branchId,
+      orderTicketId: order.id,
+      saleType: input.checkout.saleType,
+      paymentMethod: input.checkout.paymentMethod,
+      tenderCurrency: input.checkout.tenderCurrency,
+      tenderAmount: input.checkout.tenderAmount,
+      cashReceivedTenderAmount: input.checkout.cashReceivedTenderAmount,
+      cashChangeTenderAmount: input.checkout.cashChangeTenderAmount,
+      khqrMd5: input.checkout.khqrMd5,
+      khqrToAccountId: input.checkout.khqrToAccountId,
+      khqrHash: input.checkout.khqrHash,
+      khqrConfirmedAt: input.checkout.khqrConfirmedAt,
+      subtotalUsd: input.checkout.subtotalUsd,
+      subtotalKhr: input.checkout.subtotalKhr,
+      discountUsd: input.checkout.discountUsd,
+      discountKhr: input.checkout.discountKhr,
+      vatUsd: input.checkout.vatUsd,
+      vatKhr: input.checkout.vatKhr,
+      grandTotalUsd: input.checkout.grandTotalUsd,
+      grandTotalKhr: input.checkout.grandTotalKhr,
+      saleFxRateKhrPerUsd: input.checkout.saleFxRateKhrPerUsd,
+      saleKhrRoundingEnabled: input.checkout.saleKhrRoundingEnabled,
+      saleKhrRoundingMode: input.checkout.saleKhrRoundingMode,
+      saleKhrRoundingGranularity: input.checkout.saleKhrRoundingGranularity,
+      paidAmount: input.checkout.paidAmount,
+      createdAt: input.occurredAt ?? null,
+      updatedAt: input.occurredAt ?? null,
+    });
+
+    const saleLines: V0SaleLineRow[] = [];
+    for (const orderLine of orderLines) {
+      const saleLine = await this.repo.createSaleLine({
+        tenantId: input.actor.tenantId,
+        branchId: input.actor.branchId,
+        saleId: sale.id,
+        orderTicketLineId: orderLine.id,
+        menuItemId: orderLine.menu_item_id,
+        menuItemNameSnapshot: orderLine.menu_item_name_snapshot,
+        unitPrice: orderLine.unit_price,
+        quantity: orderLine.quantity,
+        lineDiscountAmount: 0,
+        lineTotalAmount: orderLine.line_subtotal,
+        modifierSnapshot: orderLine.modifier_snapshot,
+      });
+      saleLines.push(saleLine);
+    }
+
+    const checkedOutOrder = await this.repo.markOrderTicketCheckedOut({
+      tenantId: input.actor.tenantId,
+      branchId: input.actor.branchId,
+      orderTicketId: order.id,
+      checkedOutByAccountId: input.actor.accountId,
+      checkedOutAt: input.occurredAt ?? null,
+      updatedAt: input.occurredAt ?? null,
+    });
+    if (!checkedOutOrder) {
+      throw new V0SaleOrderError(409, "order checkout failed", "ORDER_NOT_UNPAID");
+    }
+
+    const fulfillmentBatch = await this.repo.createFulfillmentBatch({
+      tenantId: input.actor.tenantId,
+      branchId: input.actor.branchId,
+      orderTicketId: checkedOutOrder.id,
+      status: "PENDING",
+      note: null,
+      createdByAccountId: input.actor.accountId,
+      createdAt: input.occurredAt ?? null,
+      updatedAt: input.occurredAt ?? null,
+    });
+
+    return {
+      order: checkedOutOrder,
+      orderLines,
+      fulfillmentBatch,
+      sale,
+      saleLines,
+    };
+  }
+
   private async hydrateOrderItems(input: {
     tenantId: string;
     branchId: string;
@@ -1102,6 +1729,19 @@ export class V0SaleOrderService {
     return hydrated;
   }
 
+  private async requireOrder(actor: { tenantId: string; branchId: string }, orderId: string) {
+    const id = requireUuid(orderId, "orderId");
+    const order = await this.repo.getOrderTicketById({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: id,
+    });
+    if (!order) {
+      throw new V0SaleOrderError(404, "order not found", "ORDER_NOT_FOUND");
+    }
+    return order;
+  }
+
   private async requireSale(actor: { tenantId: string; branchId: string }, saleId: string) {
     const id = requireUuid(saleId, "saleId");
     const sale = await this.repo.getSaleById({
@@ -1156,6 +1796,60 @@ export class V0SaleOrderService {
       );
     }
   }
+
+  private async requireOrderPlacementEnabled(
+    actor: { tenantId: string; branchId: string },
+    sourceMode: V0OrderTicketSourceMode
+  ): Promise<void> {
+    if (sourceMode === "MANUAL_EXTERNAL_PAYMENT_CLAIM") {
+      return;
+    }
+    await this.requirePayLaterEnabled(actor);
+  }
+
+  private async requireNoPendingManualPaymentClaim(input: {
+    tenantId: string;
+    branchId: string;
+    orderTicketId: string;
+  }): Promise<void> {
+    const pending = await this.repo.getPendingManualPaymentClaimByOrder({
+      tenantId: input.tenantId,
+      branchId: input.branchId,
+      orderTicketId: input.orderTicketId,
+    });
+    if (pending) {
+      throw new V0SaleOrderError(
+        409,
+        "order has pending manual payment claim",
+        "ORDER_MANUAL_PAYMENT_CLAIM_PENDING"
+      );
+    }
+  }
+
+  private async linkManualPaymentClaimProofUpload(input: {
+    tenantId: string;
+    claimId: string;
+    proofImageUrl: string;
+  }): Promise<void> {
+    if (!this.mediaUploadsRepo) {
+      return;
+    }
+
+    const objectKey = deriveObjectKeyFromImageUrl({
+      imageUrl: input.proofImageUrl,
+      tenantId: input.tenantId,
+      area: "payment-proof",
+    });
+
+    await this.mediaUploadsRepo.markLinkedUploadByReference({
+      tenantId: input.tenantId,
+      area: "payment-proof",
+      imageUrl: input.proofImageUrl,
+      objectKey,
+      linkedEntityType: "order_manual_payment_claim",
+      linkedEntityId: input.claimId,
+    });
+  }
 }
 
 function assertBranchContext(input: ActorContext): { accountId: string; tenantId: string; branchId: string } {
@@ -1204,6 +1898,41 @@ function parseOrderItems(input: unknown, required: boolean): ItemDraft[] {
       menuItemId,
       quantity,
       modifierSelections,
+      note,
+    };
+  });
+}
+
+function parseOfflineCheckoutSnapshotItems(input: unknown): ItemInput[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new V0SaleOrderError(422, "items must be a non-empty array", "ORDER_ITEMS_INVALID");
+  }
+
+  return input.map((item, index) => {
+    const row = toRecord(item);
+    const menuItemId = requireUuid(row.menuItemId, `items[${index}].menuItemId`);
+    const menuItemNameSnapshot = requireNonEmptyString(
+      row.menuItemNameSnapshot,
+      `items[${index}].menuItemNameSnapshot`
+    );
+    const unitPrice = parseNumberOrDefault(row.unitPrice, Number.NaN, `items[${index}].unitPrice`);
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      throw new V0SaleOrderError(
+        422,
+        `items[${index}].unitPrice must be a finite number >= 0`,
+        "SALE_ORDER_VALIDATION_FAILED"
+      );
+    }
+
+    const quantity = requirePositiveNumber(row.quantity, `items[${index}].quantity`);
+    const note = normalizeOptionalString(row.note) ?? null;
+
+    return {
+      menuItemId,
+      menuItemNameSnapshot,
+      unitPrice,
+      quantity,
+      modifierSnapshot: row.modifierSnapshot ?? [],
       note,
     };
   });
@@ -1536,6 +2265,55 @@ function parseOrderStatusFilter(input: string | undefined): V0OrderTicketStatus 
   throw new V0SaleOrderError(422, "invalid order status", "ORDER_STATUS_INVALID");
 }
 
+function parseOrderListView(input: string | undefined): V0OrderListView | null {
+  const view = normalizeOptionalString(input)?.toUpperCase();
+  if (!view || view === "ALL") {
+    return null;
+  }
+  if (
+    view === "FULFILLMENT_ACTIVE" ||
+    view === "PAY_LATER_EDITABLE" ||
+    view === "MANUAL_CLAIM_REVIEW"
+  ) {
+    return view;
+  }
+  throw new V0SaleOrderError(422, "invalid order list view", "ORDER_LIST_VIEW_INVALID");
+}
+
+function parseOrderSourceModeFilter(input: string | undefined): V0OrderTicketSourceMode | null {
+  const value = normalizeOptionalString(input)?.toUpperCase();
+  if (!value || value === "ALL") {
+    return null;
+  }
+  if (
+    value === "STANDARD" ||
+    value === "MANUAL_EXTERNAL_PAYMENT_CLAIM" ||
+    value === "DIRECT_CHECKOUT"
+  ) {
+    return value;
+  }
+  throw new V0SaleOrderError(
+    422,
+    "invalid order sourceMode filter",
+    "ORDER_LIST_SOURCE_MODE_INVALID"
+  );
+}
+
+function parseOrderSourceMode(input: unknown): V0OrderTicketSourceMode {
+  const value = normalizeOptionalString(input)?.toUpperCase();
+  if (!value || value === "STANDARD") {
+    return "STANDARD";
+  }
+  if (value === "MANUAL_EXTERNAL_PAYMENT_CLAIM") {
+    return "MANUAL_EXTERNAL_PAYMENT_CLAIM";
+  }
+  throw new V0SaleOrderError(
+    422,
+    "sourceMode must be STANDARD or MANUAL_EXTERNAL_PAYMENT_CLAIM",
+    "ORDER_SOURCE_MODE_INVALID"
+  );
+}
+
 function parseSaleStatusFilter(input: string | undefined): V0SaleStatus | null {
   const status = normalizeOptionalString(input)?.toUpperCase();
   if (!status || status === "ALL") {
@@ -1564,6 +2342,46 @@ function parseTenderCurrency(input: unknown): V0TenderCurrency {
     return "KHR";
   }
   throw new V0SaleOrderError(422, "tenderCurrency must be USD or KHR", "SALE_TENDER_CURRENCY_INVALID");
+}
+
+function parseManualPaymentClaimBody(body: Record<string, unknown>): ManualPaymentClaimInput {
+  const claimedPaymentMethod = parseManualPaymentClaimedMethod(body.claimedPaymentMethod);
+  return {
+    claimedPaymentMethod,
+    saleType: parseSaleType(body.saleType),
+    tenderCurrency: parseTenderCurrency(body.tenderCurrency),
+    claimedTenderAmount: requirePositiveNumber(body.claimedTenderAmount, "claimedTenderAmount"),
+    proofImageUrl: requireNonEmptyString(body.proofImageUrl, "proofImageUrl"),
+    customerReference: normalizeOptionalString(body.customerReference) ?? null,
+    note: normalizeOptionalString(body.note) ?? null,
+  };
+}
+
+function parseManualPaymentClaimedMethod(input: unknown): V0OrderManualPaymentClaimedMethod {
+  const value = normalizeOptionalString(input)?.toUpperCase();
+  if (!value || value === "KHQR") {
+    return "KHQR";
+  }
+  throw new V0SaleOrderError(
+    422,
+    "claimedPaymentMethod must be KHQR",
+    "ORDER_MANUAL_PAYMENT_CLAIM_METHOD_INVALID"
+  );
+}
+
+function buildCheckoutFromManualPaymentClaim(input: {
+  claim: V0OrderManualPaymentClaimRow;
+  lines: V0OrderTicketLineRow[];
+}): CheckoutInput {
+  return parseCheckoutBody(
+    {
+      paymentMethod: input.claim.claimed_payment_method,
+      saleType: input.claim.sale_type,
+      tenderCurrency: input.claim.tender_currency,
+      tenderAmount: input.claim.claimed_tender_amount,
+    },
+    input.lines
+  );
 }
 
 function parseSaleType(input: unknown): V0SaleType {
@@ -1738,12 +2556,58 @@ function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function mapOrderTicketSummary(row: V0OrderTicketRow): Record<string, unknown> {
+function uniq(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+async function buildOrderTicketSummary(input: {
+  repo: V0SaleOrderRepository;
+  tenantId: string;
+  branchId: string;
+  row: V0OrderTicketSummaryRow;
+  nameMap: Map<string, string>;
+}): Promise<Record<string, unknown>> {
+  const [lines, sale] = await Promise.all([
+    input.repo.listOrderTicketLines({
+      tenantId: input.tenantId,
+      orderTicketId: input.row.id,
+    }),
+    input.repo.getSaleByOrderTicketId({
+      tenantId: input.tenantId,
+      branchId: input.branchId,
+      orderTicketId: input.row.id,
+    }),
+  ]);
+
+  const totalUsdExact = roundMoney(lines.reduce((sum, line) => sum + line.line_subtotal, 0));
+  const openedByDisplayName =
+    input.nameMap.get(input.row.opened_by_account_id) ?? input.row.opened_by_account_id;
+  const manualPaymentClaimRequestedByAccountId =
+    input.row.manual_payment_claim_requested_by_account_id;
+  const manualPaymentClaimRequestedByDisplayName = manualPaymentClaimRequestedByAccountId
+    ? input.nameMap.get(manualPaymentClaimRequestedByAccountId) ??
+      manualPaymentClaimRequestedByAccountId
+    : null;
+
   return {
-    id: row.id,
-    status: row.status,
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString(),
+    id: input.row.id,
+    status: input.row.status,
+    sourceMode: input.row.source_mode,
+    openedByAccountId: input.row.opened_by_account_id,
+    openedByDisplayName,
+    fulfillmentStatus: input.row.fulfillment_status,
+    totalUsdExact,
+    linesPreview: lines.map(mapOrderTicketLinePreview),
+    checkedOutAt: input.row.checked_out_at?.toISOString() ?? null,
+    paymentMethod: sale?.payment_method ?? null,
+    manualPaymentClaimId: input.row.manual_payment_claim_id,
+    manualPaymentClaimStatus: input.row.manual_payment_claim_status,
+    manualPaymentClaimRequestedByAccountId,
+    manualPaymentClaimRequestedByDisplayName,
+    manualPaymentClaimRequestedAt:
+      input.row.manual_payment_claim_requested_at?.toISOString() ?? null,
+    createdAt: input.row.created_at.toISOString(),
+    updatedAt: input.row.updated_at.toISOString(),
   };
 }
 
@@ -1754,11 +2618,37 @@ function mapOrderTicket(row: V0OrderTicketRow): Record<string, unknown> {
     branchId: row.branch_id,
     openedByAccountId: row.opened_by_account_id,
     status: row.status,
+    sourceMode: row.source_mode,
     checkedOutAt: row.checked_out_at?.toISOString() ?? null,
     checkedOutByAccountId: row.checked_out_by_account_id,
     cancelledAt: row.cancelled_at?.toISOString() ?? null,
     cancelledByAccountId: row.cancelled_by_account_id,
     cancelReason: row.cancel_reason,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function mapManualPaymentClaim(row: V0OrderManualPaymentClaimRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    branchId: row.branch_id,
+    orderId: row.order_ticket_id,
+    saleId: row.sale_id,
+    requestedByAccountId: row.requested_by_account_id,
+    reviewedByAccountId: row.reviewed_by_account_id,
+    status: row.status,
+    claimedPaymentMethod: row.claimed_payment_method,
+    saleType: row.sale_type,
+    tenderCurrency: row.tender_currency,
+    claimedTenderAmount: row.claimed_tender_amount,
+    proofImageUrl: row.proof_image_url,
+    customerReference: row.customer_reference,
+    note: row.note,
+    reviewNote: row.review_note,
+    requestedAt: row.requested_at.toISOString(),
+    reviewedAt: row.reviewed_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -1780,6 +2670,14 @@ function mapOrderTicketLine(row: V0OrderTicketLineRow): Record<string, unknown> 
   };
 }
 
+function mapOrderTicketLinePreview(row: V0OrderTicketLineRow): Record<string, unknown> {
+  return {
+    menuItemNameSnapshot: row.menu_item_name_snapshot,
+    quantity: row.quantity,
+    modifierLabels: extractModifierLabels(row.modifier_snapshot),
+  };
+}
+
 function mapSaleSummary(row: V0SaleRow): Record<string, unknown> {
   return {
     id: row.id,
@@ -1794,6 +2692,28 @@ function mapSaleSummary(row: V0SaleRow): Record<string, unknown> {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+function extractModifierLabels(snapshot: unknown): string[] {
+  if (!Array.isArray(snapshot)) {
+    return [];
+  }
+  return snapshot.flatMap((group) => {
+    if (!group || typeof group !== "object") {
+      return [];
+    }
+    const selectedOptions = (group as { selectedOptions?: unknown }).selectedOptions;
+    if (!Array.isArray(selectedOptions)) {
+      return [];
+    }
+    return selectedOptions.flatMap((option) => {
+      if (!option || typeof option !== "object") {
+        return [];
+      }
+      const label = (option as { label?: unknown }).label;
+      return typeof label === "string" && label.length > 0 ? [label] : [];
+    });
+  });
 }
 
 function mapSale(row: V0SaleRow): Record<string, unknown> {

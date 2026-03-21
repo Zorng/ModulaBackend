@@ -204,7 +204,7 @@ async function insertSessionSale(input: {
   voidedAt?: Date | null;
 }): Promise<string> {
   const result = await input.pool.query<{ id: string }>(
-    `INSERT INTO v0_sales (
+     `INSERT INTO v0_sales (
        tenant_id,
        branch_id,
        status,
@@ -213,6 +213,7 @@ async function insertSessionSale(input: {
        tender_amount,
        cash_received_tender_amount,
        cash_change_tender_amount,
+       khqr_confirmed_at,
        subtotal_usd,
        subtotal_khr,
        discount_usd,
@@ -243,6 +244,12 @@ async function insertSessionSale(input: {
        $5::NUMERIC(14,2),
        CASE WHEN $4::VARCHAR(20) = 'CASH' THEN $5::NUMERIC(14,2) ELSE NULL END,
        0,
+       CASE
+         WHEN $4::VARCHAR(20) = 'KHQR'
+           AND $3::VARCHAR(20) IN ('FINALIZED', 'VOID_PENDING', 'VOIDED')
+         THEN $7::TIMESTAMPTZ
+         ELSE NULL
+       END,
        $5::NUMERIC(14,2),
        $6::NUMERIC(14,2),
        0, 0, 0, 0,
@@ -839,8 +846,8 @@ describe("v0 cash session integration", () => {
       .get(`/v0/cash/sessions/${sessionId}/movements`)
       .set("Authorization", `Bearer ${cashierB.branchToken}`);
     expect(movementListForCashierB.status).toBe(200);
-    expect(movementListForCashierB.body.data).toHaveLength(1);
-    expect(movementListForCashierB.body.data[0]).toMatchObject({
+    expect(movementListForCashierB.body.data.items).toHaveLength(1);
+    expect(movementListForCashierB.body.data.items[0]).toMatchObject({
       sessionId,
       movementType: "MANUAL_IN",
       recordedByAccountId: cashierB.accountId,

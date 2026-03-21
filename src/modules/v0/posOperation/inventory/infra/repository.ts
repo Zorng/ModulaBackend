@@ -100,8 +100,29 @@ export type InventoryAggregateStockViewRow = {
   branch_count: number;
 };
 
+export type InventoryBranchRow = {
+  id: string;
+  tenant_id: string;
+  status: "ACTIVE" | "ARCHIVED";
+};
+
 export class V0InventoryRepository {
   constructor(private readonly db: Queryable) {}
+
+  async getBranchById(input: {
+    tenantId: string;
+    branchId: string;
+  }): Promise<InventoryBranchRow | null> {
+    const result = await this.db.query<InventoryBranchRow>(
+      `SELECT id, tenant_id, status
+       FROM branches
+       WHERE tenant_id = $1
+         AND id = $2
+       LIMIT 1`,
+      [input.tenantId, input.branchId]
+    );
+    return result.rows[0] ?? null;
+  }
 
   async getCategoryById(input: {
     tenantId: string;
@@ -395,7 +416,7 @@ export class V0InventoryRepository {
 
   async listRestockBatches(input: {
     tenantId: string;
-    branchId: string;
+    branchId?: string | null;
     stockItemId?: string | null;
     includeArchived?: boolean;
     limit: number;
@@ -419,7 +440,7 @@ export class V0InventoryRepository {
          updated_at
        FROM v0_inventory_restock_batches
        WHERE tenant_id = $1
-         AND branch_id = $2
+         AND ($2::UUID IS NULL OR branch_id = $2::UUID)
          AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
          AND ($4::BOOLEAN = TRUE OR status = 'ACTIVE')
        ORDER BY received_at DESC, id DESC
@@ -427,7 +448,7 @@ export class V0InventoryRepository {
        OFFSET $6`,
       [
         input.tenantId,
-        input.branchId,
+        input.branchId ?? null,
         input.stockItemId ?? null,
         input.includeArchived ?? false,
         input.limit,
@@ -435,6 +456,37 @@ export class V0InventoryRepository {
       ]
     );
     return result.rows;
+  }
+
+  async countRestockBatches(input: {
+    tenantId: string;
+    branchId?: string | null;
+    stockItemId?: string | null;
+    includeArchived?: boolean;
+    archivedOnly?: boolean;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_inventory_restock_batches
+       WHERE tenant_id = $1
+         AND ($2::UUID IS NULL OR branch_id = $2::UUID)
+         AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
+         AND (
+           CASE
+             WHEN $5::BOOLEAN = TRUE THEN status = 'ARCHIVED'
+             WHEN $4::BOOLEAN = TRUE THEN TRUE
+             ELSE status = 'ACTIVE'
+           END
+         )`,
+      [
+        input.tenantId,
+        input.branchId ?? null,
+        input.stockItemId ?? null,
+        input.includeArchived ?? false,
+        input.archivedOnly ?? false,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async getRestockBatchById(input: {
@@ -734,6 +786,8 @@ export class V0InventoryRepository {
     branchId: string;
     stockItemId?: string | null;
     reasonCode?: InventoryReasonCode | null;
+    fromInclusive?: Date | null;
+    toExclusive?: Date | null;
     limit: number;
     offset: number;
   }): Promise<InventoryJournalEntryRow[]> {
@@ -758,14 +812,18 @@ export class V0InventoryRepository {
          AND branch_id = $2
          AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
          AND ($4::VARCHAR IS NULL OR reason_code = $4::VARCHAR)
+         AND ($5::TIMESTAMPTZ IS NULL OR occurred_at >= $5::TIMESTAMPTZ)
+         AND ($6::TIMESTAMPTZ IS NULL OR occurred_at < $6::TIMESTAMPTZ)
        ORDER BY occurred_at DESC, id DESC
-       LIMIT $5
-       OFFSET $6`,
+       LIMIT $7
+       OFFSET $8`,
       [
         input.tenantId,
         input.branchId,
         input.stockItemId ?? null,
         input.reasonCode ?? null,
+        input.fromInclusive ?? null,
+        input.toExclusive ?? null,
         input.limit,
         input.offset,
       ]
@@ -773,11 +831,42 @@ export class V0InventoryRepository {
     return result.rows;
   }
 
+  async countJournal(input: {
+    tenantId: string;
+    branchId: string;
+    stockItemId?: string | null;
+    reasonCode?: InventoryReasonCode | null;
+    fromInclusive?: Date | null;
+    toExclusive?: Date | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_inventory_journal_entries
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
+         AND ($4::VARCHAR IS NULL OR reason_code = $4::VARCHAR)
+         AND ($5::TIMESTAMPTZ IS NULL OR occurred_at >= $5::TIMESTAMPTZ)
+         AND ($6::TIMESTAMPTZ IS NULL OR occurred_at < $6::TIMESTAMPTZ)`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.stockItemId ?? null,
+        input.reasonCode ?? null,
+        input.fromInclusive ?? null,
+        input.toExclusive ?? null,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async listJournalByTenant(input: {
     tenantId: string;
     branchId?: string | null;
     stockItemId?: string | null;
     reasonCode?: InventoryReasonCode | null;
+    fromInclusive?: Date | null;
+    toExclusive?: Date | null;
     limit: number;
     offset: number;
   }): Promise<InventoryJournalEntryRow[]> {
@@ -802,19 +891,52 @@ export class V0InventoryRepository {
          AND ($2::UUID IS NULL OR branch_id = $2::UUID)
          AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
          AND ($4::VARCHAR IS NULL OR reason_code = $4::VARCHAR)
+         AND ($5::TIMESTAMPTZ IS NULL OR occurred_at >= $5::TIMESTAMPTZ)
+         AND ($6::TIMESTAMPTZ IS NULL OR occurred_at < $6::TIMESTAMPTZ)
        ORDER BY occurred_at DESC, id DESC
-       LIMIT $5
-       OFFSET $6`,
+       LIMIT $7
+       OFFSET $8`,
       [
         input.tenantId,
         input.branchId ?? null,
         input.stockItemId ?? null,
         input.reasonCode ?? null,
+        input.fromInclusive ?? null,
+        input.toExclusive ?? null,
         input.limit,
         input.offset,
       ]
     );
     return result.rows;
+  }
+
+  async countJournalByTenant(input: {
+    tenantId: string;
+    branchId?: string | null;
+    stockItemId?: string | null;
+    reasonCode?: InventoryReasonCode | null;
+    fromInclusive?: Date | null;
+    toExclusive?: Date | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_inventory_journal_entries
+       WHERE tenant_id = $1
+         AND ($2::UUID IS NULL OR branch_id = $2::UUID)
+         AND ($3::UUID IS NULL OR stock_item_id = $3::UUID)
+         AND ($4::VARCHAR IS NULL OR reason_code = $4::VARCHAR)
+         AND ($5::TIMESTAMPTZ IS NULL OR occurred_at >= $5::TIMESTAMPTZ)
+         AND ($6::TIMESTAMPTZ IS NULL OR occurred_at < $6::TIMESTAMPTZ)`,
+      [
+        input.tenantId,
+        input.branchId ?? null,
+        input.stockItemId ?? null,
+        input.reasonCode ?? null,
+        input.fromInclusive ?? null,
+        input.toExclusive ?? null,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async applyBranchStockDelta(input: {
@@ -863,6 +985,8 @@ export class V0InventoryRepository {
     tenantId: string;
     branchId: string;
     includeArchivedItems?: boolean;
+    limit: number;
+    offset: number;
   }): Promise<InventoryBranchStockViewRow[]> {
     const result = await this.db.query<InventoryBranchStockViewRow>(
       `SELECT
@@ -883,10 +1007,37 @@ export class V0InventoryRepository {
        WHERE bs.tenant_id = $1
          AND bs.branch_id = $2
          AND ($3::BOOLEAN = TRUE OR si.status = 'ACTIVE')
-       ORDER BY si.name ASC`,
-      [input.tenantId, input.branchId, input.includeArchivedItems ?? false]
+       ORDER BY si.name ASC
+       LIMIT $4::INTEGER
+       OFFSET $5::INTEGER`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.includeArchivedItems ?? false,
+        input.limit,
+        input.offset,
+      ]
     );
     return result.rows;
+  }
+
+  async countBranchStock(input: {
+    tenantId: string;
+    branchId: string;
+    includeArchivedItems?: boolean;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_inventory_branch_stock bs
+       JOIN v0_inventory_stock_items si
+         ON si.tenant_id = bs.tenant_id
+        AND si.id = bs.stock_item_id
+       WHERE bs.tenant_id = $1
+         AND bs.branch_id = $2
+         AND ($3::BOOLEAN = TRUE OR si.status = 'ACTIVE')`,
+      [input.tenantId, input.branchId, input.includeArchivedItems ?? false]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async getBranchStockOnHand(input: {
@@ -910,6 +1061,8 @@ export class V0InventoryRepository {
   async listAggregateStock(input: {
     tenantId: string;
     includeArchivedItems?: boolean;
+    limit: number;
+    offset: number;
   }): Promise<InventoryAggregateStockViewRow[]> {
     const result = await this.db.query<InventoryAggregateStockViewRow>(
       `SELECT
@@ -929,9 +1082,36 @@ export class V0InventoryRepository {
          AND b.status = 'ACTIVE'
          AND ($2::BOOLEAN = TRUE OR si.status = 'ACTIVE')
        GROUP BY bs.stock_item_id, si.name, si.base_unit
-       ORDER BY si.name ASC`,
-      [input.tenantId, input.includeArchivedItems ?? false]
+       ORDER BY si.name ASC
+       LIMIT $3::INTEGER
+       OFFSET $4::INTEGER`,
+      [input.tenantId, input.includeArchivedItems ?? false, input.limit, input.offset]
     );
     return result.rows;
+  }
+
+  async countAggregateStock(input: {
+    tenantId: string;
+    includeArchivedItems?: boolean;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM (
+         SELECT bs.stock_item_id
+         FROM v0_inventory_branch_stock bs
+         JOIN branches b
+           ON b.tenant_id = bs.tenant_id
+          AND b.id = bs.branch_id
+         JOIN v0_inventory_stock_items si
+           ON si.tenant_id = bs.tenant_id
+          AND si.id = bs.stock_item_id
+         WHERE bs.tenant_id = $1
+           AND b.status = 'ACTIVE'
+           AND ($2::BOOLEAN = TRUE OR si.status = 'ACTIVE')
+         GROUP BY bs.stock_item_id
+       ) aggregated`,
+      [input.tenantId, input.includeArchivedItems ?? false]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 }

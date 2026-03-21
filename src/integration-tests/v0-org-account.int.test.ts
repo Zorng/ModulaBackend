@@ -333,4 +333,98 @@ describe("v0 org account (phase F1 scaffold)", () => {
       cashierPhone,
     ]);
   });
+
+  it("updates a targeted branch profile by branchId using tenant context", async () => {
+    const ownerPhone = uniquePhone();
+    const ownerToken = await registerAndLogin(app, ownerPhone);
+
+    const createdTenant = await request(app)
+      .post("/v0/auth/tenants")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({
+        tenantName: `Target Branch ${Date.now()}`,
+      });
+    expect(createdTenant.status).toBe(201);
+
+    const tenantId = createdTenant.body.data.tenant.id as string;
+    const ownerAccountResult = await pool.query<{ id: string }>(
+      `SELECT id FROM accounts WHERE phone = $1`,
+      [ownerPhone]
+    );
+    const ownerAccountId = ownerAccountResult.rows[0].id;
+    const ownerMembershipId = await findActiveOwnerMembershipId({
+      pool,
+      tenantId,
+      accountId: ownerAccountId,
+    });
+    const branchAId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Olympic",
+    });
+    const branchBId = await createActiveBranch({
+      pool,
+      tenantId,
+      branchName: "Sen Sok",
+      address: "Street 2004",
+      contactPhone: "+85512000009",
+    });
+    await assignActiveBranch({
+      pool,
+      tenantId,
+      branchId: branchAId,
+      accountId: ownerAccountId,
+      membershipId: ownerMembershipId,
+    });
+    await assignActiveBranch({
+      pool,
+      tenantId,
+      branchId: branchBId,
+      accountId: ownerAccountId,
+      membershipId: ownerMembershipId,
+    });
+
+    const tenantSelected = await request(app)
+      .post("/v0/auth/context/tenant/select")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ tenantId });
+    expect(tenantSelected.status).toBe(200);
+    const tenantToken = tenantSelected.body.data.accessToken as string;
+
+    const updatedBranchProfile = await request(app)
+      .patch(`/v0/org/branches/${branchBId}/profile`)
+      .set("Authorization", `Bearer ${tenantToken}`)
+      .send({
+        branchName: "Sen Sok Downtown",
+        branchAddress: "Street 101",
+        contactNumber: "+85512009999",
+      });
+    expect(updatedBranchProfile.status).toBe(200);
+    expect(updatedBranchProfile.body.data).toMatchObject({
+      branchId: branchBId,
+      tenantId,
+      branchName: "Sen Sok Downtown",
+      branchAddress: "Street 101",
+      contactNumber: "+85512009999",
+      status: "ACTIVE",
+    });
+
+    const untouchedBranch = await pool.query<{
+      name: string;
+      address: string | null;
+      contact_phone: string | null;
+    }>(
+      `SELECT name, address, contact_phone
+       FROM branches
+       WHERE id = $1`,
+      [branchAId]
+    );
+    expect(untouchedBranch.rows[0]).toMatchObject({
+      name: "Olympic",
+      address: null,
+      contact_phone: null,
+    });
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [ownerPhone]);
+  });
 });

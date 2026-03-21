@@ -42,6 +42,27 @@ Missing for full offline-first:
 - Server remains source of truth for business invariants.
 - Offline behavior must be deterministic and observable.
 - Realtime pull trigger strategy for `/v0`: SSE-first (`/v0/notifications/stream`) with periodic pull fallback.
+- For provider-backed payments, offline-first is order-first, not payment-first.
+- KHQR generation and verification remain backend-backed and online-only.
+- Non-cash payments must not be encoded as cash just to pass through offline flows.
+
+## Sale + Payment Lock (2026-03-16)
+
+Current backend truth:
+- `sale.finalize` replay is not implemented yet in `pushSync`.
+- KHQR payment remains online-only because payload generation and verification are backend/provider dependent.
+- Current offline-capable write coverage is limited to attendance and cash-session operation families.
+
+Locked direction:
+- Offline-first POS must use `OPEN` order tickets as the offline capture unit.
+- While offline, staff may capture order intent and supporting evidence, but payment truth is deferred until connectivity returns.
+- Cash/KHQR settlement remains server truth and must not be synthesized locally.
+- KHQR outage fallback must not be modeled as `paymentMethod = CASH` or reconciled through `paidIn`; that would corrupt cash-session truth.
+
+Policy direction:
+- Keep `saleAllowPayLater` as the normal business control for open-ticket behavior.
+- Outage/manual external-payment claim is a product workflow and must not be branch-blocked when used as the reconnect fallback for static-KHQR / external transfer.
+- `saleAllowManualExternalPaymentClaim` may remain in policy payloads for backward compatibility, but it is no longer the runtime gate for the outage reconnect-submit lane.
 
 ## Execution phases
 
@@ -100,6 +121,10 @@ Exit criteria:
   - replay-safe writes
   - pull-ready read deltas
   - deterministic conflict codes
+- For sale-order specifically:
+  - offline order capture must converge before offline sale finalization is claimed
+  - provider-backed payment settlement remains online-only
+  - manual external-payment proof is a separate exception lane, not a cash workaround
 
 Exit criteria:
 - inventory + sale-order + receipt pass offline-first test suite.
@@ -132,7 +157,7 @@ Exit criteria:
 | OF3 Command Envelope Unification | Completed | `POST /v0/sync/push` accepts canonical envelope (token-scoped context, optional `deviceId`, optional `dependsOn`), preserves legacy per-op `tenantId/branchId` compatibility, and enforces `dependsOn` preconditions with deterministic dependency failure codes. |
 | OF4 Conflict Taxonomy + Resolution Hints | Completed | Replay responses include `resolution` hints (`RETRYABLE | PERMANENT | MANUAL`) with deterministic mapping for offline-sync engine errors, dependency failures, entitlement/permission denials, and representative POS invariants (`CASH_SESSION_NOT_FOUND`, `ATTENDANCE_NO_ACTIVE_CHECKIN`). Covered in `v0-push-sync.int.test.ts`. |
 | OF5 Module Sync Producers | Completed | Producer wiring live for `policy`, `cashSession`, `menu`, `discount`, `attendance`, `operationalNotification`. Menu tenant-wide writes are fanned out to active branch streams. Attendance/operational notifications are account-scoped in sync feed. |
-| OF6 POS Core Alignment | In progress | Inventory selected as first OF6 target. Phase 0+1 locks completed: checklist/taxonomy in `_refactor-artifact/05-pos/05_inventory-offline-first-dod-checklist-v0.md`, boundary in `_refactor-artifact/02-boundary/inventory-boundary-v0.md`, and API contract draft in `api_contract/inventory-v0.md`. |
+| OF6 POS Core Alignment | In progress | Inventory selected as first OF6 target. Phase 0+1 locks completed: checklist/taxonomy in `_refactor-artifact/05-pos/05_inventory-offline-first-dod-checklist-v0.md`, boundary in `_refactor-artifact/02-boundary/inventory-boundary-v0.md`, and API contract draft in `api_contract/inventory-v0.md`. Sale-order direction is now explicitly locked as offline order capture + online settlement. |
 | OF7 Observability + SLO | Not started | |
 | OF8 Rollout/Compatibility Close-Out | Not started | |
 

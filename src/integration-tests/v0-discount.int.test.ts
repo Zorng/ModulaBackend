@@ -236,7 +236,7 @@ describe("v0 discount integration", () => {
     process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "";
   });
 
-  it("creates branch-owned item rule from preflight and resolves branch eligibility", async () => {
+  it("creates branch-owned item rule from preflight and resolves branch eligibility under tenant context", async () => {
     const setup = await setupOwnerTenantContext({
       app,
       pool,
@@ -302,8 +302,9 @@ describe("v0 discount integration", () => {
 
     const eligibleBranchA = await request(app)
       .post("/v0/discount/eligibility/resolve")
-      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
       .send({
+        branchId: setup.branchAId,
         occurredAt: new Date().toISOString(),
         lines: [{ menuItemId: itemA, quantity: 1 }],
       });
@@ -319,8 +320,9 @@ describe("v0 discount integration", () => {
 
     const eligibleBranchB = await request(app)
       .post("/v0/discount/eligibility/resolve")
-      .set("Authorization", `Bearer ${setup.ownerBranchBToken}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
       .send({
+        branchId: setup.branchBId,
         occurredAt: new Date().toISOString(),
         lines: [{ menuItemId: itemA, quantity: 1 }],
       });

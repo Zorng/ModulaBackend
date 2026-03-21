@@ -160,6 +160,29 @@ export class V0StaffManagementRepository {
     return result.rows;
   }
 
+  async countMembershipProfilesForTenant(input: {
+    tenantId: string;
+    status: V0StaffMembershipStatus | null;
+    search: string | null;
+  }): Promise<number> {
+    const searchPattern = input.search ? `%${input.search}%` : null;
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_tenant_memberships m
+       JOIN accounts a ON a.id = m.account_id
+       WHERE m.tenant_id = $1
+         AND ($2::text IS NULL OR m.status = $2)
+         AND (
+           $3::text IS NULL
+           OR a.phone ILIKE $3
+           OR COALESCE(a.first_name, '') ILIKE $3
+           OR COALESCE(a.last_name, '') ILIKE $3
+         )`,
+      [input.tenantId, input.status, searchPattern]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async findMembershipProfileForTenant(input: {
     tenantId: string;
     membershipId: string;

@@ -38,7 +38,7 @@ export class V0BranchService {
 
   async getCurrentBranchProfile(input: { actor: OrgActorContext }) {
     const scope = assertBranchContext(input.actor);
-    const branch = await this.assertCurrentBranchAccess(scope);
+    const branch = await this.assertBranchAccess(scope);
 
     return mapBranchProfile(branch);
   }
@@ -50,7 +50,47 @@ export class V0BranchService {
     contactNumber: unknown;
   }) {
     const scope = assertBranchContext(input.actor);
-    const current = await this.assertCurrentBranchAccess(scope);
+    return this.setBranchProfileForScope({
+      accountId: scope.accountId,
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      branchName: input.branchName,
+      branchAddress: input.branchAddress,
+      contactNumber: input.contactNumber,
+    });
+  }
+
+  async setBranchProfile(input: {
+    actor: OrgActorContext;
+    branchId: unknown;
+    branchName: unknown;
+    branchAddress: unknown;
+    contactNumber: unknown;
+  }) {
+    const scope = assertTenantContext(input.actor);
+    return this.setBranchProfileForScope({
+      accountId: scope.accountId,
+      tenantId: scope.tenantId,
+      branchId: parseBranchId(input.branchId),
+      branchName: input.branchName,
+      branchAddress: input.branchAddress,
+      contactNumber: input.contactNumber,
+    });
+  }
+
+  private async setBranchProfileForScope(input: {
+    accountId: string;
+    tenantId: string;
+    branchId: string;
+    branchName: unknown;
+    branchAddress: unknown;
+    contactNumber: unknown;
+  }) {
+    const current = await this.assertBranchAccess({
+      accountId: input.accountId,
+      tenantId: input.tenantId,
+      branchId: input.branchId,
+    });
 
     const branchName = hasOwnValue(input, "branchName")
       ? parseBranchName(input.branchName)
@@ -63,8 +103,8 @@ export class V0BranchService {
       : current.contact_phone;
 
     const updated = await this.repo.updateBranchProfile({
-      tenantId: scope.tenantId,
-      branchId: scope.branchId,
+      tenantId: input.tenantId,
+      branchId: input.branchId,
       branchName,
       branchAddress,
       contactPhone: contactNumber,
@@ -147,7 +187,7 @@ export class V0BranchService {
     return mapBranchProfile(updated);
   }
 
-  private async assertCurrentBranchAccess(scope: {
+  private async assertBranchAccess(scope: {
     accountId: string;
     tenantId: string;
     branchId: string;
@@ -521,6 +561,14 @@ function parseBranchName(value: unknown): string {
       "branchName is required",
       "ORG_BRANCH_NAME_INVALID"
     );
+  }
+  return normalized;
+}
+
+function parseBranchId(value: unknown): string {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    throw new V0OrgAccountError(422, "branchId is required");
   }
   return normalized;
 }

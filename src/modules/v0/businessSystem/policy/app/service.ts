@@ -28,6 +28,7 @@ type BranchPolicyDto = {
   saleKhrRoundingMode: "NEAREST" | "UP" | "DOWN";
   saleKhrRoundingGranularity: "100" | "1000";
   saleAllowPayLater: boolean;
+  saleAllowManualExternalPaymentClaim: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -189,6 +190,17 @@ function normalizePatch(input: unknown): BranchPolicyPatch {
     patch.saleAllowPayLater = body.saleAllowPayLater;
   }
 
+  if (Object.prototype.hasOwnProperty.call(body, "saleAllowManualExternalPaymentClaim")) {
+    if (typeof body.saleAllowManualExternalPaymentClaim !== "boolean") {
+      throw new V0PolicyError(
+        422,
+        "saleAllowManualExternalPaymentClaim must be boolean",
+        "POLICY_VALIDATION_FAILED"
+      );
+    }
+    patch.saleAllowManualExternalPaymentClaim = body.saleAllowManualExternalPaymentClaim;
+  }
+
   if (Object.keys(patch).length === 0) {
     throw new V0PolicyError(422, "policy patch is empty", "POLICY_PATCH_EMPTY");
   }
@@ -215,6 +227,7 @@ function mapPolicyRow(row: BranchPolicyRow): BranchPolicyDto {
     saleKhrRoundingMode: row.sale_khr_rounding_mode,
     saleKhrRoundingGranularity: String(row.sale_khr_rounding_granularity) as "100" | "1000",
     saleAllowPayLater: row.sale_allow_pay_later,
+    saleAllowManualExternalPaymentClaim: row.sale_allow_manual_external_payment_claim,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -260,6 +273,11 @@ function buildPolicyDiff(before: BranchPolicyRow, after: BranchPolicyRow): {
       key: "saleAllowPayLater",
       before: before.sale_allow_pay_later,
       after: after.sale_allow_pay_later,
+    },
+    {
+      key: "saleAllowManualExternalPaymentClaim",
+      before: before.sale_allow_manual_external_payment_claim,
+      after: after.sale_allow_manual_external_payment_claim,
     },
   ];
 

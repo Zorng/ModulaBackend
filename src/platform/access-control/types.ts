@@ -7,7 +7,7 @@ export type AccessControlEffect = "READ" | "WRITE";
 export type RoleKey = "OWNER" | "ADMIN" | "MANAGER" | "CASHIER" | "CLERK";
 
 export type TenantSource = "token" | "body.tenantId" | "path.membershipId";
-export type BranchSource = "token" | "body.branchId";
+export type BranchSource = "token" | "body.branchId" | "path.branchId";
 
 export type OpenRoute = {
   method: string;

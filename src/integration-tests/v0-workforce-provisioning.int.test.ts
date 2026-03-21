@@ -115,7 +115,7 @@ describe("v0 workforce provisioning (phase 4 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerTenantToken}`);
     expect(listInvited.status).toBe(200);
     expect(
-      listInvited.body.data.some(
+      listInvited.body.data.items.some(
         (row: { membershipId: string; membershipStatus: string }) =>
           row.membershipId === inviteMembershipId && row.membershipStatus === "INVITED"
       )

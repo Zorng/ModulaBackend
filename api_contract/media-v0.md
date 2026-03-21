@@ -1,6 +1,6 @@
 # Media Module (`/v0`) — API Contract
 
-Reusable tenant-scoped image upload contract for menu, inventory, tenant logo, and profile images.
+Reusable tenant-scoped image upload contract for menu, inventory, tenant logo, profile images, and payment-proof evidence.
 
 Base path: `/v0/media`
 
@@ -34,6 +34,7 @@ Body (form-data):
   - `inventory`
   - `tenant`
   - `profile`
+  - `payment-proof`
 
 Response `200`:
 ```json
@@ -55,6 +56,11 @@ Area prefix mapping:
 - `inventory` -> `stock-item-images`
 - `tenant` -> `tenant-logo`
 - `profile` -> `profile-images`
+- `payment-proof` -> `payment-proof-images`
+
+Role notes:
+- `payment-proof` is allowed for staff handling reconnect-time outage/manual external-payment-claim workflow, including `CASHIER`.
+- This does not imply broader cashier upload rights for unrelated areas such as `tenant`, `menu`, or `inventory`.
 
 Errors:
 - `400` `UPLOAD_FILE_TOO_LARGE`

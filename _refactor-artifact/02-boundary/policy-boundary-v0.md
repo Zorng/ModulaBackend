@@ -29,6 +29,7 @@ Canonical route prefix: `/v0/policy`
     - `saleKhrRoundingMode`
     - `saleKhrRoundingGranularity`
     - `saleAllowPayLater`
+    - `saleAllowManualExternalPaymentClaim`
   - VAT range: `0..100`
   - FX rate: `> 0`
   - rounding mode: `NEAREST | UP | DOWN`

@@ -262,7 +262,7 @@ describe("v0 menu integration", () => {
       .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
     expect(listed.status).toBe(200);
 
-    const items = listed.body.data as Array<{
+    const items = listed.body.data.items as Array<{
       name: string;
       visibleBranchIds: string[];
     }>;
@@ -311,7 +311,7 @@ describe("v0 menu integration", () => {
       .get(`/v0/menu/items/all?branchId=${setup.branchAId}`)
       .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
     expect(listed.status).toBe(200);
-    const names = (listed.body.data as Array<{ name: string }>).map((item) => item.name);
+    const names = (listed.body.data.items as Array<{ name: string }>).map((item) => item.name);
     expect(names).toContain(itemA);
     expect(names).toContain(itemC);
     expect(names).not.toContain(itemB);

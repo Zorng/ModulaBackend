@@ -46,6 +46,20 @@ export type V0CashSessionCloseContextRow = {
   variance_khr: number;
 };
 
+export type V0VoidRequestNotificationContextRow = {
+  tenant_id: string;
+  branch_id: string;
+  void_request_id: string;
+  sale_id: string;
+  requested_by_account_id: string;
+  reviewed_by_account_id: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  reason: string;
+  review_note: string | null;
+  requested_at: Date;
+  reviewed_at: Date | null;
+};
+
 export class V0OperationalNotificationRepository {
   constructor(private readonly db: Queryable) {}
 
@@ -173,6 +187,34 @@ export class V0OperationalNotificationRepository {
     return result.rows;
   }
 
+  async countInbox(input: {
+    tenantId: string;
+    branchId: string;
+    recipientAccountId: string;
+    unreadOnly: boolean;
+    type: string | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_operational_notification_recipients r
+       JOIN v0_operational_notifications n
+         ON n.id = r.notification_id
+       WHERE r.tenant_id = $1
+         AND r.branch_id = $2
+         AND r.recipient_account_id = $3
+         AND ($4::BOOLEAN = FALSE OR r.read_at IS NULL)
+         AND ($5::VARCHAR IS NULL OR n.type = $5)`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.recipientAccountId,
+        input.unreadOnly,
+        input.type,
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async getInboxItem(input: {
     tenantId: string;
     branchId: string;
@@ -269,7 +311,7 @@ export class V0OperationalNotificationRepository {
     return result.rows;
   }
 
-  async listOperationalRecipientAccountIdsForCashSessionZView(input: {
+  async listOperationalRecipientAccountIdsForBranchManagerialReview(input: {
     tenantId: string;
     branchId: string;
   }): Promise<string[]> {
@@ -303,6 +345,13 @@ export class V0OperationalNotificationRepository {
     return result.rows.map((row) => row.account_id);
   }
 
+  async listOperationalRecipientAccountIdsForCashSessionZView(input: {
+    tenantId: string;
+    branchId: string;
+  }): Promise<string[]> {
+    return this.listOperationalRecipientAccountIdsForBranchManagerialReview(input);
+  }
+
   async getCashSessionCloseContext(input: {
     tenantId: string;
     cashSessionId: string;
@@ -321,6 +370,34 @@ export class V0OperationalNotificationRepository {
          AND cash_session_id = $2
        LIMIT 1`,
       [input.tenantId, input.cashSessionId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async getVoidRequestNotificationContext(input: {
+    tenantId: string;
+    branchId: string;
+    voidRequestId: string;
+  }): Promise<V0VoidRequestNotificationContextRow | null> {
+    const result = await this.db.query<V0VoidRequestNotificationContextRow>(
+      `SELECT
+         tenant_id,
+         branch_id,
+         id AS void_request_id,
+         sale_id,
+         requested_by_account_id,
+         reviewed_by_account_id,
+         status,
+         reason,
+         review_note,
+         requested_at,
+         reviewed_at
+       FROM v0_void_requests
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3
+       LIMIT 1`,
+      [input.tenantId, input.branchId, input.voidRequestId]
     );
     return result.rows[0] ?? null;
   }

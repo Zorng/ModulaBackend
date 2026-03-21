@@ -6,6 +6,7 @@ import {
   type V0ShiftPatternStatus,
   type V0TenantMembershipRow,
 } from "../infra/repository.js";
+import { buildOffsetPaginatedResult } from "../../../../../shared/pagination.js";
 
 type ActorContext = {
   accountId: string;
@@ -378,7 +379,7 @@ export class V0ShiftService {
       }
     }
 
-    const [patterns, instances] = await Promise.all([
+    const [patterns, patternTotal, instances, instanceTotal] = await Promise.all([
       this.repo.listShiftPatterns({
         tenantId: access.tenantId,
         branchId,
@@ -388,6 +389,14 @@ export class V0ShiftService {
         status: patternStatus,
         limit,
         offset,
+      }),
+      this.repo.countShiftPatterns({
+        tenantId: access.tenantId,
+        branchId,
+        membershipId,
+        fromDate: from,
+        toDate: to,
+        status: patternStatus,
       }),
       this.repo.listShiftInstances({
         tenantId: access.tenantId,
@@ -399,11 +408,29 @@ export class V0ShiftService {
         limit,
         offset,
       }),
+      this.repo.countShiftInstances({
+        tenantId: access.tenantId,
+        branchId,
+        membershipId,
+        fromDate: from,
+        toDate: to,
+        status: instanceStatus,
+      }),
     ]);
 
     return {
-      patterns: patterns.map(mapPattern),
-      instances: instances.map(mapInstance),
+      patterns: buildOffsetPaginatedResult({
+        items: patterns.map(mapPattern),
+        limit,
+        offset,
+        total: patternTotal,
+      }),
+      instances: buildOffsetPaginatedResult({
+        items: instances.map(mapInstance),
+        limit,
+        offset,
+        total: instanceTotal,
+      }),
     };
   }
 
@@ -434,7 +461,7 @@ export class V0ShiftService {
       throw new V0ShiftError(404, "membership not found", "SHIFT_MEMBERSHIP_INVALID");
     }
 
-    const [patterns, instances] = await Promise.all([
+    const [patterns, patternTotal, instances, instanceTotal] = await Promise.all([
       this.repo.listShiftPatterns({
         tenantId: access.tenantId,
         branchId: null,
@@ -444,6 +471,14 @@ export class V0ShiftService {
         status: patternStatus,
         limit,
         offset,
+      }),
+      this.repo.countShiftPatterns({
+        tenantId: access.tenantId,
+        branchId: null,
+        membershipId,
+        fromDate: from,
+        toDate: to,
+        status: patternStatus,
       }),
       this.repo.listShiftInstances({
         tenantId: access.tenantId,
@@ -455,12 +490,30 @@ export class V0ShiftService {
         limit,
         offset,
       }),
+      this.repo.countShiftInstances({
+        tenantId: access.tenantId,
+        branchId: null,
+        membershipId,
+        fromDate: from,
+        toDate: to,
+        status: instanceStatus,
+      }),
     ]);
 
     return {
       membershipId,
-      patterns: patterns.map(mapPattern),
-      instances: instances.map(mapInstance),
+      patterns: buildOffsetPaginatedResult({
+        items: patterns.map(mapPattern),
+        limit,
+        offset,
+        total: patternTotal,
+      }),
+      instances: buildOffsetPaginatedResult({
+        items: instances.map(mapInstance),
+        limit,
+        offset,
+        total: instanceTotal,
+      }),
     };
   }
 

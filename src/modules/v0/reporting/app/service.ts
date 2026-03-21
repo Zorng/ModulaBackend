@@ -7,6 +7,7 @@ import {
   V0ReportingRepository,
   type V0ReportingBranchAccessRow,
 } from "../infra/repository.js";
+import { buildOffsetPaginatedResult } from "../../../../shared/pagination.js";
 
 type ActorContext = {
   accountId: string;
@@ -225,18 +226,25 @@ export class V0ReportingService {
     const limit = normalizeLimit(input.query.limit);
     const offset = normalizeOffset(input.query.offset);
 
-    const items = await this.repo.listSalesDrillDown({
-      tenantId: scope.tenantId,
-      fromInclusive: window.fromInclusive,
-      toExclusive: window.toExclusive,
-      branchIds: scope.branchIds,
-      statusFilter,
-      limit,
-      offset,
-    });
-
-    return {
-      scope: buildScopeEcho(scope, window),
+    const [items, total] = await Promise.all([
+      this.repo.listSalesDrillDown({
+        tenantId: scope.tenantId,
+        fromInclusive: window.fromInclusive,
+        toExclusive: window.toExclusive,
+        branchIds: scope.branchIds,
+        statusFilter,
+        limit,
+        offset,
+      }),
+      this.repo.countSalesDrillDown({
+        tenantId: scope.tenantId,
+        fromInclusive: window.fromInclusive,
+        toExclusive: window.toExclusive,
+        branchIds: scope.branchIds,
+        statusFilter,
+      }),
+    ]);
+    const page = buildOffsetPaginatedResult({
       items: items.map((row) => ({
         saleId: row.sale_id,
         branchId: row.branch_id,
@@ -254,6 +262,12 @@ export class V0ReportingService {
       })),
       limit,
       offset,
+      total,
+    });
+
+    return {
+      scope: buildScopeEcho(scope, window),
+      ...page,
     };
   }
 
@@ -338,18 +352,25 @@ export class V0ReportingService {
     const limit = normalizeLimit(input.query.limit);
     const offset = normalizeOffset(input.query.offset);
 
-    const items = await this.repo.listRestockSpendDrillDown({
-      tenantId: scope.tenantId,
-      fromInclusive: window.fromInclusive,
-      toExclusive: window.toExclusive,
-      branchIds: scope.branchIds,
-      costFilter,
-      limit,
-      offset,
-    });
-
-    return {
-      scope: buildScopeEcho(scope, window),
+    const [items, total] = await Promise.all([
+      this.repo.listRestockSpendDrillDown({
+        tenantId: scope.tenantId,
+        fromInclusive: window.fromInclusive,
+        toExclusive: window.toExclusive,
+        branchIds: scope.branchIds,
+        costFilter,
+        limit,
+        offset,
+      }),
+      this.repo.countRestockSpendDrillDown({
+        tenantId: scope.tenantId,
+        fromInclusive: window.fromInclusive,
+        toExclusive: window.toExclusive,
+        branchIds: scope.branchIds,
+        costFilter,
+      }),
+    ]);
+    const page = buildOffsetPaginatedResult({
       items: items.map((row) => ({
         restockBatchId: row.restock_batch_id,
         branchId: row.branch_id,
@@ -361,6 +382,12 @@ export class V0ReportingService {
       })),
       limit,
       offset,
+      total,
+    });
+
+    return {
+      scope: buildScopeEcho(scope, window),
+      ...page,
     };
   }
 

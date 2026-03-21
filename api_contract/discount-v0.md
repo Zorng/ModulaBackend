@@ -24,7 +24,8 @@ Implementation status:
   - failure: `{ "success": false, "error": "...", "code": "...", "details"?: {...} }`
 - Auth: `Authorization: Bearer <accessToken>`
 - Context model:
-  - `tenantId` / `branchId` come from working-context token.
+  - Discount management uses tenant working context.
+  - Branch-targeted operations accept explicit `branchId` in query/body.
   - no tenant/branch override via headers.
 - Idempotency:
   - all write endpoints require `Idempotency-Key`.
@@ -76,6 +77,21 @@ Action key: `discount.rules.list`
 Notes:
 - Read-only for all tenant roles (`OWNER`, `ADMIN`, `MANAGER`, `CASHIER`).
 - `branchId` filters by rule owner branch.
+- If `branchId` is supplied, it must belong to an active branch in the current tenant.
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [],
+    "limit": 50,
+    "offset": 0,
+    "total": 0,
+    "hasMore": false
+  }
+}
+```
 
 ### 2) Get rule detail
 
@@ -197,6 +213,7 @@ Action key: `discount.eligibility.resolve`
 Body:
 ```json
 {
+  "branchId": "uuid-branch",
   "occurredAt": "2026-02-20T03:00:00.000Z",
   "lines": [
     { "menuItemId": "uuid-item-1", "quantity": 2 },
@@ -204,6 +221,10 @@ Body:
   ]
 }
 ```
+
+Notes:
+- Requires tenant context.
+- `branchId` is required and identifies which branch’s active discount rules are resolved.
 
 Response `200`:
 ```json
@@ -224,7 +245,8 @@ Response `200`:
 ```
 
 Important:
-- Requires branch context token.
+- Requires tenant context token.
+- `branchId` selects which branch’s active rules are evaluated.
 - Returns metadata only (no discounted totals).
 
 ## Error Codes

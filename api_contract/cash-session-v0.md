@@ -526,15 +526,21 @@ Response `200`:
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": "uuid",
-      "status": "OPEN",
-      "openedByName": "John Smith",
-      "openedAt": "2026-03-10T01:00:00.000Z",
-      "closedAt": null
-    }
-  ]
+  "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "status": "OPEN",
+        "openedByName": "John Smith",
+        "openedAt": "2026-03-10T01:00:00.000Z",
+        "closedAt": null
+      }
+    ],
+    "limit": 50,
+    "offset": 0,
+    "total": 1,
+    "hasMore": false
+  }
 }
 ```
 
@@ -584,24 +590,30 @@ Response `200`:
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": "uuid",
-      "tenantId": "uuid",
-      "branchId": "uuid",
-      "sessionId": "uuid",
-      "movementType": "MANUAL_IN",
-      "amountUsdDelta": 10,
-      "amountKhrDelta": 0,
-      "reason": "Float top-up",
-      "sourceRefType": "MANUAL",
-      "sourceRefId": null,
-      "idempotencyKey": "paid-in:idem-key",
-      "recordedByAccountId": "uuid",
-      "occurredAt": "2026-03-10T01:10:00.000Z",
-      "createdAt": "2026-03-10T01:10:00.000Z"
-    }
-  ]
+  "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "tenantId": "uuid",
+        "branchId": "uuid",
+        "sessionId": "uuid",
+        "movementType": "MANUAL_IN",
+        "amountUsdDelta": 10,
+        "amountKhrDelta": 0,
+        "reason": "Float top-up",
+        "sourceRefType": "MANUAL",
+        "sourceRefId": null,
+        "idempotencyKey": "paid-in:idem-key",
+        "recordedByAccountId": "uuid",
+        "occurredAt": "2026-03-10T01:10:00.000Z",
+        "createdAt": "2026-03-10T01:10:00.000Z"
+      }
+    ],
+    "limit": 100,
+    "offset": 0,
+    "total": 1,
+    "hasMore": false
+  }
 }
 ```
 

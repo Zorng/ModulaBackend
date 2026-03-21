@@ -15,6 +15,10 @@ export const V0_SALE_ORDER_ACTION_KEYS = {
   orderCancel: "order.cancel",
   orderItemsAdd: "order.items.add",
   orderCheckout: "order.checkout",
+  orderManualPaymentClaimList: "order.manualPaymentClaim.list",
+  orderManualPaymentClaimCreate: "order.manualPaymentClaim.create",
+  orderManualPaymentClaimApprove: "order.manualPaymentClaim.approve",
+  orderManualPaymentClaimReject: "order.manualPaymentClaim.reject",
   orderFulfillmentStatusUpdate: "order.fulfillment.status.update",
   orderList: "order.list",
   orderRead: "order.read",
@@ -38,6 +42,8 @@ export const V0_SALE_ORDER_EVENT_TYPES = {
   orderTicketCancelled: "ORDER_TICKET_CANCELLED",
   orderItemsAdded: "ORDER_ITEMS_ADDED",
   orderCheckoutCompleted: "ORDER_CHECKOUT_COMPLETED",
+  orderManualPaymentClaimCreated: "ORDER_MANUAL_PAYMENT_CLAIM_CREATED",
+  orderManualPaymentClaimRejected: "ORDER_MANUAL_PAYMENT_CLAIM_REJECTED",
   orderFulfillmentStatusUpdated: "ORDER_FULFILLMENT_STATUS_UPDATED",
   saleFinalized: "SALE_FINALIZED",
   saleVoidRequested: "SALE_VOID_REQUESTED",
@@ -55,6 +61,9 @@ export const V0_SALE_ORDER_IDEMPOTENCY_SCOPE = {
     V0_SALE_ORDER_ACTION_KEYS.orderCancel,
     V0_SALE_ORDER_ACTION_KEYS.orderItemsAdd,
     V0_SALE_ORDER_ACTION_KEYS.orderCheckout,
+    V0_SALE_ORDER_ACTION_KEYS.orderManualPaymentClaimCreate,
+    V0_SALE_ORDER_ACTION_KEYS.orderManualPaymentClaimApprove,
+    V0_SALE_ORDER_ACTION_KEYS.orderManualPaymentClaimReject,
     V0_SALE_ORDER_ACTION_KEYS.orderFulfillmentStatusUpdate,
     V0_SALE_ORDER_ACTION_KEYS.saleFinalize,
     V0_SALE_ORDER_ACTION_KEYS.saleVoidRequest,
@@ -65,6 +74,8 @@ export const V0_SALE_ORDER_IDEMPOTENCY_SCOPE = {
 } as const;
 
 export const V0_SALE_ORDER_PUSH_SYNC_OPERATION_TYPES = [
+  "checkout.cash.finalize",
+  "order.manualExternalPaymentClaim.capture",
   "sale.finalize",
   "sale.void.execute",
 ] as const;

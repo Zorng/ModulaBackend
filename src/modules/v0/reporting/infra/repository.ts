@@ -394,6 +394,32 @@ export class V0ReportingRepository {
     return result.rows;
   }
 
+  async countSalesDrillDown(
+    input: ReportingWindowInput & {
+      statusFilter: V0ReportingSaleStatusFilter;
+    }
+  ): Promise<number> {
+    const branchIds = normalizeBranchIds(input.branchIds);
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_sales s
+       WHERE s.tenant_id = $1
+         AND s.finalized_at IS NOT NULL
+         AND s.finalized_at >= $2
+         AND s.finalized_at < $3
+         AND ($4::uuid[] IS NULL OR s.branch_id = ANY($4::uuid[]))
+         AND ($5::text = 'ALL' OR s.status = $5::text)`,
+      [
+        input.tenantId,
+        input.fromInclusive,
+        input.toExclusive,
+        branchIds,
+        normalizeSaleStatusFilter(input.statusFilter),
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
   async getRestockSpendSummary(
     input: ReportingWindowInput
   ): Promise<V0ReportingRestockSpendSummaryRow> {
@@ -486,6 +512,35 @@ export class V0ReportingRepository {
       ]
     );
     return result.rows;
+  }
+
+  async countRestockSpendDrillDown(
+    input: ReportingWindowInput & {
+      costFilter: V0ReportingRestockCostFilter;
+    }
+  ): Promise<number> {
+    const branchIds = normalizeBranchIds(input.branchIds);
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_inventory_restock_batches rb
+       WHERE rb.tenant_id = $1
+         AND rb.received_at >= $2
+         AND rb.received_at < $3
+         AND ($4::uuid[] IS NULL OR rb.branch_id = ANY($4::uuid[]))
+         AND (
+           $5::text = 'ALL'
+           OR ($5::text = 'KNOWN' AND rb.purchase_cost_usd IS NOT NULL)
+           OR ($5::text = 'UNKNOWN' AND rb.purchase_cost_usd IS NULL)
+         )`,
+      [
+        input.tenantId,
+        input.fromInclusive,
+        input.toExclusive,
+        branchIds,
+        normalizeRestockCostFilter(input.costFilter),
+      ]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async isWorkReviewReadModelAvailable(): Promise<boolean> {

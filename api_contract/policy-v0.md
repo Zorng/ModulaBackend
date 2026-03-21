@@ -37,6 +37,7 @@ type BranchPolicy = {
   saleKhrRoundingMode: SaleKhrRoundingMode;
   saleKhrRoundingGranularity: SaleKhrRoundingGranularity;
   saleAllowPayLater: boolean;
+  saleAllowManualExternalPaymentClaim: boolean;
   createdAt: string; // ISO datetime
   updatedAt: string; // ISO datetime
 };
@@ -51,6 +52,7 @@ type UpdateBranchPolicyInput = Partial<
     | "saleKhrRoundingMode"
     | "saleKhrRoundingGranularity"
     | "saleAllowPayLater"
+    | "saleAllowManualExternalPaymentClaim"
   >
 >;
 ```
@@ -78,6 +80,7 @@ Success `200`:
     "saleKhrRoundingMode": "NEAREST",
     "saleKhrRoundingGranularity": "100",
     "saleAllowPayLater": true,
+    "saleAllowManualExternalPaymentClaim": false,
     "createdAt": "2026-02-17T10:00:00.000Z",
     "updatedAt": "2026-02-17T10:00:00.000Z"
   }
@@ -112,7 +115,8 @@ Body (all fields optional, but at least one must be provided):
   "saleKhrRoundingEnabled": true,
   "saleKhrRoundingMode": "NEAREST",
   "saleKhrRoundingGranularity": "100",
-  "saleAllowPayLater": false
+  "saleAllowPayLater": false,
+  "saleAllowManualExternalPaymentClaim": false
 }
 ```
 
@@ -131,6 +135,7 @@ Success `200`:
     "saleKhrRoundingMode": "NEAREST",
     "saleKhrRoundingGranularity": "100",
     "saleAllowPayLater": false,
+    "saleAllowManualExternalPaymentClaim": false,
     "createdAt": "2026-02-17T10:00:00.000Z",
     "updatedAt": "2026-02-17T10:05:00.000Z"
   }
@@ -142,6 +147,8 @@ Validation:
 - `saleFxRateKhrPerUsd` must be `> 0`
 - `saleKhrRoundingMode` must be `NEAREST | UP | DOWN`
 - `saleKhrRoundingGranularity` must be `100 | 1000`
+- `saleAllowPayLater` must be boolean
+- `saleAllowManualExternalPaymentClaim` must be boolean
 - empty patch is rejected
 
 Errors:
@@ -162,9 +169,13 @@ Errors:
 
 - This contract intentionally excludes removed legacy policy keys (attendance/cash/inventory toggles) per patched KB scope.
 - Policy updates are branch-scoped and auditable; historical sale/receipt/reporting values remain snapshot-based and must not be rewritten by later policy edits.
+- `saleAllowPayLater` currently governs normal open-ticket/pay-later behavior only.
+- `saleAllowManualExternalPaymentClaim` remains in policy payloads for backward compatibility, but current sale-order runtime no longer denies outage/manual external-payment claim workflows per branch based on this flag.
+- Current backend policy support does not by itself imply the full manual-claim workflow is implemented.
 
 ## Frontend Rollout Notes
 
 - Use `GET /v0/policy/current-branch` after login and after every branch context switch.
 - For updates, always send `Idempotency-Key` and treat `Idempotency-Replayed: true` as a successful replay (do not show duplicate-error UI).
 - On successful `PATCH`, replace local policy cache with response `data` (source of truth), then re-evaluate pricing/checkout UI toggles.
+- Frontend should not use `saleAllowManualExternalPaymentClaim` to hide or block the outage external-payment-claim reconnect flow.

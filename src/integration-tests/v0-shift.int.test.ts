@@ -290,13 +290,13 @@ describe("v0 shift (phase 4 reliability baseline)", () => {
       .query({ branchId, from: yesterday, to: updatedDate })
       .set("Authorization", `Bearer ${ownerTenantToken}`);
     expect(schedule.status).toBe(200);
-    expect(Array.isArray(schedule.body.data.patterns)).toBe(true);
-    expect(Array.isArray(schedule.body.data.instances)).toBe(true);
+    expect(Array.isArray(schedule.body.data.patterns.items)).toBe(true);
+    expect(Array.isArray(schedule.body.data.instances.items)).toBe(true);
     expect(
-      schedule.body.data.patterns.some((row: { id: string }) => row.id === patternId)
+      schedule.body.data.patterns.items.some((row: { id: string }) => row.id === patternId)
     ).toBe(true);
     expect(
-      schedule.body.data.instances.some((row: { id: string }) => row.id === instanceId)
+      schedule.body.data.instances.items.some((row: { id: string }) => row.id === instanceId)
     ).toBe(true);
 
     const mySchedule = await request(app)

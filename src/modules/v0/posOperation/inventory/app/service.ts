@@ -9,6 +9,10 @@ import {
   type InventoryStockCategoryRow,
   type InventoryStockItemRow,
 } from "../infra/repository.js";
+import {
+  buildOffsetPaginatedResult,
+  type OffsetPaginatedResult,
+} from "../../../../../shared/pagination.js";
 
 type ActorContext = {
   accountId: string;
@@ -122,7 +126,7 @@ export class V0InventoryService {
     search?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertTenantContext(input.actor);
     const status = parseStatusFilter(input.status);
     const categoryId = parseOptionalUuid(input.categoryId, "categoryId");
@@ -146,7 +150,12 @@ export class V0InventoryService {
       return true;
     });
 
-    return filtered.slice(offset, offset + limit).map(mapStockItemRow);
+    return buildOffsetPaginatedResult({
+      items: filtered.slice(offset, offset + limit).map(mapStockItemRow),
+      limit,
+      offset,
+      total: filtered.length,
+    });
   }
 
   async getStockItem(input: {
@@ -309,29 +318,41 @@ export class V0InventoryService {
 
   async listRestockBatches(input: {
     actor: ActorContext;
+    branchId?: string;
     status?: string;
     stockItemId?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
-    const scope = assertBranchContext(input.actor);
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
+    const scope = assertTenantContext(input.actor);
     const status = parseStatusFilter(input.status);
+    const branchId = await this.requireOptionalBranchIdInTenant(scope.tenantId, input.branchId);
     const stockItemId = parseOptionalUuid(input.stockItemId, "stockItemId");
     const limit = normalizeLimit(input.limit);
     const offset = normalizeOffset(input.offset);
 
     const rows = await this.repo.listRestockBatches({
       tenantId: scope.tenantId,
-      branchId: scope.branchId,
+      branchId,
       stockItemId,
       includeArchived: status === "all" || status === "archived",
       limit,
       offset,
     });
 
-    return rows
-      .filter((row) => (status === "archived" ? row.status === "ARCHIVED" : true))
-      .map(mapRestockBatchRow);
+    const filtered = rows.filter((row) => (status === "archived" ? row.status === "ARCHIVED" : true));
+    return buildOffsetPaginatedResult({
+      items: filtered.map(mapRestockBatchRow),
+      limit,
+      offset,
+      total: await this.repo.countRestockBatches({
+        tenantId: scope.tenantId,
+        branchId,
+        stockItemId,
+        includeArchived: status === "all" || status === "archived",
+        archivedOnly: status === "archived",
+      }),
+    });
   }
 
   async createRestockBatch(input: {
@@ -339,8 +360,9 @@ export class V0InventoryService {
     idempotencyKey: string;
     body: unknown;
   }): Promise<Record<string, unknown>> {
-    const scope = assertBranchContext(input.actor);
+    const scope = assertTenantContext(input.actor);
     const body = toObject(input.body);
+    const branchId = await this.requireBranchIdInTenant(scope.tenantId, body.branchId);
 
     const stockItemId = requireUuid(body.stockItemId, "stockItemId");
     const stockItem = await this.repo.getStockItem({
@@ -367,7 +389,7 @@ export class V0InventoryService {
     const receivedAt = parseOptionalDate(body.receivedAt, "receivedAt") ?? new Date();
     const row = await this.repo.createRestockBatch({
       tenantId: scope.tenantId,
-      branchId: scope.branchId,
+      branchId,
       stockItemId,
       quantityInBaseUnit,
       receivedAt,
@@ -380,7 +402,7 @@ export class V0InventoryService {
 
     const journal = await this.repo.appendJournalEntry({
       tenantId: scope.tenantId,
-      branchId: scope.branchId,
+      branchId,
       stockItemId,
       direction: "IN",
       quantityInBaseUnit,
@@ -395,7 +417,7 @@ export class V0InventoryService {
 
     const stock = await this.repo.applyBranchStockDelta({
       tenantId: scope.tenantId,
-      branchId: scope.branchId,
+      branchId,
       stockItemId,
       signedDeltaInBaseUnit: quantityInBaseUnit,
       movementAt: receivedAt,
@@ -404,7 +426,7 @@ export class V0InventoryService {
     return {
       ...mapRestockBatchRow(row),
       journalEntry: mapJournalRow(journal),
-      branchStockProjection: mapBranchStockProjection(scope.tenantId, scope.branchId, stock),
+      branchStockProjection: mapBranchStockProjection(scope.tenantId, branchId, stock),
     };
   }
 
@@ -413,15 +435,16 @@ export class V0InventoryService {
     batchId: string;
     body: unknown;
   }): Promise<Record<string, unknown>> {
-    const scope = assertBranchContext(input.actor);
+    const scope = assertTenantContext(input.actor);
     const batchId = requireUuid(input.batchId, "batchId");
     const body = toObject(input.body);
+    const branchId = await this.requireBranchIdInTenant(scope.tenantId, body.branchId);
 
     const current = await this.repo.getRestockBatchById({
       tenantId: scope.tenantId,
       batchId,
     });
-    if (!current || current.branch_id !== scope.branchId) {
+    if (!current || current.branch_id !== branchId) {
       throw new V0InventoryError(
         404,
         "restock batch not found",
@@ -478,15 +501,17 @@ export class V0InventoryService {
   async archiveRestockBatch(input: {
     actor: ActorContext;
     batchId: string;
+    branchId: string;
   }): Promise<Record<string, unknown>> {
-    const scope = assertBranchContext(input.actor);
+    const scope = assertTenantContext(input.actor);
     const batchId = requireUuid(input.batchId, "batchId");
+    const branchId = await this.requireBranchIdInTenant(scope.tenantId, input.branchId);
 
     const current = await this.repo.getRestockBatchById({
       tenantId: scope.tenantId,
       batchId,
     });
-    if (!current || current.branch_id !== scope.branchId) {
+    if (!current || current.branch_id !== branchId) {
       throw new V0InventoryError(
         404,
         "restock batch not found",
@@ -516,8 +541,9 @@ export class V0InventoryService {
     idempotencyKey: string;
     body: unknown;
   }): Promise<Record<string, unknown>> {
-    const scope = assertBranchContext(input.actor);
+    const scope = assertTenantContext(input.actor);
     const body = toObject(input.body);
+    const branchId = await this.requireBranchIdInTenant(scope.tenantId, body.branchId);
 
     const stockItemId = requireUuid(body.stockItemId, "stockItemId");
     const stockItem = await this.repo.getStockItem({
@@ -556,7 +582,7 @@ export class V0InventoryService {
       );
       const currentOnHandInBaseUnit = await this.repo.getBranchStockOnHand({
         tenantId: scope.tenantId,
-        branchId: scope.branchId,
+        branchId,
         stockItemId,
       });
       signedDelta = countedOnHandInBaseUnit - currentOnHandInBaseUnit;
@@ -576,7 +602,7 @@ export class V0InventoryService {
     const sourceId = `${adjustmentReasonCode}:${input.idempotencyKey}`;
     const journal = await this.repo.appendJournalEntry({
       tenantId: scope.tenantId,
-      branchId: scope.branchId,
+      branchId,
       stockItemId,
       direction,
       quantityInBaseUnit,
@@ -591,7 +617,7 @@ export class V0InventoryService {
 
     const stock = await this.repo.applyBranchStockDelta({
       tenantId: scope.tenantId,
-      branchId: scope.branchId,
+      branchId,
       stockItemId,
       signedDeltaInBaseUnit: signedDelta,
       movementAt: occurredAt,
@@ -613,34 +639,58 @@ export class V0InventoryService {
       adjustmentStyle: style,
       countedOnHandInBaseUnit,
       resultingOnHandInBaseUnit: stock.on_hand_in_base_unit,
-      branchStockProjection: mapBranchStockProjection(scope.tenantId, scope.branchId, stock),
+      branchStockProjection: mapBranchStockProjection(scope.tenantId, branchId, stock),
       createdAt: journal.created_at.toISOString(),
     };
   }
 
   async listJournal(input: {
     actor: ActorContext;
+    branchId?: string;
     stockItemId?: string;
     reasonCode?: string;
+    date?: string;
+    from?: string;
+    to?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
-    const scope = assertBranchContext(input.actor);
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
+    const scope = assertTenantContext(input.actor);
+    const branchId = await this.requireBranchIdInTenant(scope.tenantId, input.branchId);
     const stockItemId = parseOptionalUuid(input.stockItemId, "stockItemId");
     const reasonCode = parseOptionalInventoryReasonCode(input.reasonCode);
+    const dateFilter = resolveJournalDateFilter({
+      date: input.date,
+      from: input.from,
+      to: input.to,
+    });
     const limit = normalizeLimit(input.limit);
     const offset = normalizeOffset(input.offset);
 
     const rows = await this.repo.listJournal({
       tenantId: scope.tenantId,
-      branchId: scope.branchId,
+      branchId,
       stockItemId,
       reasonCode,
+      fromInclusive: dateFilter.fromInclusive,
+      toExclusive: dateFilter.toExclusive,
       limit,
       offset,
     });
 
-    return rows.map(mapJournalRow);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapJournalRow),
+      limit,
+      offset,
+      total: await this.repo.countJournal({
+        tenantId: scope.tenantId,
+        branchId,
+        stockItemId,
+        reasonCode,
+        fromInclusive: dateFilter.fromInclusive,
+        toExclusive: dateFilter.toExclusive,
+      }),
+    });
   }
 
   async listJournalAll(input: {
@@ -648,13 +698,21 @@ export class V0InventoryService {
     branchId?: string;
     stockItemId?: string;
     reasonCode?: string;
+    date?: string;
+    from?: string;
+    to?: string;
     limit?: number;
     offset?: number;
-  }): Promise<Array<Record<string, unknown>>> {
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertTenantContext(input.actor);
     const branchId = parseOptionalUuid(input.branchId, "branchId");
     const stockItemId = parseOptionalUuid(input.stockItemId, "stockItemId");
     const reasonCode = parseOptionalInventoryReasonCode(input.reasonCode);
+    const dateFilter = resolveJournalDateFilter({
+      date: input.date,
+      from: input.from,
+      to: input.to,
+    });
     const limit = normalizeLimit(input.limit);
     const offset = normalizeOffset(input.offset);
 
@@ -663,52 +721,97 @@ export class V0InventoryService {
       branchId,
       stockItemId,
       reasonCode,
+      fromInclusive: dateFilter.fromInclusive,
+      toExclusive: dateFilter.toExclusive,
       limit,
       offset,
     });
 
-    return rows.map(mapJournalRow);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapJournalRow),
+      limit,
+      offset,
+      total: await this.repo.countJournalByTenant({
+        tenantId: scope.tenantId,
+        branchId,
+        stockItemId,
+        reasonCode,
+        fromInclusive: dateFilter.fromInclusive,
+        toExclusive: dateFilter.toExclusive,
+      }),
+    });
   }
 
   async readBranchStock(input: {
     actor: ActorContext;
+    branchId?: string;
     includeArchivedItems?: boolean;
-  }): Promise<Array<Record<string, unknown>>> {
-    const scope = assertBranchContext(input.actor);
+    limit?: number;
+    offset?: number;
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
+    const scope = assertTenantContext(input.actor);
+    const branchId = await this.requireBranchIdInTenant(scope.tenantId, input.branchId);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
     const rows = await this.repo.listBranchStock({
       tenantId: scope.tenantId,
-      branchId: scope.branchId,
+      branchId,
       includeArchivedItems: input.includeArchivedItems ?? false,
+      limit,
+      offset,
     });
 
-    return rows.map((row) => ({
-      stockItemId: row.stock_item_id,
-      stockItemName: row.stock_item_name,
-      baseUnit: row.base_unit,
-      onHandInBaseUnit: row.on_hand_in_base_unit,
-      lowStockThreshold: row.low_stock_threshold,
-      isLowStock: row.is_low_stock,
-      updatedAt: row.updated_at.toISOString(),
-    }));
+    return buildOffsetPaginatedResult({
+      items: rows.map((row) => ({
+        stockItemId: row.stock_item_id,
+        stockItemName: row.stock_item_name,
+        baseUnit: row.base_unit,
+        onHandInBaseUnit: row.on_hand_in_base_unit,
+        lowStockThreshold: row.low_stock_threshold,
+        isLowStock: row.is_low_stock,
+        updatedAt: row.updated_at.toISOString(),
+      })),
+      limit,
+      offset,
+      total: await this.repo.countBranchStock({
+        tenantId: scope.tenantId,
+        branchId,
+        includeArchivedItems: input.includeArchivedItems ?? false,
+      }),
+    });
   }
 
   async readAggregateStock(input: {
     actor: ActorContext;
     includeArchivedItems?: boolean;
-  }): Promise<Array<Record<string, unknown>>> {
+    limit?: number;
+    offset?: number;
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const scope = assertTenantContext(input.actor);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
     const rows = await this.repo.listAggregateStock({
       tenantId: scope.tenantId,
       includeArchivedItems: input.includeArchivedItems ?? false,
+      limit,
+      offset,
     });
 
-    return rows.map((row) => ({
-      stockItemId: row.stock_item_id,
-      stockItemName: row.stock_item_name,
-      baseUnit: row.base_unit,
-      totalOnHandInBaseUnit: row.total_on_hand_in_base_unit,
-      branchCount: row.branch_count,
-    }));
+    return buildOffsetPaginatedResult({
+      items: rows.map((row) => ({
+        stockItemId: row.stock_item_id,
+        stockItemName: row.stock_item_name,
+        baseUnit: row.base_unit,
+        totalOnHandInBaseUnit: row.total_on_hand_in_base_unit,
+        branchCount: row.branch_count,
+      })),
+      limit,
+      offset,
+      total: await this.repo.countAggregateStock({
+        tenantId: scope.tenantId,
+        includeArchivedItems: input.includeArchivedItems ?? false,
+      }),
+    });
   }
 
   private async setStockItemStatus(input: {
@@ -739,6 +842,31 @@ export class V0InventoryService {
         "stock category not found",
         "INVENTORY_STOCK_CATEGORY_NOT_FOUND"
       );
+    }
+  }
+
+  private async requireBranchIdInTenant(tenantId: string, raw: unknown): Promise<string> {
+    const branchId = requireUuid(raw, "branchId");
+    await this.assertActiveBranchInTenant(tenantId, branchId);
+    return branchId;
+  }
+
+  private async requireOptionalBranchIdInTenant(
+    tenantId: string,
+    raw: unknown
+  ): Promise<string | null> {
+    const branchId = parseOptionalUuid(raw, "branchId");
+    if (!branchId) {
+      return null;
+    }
+    await this.assertActiveBranchInTenant(tenantId, branchId);
+    return branchId;
+  }
+
+  private async assertActiveBranchInTenant(tenantId: string, branchId: string): Promise<void> {
+    const branch = await this.repo.getBranchById({ tenantId, branchId });
+    if (!branch || branch.status !== "ACTIVE") {
+      throw new V0InventoryError(404, "branch not found", "BRANCH_NOT_FOUND");
     }
   }
 }
@@ -892,23 +1020,6 @@ function assertTenantContext(actor: ActorContext): { accountId: string; tenantId
   };
 }
 
-function assertBranchContext(actor: ActorContext): {
-  accountId: string;
-  tenantId: string;
-  branchId: string;
-} {
-  const tenant = assertTenantContext(actor);
-  const branchId = normalizeOptionalString(actor.branchId);
-  if (!branchId) {
-    throw new V0InventoryError(403, "branch context required", "BRANCH_CONTEXT_REQUIRED");
-  }
-  return {
-    accountId: tenant.accountId,
-    tenantId: tenant.tenantId,
-    branchId,
-  };
-}
-
 function requireUuid(raw: unknown, field: string): string {
   const value = normalizeOptionalString(raw);
   if (!value || !UUID_REGEX.test(value)) {
@@ -1025,6 +1136,51 @@ function parseOptionalDateOnly(raw: unknown, field: string): string | null {
     throw new V0InventoryError(422, `${field} must be YYYY-MM-DD`, "INVENTORY_INVALID_INPUT");
   }
   return value;
+}
+
+function resolveJournalDateFilter(input: {
+  date?: string;
+  from?: string;
+  to?: string;
+}): {
+  fromInclusive: Date | null;
+  toExclusive: Date | null;
+} {
+  const date = parseOptionalDateOnly(input.date, "date");
+  const from = parseOptionalDateOnly(input.from, "from");
+  const to = parseOptionalDateOnly(input.to, "to");
+
+  if (date && (from || to)) {
+    throw new V0InventoryError(
+      422,
+      "date cannot be combined with from or to",
+      "INVENTORY_INVALID_FILTER"
+    );
+  }
+  if (from && to && from > to) {
+    throw new V0InventoryError(422, "from must be <= to", "INVENTORY_INVALID_FILTER");
+  }
+
+  if (date) {
+    const fromInclusive = startOfCambodiaDay(date);
+    return {
+      fromInclusive,
+      toExclusive: addDays(fromInclusive, 1),
+    };
+  }
+
+  return {
+    fromInclusive: from ? startOfCambodiaDay(from) : null,
+    toExclusive: to ? addDays(startOfCambodiaDay(to), 1) : null,
+  };
+}
+
+function startOfCambodiaDay(date: string): Date {
+  return new Date(`${date}T00:00:00+07:00`);
+}
+
+function addDays(value: Date, days: number): Date {
+  return new Date(value.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 function normalizeLimit(value: number | undefined): number {

@@ -54,6 +54,34 @@ async function registerAndLogin(app: express.Express, phone: string): Promise<st
   return loginRes.body.data.accessToken as string;
 }
 
+async function seedPendingMediaUpload(input: {
+  pool: Pool;
+  tenantId: string;
+  area: "payment-proof";
+  imageUrl: string;
+  uploadedByAccountId: string;
+}): Promise<void> {
+  await input.pool.query(
+    `INSERT INTO v0_media_uploads (
+       tenant_id,
+       area,
+       object_key,
+       image_url,
+       mime_type,
+       size_bytes,
+       status,
+       uploaded_by_account_id
+     ) VALUES ($1, $2, $3, $4, 'image/png', 1024, 'PENDING', $5)`,
+    [
+      input.tenantId,
+      input.area,
+      `payment-proof-images/${input.tenantId}/${randomUUID()}.png`,
+      input.imageUrl,
+      input.uploadedByAccountId,
+    ]
+  );
+}
+
 async function setupOwnerBranchContext(input: {
   app: express.Express;
   pool: Pool;
@@ -331,6 +359,22 @@ async function setBranchPayLaterPolicy(input: {
   await input.pool.query(
     `UPDATE v0_branch_policies
      SET sale_allow_pay_later = $3,
+         updated_at = NOW()
+     WHERE tenant_id = $1
+      AND branch_id = $2`,
+    [input.tenantId, input.branchId, input.enabled]
+  );
+}
+
+async function setBranchManualExternalPaymentClaimPolicy(input: {
+  pool: Pool;
+  tenantId: string;
+  branchId: string;
+  enabled: boolean;
+}): Promise<void> {
+  await input.pool.query(
+    `UPDATE v0_branch_policies
+     SET sale_allow_manual_external_payment_claim = $3,
          updated_at = NOW()
      WHERE tenant_id = $1
        AND branch_id = $2`,
@@ -869,7 +913,7 @@ describe("v0 sale-order integration", () => {
 
   });
 
-  it("finalizes cash checkout directly from local cart without order ticket", async () => {
+  it("finalizes cash checkout from local cart and materializes a checked-out order for fulfillment", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     await openCashSession({
       pool,
@@ -895,16 +939,56 @@ describe("v0 sale-order integration", () => {
     expect(finalized.body.data.status).toBe("FINALIZED");
     expect(finalized.body.data.saleType).toBe("TAKEAWAY");
     expect(finalized.body.data.paymentMethod).toBe("CASH");
-    expect(finalized.body.data.orderId).toBeNull();
+    expect(typeof finalized.body.data.orderId).toBe("string");
+    expect(finalized.body.data.order).toMatchObject({
+      id: finalized.body.data.orderId,
+      status: "CHECKED_OUT",
+      sourceMode: "DIRECT_CHECKOUT",
+    });
+    expect(finalized.body.data.batch).toMatchObject({
+      orderId: finalized.body.data.orderId,
+      status: "PENDING",
+    });
+    expect(Array.isArray(finalized.body.data.orderLines)).toBe(true);
+    expect(finalized.body.data.orderLines.length).toBe(1);
 
-    const orderCount = await pool.query<{ count: string }>(
-      `SELECT COUNT(*)::TEXT AS count
+    const orderRow = await pool.query<{
+      id: string;
+      status: string;
+      source_mode: string;
+    }>(
+      `SELECT id, status, source_mode
        FROM v0_order_tickets
        WHERE tenant_id = $1
          AND branch_id = $2`,
       [setup.tenantId, setup.branchId]
     );
-    expect(Number(orderCount.rows[0]?.count ?? "0")).toBe(0);
+    expect(orderRow.rows).toHaveLength(1);
+    expect(orderRow.rows[0]).toMatchObject({
+      id: finalized.body.data.orderId,
+      status: "CHECKED_OUT",
+      source_mode: "DIRECT_CHECKOUT",
+    });
+
+    const listed = await request(app)
+      .get("/v0/orders?status=CHECKED_OUT")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(listed.status).toBe(200);
+    const listedOrder = listed.body.data.items.find(
+      (item: { id: string }) => item.id === finalized.body.data.orderId
+    ) as { fulfillmentStatus: string | null } | undefined;
+    expect(listedOrder?.fulfillmentStatus).toBe("PENDING");
+
+    const fulfillment = await request(app)
+      .patch(`/v0/orders/${finalized.body.data.orderId}/fulfillment`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cash-checkout-fulfillment-${uniqueSuffix()}`)
+      .send({
+        status: "PREPARING",
+        note: "Started after direct checkout",
+      });
+    expect(fulfillment.status).toBe(200);
+    expect(fulfillment.body.data.status).toBe("PREPARING");
   });
 
   it("updates current-session X report after finalized cash checkout is dispatched", async () => {
@@ -1009,10 +1093,10 @@ describe("v0 sale-order integration", () => {
     expect(finalized.body.data.receipt.statusDisplay).toBe("NORMAL");
     expect(finalized.body.data.receipt.saleSnapshot.paymentMethod).toBe("CASH");
     expect(finalized.body.data.receipt.saleSnapshot.tenderCurrency).toBe("USD");
-    expect(finalized.body.data.receipt.saleSnapshot.tenderAmount).toBe(8);
-    expect(finalized.body.data.receipt.saleSnapshot.paidAmount).toBe(8);
+    expect(finalized.body.data.receipt.saleSnapshot.tenderAmount).toBe(7);
+    expect(finalized.body.data.receipt.saleSnapshot.paidAmount).toBe(7);
     expect(finalized.body.data.receipt.saleSnapshot.cashReceivedTenderAmount).toBe(10);
-    expect(finalized.body.data.receipt.saleSnapshot.cashChangeTenderAmount).toBe(2);
+    expect(finalized.body.data.receipt.saleSnapshot.cashChangeTenderAmount).toBe(3);
     expect(Array.isArray(finalized.body.data.receipt.lines)).toBe(true);
     expect(finalized.body.data.receipt.lines.length).toBe(1);
 
@@ -1024,10 +1108,10 @@ describe("v0 sale-order integration", () => {
     expect(receiptRead.body.data.receiptId).toBe(saleId);
     expect(receiptRead.body.data.saleSnapshot.paymentMethod).toBe("CASH");
     expect(receiptRead.body.data.saleSnapshot.tenderCurrency).toBe("USD");
-    expect(receiptRead.body.data.saleSnapshot.tenderAmount).toBe(8);
-    expect(receiptRead.body.data.saleSnapshot.paidAmount).toBe(8);
+    expect(receiptRead.body.data.saleSnapshot.tenderAmount).toBe(7);
+    expect(receiptRead.body.data.saleSnapshot.paidAmount).toBe(7);
     expect(receiptRead.body.data.saleSnapshot.cashReceivedTenderAmount).toBe(10);
-    expect(receiptRead.body.data.saleSnapshot.cashChangeTenderAmount).toBe(2);
+    expect(receiptRead.body.data.saleSnapshot.cashChangeTenderAmount).toBe(3);
   });
 
   it("does not emit legacy receipt.snapshot.create outbox action on checkout.cash.finalize", async () => {
@@ -1142,6 +1226,423 @@ describe("v0 sale-order integration", () => {
     expect(typeof saleId).toBe("string");
   });
 
+  it("includes latest fulfillment status in order list summaries", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-fulfillment-list-place-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const initialList = await request(app)
+      .get("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(initialList.status).toBe(200);
+    const initialOrder = initialList.body.data.items.find(
+      (item: { id: string }) => item.id === orderId
+    ) as
+      | {
+          fulfillmentStatus: string | null;
+          totalUsdExact: number;
+          linesPreview: Array<{
+            menuItemNameSnapshot: string;
+            quantity: number;
+            modifierLabels: string[];
+          }>;
+          checkedOutAt: string | null;
+          paymentMethod: string | null;
+          manualPaymentClaimId: string | null;
+          manualPaymentClaimStatus: string | null;
+        }
+      | undefined;
+    expect(initialOrder?.fulfillmentStatus ?? null).toBeNull();
+    expect(initialOrder?.totalUsdExact).toBe(3.5);
+    expect(initialOrder?.linesPreview).toEqual([
+      {
+        menuItemNameSnapshot: setup.defaultMenuItemName,
+        quantity: 1,
+        modifierLabels: [],
+      },
+    ]);
+    expect(initialOrder?.checkedOutAt ?? null).toBeNull();
+    expect(initialOrder?.paymentMethod ?? null).toBeNull();
+    expect(initialOrder?.manualPaymentClaimId ?? null).toBeNull();
+    expect(initialOrder?.manualPaymentClaimStatus ?? null).toBeNull();
+
+    const updated = await request(app)
+      .patch(`/v0/orders/${orderId}/fulfillment`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-fulfillment-list-update-${uniqueSuffix()}`)
+      .send({
+        status: "PREPARING",
+        note: "Started by kitchen",
+      });
+    expect(updated.status).toBe(200);
+    expect(updated.body.data.status).toBe("PREPARING");
+
+    const listed = await request(app)
+      .get("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(listed.status).toBe(200);
+    const order = listed.body.data.items.find(
+      (item: { id: string }) => item.id === orderId
+    ) as { fulfillmentStatus: string | null; totalUsdExact: number } | undefined;
+    expect(order?.fulfillmentStatus).toBe("PREPARING");
+    expect(order?.totalUsdExact).toBe(3.5);
+  });
+
+  it("lists active fulfillment work across open and direct-checkout orders", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const openPlaced = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-fulfillment-view-open-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(openPlaced.status).toBe(200);
+    const openOrderId = openPlaced.body.data.id as string;
+
+    const directCheckout = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-fulfillment-view-direct-${uniqueSuffix()}`)
+      .send({
+        ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 1 }),
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+      });
+    expect(directCheckout.status).toBe(200);
+    const directCheckoutOrderId = directCheckout.body.data.orderId as string;
+
+    const completedPlaced = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-fulfillment-view-completed-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(completedPlaced.status).toBe(200);
+    const completedOrderId = completedPlaced.body.data.id as string;
+
+    const completedFulfillment = await request(app)
+      .patch(`/v0/orders/${completedOrderId}/fulfillment`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-fulfillment-view-completed-batch-${uniqueSuffix()}`)
+      .send({
+        status: "COMPLETED",
+        note: "Already finished",
+      });
+    expect(completedFulfillment.status).toBe(200);
+
+    const cancelledPlaced = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-fulfillment-view-cancelled-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(cancelledPlaced.status).toBe(200);
+    const cancelledOrderId = cancelledPlaced.body.data.id as string;
+
+    const cancelled = await request(app)
+      .post(`/v0/orders/${cancelledOrderId}/cancel`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-fulfillment-view-cancel-${uniqueSuffix()}`)
+      .send({
+        reason: "Customer left",
+      });
+    expect(cancelled.status).toBe(200);
+
+    const listed = await request(app)
+      .get("/v0/orders?view=FULFILLMENT_ACTIVE")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(listed.status).toBe(200);
+    expect(listed.body.success).toBe(true);
+
+    const listedIds = listed.body.data.items.map((item: { id: string }) => item.id);
+    expect(listedIds).toContain(openOrderId);
+    expect(listedIds).toContain(directCheckoutOrderId);
+    expect(listedIds).not.toContain(completedOrderId);
+    expect(listedIds).not.toContain(cancelledOrderId);
+
+    const directCheckoutOrder = listed.body.data.items.find(
+      (item: { id: string }) => item.id === directCheckoutOrderId
+    ) as
+      | {
+          status: string;
+          sourceMode: string;
+          paymentMethod: string | null;
+        }
+      | undefined;
+    expect(directCheckoutOrder).toMatchObject({
+      status: "CHECKED_OUT",
+      sourceMode: "DIRECT_CHECKOUT",
+      fulfillmentStatus: "PENDING",
+      paymentMethod: "CASH",
+    });
+
+    const checkedOutOnly = await request(app)
+      .get("/v0/orders?view=FULFILLMENT_ACTIVE&status=CHECKED_OUT")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(checkedOutOnly.status).toBe(200);
+    const checkedOutIds = checkedOutOnly.body.data.items.map((item: { id: string }) => item.id);
+    expect(checkedOutIds).toContain(directCheckoutOrderId);
+    expect(checkedOutIds).not.toContain(openOrderId);
+  });
+
+  it("rejects invalid order list view filters", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+
+    const listed = await request(app)
+      .get("/v0/orders?view=NOT_A_REAL_VIEW")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(listed.status).toBe(422);
+    expect(listed.body).toMatchObject({
+      success: false,
+      code: "ORDER_LIST_VIEW_INVALID",
+    });
+  });
+
+  it("lists pay-later editable and manual-claim review queues directly", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+    await setBranchPayLaterPolicy({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      enabled: true,
+    });
+    await setBranchManualExternalPaymentClaimPolicy({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      enabled: false,
+    });
+
+    const editablePlaced = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-pay-later-editable-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(editablePlaced.status).toBe(200);
+    const editableOrderId = editablePlaced.body.data.id as string;
+
+    const claimedPlaced = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-claim-review-standard-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(claimedPlaced.status).toBe(200);
+    const claimedOrderId = claimedPlaced.body.data.id as string;
+
+    const createdClaim = await request(app)
+      .post(`/v0/orders/${claimedOrderId}/manual-payment-claims`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-claim-review-create-${uniqueSuffix()}`)
+      .send({
+        claimedPaymentMethod: "KHQR",
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        claimedTenderAmount: 3.5,
+        proofImageUrl: "https://example.com/proof.png",
+        customerReference: "ABA-REF-CLAIM",
+        note: "Customer transfer screenshot",
+      });
+    expect(createdClaim.status).toBe(200);
+
+    const manualSourcePlaced = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-claim-review-source-${uniqueSuffix()}`)
+      .send({
+        ...buildOrderPayload({ menuItemId: setup.defaultMenuItemId }),
+        sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+      });
+    expect(manualSourcePlaced.status).toBe(200);
+    const manualSourceOrderId = manualSourcePlaced.body.data.id as string;
+
+    const directCheckout = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-claim-review-direct-${uniqueSuffix()}`)
+      .send({
+        ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 1 }),
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+      });
+    expect(directCheckout.status).toBe(200);
+    const directCheckoutOrderId = directCheckout.body.data.orderId as string;
+
+    const payLaterEditable = await request(app)
+      .get("/v0/orders?view=PAY_LATER_EDITABLE")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(payLaterEditable.status).toBe(200);
+    expect(payLaterEditable.body.success).toBe(true);
+    const payLaterEditableIds = payLaterEditable.body.data.items.map(
+      (item: { id: string }) => item.id
+    );
+    expect(payLaterEditableIds).toContain(editableOrderId);
+    expect(payLaterEditableIds).not.toContain(claimedOrderId);
+    expect(payLaterEditableIds).not.toContain(manualSourceOrderId);
+    expect(payLaterEditableIds).not.toContain(directCheckoutOrderId);
+
+    const manualClaimReview = await request(app)
+      .get("/v0/orders?view=MANUAL_CLAIM_REVIEW")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(manualClaimReview.status).toBe(200);
+    expect(manualClaimReview.body.success).toBe(true);
+    const manualClaimReviewIds = manualClaimReview.body.data.items.map(
+      (item: { id: string }) => item.id
+    );
+    expect(manualClaimReviewIds).toContain(claimedOrderId);
+    expect(manualClaimReviewIds).toContain(manualSourceOrderId);
+    expect(manualClaimReviewIds).not.toContain(editableOrderId);
+    expect(manualClaimReviewIds).not.toContain(directCheckoutOrderId);
+
+    const directCheckoutOnly = await request(app)
+      .get("/v0/orders?sourceMode=DIRECT_CHECKOUT")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(directCheckoutOnly.status).toBe(200);
+    expect(directCheckoutOnly.body.success).toBe(true);
+    const directCheckoutIds = directCheckoutOnly.body.data.items.map(
+      (item: { id: string }) => item.id
+    );
+    expect(directCheckoutIds).toContain(directCheckoutOrderId);
+    expect(directCheckoutIds).not.toContain(editableOrderId);
+    expect(directCheckoutIds).not.toContain(claimedOrderId);
+    expect(directCheckoutIds).not.toContain(manualSourceOrderId);
+  });
+
+  it("rejects invalid order list sourceMode filters", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+
+    const listed = await request(app)
+      .get("/v0/orders?sourceMode=NOT_A_REAL_SOURCE_MODE")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(listed.status).toBe(422);
+    expect(listed.body).toMatchObject({
+      success: false,
+      code: "ORDER_LIST_SOURCE_MODE_INVALID",
+    });
+  });
+
+  it("includes opener and latest claim requester identities in manual-claim review summaries", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+    const cashier = await setupMemberBranchContext({
+      app,
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+    });
+    await pool.query(
+      `UPDATE accounts
+       SET first_name = 'Order',
+           last_name = 'Capturer'
+       WHERE id = $1`,
+      [setup.ownerAccountId]
+    );
+    await pool.query(
+      `UPDATE accounts
+       SET first_name = 'Claim',
+           last_name = 'Submitter'
+       WHERE id = $1`,
+      [cashier.accountId]
+    );
+
+    const claimedPlaced = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-claim-summary-standard-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(claimedPlaced.status).toBe(200);
+    const claimedOrderId = claimedPlaced.body.data.id as string;
+
+    const createdClaim = await request(app)
+      .post(`/v0/orders/${claimedOrderId}/manual-payment-claims`)
+      .set("Authorization", `Bearer ${cashier.branchToken}`)
+      .set("Idempotency-Key", `sale-order-claim-summary-create-${uniqueSuffix()}`)
+      .send({
+        claimedPaymentMethod: "KHQR",
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        claimedTenderAmount: 3.5,
+        proofImageUrl: "https://example.com/proof.png",
+        customerReference: "ABA-REF-CLAIM-SUMMARY",
+        note: "Customer transfer screenshot",
+      });
+    expect(createdClaim.status).toBe(200);
+
+    const manualSourcePlaced = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-claim-summary-source-${uniqueSuffix()}`)
+      .send({
+        ...buildOrderPayload({ menuItemId: setup.defaultMenuItemId }),
+        sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+      });
+    expect(manualSourcePlaced.status).toBe(200);
+    const manualSourceOrderId = manualSourcePlaced.body.data.id as string;
+
+    const listed = await request(app)
+      .get("/v0/orders?view=MANUAL_CLAIM_REVIEW")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(listed.status).toBe(200);
+    expect(listed.body.success).toBe(true);
+
+    const claimedItem = listed.body.data.items.find(
+      (item: { id: string }) => item.id === claimedOrderId
+    );
+    expect(claimedItem).toMatchObject({
+      id: claimedOrderId,
+      openedByAccountId: setup.ownerAccountId,
+      openedByDisplayName: "Order Capturer",
+      manualPaymentClaimId: createdClaim.body.data.id,
+      manualPaymentClaimStatus: "PENDING",
+      manualPaymentClaimRequestedByAccountId: cashier.accountId,
+      manualPaymentClaimRequestedByDisplayName: "Claim Submitter",
+    });
+    expect(typeof claimedItem.manualPaymentClaimRequestedAt).toBe("string");
+
+    const manualSourceItem = listed.body.data.items.find(
+      (item: { id: string }) => item.id === manualSourceOrderId
+    );
+    expect(manualSourceItem).toMatchObject({
+      id: manualSourceOrderId,
+      openedByAccountId: setup.ownerAccountId,
+      openedByDisplayName: "Order Capturer",
+      manualPaymentClaimId: null,
+      manualPaymentClaimStatus: null,
+      manualPaymentClaimRequestedByAccountId: null,
+      manualPaymentClaimRequestedByDisplayName: null,
+      manualPaymentClaimRequestedAt: null,
+    });
+  });
+
   it("cancels unpaid order ticket and keeps retry idempotent", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     await openCashSession({
@@ -1228,6 +1729,16 @@ describe("v0 sale-order integration", () => {
     expect(sale.body.data.status).toBe("FINALIZED");
     expect(sale.body.data.saleType).toBe("TAKEAWAY");
     expect(typeof sale.body.data.finalizedAt).toBe("string");
+
+    const listed = await request(app)
+      .get("/v0/orders?status=CHECKED_OUT")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(listed.status).toBe(200);
+    const listedOrder = listed.body.data.items.find(
+      (item: { id: string }) => item.id === orderId
+    ) as { checkedOutAt: string | null; paymentMethod: string | null } | undefined;
+    expect(listedOrder?.checkedOutAt).toEqual(expect.any(String));
+    expect(listedOrder?.paymentMethod).toBe("CASH");
   });
 
   it("rejects cancelling a checked-out order ticket", async () => {
@@ -1296,6 +1807,8 @@ describe("v0 sale-order integration", () => {
     expect(initiated.body.data.intent.status).toBe("WAITING_FOR_PAYMENT");
     expect(initiated.body.data.attempt.status).toBe("WAITING_FOR_PAYMENT");
     expect(initiated.body.data.attempt.saleId).toBeNull();
+    expect(initiated.body.data.paymentRequest.toAccountId).toBe("khqr-receiver");
+    expect(initiated.body.data.paymentRequest.receiverName).toBe("KHQR Receiver");
     const paymentIntentId = initiated.body.data.intent.paymentIntentId as string;
     const md5 = initiated.body.data.attempt.md5 as string;
 
@@ -1312,6 +1825,35 @@ describe("v0 sale-order integration", () => {
     expect(confirmed.body.data.saleFinalized).toBe(true);
     expect(confirmed.body.data.sale.status).toBe("FINALIZED");
     expect(confirmed.body.data.sale.saleType).toBe("DELIVERY");
+    expect(typeof confirmed.body.data.sale.orderId).toBe("string");
+
+    const directCheckoutOrderId = confirmed.body.data.sale.orderId as string;
+    const directCheckoutOrder = await pool.query<{
+      id: string;
+      status: string;
+      source_mode: string;
+    }>(
+      `SELECT id, status, source_mode
+       FROM v0_order_tickets
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3`,
+      [setup.tenantId, setup.branchId, directCheckoutOrderId]
+    );
+    expect(directCheckoutOrder.rows[0]).toMatchObject({
+      id: directCheckoutOrderId,
+      status: "CHECKED_OUT",
+      source_mode: "DIRECT_CHECKOUT",
+    });
+
+    const listed = await request(app)
+      .get("/v0/orders?status=CHECKED_OUT")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(listed.status).toBe(200);
+    const listedOrder = listed.body.data.items.find(
+      (item: { id: string }) => item.id === directCheckoutOrderId
+    ) as { fulfillmentStatus: string | null } | undefined;
+    expect(listedOrder?.fulfillmentStatus).toBe("PENDING");
 
     const finalizedIntent = await pool.query<{ status: string; saleId: string | null }>(
       `SELECT status, sale_id AS "saleId"
@@ -1321,6 +1863,109 @@ describe("v0 sale-order integration", () => {
     );
     expect(finalizedIntent.rows[0]?.status).toBe("FINALIZED");
     expect(typeof finalizedIntent.rows[0]?.saleId).toBe("string");
+
+    const finalizedSale = await request(app)
+      .get(`/v0/sales/${finalizedIntent.rows[0]?.saleId}`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(finalizedSale.status).toBe(200);
+    expect(finalizedSale.body.data.orderId).toBe(directCheckoutOrderId);
+
+    const fulfillment = await request(app)
+      .patch(`/v0/orders/${directCheckoutOrderId}/fulfillment`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-checkout-fulfillment-${uniqueSuffix()}`)
+      .send({
+        status: "PREPARING",
+        note: "Started after KHQR direct checkout confirm",
+      });
+    expect(fulfillment.status).toBe(200);
+    expect(fulfillment.body.data.status).toBe("PREPARING");
+  });
+
+  it("initiates KHQR intent from local cart and finalizes on webhook with a fulfillable order anchor", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const initiated = await request(app)
+      .post("/v0/checkout/khqr/initiate")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-checkout-webhook-init-${uniqueSuffix()}`)
+      .send({
+        ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 1 }),
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        expiresInSeconds: 180,
+      });
+
+    expect(initiated.status).toBe(200);
+    const md5 = initiated.body.data.attempt.md5 as string;
+
+    const webhook = await request(app)
+      .post("/v0/payments/khqr/webhooks/provider")
+      .set("x-khqr-webhook-secret", process.env.V0_KHQR_WEBHOOK_SECRET ?? "dev-khqr-webhook-secret")
+      .send({
+        tenantId: setup.tenantId,
+        branchId: setup.branchId,
+        md5,
+        providerEventId: `evt-direct-${uniqueSuffix()}`,
+        providerTxHash: `tx-direct-${uniqueSuffix()}`,
+        providerReference: "bakong-direct-checkout",
+        verificationStatus: "CONFIRMED",
+        confirmedAmount: 3.5,
+        confirmedCurrency: "USD",
+        confirmedToAccountId: "khqr-receiver",
+        occurredAt: new Date().toISOString(),
+      });
+
+    expect(webhook.status).toBe(200);
+    expect(webhook.body.success).toBe(true);
+    expect(webhook.body.data.saleFinalized).toBe(true);
+    expect(webhook.body.data.sale.status).toBe("FINALIZED");
+    expect(typeof webhook.body.data.sale.orderId).toBe("string");
+
+    const directCheckoutOrderId = webhook.body.data.sale.orderId as string;
+    const directCheckoutOrder = await pool.query<{
+      id: string;
+      status: string;
+      source_mode: string;
+    }>(
+      `SELECT id, status, source_mode
+       FROM v0_order_tickets
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND id = $3`,
+      [setup.tenantId, setup.branchId, directCheckoutOrderId]
+    );
+    expect(directCheckoutOrder.rows[0]).toMatchObject({
+      id: directCheckoutOrderId,
+      status: "CHECKED_OUT",
+      source_mode: "DIRECT_CHECKOUT",
+    });
+
+    const listed = await request(app)
+      .get("/v0/orders?status=CHECKED_OUT")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(listed.status).toBe(200);
+    const listedOrder = listed.body.data.items.find(
+      (item: { id: string }) => item.id === directCheckoutOrderId
+    ) as { fulfillmentStatus: string | null } | undefined;
+    expect(listedOrder?.fulfillmentStatus).toBe("PENDING");
+
+    const fulfillment = await request(app)
+      .patch(`/v0/orders/${directCheckoutOrderId}/fulfillment`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-khqr-checkout-webhook-fulfillment-${uniqueSuffix()}`)
+      .send({
+        status: "PREPARING",
+        note: "Started after KHQR direct checkout webhook",
+      });
+    expect(fulfillment.status).toBe(200);
+    expect(fulfillment.body.data.status).toBe("PREPARING");
   });
 
   it("cancels KHQR intent from local cart and blocks finalization", async () => {
@@ -1484,6 +2129,341 @@ describe("v0 sale-order integration", () => {
       success: false,
       code: "ORDER_PAY_LATER_DISABLED",
     });
+  });
+
+  it("allows manual-claim order placement when pay-later is disabled even if manual-claim branch policy is false", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+    await setBranchPayLaterPolicy({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      enabled: false,
+    });
+    await setBranchManualExternalPaymentClaimPolicy({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      enabled: false,
+    });
+
+    const standard = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-standard-disabled-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(standard.status).toBe(422);
+    expect(standard.body).toMatchObject({
+      success: false,
+      code: "ORDER_PAY_LATER_DISABLED",
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-source-${uniqueSuffix()}`)
+      .send({
+        ...buildOrderPayload({ menuItemId: setup.defaultMenuItemId }),
+        sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+      });
+    expect(placed.status).toBe(200);
+    expect(placed.body.success).toBe(true);
+    expect(placed.body.data.sourceMode).toBe("MANUAL_EXTERNAL_PAYMENT_CLAIM");
+
+    const orderId = placed.body.data.id as string;
+    const orderLineId = placed.body.data.lines[0]?.id as string | undefined;
+    expect(orderLineId).toBeTruthy();
+
+    const syncChanges = await pool.query<{ entity_type: string; entity_id: string }>(
+      `SELECT entity_type, entity_id
+       FROM v0_sync_changes
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND module_key = 'saleOrder'`,
+      [setup.tenantId, setup.branchId]
+    );
+    expect(syncChanges.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ entity_type: "order_ticket", entity_id: orderId }),
+        expect.objectContaining({ entity_type: "order_ticket_line", entity_id: orderLineId }),
+      ])
+    );
+  });
+
+  it("creates manual payment claim, lists it, and blocks order mutation while pending", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+    await setBranchPayLaterPolicy({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      enabled: false,
+    });
+    await setBranchManualExternalPaymentClaimPolicy({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      enabled: false,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-claim-place-${uniqueSuffix()}`)
+      .send({
+        ...buildOrderPayload({ menuItemId: setup.defaultMenuItemId }),
+        sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+      });
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+    const proofImageUrl = "https://example.com/proof.png";
+    await seedPendingMediaUpload({
+      pool,
+      tenantId: setup.tenantId,
+      area: "payment-proof",
+      imageUrl: proofImageUrl,
+      uploadedByAccountId: setup.ownerAccountId,
+    });
+
+    const createdClaim = await request(app)
+      .post(`/v0/orders/${orderId}/manual-payment-claims`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-claim-create-${uniqueSuffix()}`)
+      .send({
+        claimedPaymentMethod: "KHQR",
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        claimedTenderAmount: 3.5,
+        proofImageUrl,
+        customerReference: "ABA-REF-001",
+        note: "Customer transfer screenshot",
+      });
+    expect(createdClaim.status).toBe(200);
+    expect(createdClaim.body.success).toBe(true);
+    expect(createdClaim.body.data.status).toBe("PENDING");
+
+    const uploadRow = await pool.query<{
+      status: string;
+      linked_entity_type: string | null;
+      linked_entity_id: string | null;
+    }>(
+      `SELECT status, linked_entity_type, linked_entity_id
+       FROM v0_media_uploads
+       WHERE tenant_id = $1
+         AND area = 'payment-proof'
+         AND image_url = $2
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [setup.tenantId, proofImageUrl]
+    );
+    expect(uploadRow.rows[0]).toMatchObject({
+      status: "LINKED",
+      linked_entity_type: "order_manual_payment_claim",
+      linked_entity_id: createdClaim.body.data.id as string,
+    });
+
+    const claimList = await request(app)
+      .get(`/v0/orders/${orderId}/manual-payment-claims`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(claimList.status).toBe(200);
+    expect(claimList.body.success).toBe(true);
+    expect(Array.isArray(claimList.body.data)).toBe(true);
+    expect(claimList.body.data[0]?.id).toBe(createdClaim.body.data.id);
+
+    const listed = await request(app)
+      .get("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(listed.status).toBe(200);
+    const listedOrder = listed.body.data.items.find(
+      (item: { id: string }) => item.id === orderId
+    ) as
+      | {
+          manualPaymentClaimId: string | null;
+          manualPaymentClaimStatus: string | null;
+          paymentMethod: string | null;
+        }
+      | undefined;
+    expect(listedOrder?.manualPaymentClaimId).toBe(createdClaim.body.data.id);
+    expect(listedOrder?.manualPaymentClaimStatus).toBe("PENDING");
+    expect(listedOrder?.paymentMethod ?? null).toBeNull();
+
+    const addItems = await request(app)
+      .post(`/v0/orders/${orderId}/items`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-claim-pending-add-${uniqueSuffix()}`)
+      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(addItems.status).toBe(409);
+    expect(addItems.body).toMatchObject({
+      success: false,
+      code: "ORDER_MANUAL_PAYMENT_CLAIM_PENDING",
+    });
+  });
+
+  it("lets manager approve manual KHQR claim into finalized sale without cash movement", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const sessionId = await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+    await setBranchPayLaterPolicy({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      enabled: false,
+    });
+    await setBranchManualExternalPaymentClaimPolicy({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      enabled: false,
+    });
+
+    const manager = await setupMemberBranchContext({
+      app,
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "MANAGER",
+    });
+    const cashier = await setupMemberBranchContext({
+      app,
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+    });
+    const seededComponent = await seedTrackedBaseComponent({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      menuItemId: setup.defaultMenuItemId,
+      quantityInBaseUnit: 1,
+      initialOnHandInBaseUnit: 10,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${cashier.branchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-approve-place-${uniqueSuffix()}`)
+      .send({
+        ...buildOrderPayload({ menuItemId: setup.defaultMenuItemId }),
+        sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+      });
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const createdClaim = await request(app)
+      .post(`/v0/orders/${orderId}/manual-payment-claims`)
+      .set("Authorization", `Bearer ${cashier.branchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-approve-claim-${uniqueSuffix()}`)
+      .send({
+        claimedPaymentMethod: "KHQR",
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        claimedTenderAmount: 3.5,
+        proofImageUrl: "https://example.com/proof-approve.png",
+        customerReference: "KHQR-001",
+        note: "Offline transfer proof",
+      });
+    expect(createdClaim.status).toBe(200);
+    const claimId = createdClaim.body.data.id as string;
+
+    const cashierApprove = await request(app)
+      .post(`/v0/orders/${orderId}/manual-payment-claims/${claimId}/approve`)
+      .set("Authorization", `Bearer ${cashier.branchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-approve-cashier-${uniqueSuffix()}`)
+      .send({ note: "Should not be allowed" });
+    expect(cashierApprove.status).toBe(403);
+
+    const dispatcher = startV0CommandOutboxDispatcher({
+      db: pool,
+      pollIntervalMs: 50,
+      batchSize: 25,
+    });
+
+    try {
+      const approved = await request(app)
+        .post(`/v0/orders/${orderId}/manual-payment-claims/${claimId}/approve`)
+        .set("Authorization", `Bearer ${manager.branchToken}`)
+        .set("Idempotency-Key", `sale-order-manual-approve-manager-${uniqueSuffix()}`)
+        .send({ note: "Verified with bank evidence" });
+
+      expect(approved.status).toBe(200);
+      expect(approved.body.success).toBe(true);
+      expect(approved.body.data.status).toBe("FINALIZED");
+      expect(approved.body.data.paymentMethod).toBe("KHQR");
+      expect(approved.body.data.order.status).toBe("CHECKED_OUT");
+      expect(approved.body.data.manualPaymentClaim.status).toBe("APPROVED");
+      expect(approved.body.data.receipt.saleSnapshot.paymentMethod).toBe("KHQR");
+      const saleId = approved.body.data.id as string;
+
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const stock = await pool.query<{ on_hand_in_base_unit: number }>(
+          `SELECT on_hand_in_base_unit::FLOAT8 AS on_hand_in_base_unit
+           FROM v0_inventory_branch_stock
+           WHERE tenant_id = $1
+             AND branch_id = $2
+             AND stock_item_id = $3
+           LIMIT 1`,
+          [setup.tenantId, setup.branchId, seededComponent.stockItemId]
+        );
+        if (stock.rows[0]?.on_hand_in_base_unit === 9) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
+      const stock = await pool.query<{ on_hand_in_base_unit: number }>(
+        `SELECT on_hand_in_base_unit::FLOAT8 AS on_hand_in_base_unit
+         FROM v0_inventory_branch_stock
+         WHERE tenant_id = $1
+           AND branch_id = $2
+           AND stock_item_id = $3
+         LIMIT 1`,
+        [setup.tenantId, setup.branchId, seededComponent.stockItemId]
+      );
+      expect(stock.rows[0]?.on_hand_in_base_unit).toBe(9);
+
+      const cashMovements = await pool.query<{ count: string }>(
+        `SELECT COUNT(*)::TEXT AS count
+         FROM v0_cash_movements
+         WHERE tenant_id = $1
+           AND cash_session_id = $2
+           AND movement_type = 'SALE_IN'`,
+        [setup.tenantId, sessionId]
+      );
+      expect(Number(cashMovements.rows[0]?.count ?? "0")).toBe(0);
+
+      const outbox = await pool.query<{ action_key: string; event_type: string; entity_id: string }>(
+        `SELECT action_key, event_type, entity_id
+         FROM v0_command_outbox
+         WHERE tenant_id = $1
+           AND branch_id = $2
+           AND action_key = 'order.manualPaymentClaim.approve'
+         ORDER BY occurred_at DESC
+         LIMIT 1`,
+        [setup.tenantId, setup.branchId]
+      );
+      expect(outbox.rows[0]).toMatchObject({
+        action_key: "order.manualPaymentClaim.approve",
+        event_type: "SALE_FINALIZED",
+        entity_id: saleId,
+      });
+    } finally {
+      dispatcher.stop();
+    }
   });
 
   it("rejects adding order items when pay-later policy is disabled", async () => {

@@ -97,7 +97,7 @@ export abstract class V0AuthBaseService {
   }
 
   protected isOtpDebugMode(): boolean {
-    return this.appEnv === "local" || this.appEnv === "test";
+    return this.isFixedOtpAllowedInCurrentEnv();
   }
 
   protected generateOtpCode(): string {
@@ -116,7 +116,7 @@ export abstract class V0AuthBaseService {
       return explicit;
     }
 
-    return this.appEnv === "local" || this.appEnv === "test";
+    return this.isFixedOtpAllowedInCurrentEnv();
   }
 
   protected matchesFixedOtp(candidate: string): boolean {
@@ -130,6 +130,10 @@ export abstract class V0AuthBaseService {
     }
 
     return process.env.AUTH_FIXED_OTP ?? "123456";
+  }
+
+  private isFixedOtpAllowedInCurrentEnv(): boolean {
+    return this.appEnv === "local" || this.appEnv === "test";
   }
 
   protected async writeAuditEventBestEffort(input: {

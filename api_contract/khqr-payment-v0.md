@@ -52,6 +52,7 @@ Target response `200`:
     },
     "sale": {
       "id": "uuid",
+      "orderId": "uuid",
       "status": "FINALIZED",
       "saleType": "DINE_IN"
     }
@@ -63,6 +64,9 @@ Rules:
 - If webhook never arrives but manual confirm succeeds, backend must reconcile + finalize.
 - Endpoint remains available for frontend as secondary/manual action.
 - Late webhook is accepted and must converge idempotently.
+- For checkout-intent KHQR flows:
+  - frontend should keep the initiate `attempt.md5`
+  - if `GET /v0/checkout/khqr/intents/:intentId` later shows `status = PAID_CONFIRMED` but `saleId = null`, call this endpoint as the cashier fallback to materialize the finalized sale/order
 
 Intent lifecycle (target):
 ```ts
@@ -191,6 +195,7 @@ Success `201`:
       "amount": 3.5,
       "currency": "USD",
       "toAccountId": "bakong-account-id",
+      "receiverName": "Main Branch Receiver",
       "expiresAt": "2026-02-21T10:30:00.000Z",
       "provider": "STUB",
       "providerReference": "stub:..."
@@ -201,6 +206,7 @@ Success `201`:
 
 Notes:
 - `toAccountId` is resolved by backend from current branch KHQR receiver configuration.
+- `receiverName` is also resolved by backend from current branch KHQR receiver configuration.
 - Frontend must not supply receiver account during generation.
 - `payloadType` indicates how client should consume `payload`:
   - `DEEPLINK_URL`: launch/link flow
@@ -266,6 +272,7 @@ Notes:
 - This endpoint only records attempt truth; it does not finalize sale.
 - `toAccountId` is resolved by backend from current branch KHQR receiver configuration.
 - `saleId` can be `null` for checkout-intent initiated KHQR flows until payment confirmation finalizes sale.
+- For checkout-intent initiated KHQR flows, successful finalization now also materializes a `DIRECT_CHECKOUT` order anchor and an initial `PENDING` fulfillment batch; the order link is exposed as `sale.orderId` on finalize responses.
 
 Errors:
 - `422` validation errors (`KHQR_ATTEMPT_PAYLOAD_INVALID`)
@@ -419,6 +426,7 @@ Success `200` (proof confirmed):
     },
     "sale": {
       "saleId": "uuid",
+      "orderId": "uuid",
       "status": "FINALIZED",
       "saleType": "DINE_IN"
     },
@@ -561,6 +569,7 @@ Success `200` (applied):
     },
     "sale": {
       "saleId": "uuid",
+      "orderId": "uuid",
       "status": "FINALIZED",
       "saleType": "DINE_IN"
     }
@@ -653,5 +662,11 @@ These denial codes are intentionally owned by sale-order orchestration, while th
 
 - Generation of KHQR payload/QR is frontend-side; payment truth is backend confirmation.
 - Register every attempt before waiting for payment confirmation.
+- For checkout-intent KHQR:
+  - keep both `paymentIntentId` and `md5` from initiate
+  - poll `GET /v0/checkout/khqr/intents/:intentId`
+  - if intent becomes `FINALIZED` with non-null `saleId`, finalization is already complete
+  - if intent becomes `PAID_CONFIRMED` with `saleId = null`, call `POST /v0/payments/khqr/confirm` with `md5`
+- `GET /v0/checkout/khqr/intents/:intentId` is payment-intent status truth, but it is not itself a finalize command.
 - On reconnect, re-confirm by `md5` and then continue finalize flow.
 - Treat `UNPAID` as retryable polling; treat `MISMATCH` as manual intervention required.

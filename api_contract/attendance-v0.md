@@ -207,28 +207,35 @@ Errors:
 
 ### 3) List own attendance
 
-`GET /v0/attendance/me?limit=50`
+`GET /v0/attendance/me?limit=50&offset=0`
 
 Query:
 - `limit` optional, default `50`, max `200`
+- `offset` optional, default `0`
 
 Success `200`:
 
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": "uuid",
-      "tenantId": "uuid",
-      "branchId": "uuid",
-      "accountId": "uuid",
-      "type": "CHECK_OUT",
-      "occurredAt": "2026-02-13T17:00:00.000Z",
-      "createdAt": "2026-02-13T17:00:01.000Z",
-      "locationVerification": null
-    }
-  ]
+  "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "tenantId": "uuid",
+        "branchId": "uuid",
+        "accountId": "uuid",
+        "type": "CHECK_OUT",
+        "occurredAt": "2026-02-13T17:00:00.000Z",
+        "createdAt": "2026-02-13T17:00:01.000Z",
+        "locationVerification": null
+      }
+    ],
+    "limit": 50,
+    "offset": 0,
+    "total": 1,
+    "hasMore": false
+  }
 }
 ```
 
@@ -308,28 +315,34 @@ Success `200`:
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": "uuid",
-      "tenantId": "uuid",
-      "branchId": "uuid",
-      "accountId": "uuid",
-      "type": "CHECK_IN",
-      "occurredAt": "2026-02-13T08:00:00.000Z",
-      "createdAt": "2026-02-13T08:00:01.000Z",
-      "locationVerification": null,
-      "account": {
+  "data": {
+    "items": [
+      {
         "id": "uuid",
-        "phone": "+85512000001",
-        "firstName": "Sok",
-        "lastName": "Dara"
-      },
-      "branch": {
-        "id": "uuid",
-        "name": "Main Branch"
+        "tenantId": "uuid",
+        "branchId": "uuid",
+        "accountId": "uuid",
+        "type": "CHECK_IN",
+        "occurredAt": "2026-02-13T08:00:00.000Z",
+        "createdAt": "2026-02-13T08:00:01.000Z",
+        "locationVerification": null,
+        "account": {
+          "id": "uuid",
+          "phone": "+85512000001",
+          "firstName": "Sok",
+          "lastName": "Dara"
+        },
+        "branch": {
+          "id": "uuid",
+          "name": "Main Branch"
+        }
       }
-    }
-  ]
+    ],
+    "limit": 50,
+    "offset": 0,
+    "total": 1,
+    "hasMore": false
+  }
 }
 ```
 
@@ -349,7 +362,7 @@ Notes:
 - `branchId`, `accountId`, `occurredFrom`, `occurredTo`, `limit`, and `offset` are optional.
 
 Success `200`:
-- Same response shape as branch list (`AttendanceScopedRecord[]`).
+- Same paginated response shape as branch list (`items + limit + offset + total + hasMore`).
 
 Errors:
 - `401` missing/invalid access token

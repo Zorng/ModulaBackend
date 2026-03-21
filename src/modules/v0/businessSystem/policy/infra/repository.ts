@@ -17,6 +17,7 @@ export type BranchPolicyRow = {
   sale_khr_rounding_mode: SaleKhrRoundingMode;
   sale_khr_rounding_granularity: SaleKhrRoundingGranularity;
   sale_allow_pay_later: boolean;
+  sale_allow_manual_external_payment_claim: boolean;
   created_at: Date;
   updated_at: Date;
 };
@@ -29,6 +30,7 @@ export type BranchPolicyPatch = {
   saleKhrRoundingMode?: SaleKhrRoundingMode;
   saleKhrRoundingGranularity?: SaleKhrRoundingGranularity;
   saleAllowPayLater?: boolean;
+  saleAllowManualExternalPaymentClaim?: boolean;
 };
 
 export class V0PolicyRepository {
@@ -49,6 +51,7 @@ export class V0PolicyRepository {
          sale_khr_rounding_mode,
          sale_khr_rounding_granularity,
          sale_allow_pay_later,
+         sale_allow_manual_external_payment_claim,
          created_at,
          updated_at
        FROM v0_branch_policies
@@ -83,18 +86,20 @@ export class V0PolicyRepository {
            sale_khr_rounding_enabled,
            sale_khr_rounding_mode,
            sale_khr_rounding_granularity,
-           sale_allow_pay_later
+           sale_allow_pay_later,
+           sale_allow_manual_external_payment_claim
          )
          SELECT
            tb.tenant_id,
            tb.id,
-           COALESCE($3::BOOLEAN, $10::BOOLEAN),
-           COALESCE($4::NUMERIC, $11::NUMERIC),
-           COALESCE($5::NUMERIC, $12::NUMERIC),
-           COALESCE($6::BOOLEAN, $13::BOOLEAN),
-           COALESCE($7::VARCHAR, $14::VARCHAR),
-           COALESCE($8::INTEGER, $15::INTEGER),
-           COALESCE($9::BOOLEAN, $16::BOOLEAN)
+           COALESCE($3::BOOLEAN, $11::BOOLEAN),
+           COALESCE($4::NUMERIC, $12::NUMERIC),
+           COALESCE($5::NUMERIC, $13::NUMERIC),
+           COALESCE($6::BOOLEAN, $14::BOOLEAN),
+           COALESCE($7::VARCHAR, $15::VARCHAR),
+           COALESCE($8::INTEGER, $16::INTEGER),
+           COALESCE($9::BOOLEAN, $17::BOOLEAN),
+           COALESCE($10::BOOLEAN, $18::BOOLEAN)
          FROM target_branch tb
          ON CONFLICT (tenant_id, branch_id)
          DO UPDATE SET
@@ -105,6 +110,10 @@ export class V0PolicyRepository {
            sale_khr_rounding_mode = COALESCE($7::VARCHAR, v0_branch_policies.sale_khr_rounding_mode),
            sale_khr_rounding_granularity = COALESCE($8::INTEGER, v0_branch_policies.sale_khr_rounding_granularity),
            sale_allow_pay_later = COALESCE($9::BOOLEAN, v0_branch_policies.sale_allow_pay_later),
+           sale_allow_manual_external_payment_claim = COALESCE(
+             $10::BOOLEAN,
+             v0_branch_policies.sale_allow_manual_external_payment_claim
+           ),
            updated_at = NOW()
          RETURNING
            tenant_id,
@@ -116,22 +125,24 @@ export class V0PolicyRepository {
            sale_khr_rounding_mode,
            sale_khr_rounding_granularity,
            sale_allow_pay_later,
+           sale_allow_manual_external_payment_claim,
            created_at,
            updated_at
        )
-       SELECT
-         tenant_id,
+      SELECT
+        tenant_id,
          branch_id,
          sale_vat_enabled,
          sale_vat_rate_percent,
-         sale_fx_rate_khr_per_usd,
-         sale_khr_rounding_enabled,
-         sale_khr_rounding_mode,
-         sale_khr_rounding_granularity,
-         sale_allow_pay_later,
-         created_at,
-         updated_at
-       FROM upserted`,
+        sale_fx_rate_khr_per_usd,
+        sale_khr_rounding_enabled,
+        sale_khr_rounding_mode,
+        sale_khr_rounding_granularity,
+        sale_allow_pay_later,
+        sale_allow_manual_external_payment_claim,
+        created_at,
+        updated_at
+      FROM upserted`,
       [
         input.tenantId,
         input.branchId,
@@ -142,6 +153,7 @@ export class V0PolicyRepository {
         patch.saleKhrRoundingMode ?? null,
         patch.saleKhrRoundingGranularity ?? null,
         patch.saleAllowPayLater ?? null,
+        patch.saleAllowManualExternalPaymentClaim ?? null,
         V0_BRANCH_POLICY_DEFAULTS.saleVatEnabled,
         V0_BRANCH_POLICY_DEFAULTS.saleVatRatePercent,
         V0_BRANCH_POLICY_DEFAULTS.saleFxRateKhrPerUsd,
@@ -149,6 +161,7 @@ export class V0PolicyRepository {
         V0_BRANCH_POLICY_DEFAULTS.saleKhrRoundingMode,
         V0_BRANCH_POLICY_DEFAULTS.saleKhrRoundingGranularity,
         V0_BRANCH_POLICY_DEFAULTS.saleAllowPayLater,
+        V0_BRANCH_POLICY_DEFAULTS.saleAllowManualExternalPaymentClaim,
       ]
     );
 

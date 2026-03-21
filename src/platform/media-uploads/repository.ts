@@ -4,6 +4,7 @@ import type { TenantImageArea } from "../storage/r2-image-storage.js";
 type Queryable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
 
 type MediaUploadStatus = "PENDING" | "PENDING_DELETE" | "LINKED" | "DELETED";
+export type MediaUploadMembershipRole = "OWNER" | "ADMIN" | "MANAGER" | "CASHIER" | "CLERK";
 
 export type V0MediaUploadRow = {
   id: string;
@@ -25,6 +26,24 @@ export type V0MediaUploadRow = {
 
 export class V0MediaUploadRepository {
   constructor(private readonly db: Queryable) {}
+
+  async findActiveMembershipRole(input: {
+    tenantId: string;
+    accountId: string;
+  }): Promise<MediaUploadMembershipRole | null> {
+    const result = await this.db.query<{ role_key: MediaUploadMembershipRole }>(
+      `SELECT role_key
+       FROM v0_tenant_memberships
+       WHERE tenant_id = $1
+         AND account_id = $2
+         AND status = 'ACTIVE'
+       ORDER BY accepted_at DESC NULLS LAST, created_at DESC
+       LIMIT 1`,
+      [input.tenantId, input.accountId]
+    );
+
+    return result.rows[0]?.role_key ?? null;
+  }
 
   async createPendingUpload(input: {
     tenantId: string;

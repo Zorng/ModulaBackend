@@ -212,6 +212,7 @@ export class V0KhqrPaymentService {
         amount: sale.tender_amount,
         currency: sale.tender_currency,
         toAccountId: receiver.toAccountId,
+        receiverName: receiver.receiverName,
         expiresAt,
       }),
     };
@@ -324,6 +325,7 @@ export class V0KhqrPaymentService {
         amount: input.tenderAmount,
         currency: input.tenderCurrency,
         toAccountId: receiver.toAccountId,
+        receiverName: receiver.receiverName,
         expiresAt,
       }),
     };
@@ -1004,10 +1006,45 @@ export class V0KhqrPaymentService {
     );
     const pricing = parseCheckoutIntentPricingSnapshot(input.intent.pricing_snapshot);
     const metadata = parseCheckoutIntentMetadataSnapshot(input.intent.metadata_snapshot);
+    const openedByAccountId =
+      normalizeOptionalString(input.intent.created_by_account_id)
+      ?? normalizeOptionalString(input.attempt.created_by_account_id);
+    if (!openedByAccountId) {
+      throw new V0KhqrPaymentError(
+        422,
+        "PAYMENT_INTENT_NOT_FINALIZABLE",
+        "payment intent is missing checkout creator context"
+      );
+    }
+    const checkedOutByAccountId =
+      normalizeOptionalString(input.finalizedByAccountId) ?? openedByAccountId;
+
+    const order = await this.repo.createDirectCheckoutOrderTicket({
+      tenantId: input.intent.tenant_id,
+      branchId: input.intent.branch_id,
+      openedByAccountId,
+    });
+    const orderLineIds: string[] = [];
+    for (const line of lines) {
+      const orderLine = await this.repo.createDirectCheckoutOrderTicketLine({
+        tenantId: input.intent.tenant_id,
+        branchId: input.intent.branch_id,
+        orderTicketId: order.id,
+        menuItemId: line.menuItemId,
+        menuItemNameSnapshot: line.menuItemNameSnapshot,
+        unitPrice: line.unitPrice,
+        quantity: line.quantity,
+        lineSubtotal: line.lineSubtotal,
+        modifierSnapshot: line.modifierSnapshot,
+        note: line.note,
+      });
+      orderLineIds.push(orderLine.id);
+    }
 
     const createdSale = await this.repo.createPendingSaleForKhqrIntent({
       tenantId: input.intent.tenant_id,
       branchId: input.intent.branch_id,
+      orderTicketId: order.id,
       saleType: metadata.saleType,
       tenderCurrency: input.intent.tender_currency,
       tenderAmount: input.intent.tender_amount,
@@ -1030,14 +1067,38 @@ export class V0KhqrPaymentService {
       paidAmount: totals.paidAmountUsd,
     });
 
-    for (const line of lines) {
+    for (const [index, line] of lines.entries()) {
       await this.repo.createSaleLineForKhqrIntent({
         tenantId: input.intent.tenant_id,
         branchId: input.intent.branch_id,
         saleId: createdSale.id,
+        orderTicketLineId: orderLineIds[index] ?? null,
         line,
       });
     }
+
+    const orderCheckedOut = await this.repo.markDirectCheckoutOrderCheckedOut({
+      tenantId: input.intent.tenant_id,
+      branchId: input.intent.branch_id,
+      orderTicketId: order.id,
+      checkedOutByAccountId,
+    });
+    if (!orderCheckedOut) {
+      throw new V0KhqrPaymentError(
+        409,
+        "PAYMENT_INTENT_NOT_FINALIZABLE",
+        "direct checkout order could not be checked out"
+      );
+    }
+
+    await this.repo.createDirectCheckoutFulfillmentBatch({
+      tenantId: input.intent.tenant_id,
+      branchId: input.intent.branch_id,
+      orderTicketId: order.id,
+      status: "PENDING",
+      note: null,
+      createdByAccountId: checkedOutByAccountId,
+    });
 
     const finalizedSale = await this.repo.markSaleFinalizedFromKhqr({
       tenantId: input.intent.tenant_id,
@@ -1156,6 +1217,7 @@ export type V0KhqrGenerateResult = {
     amount: number;
     currency: V0KhqrCurrency;
     toAccountId: string;
+    receiverName: string | null;
     expiresAt: string | null;
     provider: "BAKONG" | "STUB";
     providerReference: string | null;
@@ -1164,6 +1226,7 @@ export type V0KhqrGenerateResult = {
 
 export type V0KhqrFinalizedSaleView = {
   saleId: string;
+  orderId: string | null;
   status: "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
   saleType: V0SaleType;
   paymentMethod: "CASH" | "KHQR";
@@ -1201,6 +1264,7 @@ function mapAttempt(row: V0KhqrPaymentAttemptRow): V0KhqrPaymentAttemptView {
 function mapFinalizedSale(row: V0SaleKhqrSnapshotRow): V0KhqrFinalizedSaleView {
   return {
     saleId: row.id,
+    orderId: row.order_ticket_id,
     status: row.status,
     saleType: row.sale_type,
     paymentMethod: row.payment_method,
@@ -1312,6 +1376,7 @@ function mapGeneratedRequest(input: {
   amount: number;
   currency: V0KhqrCurrency;
   toAccountId: string;
+  receiverName: string | null;
   expiresAt: Date | null;
 }): V0KhqrGenerateResult["paymentRequest"] {
   return {
@@ -1323,6 +1388,7 @@ function mapGeneratedRequest(input: {
     amount: input.amount,
     currency: input.currency,
     toAccountId: input.toAccountId,
+    receiverName: input.receiverName,
     expiresAt: input.expiresAt ? input.expiresAt.toISOString() : null,
     provider: input.generated.provider,
     providerReference: input.generated.providerReference,
@@ -1362,9 +1428,11 @@ function parseCheckoutIntentLinesSnapshot(value: unknown): V0SaleKhqrLineSnapsho
       menuItemNameSnapshot,
       unitPrice,
       quantity,
+      lineSubtotal,
       lineDiscountAmount: lineDiscountAmount ?? 0,
       lineTotalAmount,
       modifierSnapshot: record.modifierSnapshot ?? [],
+      note: normalizeOptionalString(record.note),
     });
   }
   return lines;

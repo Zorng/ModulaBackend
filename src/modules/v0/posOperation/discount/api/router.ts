@@ -271,6 +271,11 @@ export function createV0DiscountRouter(input: {
 
             const commandData = await inputWrite.handler(txService);
             const entityId = String((commandData as { id?: string })?.id ?? tenantId);
+            const targetBranchId =
+              normalizeOptionalString((commandData as { branchId?: unknown })?.branchId)
+              ?? extractBranchIdFromBody(inputWrite.req.body)
+              ?? branchId
+              ?? null;
             const dedupeKey = buildDiscountCommandDedupeKey(
               actionKey,
               idempotencyKey,
@@ -279,7 +284,7 @@ export function createV0DiscountRouter(input: {
 
             await txAuditService.recordEvent({
               tenantId,
-              branchId: branchId || null,
+              branchId: targetBranchId,
               actorAccountId: actor.accountId,
               actionKey,
               outcome: "SUCCESS",
@@ -295,7 +300,7 @@ export function createV0DiscountRouter(input: {
 
             const outbox = await txOutboxRepository.insertEvent({
               tenantId,
-              branchId: branchId || null,
+              branchId: targetBranchId,
               actionKey,
               eventType: inputWrite.eventType,
               actorType: "ACCOUNT",
@@ -311,10 +316,6 @@ export function createV0DiscountRouter(input: {
             });
 
             if (outbox.inserted && outbox.row) {
-              const targetBranchId = normalizeOptionalString(
-                (commandData as { branchId?: unknown })?.branchId
-              ) ?? branchId;
-
               if (targetBranchId) {
                 await txSyncRepository.appendChange({
                   tenantId,
@@ -373,6 +374,13 @@ function asNumber(value: unknown): number | undefined {
 function normalizeOptionalString(value: unknown): string | null {
   const normalized = String(value ?? "").trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function extractBranchIdFromBody(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return normalizeOptionalString((value as Record<string, unknown>).branchId);
 }
 
 function toSyncData(data: unknown): Record<string, unknown> {

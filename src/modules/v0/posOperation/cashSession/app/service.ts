@@ -1,4 +1,8 @@
 import { normalizeOptionalString } from "../../../../../shared/utils/string.js";
+import {
+  buildOffsetPaginatedResult,
+  type OffsetPaginatedResult,
+} from "../../../../../shared/pagination.js";
 import type {
   CashCloseReason,
   CashMovementRow,
@@ -179,7 +183,7 @@ export class V0CashSessionService {
     to?: string;
     limit?: number;
     offset?: number;
-  }): Promise<SessionListItemDto[]> {
+  }): Promise<OffsetPaginatedResult<SessionListItemDto>> {
     const actor = await this.assertBranchContext(input.actor);
     const role = await this.resolveActorRole(actor);
     const status = parseListStatusFilter(input.status);
@@ -189,6 +193,16 @@ export class V0CashSessionService {
       throw new V0CashSessionError(422, "from must be before to", "CASH_SESSION_INVALID_RANGE");
     }
 
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+    const total = await this.repo.countSessions({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      status: mapListStatusToRepo(status),
+      from,
+      to,
+      openedByAccountId: role === "CASHIER" ? actor.accountId : null,
+    });
     const rows = await this.repo.listSessions({
       tenantId: actor.tenantId,
       branchId: actor.branchId,
@@ -196,19 +210,25 @@ export class V0CashSessionService {
       from,
       to,
       openedByAccountId: role === "CASHIER" ? actor.accountId : null,
-      limit: normalizeLimit(input.limit),
-      offset: normalizeOffset(input.offset),
+      limit,
+      offset,
     });
     const nameMap = await this.repo.listAccountDisplayNames({
       accountIds: uniq(rows.map((row) => row.opened_by_account_id)),
     });
-    return rows.map((row) => ({
+    const items = rows.map((row) => ({
       id: row.id,
       status: row.status,
       openedByName: nameMap.get(row.opened_by_account_id) ?? row.opened_by_account_id,
       openedAt: row.opened_at.toISOString(),
       closedAt: row.closed_at ? row.closed_at.toISOString() : null,
     }));
+    return buildOffsetPaginatedResult({
+      items,
+      limit,
+      offset,
+      total,
+    });
   }
 
   async getSession(input: {
@@ -227,16 +247,27 @@ export class V0CashSessionService {
     sessionId: string;
     limit?: number;
     offset?: number;
-  }): Promise<CashMovementDto[]> {
+  }): Promise<OffsetPaginatedResult<CashMovementDto>> {
     const actor = await this.assertBranchContext(input.actor);
     const session = await this.requireSessionForBranch(actor, input.sessionId);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+    const total = await this.repo.countMovementsBySession({
+      tenantId: actor.tenantId,
+      sessionId: session.id,
+    });
     const rows = await this.repo.listMovementsBySession({
       tenantId: actor.tenantId,
       sessionId: session.id,
-      limit: normalizeLimit(input.limit),
-      offset: normalizeOffset(input.offset),
+      limit,
+      offset,
     });
-    return rows.map(mapMovement);
+    return buildOffsetPaginatedResult({
+      items: rows.map(mapMovement),
+      limit,
+      offset,
+      total,
+    });
   }
 
   async listSessionSales(input: {

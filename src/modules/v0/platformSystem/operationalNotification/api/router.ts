@@ -32,7 +32,7 @@ export function createV0OperationalNotificationRouter(
       const unreadOnly = normalizeBoolean(req.query?.unreadOnly);
       const type = normalizeOptionalString(req.query?.type);
 
-      const rows = await service.listInbox({
+      const data = await service.listInbox({
         tenantId: actor.tenantId,
         branchId: actor.branchId,
         recipientAccountId: actor.accountId,
@@ -42,14 +42,7 @@ export function createV0OperationalNotificationRouter(
         offset,
       });
 
-      res.status(200).json({
-        success: true,
-        data: {
-          items: rows.map(mapInboxItem),
-          limit,
-          offset,
-        },
-      });
+      res.status(200).json({ success: true, data });
     } catch (error) {
       handleError(res, error);
     }
