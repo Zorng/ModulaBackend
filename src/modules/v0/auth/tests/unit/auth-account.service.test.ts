@@ -3,9 +3,11 @@ import { V0AuthAccountService } from "../../app/auth-account.service.js";
 
 describe("v0 auth account service fixed OTP policy", () => {
   const originalEnv = { ...process.env };
+  const originalFetch = global.fetch;
 
   afterEach(() => {
     process.env = { ...originalEnv };
+    global.fetch = originalFetch;
     jest.restoreAllMocks();
   });
 
@@ -60,6 +62,41 @@ describe("v0 auth account service fixed OTP policy", () => {
 
     expect(() => new V0AuthAccountService({} as any)).toThrow(
       "V0_AUTH_PROVIDER must be supabase unless APP_ENV is local or test."
+    );
+  });
+
+  it("sends supabase otp even if account lookup times out", async () => {
+    process.env.V0_AUTH_PROVIDER = "supabase";
+    process.env.APP_ENV = "staging";
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: async () => "",
+    } as Response);
+
+    const repo = {
+      findAccountByPhone: jest
+        .fn()
+        .mockRejectedValue(new Error("Connection terminated due to connection timeout")),
+      createAuditEvent: jest.fn().mockResolvedValue(undefined),
+    } as any;
+
+    const service = new V0AuthAccountService(repo);
+    const result = await service.sendRegistrationOtp({
+      phone: "+85512345678",
+    });
+
+    expect(result).toEqual({ expiresInMinutes: 10 });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(repo.createAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: null,
+        phone: "+85512345678",
+        eventKey: "AUTH_OTP_SEND",
+        outcome: "SUCCESS",
+      })
     );
   });
 });
