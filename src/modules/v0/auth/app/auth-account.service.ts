@@ -332,10 +332,10 @@ export class V0AuthAccountService extends V0AuthBaseService {
       const supabase = this.requireSupabase();
       const verified = await supabase.verifyOtp({ phone, otp });
 
-      let account =
-        (verified.userId
-          ? await this.repo.findAccountBySupabaseUserId(verified.userId)
-          : null) ?? (await this.repo.findAccountByPhone(phone));
+      const account = await this.resolveVerifiedSupabaseAccount({
+        verifiedUserId: verified.userId,
+        phone,
+      });
       if (!account) {
         throw new V0AuthError(404, "account not found");
       }
@@ -773,6 +773,74 @@ export class V0AuthAccountService extends V0AuthBaseService {
       outcome: "SUCCESS",
     });
     return this.issueSessionResponse(account, context, activeMembershipsCount);
+  }
+
+  private async resolveVerifiedSupabaseAccount(input: {
+    verifiedUserId: string;
+    phone: string;
+  }) {
+    const accountBySupabaseUserId = input.verifiedUserId
+      ? await this.repo.findAccountBySupabaseUserId(input.verifiedUserId)
+      : null;
+    if (accountBySupabaseUserId) {
+      return accountBySupabaseUserId;
+    }
+
+    const accountByPhone = await this.repo.findAccountByPhone(input.phone);
+    if (accountByPhone) {
+      if (!accountByPhone.supabase_user_id && input.verifiedUserId) {
+        await this.repo.attachSupabaseUserId({
+          accountId: accountByPhone.id,
+          supabaseUserId: input.verifiedUserId,
+        });
+        return {
+          ...accountByPhone,
+          supabase_user_id: input.verifiedUserId,
+        };
+      }
+      return accountByPhone;
+    }
+
+    if (!input.verifiedUserId) {
+      return null;
+    }
+
+    try {
+      const created = await this.repo.createInvitedAccount({
+        phone: input.phone,
+      });
+      await this.repo.attachSupabaseUserId({
+        accountId: created.id,
+        supabaseUserId: input.verifiedUserId,
+      });
+      return {
+        ...created,
+        supabase_user_id: input.verifiedUserId,
+      };
+    } catch (error) {
+      const uniqueViolation = (error as { code?: string } | null)?.code === "23505";
+      if (!uniqueViolation) {
+        throw error;
+      }
+
+      const retried = await this.repo.findAccountByPhone(input.phone);
+      if (!retried) {
+        throw error;
+      }
+
+      if (!retried.supabase_user_id) {
+        await this.repo.attachSupabaseUserId({
+          accountId: retried.id,
+          supabaseUserId: input.verifiedUserId,
+        });
+        return {
+          ...retried,
+          supabase_user_id: input.verifiedUserId,
+        };
+      }
+
+      return retried;
+    }
   }
 
   private async findAccountByPhoneBestEffort(phone: string) {
