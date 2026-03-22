@@ -272,6 +272,50 @@ export class V0AuthRepository {
     );
   }
 
+  async updateAccountProjectionFromSupabase(input: {
+    accountId: string;
+    supabaseUserId?: string | null;
+    phone?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    gender?: string | null;
+    dateOfBirth?: string | null;
+  }): Promise<V0AccountRow> {
+    const result = await this.db.query<V0AccountRow>(
+      `UPDATE accounts
+       SET
+         supabase_user_id = COALESCE($2, supabase_user_id),
+         phone = COALESCE($3, phone),
+         first_name = COALESCE($4, first_name),
+         last_name = COALESCE($5, last_name),
+         gender = COALESCE($6, gender),
+         date_of_birth = COALESCE($7::DATE, date_of_birth),
+         updated_at = NOW()
+       WHERE id = $1
+       RETURNING
+         id,
+         supabase_user_id,
+         phone,
+         password_hash,
+         status,
+         phone_verified_at,
+         first_name,
+         last_name,
+         gender,
+         date_of_birth`,
+      [
+        input.accountId,
+        input.supabaseUserId ?? null,
+        input.phone ?? null,
+        input.firstName ?? null,
+        input.lastName ?? null,
+        input.gender ?? null,
+        input.dateOfBirth ?? null,
+      ]
+    );
+    return result.rows[0];
+  }
+
   async markPhoneVerified(phone: string): Promise<void> {
     await this.db.query(
       `UPDATE accounts

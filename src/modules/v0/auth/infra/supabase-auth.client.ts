@@ -11,6 +11,10 @@ type SupabaseUserResult = {
   userId: string;
   phone: string | null;
   phoneConfirmedAt: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  gender: string | null;
+  dateOfBirth: string | null;
 };
 
 type SupabaseRequestError = {
@@ -163,5 +167,21 @@ function mapUser(raw: any): SupabaseUserResult {
     phone: user?.phone != null ? String(user.phone) : null,
     phoneConfirmedAt:
       user?.phone_confirmed_at != null ? String(user.phone_confirmed_at) : null,
+    firstName:
+      user?.user_metadata?.firstName != null
+        ? String(user.user_metadata.firstName).trim() || null
+        : null,
+    lastName:
+      user?.user_metadata?.lastName != null
+        ? String(user.user_metadata.lastName).trim() || null
+        : null,
+    gender:
+      user?.user_metadata?.gender != null
+        ? String(user.user_metadata.gender).trim() || null
+        : null,
+    dateOfBirth:
+      user?.user_metadata?.dateOfBirth != null
+        ? String(user.user_metadata.dateOfBirth).trim() || null
+        : null,
   };
 }

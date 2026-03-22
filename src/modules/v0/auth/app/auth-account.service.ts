@@ -6,7 +6,7 @@ import {
   normalizePhone,
   sha256,
 } from "./common.js";
-import type { V0AuthRepository } from "../infra/repository.js";
+import type { V0AccountRow, V0AuthRepository } from "../infra/repository.js";
 import {
   SupabaseAuthClient,
   SupabaseAuthError,
@@ -332,7 +332,7 @@ export class V0AuthAccountService extends V0AuthBaseService {
       const supabase = this.requireSupabase();
       const verified = await supabase.verifyOtp({ phone, otp });
 
-      const account = await this.resolveVerifiedSupabaseAccount({
+      let account = await this.resolveSupabaseProjectedAccount({
         verifiedUserId: verified.userId,
         phone,
       });
@@ -340,12 +340,7 @@ export class V0AuthAccountService extends V0AuthBaseService {
         throw new V0AuthError(404, "account not found");
       }
 
-      if (!account.supabase_user_id) {
-        await this.repo.attachSupabaseUserId({
-          accountId: account.id,
-          supabaseUserId: verified.userId,
-        });
-      }
+      account = await this.hydrateAccountFromSupabaseProfile(account, verified);
       await this.repo.markPhoneVerifiedByAccountId(account.id);
 
       await this.writeAuditEventBestEffort({
@@ -419,21 +414,15 @@ export class V0AuthAccountService extends V0AuthBaseService {
       const supabase = this.requireSupabase();
       const session = await supabase.signInWithPassword({ phone, password });
 
-      let account =
-        (session.userId
-          ? await this.repo.findAccountBySupabaseUserId(session.userId)
-          : null) ?? (await this.repo.findAccountByPhone(phone));
+      let account = await this.resolveSupabaseProjectedAccount({
+        verifiedUserId: session.userId,
+        phone,
+      });
       if (!account || account.status !== "ACTIVE") {
         throw new V0AuthError(401, "invalid credentials");
       }
 
-      if (!account.supabase_user_id) {
-        await this.repo.attachSupabaseUserId({
-          accountId: account.id,
-          supabaseUserId: session.userId,
-        });
-        account = (await this.repo.findAccountById(account.id)) ?? account;
-      }
+      account = await this.hydrateAccountFromSupabaseProfile(account, session);
 
       if (session.phoneConfirmedAt && !account.phone_verified_at) {
         await this.repo.markPhoneVerifiedByAccountId(account.id);
@@ -775,10 +764,10 @@ export class V0AuthAccountService extends V0AuthBaseService {
     return this.issueSessionResponse(account, context, activeMembershipsCount);
   }
 
-  private async resolveVerifiedSupabaseAccount(input: {
+  private async resolveSupabaseProjectedAccount(input: {
     verifiedUserId: string;
     phone: string;
-  }) {
+  }): Promise<V0AccountRow | null> {
     const accountBySupabaseUserId = input.verifiedUserId
       ? await this.repo.findAccountBySupabaseUserId(input.verifiedUserId)
       : null;
@@ -849,6 +838,40 @@ export class V0AuthAccountService extends V0AuthBaseService {
     } catch {
       return null;
     }
+  }
+
+  private async hydrateAccountFromSupabaseProfile(
+    account: V0AccountRow,
+    profile: {
+      userId: string;
+      phone: string | null;
+      firstName: string | null;
+      lastName: string | null;
+      gender: string | null;
+      dateOfBirth: string | null;
+    }
+  ): Promise<V0AccountRow> {
+    const needsProjectionUpdate =
+      (!account.supabase_user_id && Boolean(profile.userId)) ||
+      (!account.first_name && Boolean(profile.firstName)) ||
+      (!account.last_name && Boolean(profile.lastName)) ||
+      (!account.gender && Boolean(profile.gender)) ||
+      (!account.date_of_birth && Boolean(profile.dateOfBirth)) ||
+      (profile.phone != null && profile.phone !== account.phone);
+
+    if (!needsProjectionUpdate) {
+      return account;
+    }
+
+    return this.repo.updateAccountProjectionFromSupabase({
+      accountId: account.id,
+      supabaseUserId: account.supabase_user_id ? null : profile.userId,
+      phone: profile.phone != null && profile.phone !== account.phone ? profile.phone : null,
+      firstName: account.first_name ? null : profile.firstName,
+      lastName: account.last_name ? null : profile.lastName,
+      gender: account.gender ? null : profile.gender,
+      dateOfBirth: account.date_of_birth ? null : profile.dateOfBirth,
+    });
   }
 
   private translateSupabaseError(

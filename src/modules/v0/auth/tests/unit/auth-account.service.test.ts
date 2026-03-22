@@ -114,6 +114,11 @@ describe("v0 auth account service fixed OTP policy", () => {
             id: "supabase-user-2",
             phone: "+85598765432",
             phone_confirmed_at: "2026-03-22T07:00:00.000Z",
+            user_metadata: {
+              firstName: "Recovered",
+              lastName: "User",
+              gender: "MALE",
+            },
           },
         }),
     } as Response);
@@ -122,7 +127,22 @@ describe("v0 auth account service fixed OTP policy", () => {
       id: "acc-recovered",
       supabase_user_id: null,
       phone: "+85598765432",
+      password_hash: null,
+      status: "ACTIVE",
       phone_verified_at: null,
+      first_name: null,
+      last_name: null,
+      gender: null,
+      date_of_birth: null,
+    };
+
+    const hydratedAccount = {
+      ...createdAccount,
+      supabase_user_id: "supabase-user-2",
+      first_name: "Recovered",
+      last_name: "User",
+      gender: "MALE",
+      date_of_birth: null,
     };
 
     const repo = {
@@ -130,6 +150,7 @@ describe("v0 auth account service fixed OTP policy", () => {
       findAccountByPhone: jest.fn().mockResolvedValue(null),
       createInvitedAccount: jest.fn().mockResolvedValue(createdAccount),
       attachSupabaseUserId: jest.fn().mockResolvedValue(undefined),
+      updateAccountProjectionFromSupabase: jest.fn().mockResolvedValue(hydratedAccount),
       markPhoneVerifiedByAccountId: jest.fn().mockResolvedValue(undefined),
       createAuditEvent: jest.fn().mockResolvedValue(undefined),
     } as any;
@@ -148,6 +169,15 @@ describe("v0 auth account service fixed OTP policy", () => {
       accountId: "acc-recovered",
       supabaseUserId: "supabase-user-2",
     });
+    expect(repo.updateAccountProjectionFromSupabase).toHaveBeenCalledWith({
+      accountId: "acc-recovered",
+      supabaseUserId: null,
+      phone: null,
+      firstName: "Recovered",
+      lastName: "User",
+      gender: "MALE",
+      dateOfBirth: null,
+    });
     expect(repo.markPhoneVerifiedByAccountId).toHaveBeenCalledWith("acc-recovered");
     expect(repo.createAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -156,5 +186,74 @@ describe("v0 auth account service fixed OTP policy", () => {
         outcome: "SUCCESS",
       })
     );
+  });
+
+  it("hydrates missing first and last name from supabase login session", async () => {
+    process.env.V0_AUTH_PROVIDER = "supabase";
+    process.env.APP_ENV = "staging";
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          user: {
+            id: "supabase-user-3",
+            phone: "+85511112222",
+            phone_confirmed_at: "2026-03-22T07:00:00.000Z",
+            user_metadata: {
+              firstName: "Sok",
+              lastName: "Dara",
+            },
+          },
+        }),
+    } as Response);
+
+    const existingAccount = {
+      id: "acc-login",
+      supabase_user_id: "supabase-user-3",
+      phone: "+85511112222",
+      password_hash: null,
+      status: "ACTIVE",
+      phone_verified_at: new Date("2026-03-22T07:00:00.000Z"),
+      first_name: null,
+      last_name: null,
+      gender: null,
+      date_of_birth: null,
+    };
+
+    const hydratedAccount = {
+      ...existingAccount,
+      first_name: "Sok",
+      last_name: "Dara",
+    };
+
+    const repo = {
+      findAccountBySupabaseUserId: jest.fn().mockResolvedValue(existingAccount),
+      findAccountByPhone: jest.fn().mockResolvedValue(existingAccount),
+      updateAccountProjectionFromSupabase: jest.fn().mockResolvedValue(hydratedAccount),
+      countActiveMemberships: jest.fn().mockResolvedValue(1),
+      createSession: jest.fn().mockResolvedValue({ id: "session-1" }),
+      createAuditEvent: jest.fn().mockResolvedValue(undefined),
+    } as any;
+
+    const service = new V0AuthAccountService(repo);
+    const result = await service.login({
+      phone: "+85511112222",
+      password: "StrongPass123!",
+    });
+
+    expect(result.account.firstName).toBe("Sok");
+    expect(result.account.lastName).toBe("Dara");
+    expect(repo.updateAccountProjectionFromSupabase).toHaveBeenCalledWith({
+      accountId: "acc-login",
+      supabaseUserId: null,
+      phone: null,
+      firstName: "Sok",
+      lastName: "Dara",
+      gender: null,
+      dateOfBirth: null,
+    });
   });
 });
