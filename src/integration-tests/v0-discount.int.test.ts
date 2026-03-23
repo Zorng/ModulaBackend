@@ -300,6 +300,20 @@ describe("v0 discount integration", () => {
     expect(activated.status).toBe(200);
     expect(activated.body.data.status).toBe("ACTIVE");
 
+    const persistedRule = await pool.query<{ status: string }>(
+      `SELECT status
+       FROM v0_discount_rules
+       WHERE id = $1`,
+      [ruleId]
+    );
+    expect(persistedRule.rows[0]?.status).toBe("ACTIVE");
+
+    const fetchedRule = await request(app)
+      .get(`/v0/discount/rules/${ruleId}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(fetchedRule.status).toBe(200);
+    expect(fetchedRule.body.data.status).toBe("ACTIVE");
+
     const eligibleBranchA = await request(app)
       .post("/v0/discount/eligibility/resolve")
       .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
@@ -390,6 +404,60 @@ describe("v0 discount integration", () => {
       [setup.tenantId]
     );
     expect(Number(outboxCount.rows[0]?.count ?? "0")).toBe(1);
+  });
+
+  it("rejects stale lifecycle status writes using expectedUpdatedAt", async () => {
+    const setup = await setupOwnerTenantContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Discount Status Conflict ${uniqueSuffix()}`,
+    });
+
+    const created = await request(app)
+      .post("/v0/discount/rules")
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", `discount-status-conflict-create-${uniqueSuffix()}`)
+      .send({
+        name: `Stale Toggle ${uniqueSuffix()}`,
+        percentage: 12,
+        scope: "BRANCH_WIDE",
+        branchId: setup.branchAId,
+      });
+    expect(created.status).toBe(200);
+    const ruleId = created.body.data.id as string;
+    const originalUpdatedAt = created.body.data.updatedAt as string;
+
+    const activated = await request(app)
+      .post(`/v0/discount/rules/${ruleId}/activate`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", `discount-status-conflict-activate-${uniqueSuffix()}`)
+      .send({
+        expectedUpdatedAt: originalUpdatedAt,
+      });
+    expect(activated.status).toBe(200);
+    expect(activated.body.data.status).toBe("ACTIVE");
+
+    const staleDeactivate = await request(app)
+      .post(`/v0/discount/rules/${ruleId}/deactivate`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .set("Idempotency-Key", `discount-status-conflict-deactivate-${uniqueSuffix()}`)
+      .send({
+        expectedUpdatedAt: originalUpdatedAt,
+      });
+    expect(staleDeactivate.status).toBe(409);
+    expect(staleDeactivate.body.code).toBe("DISCOUNT_RULE_STATE_CONFLICT");
+    expect(staleDeactivate.body.details).toMatchObject({
+      currentStatus: "ACTIVE",
+    });
+
+    const persistedRule = await pool.query<{ status: string }>(
+      `SELECT status
+       FROM v0_discount_rules
+       WHERE id = $1`,
+      [ruleId]
+    );
+    expect(persistedRule.rows[0]?.status).toBe("ACTIVE");
   });
 
   it("denies cashier from creating a discount rule", async () => {

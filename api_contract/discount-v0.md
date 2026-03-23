@@ -159,6 +159,20 @@ Action key: `discount.rules.activate`
 Headers:
 - `Idempotency-Key: <client key>`
 
+Optional body:
+```json
+{
+  "expectedUpdatedAt": "2026-03-22T16:50:16.577Z"
+}
+```
+
+Rules:
+- `expectedUpdatedAt` is optional but recommended for UI-driven status toggles.
+- When provided, backend applies the status change only if the rule still has the same `updatedAt` snapshot the client last read.
+- If the rule changed since that snapshot, backend returns:
+  - `409` `DISCOUNT_RULE_STATE_CONFLICT`
+  - details include current `status` and `updatedAt`
+
 ### 6) Deactivate rule
 
 `POST /v0/discount/rules/:ruleId/deactivate`
@@ -168,6 +182,16 @@ Action key: `discount.rules.deactivate`
 Headers:
 - `Idempotency-Key: <client key>`
 
+Optional body:
+```json
+{
+  "expectedUpdatedAt": "2026-03-22T16:50:16.577Z"
+}
+```
+
+Rules:
+- Same optimistic-concurrency behavior as activate.
+
 ### 7) Archive rule
 
 `POST /v0/discount/rules/:ruleId/archive`
@@ -176,6 +200,16 @@ Action key: `discount.rules.archive`
 
 Headers:
 - `Idempotency-Key: <client key>`
+
+Optional body:
+```json
+{
+  "expectedUpdatedAt": "2026-03-22T16:50:16.577Z"
+}
+```
+
+Rules:
+- Same optimistic-concurrency behavior as activate.
 
 ### 8) Preflight eligible items for branch
 
@@ -255,6 +289,7 @@ Important:
 - `IDEMPOTENCY_CONFLICT`
 - `IDEMPOTENCY_IN_PROGRESS`
 - `DISCOUNT_RULE_NOT_FOUND`
+- `DISCOUNT_RULE_STATE_CONFLICT`
 - `DISCOUNT_RULE_INVALID`
 - `DISCOUNT_SCOPE_INVALID`
 - `DISCOUNT_PERCENTAGE_OUT_OF_RANGE`

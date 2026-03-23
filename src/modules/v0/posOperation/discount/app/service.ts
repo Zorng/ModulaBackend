@@ -293,33 +293,39 @@ export class V0DiscountService {
   async activateRule(input: {
     actor: ActorContext;
     ruleId: string;
+    body?: unknown;
   }): Promise<DiscountRuleDto> {
     return this.updateRuleStatus({
       actor: input.actor,
       ruleId: input.ruleId,
       status: "ACTIVE",
+      body: input.body,
     });
   }
 
   async deactivateRule(input: {
     actor: ActorContext;
     ruleId: string;
+    body?: unknown;
   }): Promise<DiscountRuleDto> {
     return this.updateRuleStatus({
       actor: input.actor,
       ruleId: input.ruleId,
       status: "INACTIVE",
+      body: input.body,
     });
   }
 
   async archiveRule(input: {
     actor: ActorContext;
     ruleId: string;
+    body?: unknown;
   }): Promise<DiscountRuleDto> {
     return this.updateRuleStatus({
       actor: input.actor,
       ruleId: input.ruleId,
       status: "ARCHIVED",
+      body: input.body,
     });
   }
 
@@ -397,16 +403,40 @@ export class V0DiscountService {
     actor: ActorContext;
     ruleId: string;
     status: DiscountRuleStatus;
+    body?: unknown;
   }): Promise<DiscountRuleDto> {
     const actor = assertTenantContext(input.actor);
     const ruleId = parseRequiredUuid(input.ruleId, "ruleId");
+    const body = parseStatusTransitionBody(input.body);
     const updated = await this.repo.updateRuleStatus({
       tenantId: actor.tenantId,
       ruleId,
       status: input.status,
+      expectedUpdatedAt: body.expectedUpdatedAt,
     });
     if (!updated) {
-      throw new V0DiscountError(404, "discount rule not found", "DISCOUNT_RULE_NOT_FOUND");
+      const current = await this.repo.getRuleById({
+        tenantId: actor.tenantId,
+        ruleId,
+      });
+      if (!current) {
+        throw new V0DiscountError(404, "discount rule not found", "DISCOUNT_RULE_NOT_FOUND");
+      }
+      if (
+        body.expectedUpdatedAt &&
+        current.updated_at.getTime() !== body.expectedUpdatedAt.getTime()
+      ) {
+        throw new V0DiscountError(
+          409,
+          "discount rule changed since last read; refresh and retry",
+          "DISCOUNT_RULE_STATE_CONFLICT",
+          {
+            currentStatus: current.status,
+            currentUpdatedAt: current.updated_at.toISOString(),
+          }
+        );
+      }
+      throw new V0DiscountError(409, "discount rule status update conflict", "DISCOUNT_RULE_STATE_CONFLICT");
     }
 
     const itemIds = await this.repo.listRuleItemIds({ tenantId: actor.tenantId, ruleId });
@@ -694,6 +724,31 @@ function parseEligibilityBody(body: unknown): {
   });
 
   return { branchId, occurredAt, lines };
+}
+
+function parseStatusTransitionBody(body: unknown): { expectedUpdatedAt: Date | null } {
+  if (body === undefined || body === null || body === "") {
+    return { expectedUpdatedAt: null };
+  }
+  if (typeof body !== "object" || Array.isArray(body)) {
+    throw new V0DiscountError(422, "request body must be an object", "DISCOUNT_RULE_INVALID");
+  }
+  const source = body as Record<string, unknown>;
+  const allowedKeys = new Set(["expectedUpdatedAt"]);
+  for (const key of Object.keys(source)) {
+    if (!allowedKeys.has(key)) {
+      throw new V0DiscountError(
+        422,
+        `${key} is not allowed for rule status transition`,
+        "DISCOUNT_RULE_INVALID"
+      );
+    }
+  }
+  return {
+    expectedUpdatedAt: hasOwn(source, "expectedUpdatedAt")
+      ? parseOptionalIsoDate(source.expectedUpdatedAt, "expectedUpdatedAt")
+      : null,
+  };
 }
 
 function parseStatusFilter(value: string | undefined): ListStatusFilter {

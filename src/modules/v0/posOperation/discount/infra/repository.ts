@@ -202,6 +202,7 @@ export class V0DiscountRepository {
     tenantId: string;
     ruleId: string;
     status: DiscountRuleStatus;
+    expectedUpdatedAt?: Date | null;
   }): Promise<DiscountRuleRow | null> {
     const result = await this.db.query<DiscountRuleRow>(
       `UPDATE v0_discount_rules
@@ -209,6 +210,11 @@ export class V0DiscountRepository {
            updated_at = NOW()
        WHERE tenant_id = $1
          AND id = $2
+         AND (
+           $4::TIMESTAMPTZ IS NULL
+           OR DATE_TRUNC('milliseconds', updated_at)
+             = DATE_TRUNC('milliseconds', $4::TIMESTAMPTZ)
+         )
        RETURNING
          id,
          tenant_id,
@@ -222,7 +228,7 @@ export class V0DiscountRepository {
          end_at,
          created_at,
          updated_at`,
-      [input.tenantId, input.ruleId, input.status]
+      [input.tenantId, input.ruleId, input.status, input.expectedUpdatedAt ?? null]
     );
     return result.rows[0] ?? null;
   }

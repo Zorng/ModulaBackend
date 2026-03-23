@@ -296,6 +296,81 @@ async function seedMenuItem(input: {
   return menuItemId;
 }
 
+async function seedModifierGroupWithOptions(input: {
+  pool: Pool;
+  tenantId: string;
+  menuItemId: string;
+  name: string;
+  selectionMode: "SINGLE" | "MULTI";
+  minSelections: number;
+  maxSelections: number;
+  isRequired: boolean;
+  options: Array<{ label: string; priceDelta: number }>;
+}): Promise<{
+  groupId: string;
+  optionIds: string[];
+}> {
+  const groupResult = await input.pool.query<{ id: string }>(
+    `INSERT INTO v0_menu_modifier_groups (
+       tenant_id,
+       name,
+       selection_mode,
+       min_selections,
+       max_selections,
+       is_required,
+       status
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE')
+     RETURNING id`,
+    [
+      input.tenantId,
+      input.name,
+      input.selectionMode,
+      input.minSelections,
+      input.maxSelections,
+      input.isRequired,
+    ]
+  );
+  const groupId = groupResult.rows[0]?.id;
+  if (!groupId) {
+    throw new Error("failed to seed modifier group");
+  }
+
+  await input.pool.query(
+    `INSERT INTO v0_menu_item_modifier_group_links (
+       tenant_id,
+       menu_item_id,
+       modifier_group_id,
+       display_order
+     )
+     VALUES ($1, $2, $3, 0)`,
+    [input.tenantId, input.menuItemId, groupId]
+  );
+
+  const optionIds: string[] = [];
+  for (const option of input.options) {
+    const optionResult = await input.pool.query<{ id: string }>(
+      `INSERT INTO v0_menu_modifier_options (
+         tenant_id,
+         modifier_group_id,
+         label,
+         price_delta,
+         status
+       )
+       VALUES ($1, $2, $3, $4, 'ACTIVE')
+       RETURNING id`,
+      [input.tenantId, groupId, option.label, option.priceDelta]
+    );
+    const optionId = optionResult.rows[0]?.id;
+    if (!optionId) {
+      throw new Error("failed to seed modifier option");
+    }
+    optionIds.push(optionId);
+  }
+
+  return { groupId, optionIds };
+}
+
 async function seedTrackedBaseComponent(input: {
   pool: Pool;
   tenantId: string;
@@ -989,6 +1064,95 @@ describe("v0 sale-order integration", () => {
       });
     expect(fulfillment.status).toBe(200);
     expect(fulfillment.body.data.status).toBe("PREPARING");
+  });
+
+  it("finalizes cash checkout with modifier group selections", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const sizeGroup = await seedModifierGroupWithOptions({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: setup.defaultMenuItemId,
+      name: `Size ${uniqueSuffix()}`,
+      selectionMode: "SINGLE",
+      minSelections: 1,
+      maxSelections: 1,
+      isRequired: true,
+      options: [{ label: "Regular", priceDelta: 0 }],
+    });
+    const sugarGroup = await seedModifierGroupWithOptions({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: setup.defaultMenuItemId,
+      name: `Sugar ${uniqueSuffix()}`,
+      selectionMode: "SINGLE",
+      minSelections: 1,
+      maxSelections: 1,
+      isRequired: true,
+      options: [{ label: "Normal", priceDelta: 0 }],
+    });
+
+    const finalized = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-cash-checkout-modifiers-${uniqueSuffix()}`)
+      .send({
+        items: [
+          {
+            menuItemId: setup.defaultMenuItemId,
+            quantity: 2,
+            modifierSelections: [
+              {
+                groupId: sizeGroup.groupId,
+                optionIds: [sizeGroup.optionIds[0]],
+              },
+              {
+                groupId: sugarGroup.groupId,
+                optionIds: [sugarGroup.optionIds[0]],
+              },
+            ],
+          },
+        ],
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 7,
+      });
+
+    expect(finalized.status).toBe(200);
+    expect(finalized.body.success).toBe(true);
+    expect(finalized.body.data.paymentMethod).toBe("CASH");
+    expect(finalized.body.data.orderLines).toHaveLength(1);
+
+    const orderLineSnapshot = finalized.body.data.orderLines[0]?.modifierSnapshot as
+      | Array<{ selectedOptions?: unknown[] }>
+      | undefined;
+    expect(orderLineSnapshot).toHaveLength(2);
+
+    const persistedOrderLine = await pool.query<{ modifier_snapshot: unknown }>(
+      `SELECT modifier_snapshot
+       FROM v0_order_ticket_lines
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [setup.tenantId]
+    );
+    expect(persistedOrderLine.rows[0]?.modifier_snapshot).toEqual(orderLineSnapshot);
+
+    const persistedSaleLine = await pool.query<{ modifier_snapshot: unknown }>(
+      `SELECT modifier_snapshot
+       FROM v0_sale_lines
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [setup.tenantId]
+    );
+    expect(persistedSaleLine.rows[0]?.modifier_snapshot).toEqual(orderLineSnapshot);
   });
 
   it("updates current-session X report after finalized cash checkout is dispatched", async () => {

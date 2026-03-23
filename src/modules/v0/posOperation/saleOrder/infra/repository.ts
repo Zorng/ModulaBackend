@@ -816,7 +816,7 @@ export class V0SaleOrderRepository {
         input.unitPrice,
         input.quantity,
         input.lineSubtotal,
-        input.modifierSnapshot ?? [],
+        JSON.stringify(input.modifierSnapshot ?? []),
         input.note ?? null,
       ]
     );
@@ -1377,7 +1377,7 @@ export class V0SaleOrderRepository {
         input.quantity,
         input.lineDiscountAmount,
         input.lineTotalAmount,
-        input.modifierSnapshot ?? [],
+        JSON.stringify(input.modifierSnapshot ?? []),
       ]
     );
     return result.rows[0];

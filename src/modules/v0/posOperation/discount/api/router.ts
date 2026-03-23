@@ -133,6 +133,7 @@ export function createV0DiscountRouter(input: {
           service.activateRule({
             actor: req.v0Auth!,
             ruleId: req.params.ruleId,
+            body: req.body,
           }),
       });
     }
@@ -155,6 +156,7 @@ export function createV0DiscountRouter(input: {
           service.deactivateRule({
             actor: req.v0Auth!,
             ruleId: req.params.ruleId,
+            body: req.body,
           }),
       });
     }
@@ -177,6 +179,7 @@ export function createV0DiscountRouter(input: {
           service.archiveRule({
             actor: req.v0Auth!,
             ruleId: req.params.ruleId,
+            body: req.body,
           }),
       });
     }
