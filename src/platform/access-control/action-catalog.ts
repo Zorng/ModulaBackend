@@ -340,6 +340,12 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
     entitlementKey: "core.pos",
   },
+  "menu.itemModifierOptionEffects.replace": {
+    scope: "TENANT",
+    effect: "WRITE",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
   "menu.composition.evaluate": {
     scope: "TENANT",
     effect: "READ",

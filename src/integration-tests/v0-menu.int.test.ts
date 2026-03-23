@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
+import { randomUUID } from "crypto";
 import express from "express";
 import request from "supertest";
 import type { Pool } from "pg";
@@ -12,6 +13,7 @@ import {
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
 import { bootstrapV0MenuModule } from "../modules/v0/posOperation/menu/index.js";
+import { V0MenuRepository } from "../modules/v0/posOperation/menu/infra/repository.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 import { startV0CommandOutboxDispatcher } from "../platform/outbox/dispatcher.js";
 import { eventBus } from "../platform/events/index.js";
@@ -165,6 +167,69 @@ async function seedMenuItem(input: {
     );
   }
   return menuItemId;
+}
+
+async function seedModifierGroupWithOption(input: {
+  pool: Pool;
+  tenantId: string;
+  name: string;
+  optionLabel: string;
+  defaultPriceDelta?: number;
+}): Promise<{ groupId: string; optionId: string }> {
+  const groupInserted = await input.pool.query<{ id: string }>(
+    `INSERT INTO v0_menu_modifier_groups (
+       tenant_id,
+       name,
+       selection_mode,
+       min_selections,
+       max_selections,
+       is_required,
+       status
+     )
+     VALUES ($1, $2, 'SINGLE', 0, 1, false, 'ACTIVE')
+     RETURNING id`,
+    [input.tenantId, input.name]
+  );
+  const groupId = groupInserted.rows[0]?.id;
+  expect(groupId).toBeTruthy();
+
+  const optionInserted = await input.pool.query<{ id: string }>(
+    `INSERT INTO v0_menu_modifier_options (
+       tenant_id,
+       modifier_group_id,
+       label,
+       price_delta,
+       status
+     )
+     VALUES ($1, $2, $3, $4, 'ACTIVE')
+     RETURNING id`,
+    [input.tenantId, groupId, input.optionLabel, input.defaultPriceDelta ?? 0]
+  );
+  const optionId = optionInserted.rows[0]?.id;
+  expect(optionId).toBeTruthy();
+
+  return {
+    groupId: groupId!,
+    optionId: optionId!,
+  };
+}
+
+async function attachModifierGroupToMenuItem(input: {
+  pool: Pool;
+  tenantId: string;
+  menuItemId: string;
+  groupId: string;
+}): Promise<void> {
+  await input.pool.query(
+    `INSERT INTO v0_menu_item_modifier_group_links (
+       tenant_id,
+       menu_item_id,
+       modifier_group_id,
+       display_order
+     )
+     VALUES ($1, $2, $3, 1)`,
+    [input.tenantId, input.menuItemId, input.groupId]
+  );
 }
 
 async function inviteAcceptAndSelectTenant(input: {
@@ -441,6 +506,271 @@ describe("v0 menu integration", () => {
       });
     expect(duplicate.status).toBe(409);
     expect(duplicate.body.code).toBe("MODIFIER_GROUP_DUPLICATE_NAME");
+  });
+
+  it("stores modifier option pricing and composition effects per menu item", async () => {
+    const setup = await setupOwnerTenantContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Menu Item Option Effects ${uniqueSuffix()}`,
+    });
+    const repo = new V0MenuRepository(pool);
+
+    const latteItemId = await seedMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      name: `Iced Latte ${uniqueSuffix()}`,
+      branchIds: [setup.branchAId],
+    });
+    const juiceItemId = await seedMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      name: `Orange Juice ${uniqueSuffix()}`,
+      branchIds: [setup.branchAId],
+    });
+    const modifier = await seedModifierGroupWithOption({
+      pool,
+      tenantId: setup.tenantId,
+      name: `Size ${uniqueSuffix()}`,
+      optionLabel: "Large",
+    });
+
+    await attachModifierGroupToMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: latteItemId,
+      groupId: modifier.groupId,
+    });
+    await attachModifierGroupToMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: juiceItemId,
+      groupId: modifier.groupId,
+    });
+
+    const coffeeStockItemId = randomUUID();
+    const orangeStockItemId = randomUUID();
+
+    await repo.replaceModifierOptionEffectsForMenuItem({
+      tenantId: setup.tenantId,
+      menuItemId: latteItemId,
+      effects: [
+        {
+          modifierOptionId: modifier.optionId,
+          priceDelta: 0.5,
+          componentDeltas: [
+            {
+              stockItemId: coffeeStockItemId,
+              quantityDeltaInBaseUnit: 8,
+              trackingMode: "TRACKED",
+            },
+          ],
+        },
+      ],
+    });
+    await repo.replaceModifierOptionEffectsForMenuItem({
+      tenantId: setup.tenantId,
+      menuItemId: juiceItemId,
+      effects: [
+        {
+          modifierOptionId: modifier.optionId,
+          priceDelta: 1.25,
+          componentDeltas: [
+            {
+              stockItemId: orangeStockItemId,
+              quantityDeltaInBaseUnit: 120,
+              trackingMode: "TRACKED",
+            },
+          ],
+        },
+      ],
+    });
+
+    const latteEffects = await repo.listModifierOptionEffectsForMenuItem({
+      tenantId: setup.tenantId,
+      menuItemId: latteItemId,
+      modifierOptionIds: [modifier.optionId],
+    });
+    const juiceEffects = await repo.listModifierOptionEffectsForMenuItem({
+      tenantId: setup.tenantId,
+      menuItemId: juiceItemId,
+      modifierOptionIds: [modifier.optionId],
+    });
+    expect(latteEffects).toHaveLength(1);
+    expect(juiceEffects).toHaveLength(1);
+    expect(latteEffects[0]?.price_delta).toBe(0.5);
+    expect(juiceEffects[0]?.price_delta).toBe(1.25);
+
+    const latteDeltas = await repo.listComponentDeltasByMenuItemModifierOptionIds({
+      tenantId: setup.tenantId,
+      menuItemId: latteItemId,
+      modifierOptionIds: [modifier.optionId],
+    });
+    const juiceDeltas = await repo.listComponentDeltasByMenuItemModifierOptionIds({
+      tenantId: setup.tenantId,
+      menuItemId: juiceItemId,
+      modifierOptionIds: [modifier.optionId],
+    });
+    expect(latteDeltas).toHaveLength(1);
+    expect(juiceDeltas).toHaveLength(1);
+    expect(latteDeltas[0]?.modifier_option_id).toBe(modifier.optionId);
+    expect(juiceDeltas[0]?.modifier_option_id).toBe(modifier.optionId);
+    expect(latteDeltas[0]?.stock_item_id).toBe(coffeeStockItemId);
+    expect(juiceDeltas[0]?.stock_item_id).toBe(orangeStockItemId);
+    expect(latteDeltas[0]?.quantity_delta_in_base_unit).toBe(8);
+    expect(juiceDeltas[0]?.quantity_delta_in_base_unit).toBe(120);
+
+    const globalOption = await pool.query<{ price_delta: number }>(
+      `SELECT price_delta::FLOAT8 AS price_delta
+       FROM v0_menu_modifier_options
+       WHERE tenant_id = $1
+         AND id = $2`,
+      [setup.tenantId, modifier.optionId]
+    );
+    expect(globalOption.rows[0]?.price_delta).toBe(0);
+  });
+
+  it("applies item-owned modifier effects in menu item detail and composition evaluation", async () => {
+    const setup = await setupOwnerTenantContext({
+      app,
+      pool,
+      ownerPhone: uniquePhone(),
+      tenantName: `Menu Item Option Runtime ${uniqueSuffix()}`,
+    });
+
+    const latteItemId = await seedMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      name: `Iced Latte ${uniqueSuffix()}`,
+      branchIds: [setup.branchAId],
+    });
+    const juiceItemId = await seedMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      name: `Orange Juice ${uniqueSuffix()}`,
+      branchIds: [setup.branchAId],
+    });
+    const modifier = await seedModifierGroupWithOption({
+      pool,
+      tenantId: setup.tenantId,
+      name: `Size ${uniqueSuffix()}`,
+      optionLabel: "Large",
+    });
+
+    await attachModifierGroupToMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: latteItemId,
+      groupId: modifier.groupId,
+    });
+    await attachModifierGroupToMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: juiceItemId,
+      groupId: modifier.groupId,
+    });
+
+    const coffeeStockItemId = randomUUID();
+    const orangeStockItemId = randomUUID();
+
+    const latteEffects = await request(app)
+      .put(`/v0/menu/items/${latteItemId}/modifier-option-effects`)
+      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .set("Idempotency-Key", `menu-item-option-effects-latte-${uniqueSuffix()}`)
+      .send({
+        effects: [
+          {
+            modifierOptionId: modifier.optionId,
+            priceDelta: 0.5,
+            componentDeltas: [
+              {
+                stockItemId: coffeeStockItemId,
+                quantityDeltaInBaseUnit: 8,
+                trackingMode: "TRACKED",
+              },
+            ],
+          },
+        ],
+      });
+    expect(latteEffects.status).toBe(200);
+
+    const juiceEffects = await request(app)
+      .put(`/v0/menu/items/${juiceItemId}/modifier-option-effects`)
+      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .set("Idempotency-Key", `menu-item-option-effects-juice-${uniqueSuffix()}`)
+      .send({
+        effects: [
+          {
+            modifierOptionId: modifier.optionId,
+            priceDelta: 1.25,
+            componentDeltas: [
+              {
+                stockItemId: orangeStockItemId,
+                quantityDeltaInBaseUnit: 120,
+                trackingMode: "TRACKED",
+              },
+            ],
+          },
+        ],
+      });
+    expect(juiceEffects.status).toBe(200);
+
+    const latteDetail = await request(app)
+      .get(`/v0/menu/items/${latteItemId}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(latteDetail.status).toBe(200);
+    expect(latteDetail.body.data.modifierGroups[0]?.options[0]?.priceDelta).toBe(0.5);
+    expect(latteDetail.body.data.modifierGroups[0]?.options[0]?.componentDeltas).toEqual([
+      {
+        stockItemId: coffeeStockItemId,
+        quantityDeltaInBaseUnit: 8,
+        trackingMode: "TRACKED",
+      },
+    ]);
+
+    const juiceDetail = await request(app)
+      .get(`/v0/menu/items/${juiceItemId}`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`);
+    expect(juiceDetail.status).toBe(200);
+    expect(juiceDetail.body.data.modifierGroups[0]?.options[0]?.priceDelta).toBe(1.25);
+    expect(juiceDetail.body.data.modifierGroups[0]?.options[0]?.componentDeltas).toEqual([
+      {
+        stockItemId: orangeStockItemId,
+        quantityDeltaInBaseUnit: 120,
+        trackingMode: "TRACKED",
+      },
+    ]);
+
+    const latteComposition = await request(app)
+      .post(`/v0/menu/items/${latteItemId}/composition/evaluate`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .send({
+        selectedModifierOptionIds: [modifier.optionId],
+      });
+    expect(latteComposition.status).toBe(200);
+    expect(latteComposition.body.data.components).toEqual([
+      {
+        stockItemId: coffeeStockItemId,
+        quantityInBaseUnit: 8,
+        trackingMode: "TRACKED",
+      },
+    ]);
+
+    const juiceComposition = await request(app)
+      .post(`/v0/menu/items/${juiceItemId}/composition/evaluate`)
+      .set("Authorization", `Bearer ${setup.ownerTenantToken}`)
+      .send({
+        selectedModifierOptionIds: [modifier.optionId],
+      });
+    expect(juiceComposition.status).toBe(200);
+    expect(juiceComposition.body.data.components).toEqual([
+      {
+        stockItemId: orangeStockItemId,
+        quantityInBaseUnit: 120,
+        trackingMode: "TRACKED",
+      },
+    ]);
   });
 
   it("supports create menu item idempotency replay and conflict safeguards", async () => {

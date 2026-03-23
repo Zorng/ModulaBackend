@@ -78,6 +78,12 @@ type ModifierOption = {
   componentDeltas: ModifierDelta[];
 };
 
+Notes:
+- `ModifierOption.priceDelta` and `ModifierOption.componentDeltas` returned inside `GET /v0/menu/items/:menuItemId`
+  are the effective values for that menu item.
+- Global modifier option create/update endpoints still manage reusable default values.
+- Menu-item-specific overrides are written through the item-scoped modifier-option-effects endpoint below.
+
 type ModifierOptionWriteResult = ModifierOption & {
   createdAt: string;
   updatedAt: string;
@@ -630,7 +636,59 @@ Response `200` shape:
 
 ### Composition
 
-#### 22) Upsert menu item composition
+#### 22) Replace menu item modifier option effects
+
+`PUT /v0/menu/items/:menuItemId/modifier-option-effects`
+
+Action key: `menu.itemModifierOptionEffects.replace`
+
+Headers:
+- `Idempotency-Key: <client key>`
+
+Body:
+
+```json
+{
+  "effects": [
+    {
+      "modifierOptionId": "uuid",
+      "priceDelta": 0.5,
+      "componentDeltas": [
+        {
+          "stockItemId": "uuid",
+          "quantityDeltaInBaseUnit": 100,
+          "trackingMode": "TRACKED"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Rules:
+- This endpoint owns menu-item-specific pricing and composition effects for reused modifier options.
+- A modifier option may have different `priceDelta` and `componentDeltas` on different menu items.
+- Each `modifierOptionId` must belong to a modifier group already attached to the target menu item.
+- Sending an empty `effects` array clears all item-specific overrides for that menu item and falls back to the reusable global option defaults.
+- If payload includes TRACKED component deltas, caller must use a branch-scoped token so inventory entitlement can be evaluated.
+
+Response `200` shape:
+```ts
+{
+  success: true;
+  data: {
+    menuItemId: string;
+    effects: Array<{
+      modifierOptionId: string;
+      priceDelta: number;
+      componentDeltas: ModifierDelta[];
+    }>;
+    updatedAt: string;
+  };
+}
+```
+
+#### 23) Upsert menu item composition
 
 `PUT /v0/menu/items/:menuItemId/composition`
 
@@ -669,7 +727,7 @@ Response `200` shape:
 { success: true; data: CompositionUpsertResult }
 ```
 
-#### 23) Evaluate composition (read-only)
+#### 24) Evaluate composition (read-only)
 
 `POST /v0/menu/items/:menuItemId/composition/evaluate`
 
@@ -690,6 +748,7 @@ Response `200` shape:
 
 Notes:
 - Deterministic and side-effect-free.
+- Uses menu-item-specific modifier option overrides when present; otherwise falls back to reusable global option defaults.
 - Output is consumed by sale finalize orchestration, not inventory mutation.
 
 ## Standard Error Set

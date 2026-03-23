@@ -113,6 +113,14 @@ export type V0OrderMenuModifierOptionRow = {
   price_delta: number;
 };
 
+export type V0OrderMenuItemModifierOptionEffectRow = {
+  id: string;
+  tenant_id: string;
+  menu_item_id: string;
+  modifier_option_id: string;
+  price_delta: number;
+};
+
 export type V0SaleRow = {
   id: string;
   tenant_id: string;
@@ -489,6 +497,31 @@ export class V0SaleOrderRepository {
          AND status = 'ACTIVE'
        ORDER BY modifier_group_id ASC, label ASC, id ASC`,
       [input.tenantId, input.groupIds]
+    );
+    return result.rows;
+  }
+
+  async listModifierOptionEffectsForMenuItem(input: {
+    tenantId: string;
+    menuItemId: string;
+    modifierOptionIds: readonly string[];
+  }): Promise<V0OrderMenuItemModifierOptionEffectRow[]> {
+    if (input.modifierOptionIds.length === 0) {
+      return [];
+    }
+    const result = await this.db.query<V0OrderMenuItemModifierOptionEffectRow>(
+      `SELECT
+         id,
+         tenant_id,
+         menu_item_id,
+         modifier_option_id,
+         price_delta::FLOAT8 AS price_delta
+       FROM v0_menu_item_modifier_option_effects
+       WHERE tenant_id = $1
+         AND menu_item_id = $2
+         AND modifier_option_id = ANY($3::UUID[])
+       ORDER BY modifier_option_id ASC, created_at ASC`,
+      [input.tenantId, input.menuItemId, input.modifierOptionIds]
     );
     return result.rows;
   }

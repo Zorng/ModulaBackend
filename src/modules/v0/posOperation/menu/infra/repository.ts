@@ -70,6 +70,23 @@ export type MenuModifierOptionDeltaRow = MenuComponentRow & {
   quantity_delta_in_base_unit: number;
 };
 
+export type MenuItemModifierOptionEffectRow = {
+  id: string;
+  tenant_id: string;
+  menu_item_id: string;
+  modifier_option_id: string;
+  price_delta: number;
+  created_at: Date;
+  updated_at: Date;
+};
+
+export type MenuItemModifierOptionComponentDeltaRow = MenuComponentRow & {
+  menu_item_modifier_option_effect_id: string;
+  menu_item_id: string;
+  modifier_option_id: string;
+  quantity_delta_in_base_unit: number;
+};
+
 export class V0MenuRepository {
   constructor(private readonly db: Queryable) {}
 
@@ -838,6 +855,125 @@ export class V0MenuRepository {
          AND modifier_option_id = ANY($2::UUID[])
        ORDER BY modifier_option_id ASC, created_at ASC`,
       [input.tenantId, input.modifierOptionIds]
+    );
+    return result.rows;
+  }
+
+  async replaceModifierOptionEffectsForMenuItem(input: {
+    tenantId: string;
+    menuItemId: string;
+    effects: ReadonlyArray<{
+      modifierOptionId: string;
+      priceDelta: number;
+      componentDeltas: ReadonlyArray<{
+        stockItemId: string;
+        quantityDeltaInBaseUnit: number;
+        trackingMode: MenuTrackingMode;
+      }>;
+    }>;
+  }): Promise<void> {
+    await this.db.query(
+      `DELETE FROM v0_menu_item_modifier_option_effects
+       WHERE tenant_id = $1
+         AND menu_item_id = $2`,
+      [input.tenantId, input.menuItemId]
+    );
+
+    for (const effect of input.effects) {
+      const inserted = await this.db.query<{ id: string }>(
+        `INSERT INTO v0_menu_item_modifier_option_effects (
+           tenant_id,
+           menu_item_id,
+           modifier_option_id,
+           price_delta
+         )
+         VALUES ($1, $2, $3, $4)
+         RETURNING id`,
+        [input.tenantId, input.menuItemId, effect.modifierOptionId, effect.priceDelta]
+      );
+      const effectId = inserted.rows[0]?.id;
+      if (!effectId) {
+        continue;
+      }
+
+      for (const delta of effect.componentDeltas) {
+        await this.db.query(
+          `INSERT INTO v0_menu_item_modifier_option_component_deltas (
+             tenant_id,
+             menu_item_modifier_option_effect_id,
+             stock_item_id,
+             quantity_delta_in_base_unit,
+             tracking_mode
+           )
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            input.tenantId,
+            effectId,
+            delta.stockItemId,
+            delta.quantityDeltaInBaseUnit,
+            delta.trackingMode,
+          ]
+        );
+      }
+    }
+  }
+
+  async listModifierOptionEffectsForMenuItem(input: {
+    tenantId: string;
+    menuItemId: string;
+    modifierOptionIds?: readonly string[] | null;
+  }): Promise<MenuItemModifierOptionEffectRow[]> {
+    const modifierOptionIds =
+      input.modifierOptionIds && input.modifierOptionIds.length > 0 ? input.modifierOptionIds : null;
+    const result = await this.db.query<MenuItemModifierOptionEffectRow>(
+      `SELECT
+         id,
+         tenant_id,
+         menu_item_id,
+         modifier_option_id,
+         price_delta::FLOAT8 AS price_delta,
+         created_at,
+         updated_at
+       FROM v0_menu_item_modifier_option_effects
+       WHERE tenant_id = $1
+         AND menu_item_id = $2
+         AND ($3::UUID[] IS NULL OR modifier_option_id = ANY($3::UUID[]))
+       ORDER BY modifier_option_id ASC, created_at ASC`,
+      [input.tenantId, input.menuItemId, modifierOptionIds]
+    );
+    return result.rows;
+  }
+
+  async listComponentDeltasByMenuItemModifierOptionIds(input: {
+    tenantId: string;
+    menuItemId: string;
+    modifierOptionIds: readonly string[];
+  }): Promise<MenuItemModifierOptionComponentDeltaRow[]> {
+    if (input.modifierOptionIds.length === 0) {
+      return [];
+    }
+
+    const result = await this.db.query<MenuItemModifierOptionComponentDeltaRow>(
+      `SELECT
+         deltas.id,
+         deltas.tenant_id,
+         effects.menu_item_id,
+         effects.modifier_option_id,
+         deltas.menu_item_modifier_option_effect_id,
+         deltas.stock_item_id,
+         deltas.quantity_delta_in_base_unit::FLOAT8 AS quantity_delta_in_base_unit,
+         deltas.tracking_mode,
+         deltas.created_at,
+         deltas.updated_at
+       FROM v0_menu_item_modifier_option_component_deltas AS deltas
+       JOIN v0_menu_item_modifier_option_effects AS effects
+         ON effects.tenant_id = deltas.tenant_id
+        AND effects.id = deltas.menu_item_modifier_option_effect_id
+       WHERE deltas.tenant_id = $1
+         AND effects.menu_item_id = $2
+         AND effects.modifier_option_id = ANY($3::UUID[])
+       ORDER BY effects.modifier_option_id ASC, deltas.created_at ASC`,
+      [input.tenantId, input.menuItemId, input.modifierOptionIds]
     );
     return result.rows;
   }

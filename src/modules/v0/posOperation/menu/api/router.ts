@@ -542,6 +542,31 @@ export function createV0MenuRouter(input: {
   );
 
   router.put(
+    "/items/:menuItemId/modifier-option-effects",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      await executeWrite({
+        req,
+        res,
+        idempotencyService: input.idempotencyService,
+        actionKey: V0_MENU_ACTION_KEYS.replaceModifierOptionEffects,
+        scope: "TENANT",
+        eventType: V0_MENU_EVENT_TYPES.modifierOptionEffectsReplaced,
+        entityType: "menu_item",
+        entityIdResolver: (data) => String((data as { menuItemId: string }).menuItemId),
+        endpoint: "/v0/menu/items/:menuItemId/modifier-option-effects",
+        transactionManager,
+        handler: async (txService) =>
+          txService.replaceModifierOptionEffectsForMenuItem({
+            actor: req.v0Auth!,
+            menuItemId: req.params.menuItemId,
+            body: req.body,
+          }),
+      });
+    }
+  );
+
+  router.put(
     "/items/:menuItemId/composition",
     requireV0Auth,
     async (req: V0AuthRequest, res: Response) => {

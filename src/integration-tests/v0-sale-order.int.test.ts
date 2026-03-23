@@ -371,6 +371,50 @@ async function seedModifierGroupWithOptions(input: {
   return { groupId, optionIds };
 }
 
+async function attachModifierGroupToMenuItem(input: {
+  pool: Pool;
+  tenantId: string;
+  menuItemId: string;
+  groupId: string;
+}): Promise<void> {
+  await input.pool.query(
+    `INSERT INTO v0_menu_item_modifier_group_links (
+       tenant_id,
+       menu_item_id,
+       modifier_group_id,
+       display_order
+     )
+     VALUES ($1, $2, $3, 0)`,
+    [input.tenantId, input.menuItemId, input.groupId]
+  );
+}
+
+async function setMenuItemModifierOptionEffect(input: {
+  pool: Pool;
+  tenantId: string;
+  menuItemId: string;
+  modifierOptionId: string;
+  priceDelta: number;
+}): Promise<void> {
+  await input.pool.query(
+    `DELETE FROM v0_menu_item_modifier_option_effects
+     WHERE tenant_id = $1
+       AND menu_item_id = $2
+       AND modifier_option_id = $3`,
+    [input.tenantId, input.menuItemId, input.modifierOptionId]
+  );
+  await input.pool.query(
+    `INSERT INTO v0_menu_item_modifier_option_effects (
+       tenant_id,
+       menu_item_id,
+       modifier_option_id,
+       price_delta
+     )
+     VALUES ($1, $2, $3, $4)`,
+    [input.tenantId, input.menuItemId, input.modifierOptionId, input.priceDelta]
+  );
+}
+
 async function seedTrackedBaseComponent(input: {
   pool: Pool;
   tenantId: string;
@@ -1153,6 +1197,109 @@ describe("v0 sale-order integration", () => {
       [setup.tenantId]
     );
     expect(persistedSaleLine.rows[0]?.modifier_snapshot).toEqual(orderLineSnapshot);
+  });
+
+  it("prices shared modifier options per menu item using item-specific effects", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const juiceMenuItemId = await seedMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      name: `Orange Juice ${uniqueSuffix()}`,
+      basePrice: 3.5,
+    });
+    const sizeGroup = await seedModifierGroupWithOptions({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: setup.defaultMenuItemId,
+      name: `Shared Size ${uniqueSuffix()}`,
+      selectionMode: "SINGLE",
+      minSelections: 1,
+      maxSelections: 1,
+      isRequired: true,
+      options: [{ label: "Large", priceDelta: 0 }],
+    });
+    await attachModifierGroupToMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: juiceMenuItemId,
+      groupId: sizeGroup.groupId,
+    });
+    await setMenuItemModifierOptionEffect({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: setup.defaultMenuItemId,
+      modifierOptionId: sizeGroup.optionIds[0],
+      priceDelta: 0.5,
+    });
+    await setMenuItemModifierOptionEffect({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: juiceMenuItemId,
+      modifierOptionId: sizeGroup.optionIds[0],
+      priceDelta: 1.25,
+    });
+
+    const latteSale = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-item-option-price-latte-${uniqueSuffix()}`)
+      .send({
+        items: [
+          {
+            menuItemId: setup.defaultMenuItemId,
+            quantity: 1,
+            modifierSelections: [
+              {
+                groupId: sizeGroup.groupId,
+                optionIds: [sizeGroup.optionIds[0]],
+              },
+            ],
+          },
+        ],
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+      });
+    expect(latteSale.status).toBe(200);
+    expect(latteSale.body.data.tenderAmount).toBe(4);
+    expect(
+      latteSale.body.data.orderLines[0]?.modifierSnapshot?.[0]?.selectedOptions?.[0]?.priceDelta
+    ).toBe(0.5);
+
+    const juiceSale = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-item-option-price-juice-${uniqueSuffix()}`)
+      .send({
+        items: [
+          {
+            menuItemId: juiceMenuItemId,
+            quantity: 1,
+            modifierSelections: [
+              {
+                groupId: sizeGroup.groupId,
+                optionIds: [sizeGroup.optionIds[0]],
+              },
+            ],
+          },
+        ],
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+      });
+    expect(juiceSale.status).toBe(200);
+    expect(juiceSale.body.data.tenderAmount).toBe(4.75);
+    expect(
+      juiceSale.body.data.orderLines[0]?.modifierSnapshot?.[0]?.selectedOptions?.[0]?.priceDelta
+    ).toBe(1.25);
   });
 
   it("updates current-session X report after finalized cash checkout is dispatched", async () => {

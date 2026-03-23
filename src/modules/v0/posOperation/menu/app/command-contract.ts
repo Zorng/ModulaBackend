@@ -32,6 +32,7 @@ export const V0_MENU_ACTION_KEYS = {
   restoreModifierOption: "menu.modifierOptions.restore",
 
   upsertComposition: "menu.composition.upsert",
+  replaceModifierOptionEffects: "menu.itemModifierOptionEffects.replace",
   evaluateComposition: "menu.composition.evaluate",
 } as const;
 
@@ -52,6 +53,7 @@ export const V0_MENU_EVENT_TYPES = {
   modifierOptionArchived: "MODIFIER_OPTION_ARCHIVED",
   modifierOptionRestored: "MODIFIER_OPTION_RESTORED",
   compositionUpserted: "MENU_ITEM_COMPOSITION_UPSERTED",
+  modifierOptionEffectsReplaced: "MENU_ITEM_MODIFIER_OPTION_EFFECTS_REPLACED",
 } as const;
 
 export const V0_MENU_IDEMPOTENCY_SCOPE = {
@@ -74,6 +76,7 @@ export const V0_MENU_IDEMPOTENCY_SCOPE = {
     V0_MENU_ACTION_KEYS.archiveModifierOption,
     V0_MENU_ACTION_KEYS.restoreModifierOption,
     V0_MENU_ACTION_KEYS.upsertComposition,
+    V0_MENU_ACTION_KEYS.replaceModifierOptionEffects,
   ] as const,
 } as const;
 

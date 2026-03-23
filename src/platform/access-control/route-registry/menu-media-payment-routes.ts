@@ -178,6 +178,12 @@ export const MENU_MEDIA_PAYMENT_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "PUT",
+    pattern: /^\/menu\/items\/[^/]+\/modifier-option-effects$/,
+    actionKey: "menu.itemModifierOptionEffects.replace",
+    tenantSource: "token",
+  },
+  {
+    method: "PUT",
     pattern: /^\/menu\/items\/[^/]+\/composition$/,
     actionKey: "menu.composition.upsert",
     tenantSource: "token",

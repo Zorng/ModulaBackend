@@ -1704,7 +1704,19 @@ export class V0SaleOrderService {
           tenantId: input.tenantId,
           groupIds: groups.map((group) => group.id),
         });
-        menuData = { item, groups, options };
+        const itemOptionEffects = await this.repo.listModifierOptionEffectsForMenuItem({
+          tenantId: input.tenantId,
+          menuItemId: draft.menuItemId,
+          modifierOptionIds: options.map((option) => option.id),
+        });
+        const effectivePriceByOptionId = new Map(
+          itemOptionEffects.map((effect) => [effect.modifier_option_id, effect.price_delta] as const)
+        );
+        const effectiveOptions = options.map((option) => ({
+          ...option,
+          price_delta: effectivePriceByOptionId.get(option.id) ?? option.price_delta,
+        }));
+        menuData = { item, groups, options: effectiveOptions };
         menuItemCache.set(draft.menuItemId, menuData);
       }
 
