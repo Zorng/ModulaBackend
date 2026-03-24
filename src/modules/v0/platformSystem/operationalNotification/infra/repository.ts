@@ -5,7 +5,9 @@ type Queryable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
 export type V0OperationalNotificationRow = {
   id: string;
   tenant_id: string;
+  tenant_name: string;
   branch_id: string;
+  branch_name: string | null;
   type: string;
   subject_type: string;
   subject_id: string;
@@ -18,6 +20,7 @@ export type V0OperationalNotificationRow = {
 };
 
 export type V0OperationalNotificationInboxRow = V0OperationalNotificationRow & {
+  branch_name: string | null;
   read_at: Date | null;
 };
 
@@ -33,6 +36,8 @@ export type V0OperationalNotificationRecipientRow = {
 
 export type V0OperationalNotificationReadMarkRow = {
   notification_id: string;
+  tenant_id: string;
+  branch_id: string;
   read_at: Date;
 };
 
@@ -75,33 +80,56 @@ export class V0OperationalNotificationRepository {
     dedupeKey: string;
   }): Promise<V0OperationalNotificationRow> {
     const result = await this.db.query<V0OperationalNotificationRow>(
-      `INSERT INTO v0_operational_notifications (
-         tenant_id,
-         branch_id,
-         type,
-         subject_type,
-         subject_id,
-         title,
-         body,
-         payload,
-         dedupe_key
+      `WITH upserted AS (
+         INSERT INTO v0_operational_notifications (
+           tenant_id,
+           branch_id,
+           type,
+           subject_type,
+           subject_id,
+           title,
+           body,
+           payload,
+           dedupe_key
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB, $9)
+         ON CONFLICT (tenant_id, dedupe_key)
+         DO UPDATE SET dedupe_key = EXCLUDED.dedupe_key
+         RETURNING
+           id,
+           tenant_id,
+           branch_id,
+           type,
+           subject_type,
+           subject_id,
+           title,
+           body,
+           payload,
+           dedupe_key,
+           created_at,
+           (xmax = 0) AS was_inserted
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB, $9)
-       ON CONFLICT (tenant_id, dedupe_key)
-       DO UPDATE SET dedupe_key = EXCLUDED.dedupe_key
-       RETURNING
-         id,
-         tenant_id,
-         branch_id,
-         type,
-         subject_type,
-         subject_id,
-         title,
-         body,
-         payload,
-         dedupe_key,
-         created_at,
-         (xmax = 0) AS was_inserted`,
+       SELECT
+         u.id,
+         u.tenant_id,
+         t.name AS tenant_name,
+         u.branch_id,
+         b.name AS branch_name,
+         u.type,
+         u.subject_type,
+         u.subject_id,
+         u.title,
+         u.body,
+         u.payload,
+         u.dedupe_key,
+         u.created_at,
+         u.was_inserted
+       FROM upserted u
+       JOIN tenants t
+         ON t.id = u.tenant_id
+       LEFT JOIN branches b
+         ON b.tenant_id = u.tenant_id
+        AND b.id = u.branch_id`,
       [
         input.tenantId,
         input.branchId,
@@ -142,9 +170,9 @@ export class V0OperationalNotificationRepository {
   }
 
   async listInbox(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
+    tenantId: string | null;
+    branchId: string | null;
     unreadOnly: boolean;
     type: string | null;
     limit: number;
@@ -154,6 +182,7 @@ export class V0OperationalNotificationRepository {
       `SELECT
          n.id,
          n.tenant_id,
+         t.name AS tenant_name,
          n.branch_id,
          n.type,
          n.subject_type,
@@ -163,21 +192,40 @@ export class V0OperationalNotificationRepository {
          n.payload,
          n.dedupe_key,
          n.created_at,
+         b.name AS branch_name,
          r.read_at
        FROM v0_operational_notification_recipients r
        JOIN v0_operational_notifications n
          ON n.id = r.notification_id
-       WHERE r.tenant_id = $1
-         AND r.branch_id = $2
-         AND r.recipient_account_id = $3
+       JOIN tenants t
+         ON t.id = n.tenant_id
+       LEFT JOIN branches b
+         ON b.tenant_id = n.tenant_id
+        AND b.id = n.branch_id
+       WHERE r.recipient_account_id = $1
+         AND EXISTS (
+           SELECT 1
+           FROM v0_tenant_memberships m
+           JOIN v0_branch_assignments ba
+             ON ba.membership_id = m.id
+           WHERE m.account_id = r.recipient_account_id
+             AND m.tenant_id = r.tenant_id
+             AND m.status = 'ACTIVE'
+             AND ba.account_id = r.recipient_account_id
+             AND ba.tenant_id = r.tenant_id
+             AND ba.branch_id = r.branch_id
+             AND ba.status = 'ACTIVE'
+         )
+         AND ($2::UUID IS NULL OR n.tenant_id = $2)
+         AND ($3::UUID IS NULL OR n.branch_id = $3)
          AND ($4::BOOLEAN = FALSE OR r.read_at IS NULL)
          AND ($5::VARCHAR IS NULL OR n.type = $5)
-       ORDER BY n.created_at DESC
+       ORDER BY n.created_at DESC, n.id DESC
        LIMIT $6 OFFSET $7`,
       [
+        input.recipientAccountId,
         input.tenantId,
         input.branchId,
-        input.recipientAccountId,
         input.unreadOnly,
         input.type,
         input.limit,
@@ -188,9 +236,9 @@ export class V0OperationalNotificationRepository {
   }
 
   async countInbox(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
+    tenantId: string | null;
+    branchId: string | null;
     unreadOnly: boolean;
     type: string | null;
   }): Promise<number> {
@@ -199,15 +247,28 @@ export class V0OperationalNotificationRepository {
        FROM v0_operational_notification_recipients r
        JOIN v0_operational_notifications n
          ON n.id = r.notification_id
-       WHERE r.tenant_id = $1
-         AND r.branch_id = $2
-         AND r.recipient_account_id = $3
+       WHERE r.recipient_account_id = $1
+         AND EXISTS (
+           SELECT 1
+           FROM v0_tenant_memberships m
+           JOIN v0_branch_assignments ba
+             ON ba.membership_id = m.id
+           WHERE m.account_id = r.recipient_account_id
+             AND m.tenant_id = r.tenant_id
+             AND m.status = 'ACTIVE'
+             AND ba.account_id = r.recipient_account_id
+             AND ba.tenant_id = r.tenant_id
+             AND ba.branch_id = r.branch_id
+             AND ba.status = 'ACTIVE'
+         )
+         AND ($2::UUID IS NULL OR n.tenant_id = $2)
+         AND ($3::UUID IS NULL OR n.branch_id = $3)
          AND ($4::BOOLEAN = FALSE OR r.read_at IS NULL)
          AND ($5::VARCHAR IS NULL OR n.type = $5)`,
       [
+        input.recipientAccountId,
         input.tenantId,
         input.branchId,
-        input.recipientAccountId,
         input.unreadOnly,
         input.type,
       ]
@@ -216,8 +277,6 @@ export class V0OperationalNotificationRepository {
   }
 
   async getInboxItem(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
     notificationId: string;
   }): Promise<V0OperationalNotificationInboxRow | null> {
@@ -225,6 +284,7 @@ export class V0OperationalNotificationRepository {
       `SELECT
          n.id,
          n.tenant_id,
+         t.name AS tenant_name,
          n.branch_id,
          n.type,
          n.subject_type,
@@ -234,21 +294,66 @@ export class V0OperationalNotificationRepository {
          n.payload,
          n.dedupe_key,
          n.created_at,
+         b.name AS branch_name,
          r.read_at
        FROM v0_operational_notification_recipients r
        JOIN v0_operational_notifications n
          ON n.id = r.notification_id
-       WHERE r.tenant_id = $1
-         AND r.branch_id = $2
-         AND r.recipient_account_id = $3
-         AND r.notification_id = $4
+       JOIN tenants t
+         ON t.id = n.tenant_id
+       LEFT JOIN branches b
+         ON b.tenant_id = n.tenant_id
+        AND b.id = n.branch_id
+       WHERE r.recipient_account_id = $1
+         AND r.notification_id = $2
+         AND EXISTS (
+           SELECT 1
+           FROM v0_tenant_memberships m
+           JOIN v0_branch_assignments ba
+             ON ba.membership_id = m.id
+           WHERE m.account_id = r.recipient_account_id
+             AND m.tenant_id = r.tenant_id
+             AND m.status = 'ACTIVE'
+             AND ba.account_id = r.recipient_account_id
+             AND ba.tenant_id = r.tenant_id
+             AND ba.branch_id = r.branch_id
+             AND ba.status = 'ACTIVE'
+         )
        LIMIT 1`,
-      [input.tenantId, input.branchId, input.recipientAccountId, input.notificationId]
+      [input.recipientAccountId, input.notificationId]
     );
     return result.rows[0] ?? null;
   }
 
   async getUnreadCount(input: {
+    recipientAccountId: string;
+    tenantId?: string | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_operational_notification_recipients r
+       WHERE r.recipient_account_id = $1
+         AND r.read_at IS NULL
+         AND ($2::UUID IS NULL OR r.tenant_id = $2)
+         AND EXISTS (
+           SELECT 1
+           FROM v0_tenant_memberships m
+           JOIN v0_branch_assignments ba
+             ON ba.membership_id = m.id
+           WHERE m.account_id = r.recipient_account_id
+             AND m.tenant_id = r.tenant_id
+             AND m.status = 'ACTIVE'
+             AND ba.account_id = r.recipient_account_id
+             AND ba.tenant_id = r.tenant_id
+             AND ba.branch_id = r.branch_id
+             AND ba.status = 'ACTIVE'
+         )`,
+      [input.recipientAccountId, input.tenantId ?? null]
+    );
+    return Number(result.rows[0]?.count ?? "0");
+  }
+
+  async getUnreadCountForBranchScope(input: {
     tenantId: string;
     branchId: string;
     recipientAccountId: string;
@@ -266,18 +371,27 @@ export class V0OperationalNotificationRepository {
   }
 
   async markRead(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
     notificationId: string;
   }): Promise<V0OperationalNotificationRecipientRow | null> {
     const result = await this.db.query<V0OperationalNotificationRecipientRow>(
       `UPDATE v0_operational_notification_recipients
        SET read_at = COALESCE(read_at, NOW())
-       WHERE tenant_id = $1
-         AND branch_id = $2
-         AND recipient_account_id = $3
-         AND notification_id = $4
+       WHERE recipient_account_id = $1
+         AND notification_id = $2
+         AND EXISTS (
+           SELECT 1
+           FROM v0_tenant_memberships m
+           JOIN v0_branch_assignments ba
+             ON ba.membership_id = m.id
+           WHERE m.account_id = v0_operational_notification_recipients.recipient_account_id
+             AND m.tenant_id = v0_operational_notification_recipients.tenant_id
+             AND m.status = 'ACTIVE'
+             AND ba.account_id = v0_operational_notification_recipients.recipient_account_id
+             AND ba.tenant_id = v0_operational_notification_recipients.tenant_id
+             AND ba.branch_id = v0_operational_notification_recipients.branch_id
+             AND ba.status = 'ACTIVE'
+         )
        RETURNING
          id,
          notification_id,
@@ -286,27 +400,40 @@ export class V0OperationalNotificationRepository {
          recipient_account_id,
          read_at,
          created_at`,
-      [input.tenantId, input.branchId, input.recipientAccountId, input.notificationId]
+      [input.recipientAccountId, input.notificationId]
     );
     return result.rows[0] ?? null;
   }
 
   async markAllRead(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
+    tenantId?: string | null;
   }): Promise<V0OperationalNotificationReadMarkRow[]> {
     const result = await this.db.query<V0OperationalNotificationReadMarkRow>(
       `UPDATE v0_operational_notification_recipients
        SET read_at = COALESCE(read_at, NOW())
-       WHERE tenant_id = $1
-         AND branch_id = $2
-         AND recipient_account_id = $3
+       WHERE recipient_account_id = $1
          AND read_at IS NULL
+         AND ($2::UUID IS NULL OR tenant_id = $2)
+         AND EXISTS (
+           SELECT 1
+           FROM v0_tenant_memberships m
+           JOIN v0_branch_assignments ba
+             ON ba.membership_id = m.id
+           WHERE m.account_id = v0_operational_notification_recipients.recipient_account_id
+             AND m.tenant_id = v0_operational_notification_recipients.tenant_id
+             AND m.status = 'ACTIVE'
+             AND ba.account_id = v0_operational_notification_recipients.recipient_account_id
+             AND ba.tenant_id = v0_operational_notification_recipients.tenant_id
+             AND ba.branch_id = v0_operational_notification_recipients.branch_id
+             AND ba.status = 'ACTIVE'
+         )
        RETURNING
          notification_id,
+         tenant_id,
+         branch_id,
          read_at`,
-      [input.tenantId, input.branchId, input.recipientAccountId]
+      [input.recipientAccountId, input.tenantId ?? null]
     );
     return result.rows;
   }

@@ -1110,6 +1110,112 @@ describe("v0 sale-order integration", () => {
     expect(fulfillment.body.data.status).toBe("PREPARING");
   });
 
+  it("persists KHR snapshots using the configured sale rounding policy", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const cases = [
+      {
+        label: "nearest-100",
+        saleFxRateKhrPerUsd: 4103,
+        saleKhrRoundingEnabled: true,
+        saleKhrRoundingMode: "NEAREST" as const,
+        saleKhrRoundingGranularity: 100,
+        expectedGrandTotalKhr: 14400,
+      },
+      {
+        label: "down-100",
+        saleFxRateKhrPerUsd: 4103,
+        saleKhrRoundingEnabled: true,
+        saleKhrRoundingMode: "DOWN" as const,
+        saleKhrRoundingGranularity: 100,
+        expectedGrandTotalKhr: 14300,
+      },
+      {
+        label: "up-1000",
+        saleFxRateKhrPerUsd: 4103,
+        saleKhrRoundingEnabled: true,
+        saleKhrRoundingMode: "UP" as const,
+        saleKhrRoundingGranularity: 1000,
+        expectedGrandTotalKhr: 15000,
+      },
+      {
+        label: "disabled",
+        saleFxRateKhrPerUsd: 4103,
+        saleKhrRoundingEnabled: false,
+        saleKhrRoundingMode: "NEAREST" as const,
+        saleKhrRoundingGranularity: 100,
+        expectedGrandTotalKhr: 14360.5,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const finalized = await request(app)
+        .post("/v0/checkout/cash/finalize")
+        .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+        .set("Idempotency-Key", `sale-order-khr-rounding-${testCase.label}-${uniqueSuffix()}`)
+        .send({
+          ...buildCheckoutCartPayload({ menuItemId: setup.defaultMenuItemId, quantity: 1 }),
+          saleType: "TAKEAWAY",
+          tenderCurrency: "USD",
+          cashReceivedTenderAmount: 10,
+          saleFxRateKhrPerUsd: testCase.saleFxRateKhrPerUsd,
+          saleKhrRoundingEnabled: testCase.saleKhrRoundingEnabled,
+          saleKhrRoundingMode: testCase.saleKhrRoundingMode,
+          saleKhrRoundingGranularity: testCase.saleKhrRoundingGranularity,
+        });
+
+      expect(finalized.status).toBe(200);
+      expect(finalized.body.success).toBe(true);
+      expect(finalized.body.data.grandTotalUsd).toBe(3.5);
+      expect(finalized.body.data.subtotalKhr).toBe(testCase.expectedGrandTotalKhr);
+      expect(finalized.body.data.grandTotalKhr).toBe(testCase.expectedGrandTotalKhr);
+      expect(finalized.body.data.saleFxRateKhrPerUsd).toBe(testCase.saleFxRateKhrPerUsd);
+      expect(finalized.body.data.saleKhrRoundingEnabled).toBe(testCase.saleKhrRoundingEnabled);
+      expect(finalized.body.data.saleKhrRoundingMode).toBe(testCase.saleKhrRoundingMode);
+      expect(finalized.body.data.saleKhrRoundingGranularity).toBe(
+        String(testCase.saleKhrRoundingGranularity)
+      );
+
+      const persistedSale = await pool.query<{
+        subtotal_khr: number;
+        grand_total_khr: number;
+      }>(
+        `SELECT subtotal_khr::FLOAT8 AS subtotal_khr,
+                grand_total_khr::FLOAT8 AS grand_total_khr
+         FROM v0_sales
+         WHERE tenant_id = $1
+           AND branch_id = $2
+           AND id = $3`,
+        [setup.tenantId, setup.branchId, finalized.body.data.id as string]
+      );
+      expect(persistedSale.rows).toHaveLength(1);
+      expect(persistedSale.rows[0]).toMatchObject({
+        subtotal_khr: testCase.expectedGrandTotalKhr,
+        grand_total_khr: testCase.expectedGrandTotalKhr,
+      });
+
+      const persistedSaleLine = await pool.query<{
+        line_total_khr_snapshot: number | null;
+      }>(
+        `SELECT line_total_khr_snapshot::FLOAT8 AS line_total_khr_snapshot
+         FROM v0_sale_lines
+         WHERE tenant_id = $1
+           AND sale_id = $2`,
+        [setup.tenantId, finalized.body.data.id as string]
+      );
+      expect(persistedSaleLine.rows).toHaveLength(1);
+      expect(persistedSaleLine.rows[0]?.line_total_khr_snapshot).toBe(
+        testCase.expectedGrandTotalKhr
+      );
+    }
+  });
+
   it("finalizes cash checkout with modifier group selections", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     await openCashSession({

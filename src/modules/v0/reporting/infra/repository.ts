@@ -275,7 +275,15 @@ export class V0ReportingRepository {
          sl.menu_item_name_snapshot AS item_name_snapshot,
          COALESCE(SUM(sl.quantity), 0)::FLOAT8 AS quantity,
          COALESCE(SUM(sl.line_total_amount), 0)::FLOAT8 AS revenue_usd,
-         COALESCE(SUM(sl.line_total_amount * s.sale_fx_rate_khr_per_usd), 0)::FLOAT8 AS revenue_khr
+         COALESCE(
+           SUM(
+             COALESCE(
+               sl.line_total_khr_snapshot,
+               sl.line_total_amount * s.sale_fx_rate_khr_per_usd
+             )
+           ),
+           0
+         )::FLOAT8 AS revenue_khr
        FROM v0_sale_lines sl
        JOIN v0_sales s
          ON s.tenant_id = sl.tenant_id
@@ -303,7 +311,15 @@ export class V0ReportingRepository {
          COALESCE(NULLIF(TRIM(sl.menu_category_name_snapshot), ''), 'Uncategorized') AS category_name_snapshot,
          COALESCE(SUM(sl.quantity), 0)::FLOAT8 AS quantity,
          COALESCE(SUM(sl.line_total_amount), 0)::FLOAT8 AS revenue_usd,
-         COALESCE(SUM(sl.line_total_amount * s.sale_fx_rate_khr_per_usd), 0)::FLOAT8 AS revenue_khr
+         COALESCE(
+           SUM(
+             COALESCE(
+               sl.line_total_khr_snapshot,
+               sl.line_total_amount * s.sale_fx_rate_khr_per_usd
+             )
+           ),
+           0
+         )::FLOAT8 AS revenue_khr
        FROM v0_sale_lines sl
        JOIN v0_sales s
          ON s.tenant_id = sl.tenant_id

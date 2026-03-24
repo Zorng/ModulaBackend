@@ -1,6 +1,6 @@
 # Operational Notification Module Boundary (v0)
 
-Status: Phase N1 locked  
+Status: Account-scope implemented and relocked  
 Owner context: `PlatformSystem`  
 Canonical route prefix: `/v0/notifications`
 
@@ -31,25 +31,25 @@ Canonical route prefix: `/v0/notifications`
   - why: compute approver/oversight recipient pool without leakage
   - consistency mode: strong at emission/read time
 - Auth context:
-  - consumed fact: `accountId`, `tenantId`, `branchId` from working-context token
-  - why: scope inbox reads and mark-read commands
+  - consumed fact: `accountId` from authenticated access token
+  - why: scope account-level inbox reads and mark-read commands
   - consistency mode: strong
 - OrgAccount membership/assignment:
-  - consumed fact: branch access for recipients
-  - why: avoid cross-branch recipient leakage
+  - consumed fact: current active membership + branch assignment for recipients
+  - why: avoid cross-tenant/branch recipient leakage on account-scoped reads
   - consistency mode: strong (through access control)
 
 ## 4) Commands (Write Surface)
 
 - Endpoint: `POST /v0/notifications/:notificationId/read`
   - Action key: `operationalNotification.read.mark`
-  - Scope/effect: `BRANCH / WRITE`
-  - Allowed roles: `OWNER`, `ADMIN`, `MANAGER`, `CASHIER`
+  - Scope/effect: `ACCOUNT / WRITE`
+  - Allowed roles: authenticated account only; visibility constrained by recipient row + active access
   - Idempotency required: no (idempotent by state transition)
 - Endpoint: `POST /v0/notifications/read-all`
   - Action key: `operationalNotification.read.markAll`
-  - Scope/effect: `BRANCH / WRITE`
-  - Allowed roles: `OWNER`, `ADMIN`, `MANAGER`, `CASHIER`
+  - Scope/effect: `ACCOUNT / WRITE`
+  - Allowed roles: authenticated account only; visibility constrained by recipient row + active access
   - Idempotency required: no
 
 Internal command seam (best-effort producer API, no public HTTP):
@@ -61,13 +61,13 @@ Internal command seam (best-effort producer API, no public HTTP):
 
 - Endpoint: `GET /v0/notifications/inbox`
   - Action key: `operationalNotification.inbox.list`
-  - Scope/effect: `BRANCH / READ`
+  - Scope/effect: `ACCOUNT / READ`
 - Endpoint: `GET /v0/notifications/unread-count`
   - Action key: `operationalNotification.inbox.unreadCount`
-  - Scope/effect: `BRANCH / READ`
+  - Scope/effect: `ACCOUNT / READ`
 - Endpoint: `GET /v0/notifications/:notificationId`
   - Action key: `operationalNotification.read`
-  - Scope/effect: `BRANCH / READ`
+  - Scope/effect: `ACCOUNT / READ`
 
 ## 6) Event Contract
 
@@ -93,8 +93,8 @@ Trigger guard (locked):
 - `POST /notifications/:notificationId/read` -> `operationalNotification.read.mark`
 - `POST /notifications/read-all` -> `operationalNotification.read.markAll`
 
-Entitlement baseline:
-- `core.pos` (read/write allowed for operational participants in active branch context)
+Visibility baseline:
+- account-scoped reads/writes are allowed only over recipient rows still backed by active membership + branch access
 
 ## 8) Failure/Reason Codes (Module-specific)
 

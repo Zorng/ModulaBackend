@@ -5,7 +5,9 @@ This document locks the target `/v0/notifications` HTTP contract for in-app oper
 Base path: `/v0/notifications`
 
 Implementation status:
-- Phase N1-N5 completed (contract + schema + query/command surface + ACL mapping + cash-session close emission integration + sale-void emission integration + reliability close-out).
+- Account-scoped inbox/count/detail/read/read-all/stream is implemented using `(accountId)`.
+- Tenant and branch remain notification origin metadata and optional filter dimensions.
+- Existing recipient resolution remains branch-aware at emit time.
 
 ## Conventions
 
@@ -15,8 +17,9 @@ Implementation status:
   - failure: `{ "success": false, "error": "...", "code": "..." }`
 - Auth: `Authorization: Bearer <accessToken>`
 - Context model:
-  - `tenantId` and `branchId` come from working-context token.
-  - no `tenantId` / `branchId` overrides in query/body.
+  - notification reads work with any valid account access token
+  - selected `tenantId` / `branchId` context is not required
+  - `tenantId` and `branchId` may be provided only as optional inbox narrowing filters
 - Access-control reason codes:
   - see `api_contract/access-control-v0.md`
 
@@ -34,7 +37,9 @@ type NotificationSubjectType = "SALE" | "CASH_SESSION";
 type NotificationItem = {
   id: string;
   tenantId: string;
+  tenantName: string;
   branchId: string;
+  branchName: string | null;
   type: NotificationType;
   subjectType: NotificationSubjectType;
   subjectId: string;
@@ -82,24 +87,24 @@ SSE events:
   - sent immediately after stream is established
   - payload: `{ unreadCount, serverTime }`
 - `notification.created`
-  - sent when a new in-app notification is emitted for the current `(tenantId, branchId, accountId)` recipient scope
-  - payload includes: `notificationId`, `notificationType`, `subjectType`, `subjectId`, `title`, `body`, `payload`, `createdAt`, `unreadCount`
+  - target behavior: sent when a new in-app notification is emitted for the current `(accountId)` recipient scope
+  - payload includes: `notificationId`, `tenantId`, `tenantName`, `branchId`, `branchName`, `notificationType`, `subjectType`, `subjectId`, `title`, `body`, `payload`, `createdAt`, `unreadCount`
 
 Notes:
-- stream is context-scoped to the working-context token
+- stream is account scoped and does not require selected tenant/branch context
 - backend sends keep-alive comments periodically
 - recommended frontend behavior:
-  - keep one active connection for current context
+  - keep one active connection for current authenticated account shell session
   - reconnect on network drop
   - on reconnect, refresh inbox via `GET /inbox` to recover missed events
 
 Errors:
 - `401` missing/invalid token
-- `403` context/membership/branch access denial
+- `403` access denial
 
 ### 1) List inbox
 
-`GET /v0/notifications/inbox?unreadOnly=true|false&type=...&limit=50&offset=0`
+`GET /v0/notifications/inbox?tenantId=<uuid?>&branchId=<uuid?>&unreadOnly=true|false&type=...&limit=50&offset=0`
 
 Action key: `operationalNotification.inbox.list`
 
@@ -112,7 +117,9 @@ Response `200`:
       {
         "id": "uuid",
         "tenantId": "uuid",
+        "tenantName": "Demo Cafe",
         "branchId": "uuid",
+        "branchName": "Main Branch",
         "type": "CASH_SESSION_CLOSED",
         "subjectType": "CASH_SESSION",
         "subjectId": "uuid",
@@ -133,9 +140,13 @@ Response `200`:
 }
 ```
 
+Notes:
+- target inbox scope is `(accountId)` and does not require selected tenant/branch context
+- `tenantId` and `branchId` are optional narrowing filters only
+
 Errors:
 - `401` missing/invalid token
-- `403` context/membership/branch access denial
+- `403` access denial
 
 ### 2) Get unread count
 
@@ -153,11 +164,41 @@ Response `200`:
 }
 ```
 
+Notes:
+- target unread-count scope is `(accountId)` and does not require selected tenant/branch context
+
 ### 3) Read notification detail
 
 `GET /v0/notifications/:notificationId`
 
 Action key: `operationalNotification.read`
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "tenantId": "uuid",
+    "tenantName": "Demo Cafe",
+    "branchId": "uuid",
+    "branchName": "Main Branch",
+    "type": "VOID_APPROVAL_NEEDED",
+    "subjectType": "SALE",
+    "subjectId": "uuid",
+    "title": "Void approval needed",
+    "body": "Sale #S-1024 requires review",
+    "dedupeKey": "VOID_APPROVAL_NEEDED:void-request:uuid",
+    "payload": {
+      "saleId": "uuid",
+      "voidRequestId": "uuid"
+    },
+    "createdAt": "2026-02-19T12:00:00.000Z",
+    "isRead": false,
+    "readAt": null
+  }
+}
+```
 
 Errors:
 - `404` `NOTIFICATION_NOT_FOUND`
@@ -184,7 +225,7 @@ Response `200`:
 Notes:
 - idempotent command; re-marking an already-read row returns current read state.
 
-### 5) Mark all as read (current context)
+### 5) Mark all as read (current account inbox)
 
 `POST /v0/notifications/read-all`
 
@@ -203,7 +244,9 @@ Response `200`:
 ## Behavior Notes
 
 - Emission is best-effort. Failure to emit notification does not rollback source business writes.
-- Recipients are resolved in `(tenantId, branchId)` scope with access checks to avoid leakage.
+- Recipients are still resolved at emit time using existing branch-aware business rules.
+- Account-level inbox scope does not broaden access; an account sees only notification rows for which it has a recipient row and current active access to that branch-origin notification.
+- Tenant and branch remain origin metadata and optional filter dimensions on the account-level inbox.
 - Deep-link actions remain state-authoritative; stale notifications do not bypass current permissions/state.
 
 ## Frontend Wiring Guide (Recommended)
@@ -212,11 +255,11 @@ Response `200`:
 
 1. Call `GET /v0/notifications/unread-count` for badge bootstrap.
 2. Call `GET /v0/notifications/inbox` for initial list.
-3. Open SSE stream `GET /v0/notifications/stream` with current access token.
+3. Open `GET /v0/notifications/stream` with current access token.
 
 ### 2) Stream lifecycle rules
 
-1. Keep exactly one stream per active working context (`tenantId + branchId`) per logged-in client session.
+1. Keep exactly one stream per active authenticated account shell session.
 2. On `ready`, update badge from `unreadCount`.
 3. On `notification.created`:
    - increment/update badge using `unreadCount`
@@ -249,7 +292,9 @@ Response `200`:
 {
   "notificationId": "uuid",
   "tenantId": "uuid",
+  "tenantName": "Demo Cafe",
   "branchId": "uuid",
+  "branchName": "Main Branch",
   "notificationType": "CASH_SESSION_CLOSED",
   "subjectType": "CASH_SESSION",
   "subjectId": "uuid",

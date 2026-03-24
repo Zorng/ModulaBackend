@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from "pg";
 
 export type Queryable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
 
-export type AccessControlScope = "GLOBAL" | "TENANT" | "BRANCH";
+export type AccessControlScope = "GLOBAL" | "ACCOUNT" | "TENANT" | "BRANCH";
 export type AccessControlEffect = "READ" | "WRITE";
 export type RoleKey = "OWNER" | "ADMIN" | "MANAGER" | "CASHIER" | "CLERK";
 

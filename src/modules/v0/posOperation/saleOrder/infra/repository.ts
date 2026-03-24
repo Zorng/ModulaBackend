@@ -175,6 +175,7 @@ export type V0SaleLineRow = {
   quantity: number;
   line_discount_amount: number;
   line_total_amount: number;
+  line_total_khr_snapshot: number | null;
   modifier_snapshot: unknown;
   created_at: Date;
   updated_at: Date;
@@ -323,6 +324,7 @@ const SALE_LINE_SELECT = `
   quantity::FLOAT8 AS quantity,
   line_discount_amount::FLOAT8 AS line_discount_amount,
   line_total_amount::FLOAT8 AS line_total_amount,
+  line_total_khr_snapshot::FLOAT8 AS line_total_khr_snapshot,
   modifier_snapshot,
   created_at,
   updated_at
@@ -1381,6 +1383,7 @@ export class V0SaleOrderRepository {
     quantity: number;
     lineDiscountAmount: number;
     lineTotalAmount: number;
+    lineTotalKhrSnapshot?: number | null;
     modifierSnapshot?: unknown;
   }): Promise<V0SaleLineRow> {
     const result = await this.db.query<V0SaleLineRow>(
@@ -1391,13 +1394,46 @@ export class V0SaleOrderRepository {
          order_ticket_line_id,
          menu_item_id,
          menu_item_name_snapshot,
+         menu_category_id_snapshot,
+         menu_category_name_snapshot,
          unit_price,
          quantity,
          line_discount_amount,
          line_total_amount,
+         line_total_khr_snapshot,
          modifier_snapshot
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7::NUMERIC(14,2), $8::NUMERIC(12,3), $9::NUMERIC(14,2), $10::NUMERIC(14,2), $11::JSONB)
+       VALUES (
+         $1,
+         $2,
+         $3,
+         $4,
+         $5,
+         $6,
+         (
+           SELECT i.category_id
+           FROM v0_menu_items i
+           WHERE i.tenant_id = $1
+             AND i.id = $5
+           LIMIT 1
+         ),
+         (
+           SELECT c.name
+           FROM v0_menu_items i
+           LEFT JOIN v0_menu_categories c
+             ON c.tenant_id = i.tenant_id
+            AND c.id = i.category_id
+           WHERE i.tenant_id = $1
+             AND i.id = $5
+           LIMIT 1
+         ),
+         $7::NUMERIC(14,2),
+         $8::NUMERIC(12,3),
+         $9::NUMERIC(14,2),
+         $10::NUMERIC(14,2),
+         $11::NUMERIC(14,2),
+         $12::JSONB
+       )
        RETURNING ${SALE_LINE_SELECT}`,
       [
         input.tenantId,
@@ -1410,6 +1446,7 @@ export class V0SaleOrderRepository {
         input.quantity,
         input.lineDiscountAmount,
         input.lineTotalAmount,
+        input.lineTotalKhrSnapshot ?? null,
         JSON.stringify(input.modifierSnapshot ?? []),
       ]
     );

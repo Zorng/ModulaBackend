@@ -67,6 +67,10 @@ export class V0OperationalNotificationService {
               revision: `operationalNotification:${notification.id}:created`,
               data: {
                 notificationId: notification.id,
+                tenantId: notification.tenant_id,
+                tenantName: notification.tenant_name,
+                branchId: notification.branch_id,
+                branchName: notification.branch_name,
                 type: notification.type,
                 subjectType: notification.subject_type,
                 subjectId: notification.subject_id,
@@ -87,8 +91,6 @@ export class V0OperationalNotificationService {
       await Promise.all(
         input.recipientAccountIds.map(async (accountId) => {
           const unreadCount = await this.repo.getUnreadCount({
-            tenantId: input.tenantId,
-            branchId: input.branchId,
             recipientAccountId: accountId,
           });
           unreadCountByAccountId.set(accountId, unreadCount);
@@ -100,6 +102,8 @@ export class V0OperationalNotificationService {
         recipientAccountIds: input.recipientAccountIds,
         notification: {
           id: notification.id,
+          tenantName: notification.tenant_name,
+          branchName: notification.branch_name,
           type: notification.type,
           subjectType: notification.subject_type,
           subjectId: notification.subject_id,
@@ -117,16 +121,12 @@ export class V0OperationalNotificationService {
 
   subscribeRealtime(
     input: {
-      tenantId: string;
-      branchId: string;
       recipientAccountId: string;
     },
     listener: (event: V0OperationalNotificationRealtimeEvent) => void
   ): () => void {
     return this.realtime.subscribe(
       {
-        tenantId: input.tenantId,
-        branchId: input.branchId,
         accountId: input.recipientAccountId,
       },
       listener
@@ -134,9 +134,9 @@ export class V0OperationalNotificationService {
   }
 
   listInbox(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
+    tenantId: string | null;
+    branchId: string | null;
     unreadOnly: boolean;
     type: string | null;
     limit: number;
@@ -145,7 +145,9 @@ export class V0OperationalNotificationService {
     OffsetPaginatedResult<{
       id: string;
       tenantId: string;
+      tenantName: string;
       branchId: string;
+      branchName: string | null;
       type: string;
       subjectType: string;
       subjectId: string;
@@ -162,16 +164,13 @@ export class V0OperationalNotificationService {
   }
 
   getUnreadCount(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
+    tenantId?: string | null;
   }): Promise<number> {
     return this.repo.getUnreadCount(input);
   }
 
   getInboxItem(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
     notificationId: string;
   }): Promise<V0OperationalNotificationInboxRow | null> {
@@ -179,16 +178,14 @@ export class V0OperationalNotificationService {
   }
 
   async markRead(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
     notificationId: string;
   }): Promise<Date | null> {
     const updated = await this.repo.markRead(input);
     if (updated && this.syncRepo) {
       await this.syncRepo.appendChange({
-        tenantId: input.tenantId,
-        branchId: input.branchId,
+        tenantId: updated.tenant_id,
+        branchId: updated.branch_id,
         accountId: input.recipientAccountId,
         moduleKey: "operationalNotification",
         entityType: "operational_notification",
@@ -207,9 +204,8 @@ export class V0OperationalNotificationService {
   }
 
   markAllRead(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
+    tenantId?: string | null;
   }): Promise<number> {
     return this.markAllReadWithSync(input);
   }
@@ -244,17 +240,16 @@ export class V0OperationalNotificationService {
   }
 
   private async markAllReadWithSync(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
+    tenantId?: string | null;
   }): Promise<number> {
     const updatedRows = await this.repo.markAllRead(input);
     if (updatedRows.length > 0 && this.syncRepo) {
       await Promise.all(
         updatedRows.map((row) =>
           this.syncRepo!.appendChange({
-            tenantId: input.tenantId,
-            branchId: input.branchId,
+            tenantId: row.tenant_id,
+            branchId: row.branch_id,
             accountId: input.recipientAccountId,
             moduleKey: "operationalNotification",
             entityType: "operational_notification",
@@ -275,9 +270,9 @@ export class V0OperationalNotificationService {
   }
 
   private async listInboxWithMeta(input: {
-    tenantId: string;
-    branchId: string;
     recipientAccountId: string;
+    tenantId: string | null;
+    branchId: string | null;
     unreadOnly: boolean;
     type: string | null;
     limit: number;
@@ -286,7 +281,9 @@ export class V0OperationalNotificationService {
     OffsetPaginatedResult<{
       id: string;
       tenantId: string;
+      tenantName: string;
       branchId: string;
+      branchName: string | null;
       type: string;
       subjectType: string;
       subjectId: string;
@@ -316,7 +313,9 @@ function mapInboxItem(row: V0OperationalNotificationInboxRow) {
   return {
     id: row.id,
     tenantId: row.tenant_id,
+    tenantName: row.tenant_name,
     branchId: row.branch_id,
+    branchName: row.branch_name,
     type: row.type,
     subjectType: row.subject_type,
     subjectId: row.subject_id,

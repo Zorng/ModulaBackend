@@ -1,6 +1,4 @@
 type Scope = {
-  tenantId: string;
-  branchId: string;
   accountId: string;
 };
 
@@ -9,7 +7,9 @@ export type NotificationCreatedRealtimeEvent = {
   data: {
     notificationId: string;
     tenantId: string;
+    tenantName: string;
     branchId: string;
+    branchName: string | null;
     notificationType: string;
     subjectType: string;
     subjectId: string;
@@ -52,6 +52,8 @@ export class V0OperationalNotificationRealtimeBroker {
     recipientAccountIds: readonly string[];
     notification: {
       id: string;
+      tenantName: string;
+      branchName: string | null;
       type: string;
       subjectType: string;
       subjectId: string;
@@ -64,8 +66,6 @@ export class V0OperationalNotificationRealtimeBroker {
   }): void {
     for (const accountId of input.recipientAccountIds) {
       const key = buildScopeKey({
-        tenantId: input.tenantId,
-        branchId: input.branchId,
         accountId,
       });
       const listeners = this.listenersByScope.get(key);
@@ -79,7 +79,9 @@ export class V0OperationalNotificationRealtimeBroker {
         data: {
           notificationId: input.notification.id,
           tenantId: input.tenantId,
+          tenantName: input.notification.tenantName,
           branchId: input.branchId,
+          branchName: input.notification.branchName,
           notificationType: input.notification.type,
           subjectType: input.notification.subjectType,
           subjectId: input.notification.subjectId,
@@ -99,5 +101,5 @@ export class V0OperationalNotificationRealtimeBroker {
 }
 
 function buildScopeKey(scope: Scope): string {
-  return `${scope.tenantId}:${scope.branchId}:${scope.accountId}`;
+  return scope.accountId;
 }

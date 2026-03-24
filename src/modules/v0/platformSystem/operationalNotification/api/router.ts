@@ -4,8 +4,6 @@ import { V0OperationalNotificationService } from "../app/service.js";
 
 type ActorScope = {
   accountId: string;
-  tenantId: string;
-  branchId: string;
 };
 
 export class V0OperationalNotificationError extends Error {
@@ -26,16 +24,18 @@ export function createV0OperationalNotificationRouter(
 
   router.get("/inbox", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
-      const actor = assertActorScope(req);
+      const actor = assertActorAccountScope(req);
       const limit = normalizeLimit(req.query?.limit);
       const offset = normalizeOffset(req.query?.offset);
       const unreadOnly = normalizeBoolean(req.query?.unreadOnly);
       const type = normalizeOptionalString(req.query?.type);
+      const tenantId = normalizeOptionalUuid(req.query?.tenantId, "tenantId");
+      const branchId = normalizeOptionalUuid(req.query?.branchId, "branchId");
 
       const data = await service.listInbox({
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
         recipientAccountId: actor.accountId,
+        tenantId,
+        branchId,
         unreadOnly,
         type,
         limit,
@@ -50,10 +50,8 @@ export function createV0OperationalNotificationRouter(
 
   router.get("/unread-count", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
-      const actor = assertActorScope(req);
+      const actor = assertActorAccountScope(req);
       const unreadCount = await service.getUnreadCount({
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
         recipientAccountId: actor.accountId,
       });
       res.status(200).json({
@@ -67,12 +65,10 @@ export function createV0OperationalNotificationRouter(
 
   router.get("/stream", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
-      const actor = assertActorScope(req);
+      const actor = assertActorAccountScope(req);
       startSse(res);
 
       const unreadCount = await service.getUnreadCount({
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
         recipientAccountId: actor.accountId,
       });
       writeSse(res, "ready", {
@@ -82,8 +78,6 @@ export function createV0OperationalNotificationRouter(
 
       const unsubscribe = service.subscribeRealtime(
         {
-          tenantId: actor.tenantId,
-          branchId: actor.branchId,
           recipientAccountId: actor.accountId,
         },
         (event) => {
@@ -112,12 +106,10 @@ export function createV0OperationalNotificationRouter(
 
   router.get("/:notificationId", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
-      const actor = assertActorScope(req);
+      const actor = assertActorAccountScope(req);
       const notificationId = assertUuid(req.params.notificationId, "notificationId");
 
       const item = await service.getInboxItem({
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
         recipientAccountId: actor.accountId,
         notificationId,
       });
@@ -142,12 +134,10 @@ export function createV0OperationalNotificationRouter(
     requireV0Auth,
     async (req: V0AuthRequest, res: Response) => {
       try {
-        const actor = assertActorScope(req);
+        const actor = assertActorAccountScope(req);
         const notificationId = assertUuid(req.params.notificationId, "notificationId");
 
         const readAt = await service.markRead({
-          tenantId: actor.tenantId,
-          branchId: actor.branchId,
           recipientAccountId: actor.accountId,
           notificationId,
         });
@@ -174,10 +164,8 @@ export function createV0OperationalNotificationRouter(
 
   router.post("/read-all", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
-      const actor = assertActorScope(req);
+      const actor = assertActorAccountScope(req);
       const updatedCount = await service.markAllRead({
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
         recipientAccountId: actor.accountId,
       });
       res.status(200).json({
@@ -210,7 +198,7 @@ function writeSse(res: Response, event: string, data: Record<string, unknown>): 
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-function assertActorScope(req: V0AuthRequest): ActorScope {
+function assertActorAccountScope(req: V0AuthRequest): ActorScope {
   const actor = req.v0Auth;
   if (!actor) {
     throw new V0OperationalNotificationError(
@@ -220,15 +208,15 @@ function assertActorScope(req: V0AuthRequest): ActorScope {
     );
   }
   const accountId = normalizeRequiredString(actor.accountId, "INVALID_ACCESS_TOKEN");
-  const tenantId = normalizeRequiredString(actor.tenantId, "TENANT_CONTEXT_REQUIRED");
-  const branchId = normalizeRequiredString(actor.branchId, "BRANCH_CONTEXT_REQUIRED");
-  return { accountId, tenantId, branchId };
+  return { accountId };
 }
 
 function mapInboxItem(row: {
   id: string;
   tenant_id: string;
+  tenant_name: string;
   branch_id: string;
+  branch_name: string | null;
   type: string;
   subject_type: string;
   subject_id: string;
@@ -242,7 +230,9 @@ function mapInboxItem(row: {
   return {
     id: row.id,
     tenantId: row.tenant_id,
+    tenantName: row.tenant_name,
     branchId: row.branch_id,
+    branchName: row.branch_name,
     type: row.type,
     subjectType: row.subject_type,
     subjectId: row.subject_id,
@@ -311,6 +301,21 @@ function normalizeOffset(value: unknown): number {
 function assertUuid(value: unknown, fieldName: string): string {
   const normalized = normalizeOptionalString(value);
   if (!normalized || !UUID_PATTERN.test(normalized)) {
+    throw new V0OperationalNotificationError(
+      422,
+      "NOTIFICATION_VALIDATION_FAILED",
+      `${fieldName} must be a valid UUID`
+    );
+  }
+  return normalized;
+}
+
+function normalizeOptionalUuid(value: unknown, fieldName: string): string | null {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return null;
+  }
+  if (!UUID_PATTERN.test(normalized)) {
     throw new V0OperationalNotificationError(
       422,
       "NOTIFICATION_VALIDATION_FAILED",

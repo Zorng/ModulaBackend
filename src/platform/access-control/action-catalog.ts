@@ -797,34 +797,28 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     entitlementKey: "core.pos",
   },
   "operationalNotification.inbox.list": {
-    scope: "BRANCH",
+    scope: "ACCOUNT",
     effect: "READ",
-    entitlementKey: "core.pos",
   },
   "operationalNotification.inbox.stream": {
-    scope: "BRANCH",
+    scope: "ACCOUNT",
     effect: "READ",
-    entitlementKey: "core.pos",
   },
   "operationalNotification.inbox.unreadCount": {
-    scope: "BRANCH",
+    scope: "ACCOUNT",
     effect: "READ",
-    entitlementKey: "core.pos",
   },
   "operationalNotification.read": {
-    scope: "BRANCH",
+    scope: "ACCOUNT",
     effect: "READ",
-    entitlementKey: "core.pos",
   },
   "operationalNotification.read.mark": {
-    scope: "BRANCH",
+    scope: "ACCOUNT",
     effect: "WRITE",
-    entitlementKey: "core.pos",
   },
   "operationalNotification.read.markAll": {
-    scope: "BRANCH",
+    scope: "ACCOUNT",
     effect: "WRITE",
-    entitlementKey: "core.pos",
   },
   "pushSync.apply": {
     scope: "BRANCH",

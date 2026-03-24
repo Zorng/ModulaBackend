@@ -542,6 +542,10 @@ export class V0SaleOrderService {
         quantity: line.quantity,
         lineDiscountAmount: 0,
         lineTotalAmount: line.line_subtotal,
+        lineTotalKhrSnapshot: computeSaleLineKhrSnapshot({
+          lineTotalAmountUsd: line.line_subtotal,
+          checkout,
+        }),
         modifierSnapshot: line.modifier_snapshot,
       });
       saleLines.push(saleLine);
@@ -777,6 +781,10 @@ export class V0SaleOrderService {
         quantity: line.quantity,
         lineDiscountAmount: 0,
         lineTotalAmount: line.line_subtotal,
+        lineTotalKhrSnapshot: computeSaleLineKhrSnapshot({
+          lineTotalAmountUsd: line.line_subtotal,
+          checkout,
+        }),
         modifierSnapshot: line.modifier_snapshot,
       });
       saleLines.push(saleLine);
@@ -1625,6 +1633,10 @@ export class V0SaleOrderService {
         quantity: orderLine.quantity,
         lineDiscountAmount: 0,
         lineTotalAmount: orderLine.line_subtotal,
+        lineTotalKhrSnapshot: computeSaleLineKhrSnapshot({
+          lineTotalAmountUsd: orderLine.line_subtotal,
+          checkout: input.checkout,
+        }),
         modifierSnapshot: orderLine.modifier_snapshot,
       });
       saleLines.push(saleLine);
@@ -2141,26 +2153,50 @@ function parseCheckoutBody(body: Record<string, unknown>, lines: V0OrderTicketLi
     "grandTotalUsd"
   );
 
-  const subtotalKhr = parseNumberOrDefault(
+  const rawSubtotalKhr = parseNumberOrDefault(
     body.subtotalKhr,
     roundMoney(subtotalUsd * saleFxRateKhrPerUsd),
     "subtotalKhr"
   );
-  const discountKhr = parseNumberOrDefault(
+  const rawDiscountKhr = parseNumberOrDefault(
     body.discountKhr,
     roundMoney(discountUsd * saleFxRateKhrPerUsd),
     "discountKhr"
   );
-  const vatKhr = parseNumberOrDefault(
+  const rawVatKhr = parseNumberOrDefault(
     body.vatKhr,
     roundMoney(vatUsd * saleFxRateKhrPerUsd),
     "vatKhr"
   );
-  const grandTotalKhr = parseNumberOrDefault(
+  const rawGrandTotalKhr = parseNumberOrDefault(
     body.grandTotalKhr,
     roundMoney(grandTotalUsd * saleFxRateKhrPerUsd),
     "grandTotalKhr"
   );
+  const subtotalKhr = applySaleKhrRounding({
+    value: rawSubtotalKhr,
+    enabled: saleKhrRoundingEnabled,
+    mode: saleKhrRoundingMode,
+    granularity: saleKhrRoundingGranularity,
+  });
+  const discountKhr = applySaleKhrRounding({
+    value: rawDiscountKhr,
+    enabled: saleKhrRoundingEnabled,
+    mode: saleKhrRoundingMode,
+    granularity: saleKhrRoundingGranularity,
+  });
+  const vatKhr = applySaleKhrRounding({
+    value: rawVatKhr,
+    enabled: saleKhrRoundingEnabled,
+    mode: saleKhrRoundingMode,
+    granularity: saleKhrRoundingGranularity,
+  });
+  const grandTotalKhr = applySaleKhrRounding({
+    value: rawGrandTotalKhr,
+    enabled: saleKhrRoundingEnabled,
+    mode: saleKhrRoundingMode,
+    granularity: saleKhrRoundingGranularity,
+  });
 
   const tenderCurrency = parseTenderCurrency(body.tenderCurrency);
   const defaultTenderAmount = tenderCurrency === "USD" ? grandTotalUsd : grandTotalKhr;
@@ -2496,6 +2532,43 @@ function parseOptionalPositiveInteger(input: unknown, field: string): number | n
     );
   }
   return Math.floor(value);
+}
+
+function applySaleKhrRounding(input: {
+  value: number;
+  enabled: boolean;
+  mode: "NEAREST" | "UP" | "DOWN";
+  granularity: 100 | 1000;
+}): number {
+  if (!input.enabled) {
+    return roundMoney(input.value);
+  }
+  const normalized = input.value / input.granularity;
+  const roundedUnits =
+    input.mode === "UP"
+      ? Math.ceil(normalized)
+      : input.mode === "DOWN"
+        ? Math.floor(normalized)
+        : Math.round(normalized);
+  return roundMoney(roundedUnits * input.granularity);
+}
+
+function computeSaleLineKhrSnapshot(input: {
+  lineTotalAmountUsd: number;
+  checkout: Pick<
+    CheckoutInput,
+    | "saleFxRateKhrPerUsd"
+    | "saleKhrRoundingEnabled"
+    | "saleKhrRoundingMode"
+    | "saleKhrRoundingGranularity"
+  >;
+}): number {
+  return applySaleKhrRounding({
+    value: roundMoney(input.lineTotalAmountUsd * input.checkout.saleFxRateKhrPerUsd),
+    enabled: input.checkout.saleKhrRoundingEnabled,
+    mode: input.checkout.saleKhrRoundingMode,
+    granularity: input.checkout.saleKhrRoundingGranularity,
+  });
 }
 
 function requireUuid(input: unknown, field: string): string {

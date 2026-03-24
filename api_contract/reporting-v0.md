@@ -15,6 +15,8 @@ Implementation status:
   - sales summary + drill-down: available
   - restock spend summary + drill-down: available
   - attendance summary + drill-down: contract locked, returns `REPORT_NOT_AVAILABLE` in current baseline
+- Sales currency/category consistency rollout decisions are tracked in:
+  - `_refactor-artifact/05-pos/09_reporting-sales-currency-category-consistency-v0.md`
 
 ## Conventions
 
@@ -83,50 +85,58 @@ type SalesSummaryReport = {
   scope: ReportScopeEcho;
   confirmed: {
     transactionCount: number; // FINALIZED only
-    totalGrandUsd: number;
-    totalGrandKhr: number;
-    totalVatUsd: number;
-    totalVatKhr: number;
-    totalDiscountUsd: number;
-    totalDiscountKhr: number;
-    averageTicketUsd: number | null;
-    averageTicketKhr: number | null;
+    totalGrandUsd: number; // stored v0_sales grand_total_usd aggregate
+    totalGrandKhr: number; // stored v0_sales grand_total_khr aggregate
+    totalVatUsd: number; // stored v0_sales vat_usd aggregate
+    totalVatKhr: number; // stored v0_sales vat_khr aggregate
+    totalDiscountUsd: number; // stored v0_sales discount_usd aggregate
+    totalDiscountKhr: number; // stored v0_sales discount_khr aggregate
+    averageTicketUsd: number | null; // totalGrandUsd / transactionCount
+    averageTicketKhr: number | null; // totalGrandKhr / transactionCount
     totalItemsSold: number;
   };
   paymentBreakdown: Array<{
     paymentMethod: "CASH" | "KHQR";
     transactionCount: number;
-    totalUsd: number;
-    totalKhr: number;
+    totalUsd: number; // stored v0_sales grand_total_usd aggregate within paymentMethod
+    totalKhr: number; // stored v0_sales grand_total_khr aggregate within paymentMethod
   }>;
   cashTenderBreakdown: Array<{
     tenderCurrency: "USD" | "KHR";
     transactionCount: number;
-    totalTenderAmount: number;
+    totalTenderAmount: number; // stored v0_sales tender_amount aggregate for CASH sales in this tenderCurrency only
   }>;
   saleTypeBreakdown: Array<{
     saleType: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
     transactionCount: number;
-    totalUsd: number;
-    totalKhr: number;
+    totalUsd: number; // stored v0_sales grand_total_usd aggregate within saleType
+    totalKhr: number; // stored v0_sales grand_total_khr aggregate within saleType
     totalItemsSold: number;
   }>;
   topItems: Array<{
     menuItemId: string;
     itemNameSnapshot: string;
     quantity: number;
-    revenueUsd: number;
-    revenueKhr: number;
+    revenueUsd: number; // stored v0_sale_lines line_total_amount aggregate
+    revenueKhr: number; // stored sale-line line_total_khr_snapshot aggregate; historical rows may fall back to FX-derived runtime value until backfill decision lands
   }>;
   categoryBreakdown: Array<{
-    categoryNameSnapshot: string; // includes "Uncategorized"
+    categoryNameSnapshot: string; // groups by sale-line category snapshot; includes "Uncategorized"
     quantity: number;
-    revenueUsd: number;
-    revenueKhr: number;
+    revenueUsd: number; // stored v0_sale_lines line_total_amount aggregate
+    revenueKhr: number; // stored sale-line line_total_khr_snapshot aggregate; historical rows may fall back to FX-derived runtime value until backfill decision lands
   }>;
   exceptions: {
-    voidPending: { count: number; totalUsd: number; totalKhr: number };
-    voided: { count: number; totalUsd: number; totalKhr: number };
+    voidPending: {
+      count: number;
+      totalUsd: number; // stored v0_sales grand_total_usd aggregate for VOID_PENDING
+      totalKhr: number; // stored v0_sales grand_total_khr aggregate for VOID_PENDING
+    };
+    voided: {
+      count: number;
+      totalUsd: number; // stored v0_sales grand_total_usd aggregate for VOIDED
+      totalKhr: number; // stored v0_sales grand_total_khr aggregate for VOIDED
+    };
   };
 };
 
@@ -138,14 +148,36 @@ type SalesDrillDownItem = {
   saleType: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
   finalizedAt: string | null; // ISO datetime
   totalItems: number;
-  grandTotalUsd: number;
-  grandTotalKhr: number;
-  vatUsd: number;
-  vatKhr: number;
-  discountUsd: number;
-  discountKhr: number;
+  grandTotalUsd: number; // stored v0_sales grand_total_usd snapshot
+  grandTotalKhr: number; // stored v0_sales grand_total_khr snapshot
+  vatUsd: number; // stored v0_sales vat_usd snapshot
+  vatKhr: number; // stored v0_sales vat_khr snapshot
+  discountUsd: number; // stored v0_sales discount_usd snapshot
+  discountKhr: number; // stored v0_sales discount_khr snapshot
 };
 ```
+
+### Sales Currency Semantics (Locked)
+
+Use these rules when interpreting the response:
+
+- `confirmed.*`, `paymentBreakdown.*`, `saleTypeBreakdown.*`, `exceptions.*`, and drill-down monetary fields are sale-value aggregates/snapshots, not tender-collection aggregates.
+- stored sale-level KHR snapshot fields (`grandTotalKhr`, `vatKhr`, `discountKhr`, related aggregates) now reflect the persisted sale rounding policy when `saleKhrRoundingEnabled = true`.
+- `cashTenderBreakdown` is the only object that represents tender-collected amounts separated by tender currency.
+- `cashTenderBreakdown.totalTenderAmount` is not converted across currencies.
+  - `USD` rows are total USD cash tender received for cash-finalized sales tendered in USD.
+  - `KHR` rows are total KHR cash tender received for cash-finalized sales tendered in KHR.
+- `topItems.revenueUsd` and `categoryBreakdown.revenueUsd` are aggregated from stored sale-line USD totals.
+- `topItems.revenueKhr` and `categoryBreakdown.revenueKhr` now read the stored line-level KHR snapshot when present.
+- v0 baseline rollout decision: no automatic historical backfill is performed for old line-level KHR snapshots.
+- Historical rows without `lineTotalKhrSnapshot` therefore continue to fall back to report-time FX derivation from USD line totals using each sale's `saleFxRateKhrPerUsd`.
+- Therefore, `revenueKhr` in `topItems` and `categoryBreakdown` is:
+  - not a tender-collected amount
+  - intended to reflect the canonical stored line-level KHR snapshot for new rows
+  - but may remain mixed for older historical rows because v0 does not auto-backfill them
+- `categoryNameSnapshot` is sourced from the stored sale-line category snapshot.
+  - v0 baseline rollout decision: no automatic historical category snapshot backfill is performed.
+  - historical rows created before the sale-line category snapshot fix may therefore still fall through to `"Uncategorized"`.
 
 ### 1) Sales summary
 
@@ -217,7 +249,10 @@ Success `200`:
 Rules:
 - Confirmed totals are aggregated from `FINALIZED` only.
 - `VOID_PENDING` and `VOIDED` are shown separately in `exceptions`.
-- Aggregations use stored sale snapshots (no retroactive recompute from current menu/policy).
+- `confirmed`, `paymentBreakdown`, `saleTypeBreakdown`, `exceptions`, and drill-down monetary fields use stored sale snapshots (no retroactive recompute from current menu/policy).
+- `cashTenderBreakdown` is tender-separated and should not be interpreted as the same shape as sale-value totals.
+- `topItems.revenueKhr` and `categoryBreakdown.revenueKhr` use stored sale-line `lineTotalKhrSnapshot` for new rows, with historical FX fallback for older rows where that snapshot is absent.
+- `categoryBreakdown` groups by stored sale-line category snapshot, but historical rows written before the snapshot fix may still appear as `"Uncategorized"`.
 
 ### 2) Sales drill-down
 

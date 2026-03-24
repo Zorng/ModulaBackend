@@ -26,6 +26,14 @@ export async function authorizeRoute(input: {
     return deny(500, "ACCESS_CONTROL_CONFIG_ERROR");
   }
 
+  if (action.scope === "GLOBAL") {
+    return { allow: true };
+  }
+
+  if (action.scope === "ACCOUNT") {
+    return { allow: true };
+  }
+
   const accountId = input.claims.accountId;
   const tenantId = await resolveTenantId({
     route: input.route,
@@ -33,10 +41,6 @@ export async function authorizeRoute(input: {
     claims: input.claims,
     db: input.db,
   });
-
-  if (action.scope === "GLOBAL") {
-    return { allow: true };
-  }
 
   if (!tenantId) {
     return deny(403, "TENANT_CONTEXT_REQUIRED");

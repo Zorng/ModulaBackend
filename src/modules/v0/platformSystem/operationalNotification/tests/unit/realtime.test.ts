@@ -2,15 +2,13 @@ import { describe, expect, it } from "@jest/globals";
 import { V0OperationalNotificationRealtimeBroker } from "../../app/realtime.js";
 
 describe("V0OperationalNotificationRealtimeBroker", () => {
-  it("publishes created notifications only to matching scope subscribers", () => {
+  it("publishes created notifications only to matching account subscribers across tenants", () => {
     const broker = new V0OperationalNotificationRealtimeBroker();
     const receivedByManager: string[] = [];
     const receivedByCashier: string[] = [];
 
     broker.subscribe(
       {
-        tenantId: "tenant-1",
-        branchId: "branch-1",
         accountId: "manager-1",
       },
       (event) => {
@@ -20,8 +18,6 @@ describe("V0OperationalNotificationRealtimeBroker", () => {
 
     broker.subscribe(
       {
-        tenantId: "tenant-1",
-        branchId: "branch-1",
         accountId: "cashier-1",
       },
       (event) => {
@@ -35,6 +31,8 @@ describe("V0OperationalNotificationRealtimeBroker", () => {
       recipientAccountIds: ["manager-1"],
       notification: {
         id: "notif-1",
+        tenantName: "Tenant One",
+        branchName: "Main Branch",
         type: "CASH_SESSION_CLOSED",
         subjectType: "CASH_SESSION",
         subjectId: "session-1",
@@ -48,5 +46,26 @@ describe("V0OperationalNotificationRealtimeBroker", () => {
 
     expect(receivedByManager).toEqual(["notif-1"]);
     expect(receivedByCashier).toEqual([]);
+
+    broker.publishCreated({
+      tenantId: "tenant-2",
+      branchId: "branch-9",
+      recipientAccountIds: ["manager-1"],
+      notification: {
+        id: "notif-2",
+        tenantName: "Tenant Two",
+        branchName: "North Branch",
+        type: "VOID_APPROVAL_NEEDED",
+        subjectType: "SALE",
+        subjectId: "sale-2",
+        title: "Void approval needed",
+        body: "Sale requires approval",
+        payload: { saleId: "sale-2" },
+        createdAt: new Date().toISOString(),
+      },
+      unreadCountByAccountId: new Map([["manager-1", 4]]),
+    });
+
+    expect(receivedByManager).toEqual(["notif-1", "notif-2"]);
   });
 });

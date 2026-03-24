@@ -13,6 +13,8 @@ import {
 import { bootstrapV0AuthModule } from "../modules/v0/auth/index.js";
 import { bootstrapV0OrgAccountModule } from "../modules/v0/orgAccount/index.js";
 import { bootstrapV0ReportingModule } from "../modules/v0/reporting/index.js";
+import { bootstrapV0CashSessionModule } from "../modules/v0/posOperation/cashSession/index.js";
+import { bootstrapV0SaleOrderModule } from "../modules/v0/posOperation/saleOrder/index.js";
 import { createAccessControlHook } from "../platform/http/middleware/access-control-hook.js";
 
 function uniquePhone(): string {
@@ -383,6 +385,73 @@ async function insertSaleLine(input: {
   );
 }
 
+async function openCashSession(input: {
+  pool: Pool;
+  tenantId: string;
+  branchId: string;
+  accountId: string;
+}): Promise<string> {
+  const inserted = await input.pool.query<{ id: string }>(
+    `INSERT INTO v0_cash_sessions (
+       tenant_id,
+       branch_id,
+       opened_by_account_id,
+       status,
+       opening_float_usd,
+       opening_float_khr
+     )
+     VALUES ($1, $2, $3, 'OPEN', 50, 0)
+     ON CONFLICT (tenant_id, branch_id)
+     WHERE status = 'OPEN'
+     DO NOTHING
+     RETURNING id`,
+    [input.tenantId, input.branchId, input.accountId]
+  );
+  if (inserted.rows[0]?.id) {
+    return inserted.rows[0].id;
+  }
+  const existing = await input.pool.query<{ id: string }>(
+    `SELECT id
+     FROM v0_cash_sessions
+     WHERE tenant_id = $1
+       AND branch_id = $2
+       AND status = 'OPEN'
+     LIMIT 1`,
+    [input.tenantId, input.branchId]
+  );
+  const sessionId = existing.rows[0]?.id;
+  if (!sessionId) {
+    throw new Error("failed to open cash session for test setup");
+  }
+  return sessionId;
+}
+
+async function seedMenuItem(input: {
+  pool: Pool;
+  tenantId: string;
+  branchId: string;
+  name: string;
+  basePrice: number;
+  categoryId?: string | null;
+}): Promise<string> {
+  const inserted = await input.pool.query<{ id: string }>(
+    `INSERT INTO v0_menu_items (tenant_id, name, base_price, category_id, status)
+     VALUES ($1, $2, $3, $4, 'ACTIVE')
+     RETURNING id`,
+    [input.tenantId, input.name, input.basePrice, input.categoryId ?? null]
+  );
+  const menuItemId = inserted.rows[0]?.id;
+  if (!menuItemId) {
+    throw new Error("failed to seed menu item");
+  }
+  await input.pool.query(
+    `INSERT INTO v0_menu_item_branch_visibility (tenant_id, menu_item_id, branch_id)
+     VALUES ($1, $2, $3)`,
+    [input.tenantId, menuItemId, input.branchId]
+  );
+  return menuItemId;
+}
+
 describe("v0 reporting integration", () => {
   let pool: Pool;
   let app: express.Express;
@@ -398,6 +467,8 @@ describe("v0 reporting integration", () => {
     app.use("/v0", createAccessControlHook({ db: pool, jwtSecret: process.env.JWT_SECRET }));
     app.use("/v0/auth", bootstrapV0AuthModule(pool).router);
     app.use("/v0/org", bootstrapV0OrgAccountModule(pool).router);
+    app.use("/v0/cash", bootstrapV0CashSessionModule(pool).router);
+    app.use("/v0", bootstrapV0SaleOrderModule(pool).router);
     app.use("/v0/reports", bootstrapV0ReportingModule(pool).router);
   });
 
@@ -610,6 +681,247 @@ describe("v0 reporting integration", () => {
       summaryRes.body.data.categoryBreakdown as Array<{ categoryNameSnapshot: string }>
     ).find((item) => item.categoryNameSnapshot === "Category Snapshot Name");
     expect(categoryEntry).toBeTruthy();
+  });
+
+  it("uses sale-line category snapshots from real checkout writes in category breakdown", async () => {
+    const setup = await setupOwnerTenantWithTwoBranches({
+      app,
+      pool,
+      tenantName: `Reporting Live Category Tenant ${uniqueSuffix()}`,
+    });
+
+    const categoryResult = await pool.query<{ id: string }>(
+      `INSERT INTO v0_menu_categories (tenant_id, name, status)
+       VALUES ($1, $2, 'ACTIVE')
+       RETURNING id`,
+      [setup.tenantId, "Coffee"]
+    );
+    const categoryId = categoryResult.rows[0]?.id;
+    expect(categoryId).toBeTruthy();
+
+    const menuItemId = await seedMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchAId,
+      name: `Category Latte ${uniqueSuffix()}`,
+      basePrice: 3.5,
+      categoryId,
+    });
+
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchAId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const finalizeRes = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .set("Idempotency-Key", `reporting-category-checkout-${uniqueSuffix()}`)
+      .send({
+        items: [{ menuItemId, quantity: 2 }],
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+      });
+    expect(finalizeRes.status).toBe(200);
+    expect(finalizeRes.body.success).toBe(true);
+
+    const persistedSaleLines = await pool.query<{
+      menu_category_id_snapshot: string | null;
+      menu_category_name_snapshot: string | null;
+    }>(
+      `SELECT menu_category_id_snapshot, menu_category_name_snapshot
+       FROM v0_sale_lines
+       WHERE tenant_id = $1
+         AND sale_id = $2`,
+      [setup.tenantId, finalizeRes.body.data.id as string]
+    );
+    expect(persistedSaleLines.rows).toHaveLength(1);
+    expect(persistedSaleLines.rows[0]).toMatchObject({
+      menu_category_id_snapshot: categoryId,
+      menu_category_name_snapshot: "Coffee",
+    });
+
+    const summaryRes = await request(app)
+      .get("/v0/reports/sales/summary")
+      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .query({
+        window: "custom",
+        from: "2000-01-01",
+        to: "2099-12-31",
+        branchScope: "BRANCH",
+      });
+    expect(summaryRes.status).toBe(200);
+    expect(summaryRes.body.success).toBe(true);
+
+    const categoryBreakdown = summaryRes.body.data.categoryBreakdown as Array<{
+      categoryNameSnapshot: string;
+      quantity: number;
+    }>;
+    const coffeeEntry = categoryBreakdown.find(
+      (item) => item.categoryNameSnapshot === "Coffee"
+    );
+    expect(coffeeEntry).toBeTruthy();
+    expect(coffeeEntry?.quantity).toBe(2);
+  });
+
+  it("uses rounded persisted KHR sale snapshots in sales summary and drill-down", async () => {
+    const setup = await setupOwnerTenantWithTwoBranches({
+      app,
+      pool,
+      tenantName: `Reporting Rounded KHR Tenant ${uniqueSuffix()}`,
+    });
+
+    const menuItemId = await seedMenuItem({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchAId,
+      name: `Rounded Latte ${uniqueSuffix()}`,
+      basePrice: 3.5,
+    });
+
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchAId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const finalizeRes = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .set("Idempotency-Key", `reporting-rounded-khr-${uniqueSuffix()}`)
+      .send({
+        items: [{ menuItemId, quantity: 1 }],
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+        saleFxRateKhrPerUsd: 4103,
+        saleKhrRoundingEnabled: true,
+        saleKhrRoundingMode: "NEAREST",
+        saleKhrRoundingGranularity: 100,
+      });
+    expect(finalizeRes.status).toBe(200);
+    expect(finalizeRes.body.success).toBe(true);
+    expect(finalizeRes.body.data.grandTotalKhr).toBe(14400);
+
+    const summaryRes = await request(app)
+      .get("/v0/reports/sales/summary")
+      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .query({
+        window: "custom",
+        from: "2000-01-01",
+        to: "2099-12-31",
+        branchScope: "BRANCH",
+      });
+    expect(summaryRes.status).toBe(200);
+    expect(summaryRes.body.success).toBe(true);
+    expect(summaryRes.body.data.confirmed.transactionCount).toBe(1);
+    expect(summaryRes.body.data.confirmed.totalGrandUsd).toBe(3.5);
+    expect(summaryRes.body.data.confirmed.totalGrandKhr).toBe(14400);
+    expect(summaryRes.body.data.topItems).toHaveLength(1);
+    expect(summaryRes.body.data.topItems[0].revenueUsd).toBe(3.5);
+    expect(summaryRes.body.data.topItems[0].revenueKhr).toBe(14400);
+    expect(summaryRes.body.data.categoryBreakdown).toHaveLength(1);
+    expect(summaryRes.body.data.categoryBreakdown[0].revenueUsd).toBe(3.5);
+    expect(summaryRes.body.data.categoryBreakdown[0].revenueKhr).toBe(14400);
+
+    const drillDownRes = await request(app)
+      .get("/v0/reports/sales/drill-down")
+      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .query({
+        window: "custom",
+        from: "2000-01-01",
+        to: "2099-12-31",
+        branchScope: "BRANCH",
+        status: "FINALIZED",
+        limit: 20,
+        offset: 0,
+      });
+    expect(drillDownRes.status).toBe(200);
+    expect(drillDownRes.body.success).toBe(true);
+    expect(drillDownRes.body.data.items).toHaveLength(1);
+    expect(drillDownRes.body.data.items[0].grandTotalKhr).toBe(14400);
+  });
+
+  it("falls back to report-time FX derivation for historical sale lines without KHR snapshots", async () => {
+    const setup = await setupOwnerTenantWithTwoBranches({
+      app,
+      pool,
+      tenantName: `Reporting Historical FX Fallback Tenant ${uniqueSuffix()}`,
+    });
+
+    const saleId = await insertSale({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchAId,
+      finalizedByAccountId: setup.ownerAccountId,
+      status: "FINALIZED",
+      grandTotalUsd: 3,
+      grandTotalKhr: 12300,
+      saleType: "TAKEAWAY",
+    });
+
+    await pool.query(
+      `UPDATE v0_sales
+       SET sale_fx_rate_khr_per_usd = 4101
+       WHERE tenant_id = $1
+         AND id = $2`,
+      [setup.tenantId, saleId]
+    );
+
+    const menuItemId = randomUUID();
+    await insertSaleLine({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchAId,
+      saleId,
+      menuItemId,
+      menuItemNameSnapshot: "Historical Latte Snapshot",
+      menuCategoryNameSnapshot: "Coffee",
+      unitPrice: 3,
+      quantity: 1,
+      lineTotalAmount: 3,
+    });
+
+    const persistedSaleLine = await pool.query<{
+      line_total_khr_snapshot: string | null;
+    }>(
+      `SELECT line_total_khr_snapshot
+       FROM v0_sale_lines
+       WHERE tenant_id = $1
+         AND sale_id = $2`,
+      [setup.tenantId, saleId]
+    );
+    expect(persistedSaleLine.rows).toHaveLength(1);
+    expect(persistedSaleLine.rows[0]?.line_total_khr_snapshot).toBeNull();
+
+    const summaryRes = await request(app)
+      .get("/v0/reports/sales/summary")
+      .set("Authorization", `Bearer ${setup.ownerBranchAToken}`)
+      .query({
+        window: "custom",
+        from: "2000-01-01",
+        to: "2099-12-31",
+        branchScope: "BRANCH",
+      });
+    expect(summaryRes.status).toBe(200);
+    expect(summaryRes.body.success).toBe(true);
+    expect(summaryRes.body.data.confirmed.totalGrandKhr).toBe(12300);
+    expect(summaryRes.body.data.topItems).toHaveLength(1);
+    expect(summaryRes.body.data.topItems[0]).toMatchObject({
+      menuItemId,
+      revenueUsd: 3,
+      revenueKhr: 12303,
+    });
+    expect(summaryRes.body.data.categoryBreakdown).toHaveLength(1);
+    expect(summaryRes.body.data.categoryBreakdown[0]).toMatchObject({
+      categoryNameSnapshot: "Coffee",
+      revenueUsd: 3,
+      revenueKhr: 12303,
+    });
   });
 
   it("enforces role/scope rules for BRANCH vs ALL_BRANCHES and labels frozen branches", async () => {
