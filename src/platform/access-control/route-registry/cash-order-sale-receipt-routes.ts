@@ -206,6 +206,13 @@ export const CASH_ORDER_SALE_RECEIPT_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "GET",
+    pattern: /^\/sales\/void-requests$/,
+    actionKey: "sale.void.request.list",
+    tenantSource: "token",
+    branchSource: "token",
+  },
+  {
+    method: "GET",
     pattern: /^\/sales\/[^/]+$/,
     actionKey: "sale.read",
     tenantSource: "token",

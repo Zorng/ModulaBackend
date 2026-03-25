@@ -29,6 +29,7 @@ export const V0_SALE_ORDER_ACTION_KEYS = {
   saleVoidReject: "sale.void.reject",
   saleVoidExecute: "sale.void.execute",
   saleList: "sale.list",
+  saleVoidRequestList: "sale.void.request.list",
   saleRead: "sale.read",
   saleVoidRequestRead: "sale.void.request.read",
 } as const;

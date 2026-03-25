@@ -527,6 +527,54 @@ function buildCheckoutCartPayload(input: { menuItemId: string; quantity?: number
   };
 }
 
+async function finalizeCashSaleAndRequestVoid(input: {
+  app: express.Express;
+  authToken: string;
+  menuItemId: string;
+  quantity?: number;
+  reason: string;
+}): Promise<{
+  saleId: string;
+  orderId: string;
+  grandTotalUsd: number;
+  grandTotalKhr: number;
+}> {
+  const finalized = await request(input.app)
+    .post("/v0/checkout/cash/finalize")
+    .set("Authorization", `Bearer ${input.authToken}`)
+    .set("Idempotency-Key", `sale-order-void-queue-finalize-${uniqueSuffix()}`)
+    .send({
+      ...buildCheckoutCartPayload({
+        menuItemId: input.menuItemId,
+        quantity: input.quantity,
+      }),
+      saleType: "DINE_IN",
+      tenderCurrency: "USD",
+      cashReceivedTenderAmount: 20,
+    });
+  expect(finalized.status).toBe(200);
+
+  const saleId = finalized.body.data.id as string;
+  const orderId = finalized.body.data.orderId as string;
+  const grandTotalUsd = finalized.body.data.grandTotalUsd as number;
+  const grandTotalKhr = finalized.body.data.grandTotalKhr as number;
+
+  const requested = await request(input.app)
+    .post(`/v0/sales/${saleId}/void/request`)
+    .set("Authorization", `Bearer ${input.authToken}`)
+    .set("Idempotency-Key", `sale-order-void-queue-request-${uniqueSuffix()}`)
+    .send({ reason: input.reason });
+  expect(requested.status).toBe(200);
+  expect(requested.body.data.status).toBe("PENDING");
+
+  return {
+    saleId,
+    orderId,
+    grandTotalUsd,
+    grandTotalKhr,
+  };
+}
+
 describe("v0 sale-order integration", () => {
   let pool: Pool;
   let app: express.Express;
@@ -1676,6 +1724,8 @@ describe("v0 sale-order integration", () => {
             modifierLabels: string[];
           }>;
           checkedOutAt: string | null;
+          saleId: string | null;
+          saleStatus: string | null;
           paymentMethod: string | null;
           manualPaymentClaimId: string | null;
           manualPaymentClaimStatus: string | null;
@@ -1691,6 +1741,8 @@ describe("v0 sale-order integration", () => {
       },
     ]);
     expect(initialOrder?.checkedOutAt ?? null).toBeNull();
+    expect(initialOrder?.saleId ?? null).toBeNull();
+    expect(initialOrder?.saleStatus ?? null).toBeNull();
     expect(initialOrder?.paymentMethod ?? null).toBeNull();
     expect(initialOrder?.manualPaymentClaimId ?? null).toBeNull();
     expect(initialOrder?.manualPaymentClaimStatus ?? null).toBeNull();
@@ -1746,6 +1798,7 @@ describe("v0 sale-order integration", () => {
       });
     expect(directCheckout.status).toBe(200);
     const directCheckoutOrderId = directCheckout.body.data.orderId as string;
+    const directCheckoutSaleId = directCheckout.body.data.id as string;
 
     const completedPlaced = await request(app)
       .post("/v0/orders")
@@ -1800,6 +1853,8 @@ describe("v0 sale-order integration", () => {
       | {
           status: string;
           sourceMode: string;
+          saleId: string | null;
+          saleStatus: string | null;
           paymentMethod: string | null;
         }
       | undefined;
@@ -1807,6 +1862,8 @@ describe("v0 sale-order integration", () => {
       status: "CHECKED_OUT",
       sourceMode: "DIRECT_CHECKOUT",
       fulfillmentStatus: "PENDING",
+      saleId: directCheckoutSaleId,
+      saleStatus: "FINALIZED",
       paymentMethod: "CASH",
     });
 
@@ -1817,6 +1874,172 @@ describe("v0 sale-order integration", () => {
     const checkedOutIds = checkedOutOnly.body.data.items.map((item: { id: string }) => item.id);
     expect(checkedOutIds).toContain(directCheckoutOrderId);
     expect(checkedOutIds).not.toContain(openOrderId);
+  });
+
+  it("lists dedicated void reviewer queue rows with queue metadata and status filters", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const manager = await setupMemberBranchContext({
+      app,
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "MANAGER",
+    });
+    const cashier = await setupMemberBranchContext({
+      app,
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+    });
+
+    const pendingSale = await finalizeCashSaleAndRequestVoid({
+      app,
+      authToken: cashier.branchToken,
+      menuItemId: setup.defaultMenuItemId,
+      reason: "Pending reviewer queue item",
+    });
+    const approvedSale = await finalizeCashSaleAndRequestVoid({
+      app,
+      authToken: cashier.branchToken,
+      menuItemId: setup.defaultMenuItemId,
+      reason: "Approved reviewer queue item",
+    });
+    const rejectedSale = await finalizeCashSaleAndRequestVoid({
+      app,
+      authToken: cashier.branchToken,
+      menuItemId: setup.defaultMenuItemId,
+      reason: "Rejected reviewer queue item",
+    });
+
+    const approved = await request(app)
+      .post(`/v0/sales/${approvedSale.saleId}/void/approve`)
+      .set("Authorization", `Bearer ${manager.branchToken}`)
+      .set("Idempotency-Key", `sale-order-void-queue-approve-${uniqueSuffix()}`)
+      .send({ note: "Approved in queue flow" });
+    expect(approved.status).toBe(200);
+    expect(approved.body.data.status).toBe("APPROVED");
+
+    const rejected = await request(app)
+      .post(`/v0/sales/${rejectedSale.saleId}/void/reject`)
+      .set("Authorization", `Bearer ${manager.branchToken}`)
+      .set("Idempotency-Key", `sale-order-void-queue-reject-${uniqueSuffix()}`)
+      .send({ note: "Rejected in queue flow" });
+    expect(rejected.status).toBe(200);
+    expect(rejected.body.data.status).toBe("REJECTED");
+
+    const pendingQueue = await request(app)
+      .get("/v0/sales/void-requests")
+      .set("Authorization", `Bearer ${manager.branchToken}`);
+    expect(pendingQueue.status).toBe(200);
+    expect(pendingQueue.body.data.total).toBe(1);
+    expect(pendingQueue.body.data.items).toHaveLength(1);
+    expect(pendingQueue.body.data.items[0]).toMatchObject({
+      voidRequestId: expect.any(String),
+      saleId: pendingSale.saleId,
+      orderId: pendingSale.orderId,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      branchName: expect.any(String),
+      saleStatus: "FINALIZED",
+      voidRequestStatus: "PENDING",
+      requestedAt: expect.any(String),
+      requestedByAccountId: cashier.accountId,
+      requestedByDisplayName: "Sale Order",
+      reason: "Pending reviewer queue item",
+      paymentMethod: "CASH",
+      grandTotalUsd: pendingSale.grandTotalUsd,
+      grandTotalKhr: pendingSale.grandTotalKhr,
+      fulfillmentStatus: "PENDING",
+      saleCreatedAt: expect.any(String),
+    });
+
+    const approvedQueue = await request(app)
+      .get("/v0/sales/void-requests?status=APPROVED")
+      .set("Authorization", `Bearer ${manager.branchToken}`);
+    expect(approvedQueue.status).toBe(200);
+    expect(approvedQueue.body.data.total).toBe(1);
+    expect(approvedQueue.body.data.items[0]).toMatchObject({
+      saleId: approvedSale.saleId,
+      saleStatus: "FINALIZED",
+      voidRequestStatus: "APPROVED",
+      reason: "Approved reviewer queue item",
+    });
+
+    const rejectedQueue = await request(app)
+      .get("/v0/sales/void-requests?status=REJECTED")
+      .set("Authorization", `Bearer ${manager.branchToken}`);
+    expect(rejectedQueue.status).toBe(200);
+    expect(rejectedQueue.body.data.total).toBe(1);
+    expect(rejectedQueue.body.data.items[0]).toMatchObject({
+      saleId: rejectedSale.saleId,
+      saleStatus: "FINALIZED",
+      voidRequestStatus: "REJECTED",
+      reason: "Rejected reviewer queue item",
+    });
+
+    const allQueue = await request(app)
+      .get("/v0/sales/void-requests?status=ALL")
+      .set("Authorization", `Bearer ${manager.branchToken}`);
+    expect(allQueue.status).toBe(200);
+    expect(allQueue.body.data.total).toBe(3);
+    expect(
+      (allQueue.body.data.items as Array<{ saleId: string; voidRequestStatus: string }>).map(
+        (item) => `${item.saleId}:${item.voidRequestStatus}`
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        `${pendingSale.saleId}:PENDING`,
+        `${approvedSale.saleId}:APPROVED`,
+        `${rejectedSale.saleId}:REJECTED`,
+      ])
+    );
+
+    const invalidStatus = await request(app)
+      .get("/v0/sales/void-requests?status=NOT_A_STATUS")
+      .set("Authorization", `Bearer ${manager.branchToken}`);
+    expect(invalidStatus.status).toBe(422);
+    expect(invalidStatus.body).toMatchObject({
+      success: false,
+      code: "VOID_REQUEST_STATUS_INVALID",
+    });
+  }, 15_000);
+
+  it("restricts dedicated void reviewer queue to reviewer roles", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const cashier = await setupMemberBranchContext({
+      app,
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+    });
+
+    await finalizeCashSaleAndRequestVoid({
+      app,
+      authToken: setup.ownerBranchToken,
+      menuItemId: setup.defaultMenuItemId,
+      reason: "Reviewer-only queue access guard",
+    });
+
+    const queueRead = await request(app)
+      .get("/v0/sales/void-requests")
+      .set("Authorization", `Bearer ${cashier.branchToken}`);
+    expect(queueRead.status).toBe(403);
   });
 
   it("rejects invalid order list view filters", async () => {
@@ -2153,9 +2376,27 @@ describe("v0 sale-order integration", () => {
     expect(listed.status).toBe(200);
     const listedOrder = listed.body.data.items.find(
       (item: { id: string }) => item.id === orderId
-    ) as { checkedOutAt: string | null; paymentMethod: string | null } | undefined;
+    ) as
+      | {
+          checkedOutAt: string | null;
+          saleId: string | null;
+          saleStatus: string | null;
+          paymentMethod: string | null;
+        }
+      | undefined;
     expect(listedOrder?.checkedOutAt).toEqual(expect.any(String));
+    expect(listedOrder?.saleId).toBe(saleId);
+    expect(listedOrder?.saleStatus).toBe("FINALIZED");
     expect(listedOrder?.paymentMethod).toBe("CASH");
+
+    const orderDetail = await request(app)
+      .get(`/v0/orders/${orderId}`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(orderDetail.status).toBe(200);
+    expect(orderDetail.body.success).toBe(true);
+    expect(orderDetail.body.data.saleId).toBe(saleId);
+    expect(orderDetail.body.data.saleStatus).toBe("FINALIZED");
+    expect(orderDetail.body.data.paymentMethod).toBe("CASH");
   });
 
   it("rejects cancelling a checked-out order ticket", async () => {

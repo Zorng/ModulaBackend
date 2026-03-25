@@ -27,7 +27,9 @@ import {
   type V0SaleStatus,
   type V0SaleType,
   type V0TenderCurrency,
+  type V0VoidRequestQueueRow,
   type V0VoidRequestRow,
+  type V0VoidRequestStatus,
 } from "../infra/repository.js";
 
 type ActorContext = {
@@ -219,9 +221,14 @@ export class V0SaleOrderService {
       tenantId: actor.tenantId,
       orderTicketId: order.id,
     });
+    const sale = await this.repo.getSaleByOrderTicketId({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      orderTicketId: order.id,
+    });
 
     return {
-      ...mapOrderTicket(order),
+      ...mapOrderTicketWithSale(order, sale),
       lines: lines.map(mapOrderTicketLine),
       fulfillmentBatches: fulfillmentBatches.map(mapFulfillmentBatch),
       manualPaymentClaims: manualPaymentClaims.map(mapManualPaymentClaim),
@@ -950,6 +957,39 @@ export class V0SaleOrderService {
     });
     return buildOffsetPaginatedResult({
       items: rows.map(mapSaleSummary),
+      limit,
+      offset,
+      total,
+    });
+  }
+
+  async listVoidRequests(input: {
+    actor: ActorContext;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
+    const actor = assertBranchContext(input.actor);
+    const status = parseVoidRequestStatusFilter(input.status, true);
+    const limit = normalizeLimit(input.limit);
+    const offset = normalizeOffset(input.offset);
+    const total = await this.repo.countVoidRequestQueue({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      status,
+    });
+    const rows = await this.repo.listVoidRequestQueue({
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+      status,
+      limit,
+      offset,
+    });
+    const nameMap = await this.repo.listAccountDisplayNames({
+      accountIds: uniq(rows.map((row) => row.requested_by_account_id)),
+    });
+    return buildOffsetPaginatedResult({
+      items: rows.map((row) => mapVoidRequestQueueRow(row, nameMap)),
       limit,
       offset,
       total,
@@ -2373,6 +2413,27 @@ function parseSaleStatusFilter(input: string | undefined): V0SaleStatus | null {
   throw new V0SaleOrderError(422, "invalid sale status", "SALE_STATUS_INVALID");
 }
 
+function parseVoidRequestStatusFilter(
+  input: string | undefined,
+  defaultPendingWhenOmitted = false
+): V0VoidRequestStatus | null {
+  const status = normalizeOptionalString(input)?.toUpperCase();
+  if (!status) {
+    return defaultPendingWhenOmitted ? "PENDING" : null;
+  }
+  if (status === "ALL") {
+    return null;
+  }
+  if (status === "PENDING" || status === "APPROVED" || status === "REJECTED") {
+    return status;
+  }
+  throw new V0SaleOrderError(
+    422,
+    "invalid void request status",
+    "VOID_REQUEST_STATUS_INVALID"
+  );
+}
+
 function parsePaymentMethod(input: unknown): V0SalePaymentMethod {
   const value = normalizeOptionalString(input)?.toUpperCase();
   if (value === "CASH" || value === "KHQR") {
@@ -2684,6 +2745,8 @@ async function buildOrderTicketSummary(input: {
     totalUsdExact,
     linesPreview: lines.map(mapOrderTicketLinePreview),
     checkedOutAt: input.row.checked_out_at?.toISOString() ?? null,
+    saleId: sale?.id ?? null,
+    saleStatus: sale?.status ?? null,
     paymentMethod: sale?.payment_method ?? null,
     manualPaymentClaimId: input.row.manual_payment_claim_id,
     manualPaymentClaimStatus: input.row.manual_payment_claim_status,
@@ -2711,6 +2774,18 @@ function mapOrderTicket(row: V0OrderTicketRow): Record<string, unknown> {
     cancelReason: row.cancel_reason,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function mapOrderTicketWithSale(
+  row: V0OrderTicketRow,
+  sale: V0SaleRow | null
+): Record<string, unknown> {
+  return {
+    ...mapOrderTicket(row),
+    saleId: sale?.id ?? null,
+    saleStatus: sale?.status ?? null,
+    paymentMethod: sale?.payment_method ?? null,
   };
 }
 
@@ -2870,6 +2945,31 @@ function mapVoidRequest(row: V0VoidRequestRow): Record<string, unknown> {
     reviewedAt: row.reviewed_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function mapVoidRequestQueueRow(
+  row: V0VoidRequestQueueRow,
+  nameMap: Map<string, string>
+): Record<string, unknown> {
+  return {
+    voidRequestId: row.void_request_id,
+    saleId: row.sale_id,
+    orderId: row.order_ticket_id,
+    tenantId: row.tenant_id,
+    branchId: row.branch_id,
+    branchName: row.branch_name,
+    saleStatus: row.sale_status,
+    voidRequestStatus: row.void_request_status,
+    requestedAt: row.requested_at.toISOString(),
+    requestedByAccountId: row.requested_by_account_id,
+    requestedByDisplayName: nameMap.get(row.requested_by_account_id) ?? null,
+    reason: row.reason,
+    paymentMethod: row.payment_method,
+    grandTotalUsd: row.grand_total_usd,
+    grandTotalKhr: row.grand_total_khr,
+    fulfillmentStatus: row.fulfillment_status,
+    saleCreatedAt: row.sale_created_at.toISOString(),
   };
 }
 

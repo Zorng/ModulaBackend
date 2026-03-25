@@ -197,6 +197,25 @@ export type V0VoidRequestRow = {
   updated_at: Date;
 };
 
+export type V0VoidRequestQueueRow = {
+  void_request_id: string;
+  sale_id: string;
+  order_ticket_id: string | null;
+  tenant_id: string;
+  branch_id: string;
+  branch_name: string | null;
+  sale_status: V0SaleStatus;
+  void_request_status: V0VoidRequestStatus;
+  requested_at: Date;
+  requested_by_account_id: string;
+  reason: string;
+  payment_method: V0SalePaymentMethod;
+  grand_total_usd: number;
+  grand_total_khr: number;
+  fulfillment_status: V0OrderFulfillmentBatchStatus | null;
+  sale_created_at: Date;
+};
+
 export type V0OrderFulfillmentBatchRow = {
   id: string;
   tenant_id: string;
@@ -1546,6 +1565,81 @@ export class V0SaleOrderRepository {
       [input.tenantId, input.branchId, input.saleId]
     );
     return result.rows[0] ?? null;
+  }
+
+  async listVoidRequestQueue(input: {
+    tenantId: string;
+    branchId: string;
+    status: V0VoidRequestStatus | null;
+    limit: number;
+    offset: number;
+  }): Promise<V0VoidRequestQueueRow[]> {
+    const result = await this.db.query<V0VoidRequestQueueRow>(
+      `SELECT
+         vr.id AS void_request_id,
+         s.id AS sale_id,
+         s.order_ticket_id,
+         s.tenant_id,
+         s.branch_id,
+         b.name AS branch_name,
+         s.status AS sale_status,
+         vr.status AS void_request_status,
+         vr.requested_at,
+         vr.requested_by_account_id,
+         vr.reason,
+         s.payment_method,
+         s.grand_total_usd::FLOAT8 AS grand_total_usd,
+         s.grand_total_khr::FLOAT8 AS grand_total_khr,
+         latest_fulfillment.status AS fulfillment_status,
+         s.created_at AS sale_created_at
+       FROM v0_void_requests vr
+       INNER JOIN v0_sales s
+         ON s.tenant_id = vr.tenant_id
+        AND s.branch_id = vr.branch_id
+        AND s.id = vr.sale_id
+       LEFT JOIN branches b
+         ON b.tenant_id = s.tenant_id
+        AND b.id = s.branch_id
+       LEFT JOIN LATERAL (
+         SELECT status
+         FROM v0_order_fulfillment_batches
+         WHERE tenant_id = s.tenant_id
+           AND branch_id = s.branch_id
+           AND order_ticket_id = s.order_ticket_id
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1
+       ) AS latest_fulfillment ON TRUE
+       WHERE vr.tenant_id = $1
+         AND vr.branch_id = $2
+         AND ($3::VARCHAR IS NULL OR vr.status = $3::VARCHAR)
+       ORDER BY vr.requested_at DESC, vr.id DESC
+       LIMIT $4
+       OFFSET $5`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.status,
+        input.limit,
+        input.offset,
+      ]
+    );
+    return result.rows;
+  }
+
+  async countVoidRequestQueue(input: {
+    tenantId: string;
+    branchId: string;
+    status: V0VoidRequestStatus | null;
+  }): Promise<number> {
+    const result = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM v0_void_requests
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND ($3::VARCHAR IS NULL OR status = $3::VARCHAR)`,
+      [input.tenantId, input.branchId, input.status]
+    );
+    return Number(result.rows[0]?.count ?? "0");
   }
 
   async resolveVoidRequest(input: {

@@ -15,6 +15,7 @@ Implementation status:
   - `POST /v0/checkout/khqr/intents/:intentId/cancel`
 - Pay-later lane remains on `/v0/orders*` (open ticket lifecycle).
 - Push replay remains partial for sale/order writes, but offline pay-first cash replay is now implemented via `checkout.cash.finalize`, and offline outage manual-claim capture is implemented via `order.manualExternalPaymentClaim.capture`.
+- Dedicated void-request reviewer queue is implemented on `GET /v0/sales/void-requests`.
 
 Frontend rollout note:
 - Treat all listed `/v0/orders` + `/v0/sales` endpoints as online-ready.
@@ -57,6 +58,8 @@ Frontend cutover map (online lane):
 - Fulfillment/kitchen queue:
   - `GET /v0/orders?view=FULFILLMENT_ACTIVE`
   - `PATCH /v0/orders/:orderId/fulfillment`
+- Void-request reviewer queue:
+  - target endpoint: `GET /v0/sales/void-requests`
 - Pay-later ticket lane:
   - `GET|POST /v0/orders*`
   - `PATCH /v0/orders/:orderId/fulfillment`
@@ -393,6 +396,21 @@ type OrderItemInput = {
   note?: string | null;
 };
 ```
+
+## Order vs Sale Boundary (Locked)
+
+- `Order` is the operational ticket / fulfillment object.
+  - It exists for open-ticket editing, fulfillment workflow, manual-claim review, and fulfillment continuity after payment.
+- `Sale` is the financial settlement object.
+  - It exists for payment state, receipt, monetary history, and void workflow.
+- `Order` can exist without `Sale`.
+  - Example: open pay-later ticket or manual external-payment-claim order.
+- In the intended v0 workflow model, a persisted `Sale` is always order-backed.
+- After checkout/payment materialization, treat the relationship as `1 order -> 1 sale`.
+- Workflow ownership:
+  - `Order`: fulfillment updates, pay-later item mutation, unpaid cancellation, manual-claim review lane
+  - `Sale`: payment finalization, receipt, void request/approve/reject/execute
+- Therefore, checked-out / sale-backed order reads should expose the `order -> sale` bridge explicitly via `saleId`.
 
 ---
 
@@ -812,6 +830,8 @@ Response example (`200`):
           }
         ],
         "checkedOutAt": null,
+        "saleId": null,
+        "saleStatus": null,
         "paymentMethod": null,
         "manualPaymentClaimId": null,
         "manualPaymentClaimStatus": null,
@@ -853,7 +873,8 @@ Rules:
 - `totalUsdExact` is the exact USD total computed from current order lines (`sum(lineSubtotal)`).
 - `linesPreview` is a lightweight line summary for list rendering and includes readable modifier labels when present.
 - `openedByAccountId` and `openedByDisplayName` identify the staff who created the order.
-- `checkedOutAt` and `paymentMethod` are `null` until the order has an associated sale/checkout state.
+- `checkedOutAt`, `saleId`, `saleStatus`, and `paymentMethod` are `null` until the order has an associated sale/checkout state.
+- Once a checked-out order has an associated sale row, `saleId` exposes the canonical bridge into sale-based workflows such as void.
 - `manualPaymentClaimId` and `manualPaymentClaimStatus` reflect the latest manual payment claim for the order, or `null` when no claim exists.
 - `manualPaymentClaimRequestedByAccountId`, `manualPaymentClaimRequestedByDisplayName`, and `manualPaymentClaimRequestedAt` reflect the latest manual payment claim requester, or `null` when no claim exists yet.
 - `sourceMode = DIRECT_CHECKOUT` indicates a pay-now order anchor materialized by quick cash or quick KHQR checkout finalization.
@@ -877,6 +898,9 @@ Response example (`200`):
     "sourceMode": "STANDARD",
     "checkedOutAt": null,
     "checkedOutByAccountId": null,
+    "saleId": null,
+    "saleStatus": null,
+    "paymentMethod": null,
     "cancelledAt": null,
     "cancelledByAccountId": null,
     "cancelReason": null,
@@ -902,6 +926,10 @@ Response example (`200`):
   }
 }
 ```
+
+Rules:
+- `saleId`, `saleStatus`, and `paymentMethod` are `null` until the order has an associated sale.
+- For checked-out / sale-backed orders, `saleId` is the canonical bridge to sale detail, receipt, and void workflows.
 
 ---
 
@@ -1188,7 +1216,134 @@ Response example (`200`):
 
 ---
 
-### 14) Get sale detail
+### 14) List void-request reviewer queue
+`GET /v0/sales/void-requests?status=PENDING|APPROVED|REJECTED|ALL&limit=20&offset=0`  
+Action key: `sale.void.request.list`
+
+Response example (`200`):
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "voidRequestId": "6b89fb1a-b2e9-4698-a7c2-79ea5c187c81",
+        "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
+        "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+        "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+        "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+        "branchName": "Main Branch",
+        "saleStatus": "FINALIZED",
+        "voidRequestStatus": "PENDING",
+        "requestedAt": "2026-02-22T10:12:00.000Z",
+        "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+        "requestedByDisplayName": "Sale Order",
+        "reason": "Wrong item prepared",
+        "paymentMethod": "CASH",
+        "grandTotalUsd": 8,
+        "grandTotalKhr": 32800,
+        "fulfillmentStatus": "READY",
+        "saleCreatedAt": "2026-02-22T10:05:00.000Z"
+      },
+      {
+        "voidRequestId": "c09ab29c-20d1-4f1b-8085-4eaf4fc50a02",
+        "saleId": "53cbca70-7de3-4ea7-8be7-c76db6be0bc9",
+        "orderId": "b4b9de8d-d3ea-42bf-a0ac-0c977d5ff9b8",
+        "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+        "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+        "branchName": "Main Branch",
+        "saleStatus": "FINALIZED",
+        "voidRequestStatus": "APPROVED",
+        "requestedAt": "2026-02-22T09:45:00.000Z",
+        "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+        "requestedByDisplayName": "Sale Order",
+        "reason": "Duplicate checkout attempt",
+        "paymentMethod": "KHQR",
+        "grandTotalUsd": 3.5,
+        "grandTotalKhr": 14300,
+        "fulfillmentStatus": "COMPLETED",
+        "saleCreatedAt": "2026-02-22T09:40:00.000Z"
+      },
+      {
+        "voidRequestId": "e4b116dc-bce1-4bd4-9350-a92cc9e1edfd",
+        "saleId": "6d3eb0de-57a9-47da-a00a-4c03e59a7ca3",
+        "orderId": "7c186bdb-6d04-4903-ac09-18b6576aa8f7",
+        "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
+        "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
+        "branchName": "Main Branch",
+        "saleStatus": "FINALIZED",
+        "voidRequestStatus": "REJECTED",
+        "requestedAt": "2026-02-22T08:30:00.000Z",
+        "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
+        "requestedByDisplayName": "Sale Order",
+        "reason": "Operator selected wrong sale",
+        "paymentMethod": "CASH",
+        "grandTotalUsd": 5,
+        "grandTotalKhr": 20500,
+        "fulfillmentStatus": "COMPLETED",
+        "saleCreatedAt": "2026-02-22T08:20:00.000Z"
+      }
+    ],
+    "limit": 20,
+    "offset": 0,
+    "total": 3,
+    "hasMore": false
+  }
+}
+```
+
+Row field semantics:
+- `voidRequestId`: `string`, non-null
+- `saleId`: `string`, non-null
+- `orderId`: `string | null`
+  - intended v0 sale flows are order-backed, but queue payload remains defensive for compatibility
+- `tenantId`: `string`, non-null
+- `branchId`: `string`, non-null
+- `branchName`: `string | null`
+- `saleStatus`: `SaleStatus`, non-null
+- `voidRequestStatus`: `VoidRequestStatus`, non-null
+- `requestedAt`: ISO datetime, non-null
+- `requestedByAccountId`: `string`, non-null
+- `requestedByDisplayName`: `string | null`
+- `reason`: `string`, non-null
+- `paymentMethod`: `"CASH" | "KHQR"`, non-null
+- `grandTotalUsd`: `number`, non-null
+- `grandTotalKhr`: `number`, non-null
+- `fulfillmentStatus`: latest fulfillment batch status or `null` when no batch exists yet
+- `saleCreatedAt`: ISO datetime, non-null
+  - use `requestedAt` as the primary queue timestamp
+  - use `saleCreatedAt` only as secondary age/context display
+
+Rules:
+- Intended reviewer workspace read surface for the new `Void Requests` tab.
+- Access is reviewer-only and backend-authoritative:
+  - `OWNER`
+  - `ADMIN`
+  - `MANAGER`
+- First-cut supported query params:
+  - `status`
+  - `limit`
+  - `offset`
+- Deferred filters for later phase:
+  - `requestedByAccountId`
+  - `saleId`
+  - `orderId`
+- Default ordering:
+  - `requestedAt DESC`
+  - tie-break `voidRequestId DESC`
+- Default `status` when omitted is `PENDING`.
+- `tenantName` is not included in the first-cut queue payload.
+- `saleId` is always non-null for queue rows.
+- `voidRequestStatus` is always non-null for queue rows.
+- Frontend must not assume `voidRequestStatus` mechanically determines `saleStatus`.
+  - Example: a row with `voidRequestStatus = PENDING` may still have `saleStatus = FINALIZED`.
+  - `sale.status = VOID_PENDING` is an execution-stage state and is not guaranteed at request-create time.
+- Sale detail remains the authoritative single-record review surface.
+- Queue rows are designed to avoid per-row `GET /v0/sales/:saleId/void-request` fan-out for reviewer discovery UX.
+
+---
+
+### 15) Get sale detail
 `GET /v0/sales/:saleId`  
 Action key: `sale.read`
 
@@ -1250,7 +1405,7 @@ Response example (`200`):
 
 ---
 
-### 15) Get void request detail
+### 16) Get void request detail
 `GET /v0/sales/:saleId/void-request`  
 Action key: `sale.void.request.read`
 
@@ -1319,6 +1474,7 @@ Response example (`200`):
 - `ORDER_LIST_SOURCE_MODE_INVALID`
 - `VOID_REQUEST_NOT_FOUND`
 - `VOID_REQUEST_ALREADY_RESOLVED`
+- `VOID_REQUEST_STATUS_INVALID`
 - `VOID_APPROVAL_REQUIRED`
 - `VOID_NOT_ALLOWED_FOR_PAYMENT_METHOD`
 - `VOID_NOT_ALLOWED_FOR_STATUS`

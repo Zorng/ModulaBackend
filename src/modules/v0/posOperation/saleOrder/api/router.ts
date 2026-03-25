@@ -455,6 +455,25 @@ export function createV0SaleOrderRouter(input: {
     }
   });
 
+  router.get("/sales/void-requests", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
+    try {
+      const actor = req.v0Auth;
+      if (!actor) {
+        res.status(401).json({ success: false, error: "authentication required" });
+        return;
+      }
+      const data = await input.service.listVoidRequests({
+        actor,
+        status: asString(req.query?.status),
+        limit: asNumber(req.query?.limit),
+        offset: asNumber(req.query?.offset),
+      });
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
+
   router.get("/sales/:saleId", requireV0Auth, async (req: V0AuthRequest, res: Response) => {
     try {
       const actor = req.v0Auth;

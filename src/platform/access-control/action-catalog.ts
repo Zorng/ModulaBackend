@@ -728,6 +728,12 @@ export const ACTION_METADATA: Record<string, ActionMetadata> = {
     effect: "READ",
     entitlementKey: "core.pos",
   },
+  "sale.void.request.list": {
+    scope: "BRANCH",
+    effect: "READ",
+    allowedRoles: ["OWNER", "ADMIN", "MANAGER"],
+    entitlementKey: "core.pos",
+  },
   "sale.read": {
     scope: "BRANCH",
     effect: "READ",
