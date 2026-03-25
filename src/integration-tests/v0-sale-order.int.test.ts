@@ -395,6 +395,11 @@ async function setMenuItemModifierOptionEffect(input: {
   menuItemId: string;
   modifierOptionId: string;
   priceDelta: number;
+  componentDeltas?: Array<{
+    stockItemId: string;
+    quantityDeltaInBaseUnit: number;
+    trackingMode: "TRACKED" | "NOT_TRACKED";
+  }>;
 }): Promise<void> {
   await input.pool.query(
     `DELETE FROM v0_menu_item_modifier_option_effects
@@ -413,6 +418,43 @@ async function setMenuItemModifierOptionEffect(input: {
      VALUES ($1, $2, $3, $4)`,
     [input.tenantId, input.menuItemId, input.modifierOptionId, input.priceDelta]
   );
+  if (!input.componentDeltas || input.componentDeltas.length === 0) {
+    return;
+  }
+
+  const effectIdResult = await input.pool.query<{ id: string }>(
+    `SELECT id
+     FROM v0_menu_item_modifier_option_effects
+     WHERE tenant_id = $1
+       AND menu_item_id = $2
+       AND modifier_option_id = $3
+     LIMIT 1`,
+    [input.tenantId, input.menuItemId, input.modifierOptionId]
+  );
+  const effectId = effectIdResult.rows[0]?.id;
+  if (!effectId) {
+    throw new Error("failed to load menu item modifier option effect");
+  }
+
+  for (const delta of input.componentDeltas) {
+    await input.pool.query(
+      `INSERT INTO v0_menu_item_modifier_option_component_deltas (
+         tenant_id,
+         menu_item_modifier_option_effect_id,
+         stock_item_id,
+         quantity_delta_in_base_unit,
+         tracking_mode
+       )
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        input.tenantId,
+        effectId,
+        delta.stockItemId,
+        delta.quantityDeltaInBaseUnit,
+        delta.trackingMode,
+      ]
+    );
+  }
 }
 
 async function seedTrackedBaseComponent(input: {
@@ -1454,6 +1496,158 @@ describe("v0 sale-order integration", () => {
     expect(
       juiceSale.body.data.orderLines[0]?.modifierSnapshot?.[0]?.selectedOptions?.[0]?.priceDelta
     ).toBe(1.25);
+  });
+
+  it("deducts tracked inventory from item-specific modifier effects on finalized sale checkout", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const initialOnHandInBaseUnit = 20;
+    const quantityDeltaInBaseUnitPerSaleUnit = 3;
+    const saleQuantity = 2;
+    const createdStockItem = await pool.query<{ id: string }>(
+      `INSERT INTO v0_inventory_stock_items (
+         tenant_id,
+         category_id,
+         name,
+         base_unit,
+         image_url,
+         low_stock_threshold,
+         status
+       )
+       VALUES ($1, NULL, $2, 'unit', NULL, NULL, 'ACTIVE')
+       RETURNING id`,
+      [setup.tenantId, `Modifier Beans ${uniqueSuffix()}`]
+    );
+    const stockItemId = createdStockItem.rows[0]?.id;
+    if (!stockItemId) {
+      throw new Error("failed to seed modifier effect stock item");
+    }
+    await pool.query(
+      `INSERT INTO v0_inventory_branch_stock (
+         tenant_id,
+         branch_id,
+         stock_item_id,
+         on_hand_in_base_unit,
+         last_movement_at
+       )
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [setup.tenantId, setup.branchId, stockItemId, initialOnHandInBaseUnit]
+    );
+
+    const sizeGroup = await seedModifierGroupWithOptions({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: setup.defaultMenuItemId,
+      name: `Tracked Size ${uniqueSuffix()}`,
+      selectionMode: "SINGLE",
+      minSelections: 1,
+      maxSelections: 1,
+      isRequired: true,
+      options: [{ label: "Large", priceDelta: 0 }],
+    });
+    await setMenuItemModifierOptionEffect({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: setup.defaultMenuItemId,
+      modifierOptionId: sizeGroup.optionIds[0],
+      priceDelta: 0.75,
+      componentDeltas: [
+        {
+          stockItemId,
+          quantityDeltaInBaseUnit: quantityDeltaInBaseUnitPerSaleUnit,
+          trackingMode: "TRACKED",
+        },
+      ],
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-item-effect-stock-place-${uniqueSuffix()}`)
+      .send({
+        items: [
+          {
+            menuItemId: setup.defaultMenuItemId,
+            quantity: saleQuantity,
+            modifierSelections: [
+              {
+                groupId: sizeGroup.groupId,
+                optionIds: [sizeGroup.optionIds[0]],
+              },
+            ],
+          },
+        ],
+      });
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const checkedOut = await request(app)
+      .post(`/v0/orders/${orderId}/checkout`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-item-effect-stock-checkout-${uniqueSuffix()}`)
+      .send({
+        paymentMethod: "CASH",
+        tenderCurrency: "USD",
+      });
+    expect(checkedOut.status).toBe(200);
+    const saleId = checkedOut.body.data.id as string;
+
+    await eventBus.publish({
+      type: "ORDER_CHECKOUT_COMPLETED",
+      outboxId: randomUUID(),
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      entityType: "sale",
+      entityId: saleId,
+      occurredAt: new Date().toISOString(),
+    } as never);
+
+    const stock = await pool.query<{ on_hand_in_base_unit: number }>(
+      `SELECT on_hand_in_base_unit::FLOAT8 AS on_hand_in_base_unit
+       FROM v0_inventory_branch_stock
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND stock_item_id = $3
+       LIMIT 1`,
+      [setup.tenantId, setup.branchId, stockItemId]
+    );
+    expect(stock.rows[0]?.on_hand_in_base_unit).toBe(
+      initialOnHandInBaseUnit - quantityDeltaInBaseUnitPerSaleUnit * saleQuantity
+    );
+
+    const journal = await pool.query<{
+      quantity_in_base_unit: number;
+      source_id: string;
+      reason_code: string;
+      direction: string;
+    }>(
+      `SELECT
+         quantity_in_base_unit::FLOAT8 AS quantity_in_base_unit,
+         source_id,
+         reason_code,
+         direction
+       FROM v0_inventory_journal_entries
+       WHERE tenant_id = $1
+         AND branch_id = $2
+         AND stock_item_id = $3
+         AND source_type = 'SALE_ORDER'
+         AND source_id = $4
+         AND reason_code = 'SALE_DEDUCTION'
+       LIMIT 1`,
+      [setup.tenantId, setup.branchId, stockItemId, saleId]
+    );
+    expect(journal.rows[0]).toMatchObject({
+      quantity_in_base_unit: quantityDeltaInBaseUnitPerSaleUnit * saleQuantity,
+      source_id: saleId,
+      reason_code: "SALE_DEDUCTION",
+      direction: "OUT",
+    });
   });
 
   it("updates current-session X report after finalized cash checkout is dispatched", async () => {

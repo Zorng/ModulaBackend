@@ -253,6 +253,7 @@ async function resolveTrackedMovementQuantities(input: {
     const selectedModifierOptionIds = extractModifierOptionIds(line.modifier_snapshot);
     const optionDeltas = await getModifierOptionDeltas({
       tenantId: input.tenantId,
+      menuItemId: line.menu_item_id,
       modifierOptionIds: selectedModifierOptionIds,
       menuRepo: input.menuRepo,
       cache: modifierDeltasCache,
@@ -294,6 +295,7 @@ async function getBaseComponentsForMenuItem(input: {
 
 async function getModifierOptionDeltas(input: {
   tenantId: string;
+  menuItemId: string;
   modifierOptionIds: readonly string[];
   menuRepo: V0MenuRepository;
   cache: Map<string, MenuModifierOptionDeltaRow[]>;
@@ -302,17 +304,52 @@ async function getModifierOptionDeltas(input: {
     return [];
   }
   const normalized = [...new Set(input.modifierOptionIds)].sort();
-  const cacheKey = normalized.join(",");
+  const cacheKey = `${input.menuItemId}:${normalized.join(",")}`;
   const cached = input.cache.get(cacheKey);
   if (cached) {
     return cached;
   }
-  const rows = await input.menuRepo.listComponentDeltasByModifierOptionIds({
+  const globalRows = await input.menuRepo.listComponentDeltasByModifierOptionIds({
     tenantId: input.tenantId,
     modifierOptionIds: normalized,
   });
+  const itemEffects = await input.menuRepo.listModifierOptionEffectsForMenuItem({
+    tenantId: input.tenantId,
+    menuItemId: input.menuItemId,
+    modifierOptionIds: normalized,
+  });
+  if (itemEffects.length === 0) {
+    input.cache.set(cacheKey, globalRows);
+    return globalRows;
+  }
+
+  const itemRows = await input.menuRepo.listComponentDeltasByMenuItemModifierOptionIds({
+    tenantId: input.tenantId,
+    menuItemId: input.menuItemId,
+    modifierOptionIds: normalized,
+  });
+  const globalRowsByOptionId = groupModifierDeltasByOptionId(globalRows);
+  const itemRowsByOptionId = groupModifierDeltasByOptionId(itemRows);
+  const itemEffectOptionIds = new Set(itemEffects.map((effect) => effect.modifier_option_id));
+  const rows = normalized.flatMap((modifierOptionId) =>
+    itemEffectOptionIds.has(modifierOptionId)
+      ? itemRowsByOptionId.get(modifierOptionId) ?? []
+      : globalRowsByOptionId.get(modifierOptionId) ?? []
+  );
   input.cache.set(cacheKey, rows);
   return rows;
+}
+
+function groupModifierDeltasByOptionId(
+  rows: readonly MenuModifierOptionDeltaRow[]
+): Map<string, MenuModifierOptionDeltaRow[]> {
+  const grouped = new Map<string, MenuModifierOptionDeltaRow[]>();
+  for (const row of rows) {
+    const existing = grouped.get(row.modifier_option_id) ?? [];
+    existing.push(row);
+    grouped.set(row.modifier_option_id, existing);
+  }
+  return grouped;
 }
 
 function aggregateTrackedComponentsPerUnit(input: {
