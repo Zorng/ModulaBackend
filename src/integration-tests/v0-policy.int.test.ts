@@ -162,8 +162,6 @@ describe("v0 policy integration", () => {
       saleKhrRoundingEnabled: true,
       saleKhrRoundingMode: "NEAREST",
       saleKhrRoundingGranularity: "100",
-      saleAllowPayLater: false,
-      saleAllowManualExternalPaymentClaim: false,
     });
   });
 
@@ -182,8 +180,6 @@ describe("v0 policy integration", () => {
       saleKhrRoundingEnabled: true,
       saleKhrRoundingMode: "UP",
       saleKhrRoundingGranularity: "1000",
-      saleAllowPayLater: true,
-      saleAllowManualExternalPaymentClaim: true,
     };
 
     const first = await request(app)
@@ -282,7 +278,7 @@ describe("v0 policy integration", () => {
       .patch("/v0/policy/current-branch")
       .set("Authorization", `Bearer ${cashierBranchToken}`)
       .set("Idempotency-Key", "policy-cashier-denied-1")
-      .send({ saleAllowPayLater: true });
+      .send({ saleVatEnabled: true });
     expect(denied.status).toBe(403);
     expect(denied.body.code).toBe("PERMISSION_DENIED");
   });
@@ -299,14 +295,14 @@ describe("v0 policy integration", () => {
       .get("/v0/policy/current-branch")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
     expect(before.status).toBe(200);
-    expect(before.body.data.saleAllowPayLater).toBe(false);
+    expect(before.body.data.saleVatEnabled).toBe(false);
 
     process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "policy.currentBranch.update";
     const failed = await request(app)
       .patch("/v0/policy/current-branch")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", "policy-atomicity-1")
-      .send({ saleAllowPayLater: true });
+      .send({ saleVatEnabled: true });
     process.env.V0_ATOMIC_COMMAND_TEST_FAIL_ACTION_KEY = "";
 
     expect(failed.status).toBe(500);
@@ -315,7 +311,7 @@ describe("v0 policy integration", () => {
       .get("/v0/policy/current-branch")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
     expect(after.status).toBe(200);
-    expect(after.body.data.saleAllowPayLater).toBe(false);
+    expect(after.body.data.saleVatEnabled).toBe(false);
 
     const auditCount = await pool.query<{ count: string }>(
       `SELECT COUNT(*)::TEXT AS count

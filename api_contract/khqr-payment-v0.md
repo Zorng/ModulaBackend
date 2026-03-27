@@ -1,20 +1,21 @@
 # KHQR Payment Foundation (`/v0`) — API Contract
 
-This document locks the KHQR payment foundation contract used by sale-order finalize flow.
+This document locks the KHQR payment foundation contract used by the active checkout-intent KHQR flow and legacy pending-sale compatibility endpoints.
 
 Base path: `/v0/payments/khqr`
 
 Implementation status:
 - K1-K6 completed (`K5` webhook ingest + `K6` reconciliation scheduler baseline).
-- Endpoints below are implemented for KHQR generation, attempt registration/read/cancel, confirm-by-md5, and webhook ingestion.
-- Sale finalize gate is enforced on online `/v0/sales/:saleId/finalize`.
+- Active final checkout lane uses `POST /v0/checkout/khqr/initiate` plus confirm/webhook convergence.
+- Legacy pending-sale endpoints remain available for compatibility, but are not part of the final active sale-order lane.
 
 ---
 
-## Pending Remodel Draft (Not Implemented)
+## Checkout-Intent Finalization Model
 
 Status:
-- Design draft only. This section defines webhook-first KHQR settlement behavior for checkout remodel and is not implemented yet.
+- implemented for the direct checkout lane
+- webhook and manual confirm converge on the same payment-intent finalization behavior
 
 Primary confirmation path:
 

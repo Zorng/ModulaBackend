@@ -27,8 +27,6 @@ type BranchPolicyDto = {
   saleKhrRoundingEnabled: boolean;
   saleKhrRoundingMode: "NEAREST" | "UP" | "DOWN";
   saleKhrRoundingGranularity: "100" | "1000";
-  saleAllowPayLater: boolean;
-  saleAllowManualExternalPaymentClaim: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -179,28 +177,6 @@ function normalizePatch(input: unknown): BranchPolicyPatch {
     patch.saleKhrRoundingGranularity = numeric;
   }
 
-  if (Object.prototype.hasOwnProperty.call(body, "saleAllowPayLater")) {
-    if (typeof body.saleAllowPayLater !== "boolean") {
-      throw new V0PolicyError(
-        422,
-        "saleAllowPayLater must be boolean",
-        "POLICY_VALIDATION_FAILED"
-      );
-    }
-    patch.saleAllowPayLater = body.saleAllowPayLater;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(body, "saleAllowManualExternalPaymentClaim")) {
-    if (typeof body.saleAllowManualExternalPaymentClaim !== "boolean") {
-      throw new V0PolicyError(
-        422,
-        "saleAllowManualExternalPaymentClaim must be boolean",
-        "POLICY_VALIDATION_FAILED"
-      );
-    }
-    patch.saleAllowManualExternalPaymentClaim = body.saleAllowManualExternalPaymentClaim;
-  }
-
   if (Object.keys(patch).length === 0) {
     throw new V0PolicyError(422, "policy patch is empty", "POLICY_PATCH_EMPTY");
   }
@@ -226,8 +202,6 @@ function mapPolicyRow(row: BranchPolicyRow): BranchPolicyDto {
     saleKhrRoundingEnabled: row.sale_khr_rounding_enabled,
     saleKhrRoundingMode: row.sale_khr_rounding_mode,
     saleKhrRoundingGranularity: String(row.sale_khr_rounding_granularity) as "100" | "1000",
-    saleAllowPayLater: row.sale_allow_pay_later,
-    saleAllowManualExternalPaymentClaim: row.sale_allow_manual_external_payment_claim,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -268,16 +242,6 @@ function buildPolicyDiff(before: BranchPolicyRow, after: BranchPolicyRow): {
       key: "saleKhrRoundingGranularity",
       before: String(before.sale_khr_rounding_granularity),
       after: String(after.sale_khr_rounding_granularity),
-    },
-    {
-      key: "saleAllowPayLater",
-      before: before.sale_allow_pay_later,
-      after: after.sale_allow_pay_later,
-    },
-    {
-      key: "saleAllowManualExternalPaymentClaim",
-      before: before.sale_allow_manual_external_payment_claim,
-      after: after.sale_allow_manual_external_payment_claim,
     },
   ];
 

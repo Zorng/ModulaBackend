@@ -375,9 +375,6 @@ async function applyOperation(input: {
       case "checkout.cash.finalize": {
         return await applyCashCheckoutReplay(input);
       }
-      case "order.manualExternalPaymentClaim.capture": {
-        return await applyManualExternalPaymentClaimCaptureReplay(input);
-      }
       case "sale.finalize": {
         const paymentMethod = normalizePaymentMethod(
           input.operation.payload.paymentMethod ??
@@ -550,30 +547,6 @@ async function applyCashCheckoutReplay(input: {
     entityType: "sale",
     commandData,
     errorContext: "offline cash checkout replay did not return sale id",
-  });
-}
-
-async function applyManualExternalPaymentClaimCaptureReplay(input: {
-  client: PoolClient;
-  actor: ActorScope;
-  operation: ReplayOperation;
-}): Promise<ApplyOutcome> {
-  const saleOrderService = new V0SaleOrderService(new V0SaleOrderRepository(input.client));
-  const commandData = await saleOrderService.captureManualExternalPaymentClaimOrderFromOfflineSnapshot({
-    actor: input.actor,
-    body: input.operation.payload,
-    occurredAt: input.operation.occurredAt,
-  });
-  return recordSaleOrderReplaySuccess({
-    client: input.client,
-    actor: input.actor,
-    operation: input.operation,
-    actionKey: V0_SALE_ORDER_ACTION_KEYS.orderPlace,
-    eventType: V0_SALE_ORDER_EVENT_TYPES.orderTicketPlaced,
-    endpoint: "/v0/sync/push",
-    entityType: "order_ticket",
-    commandData,
-    errorContext: "offline manual external payment claim capture did not return order id",
   });
 }
 

@@ -1062,190 +1062,38 @@ describe("v0 push sync integration", () => {
     });
   });
 
-  it("replays offline manual external-payment-claim capture exactly once and emits sale-order pull changes", async () => {
+  it("rejects offline manual external-payment-claim capture as unsupported final scope", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
-    const openOccurredAt = "2026-03-19T09:10:00.000Z";
-    const captureOccurredAt = "2026-03-19T09:12:00.000Z";
-    const clientOpId = "10000000-0000-4000-8000-000000000055";
-    const orderId = "10000000-0000-4000-8000-000000000931";
-
-    const openResponse = await request(app)
+    const response = await request(app)
       .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .send({
         operations: [
           {
-            clientOpId: "10000000-0000-4000-8000-000000000056",
-            operationType: "cashSession.open",
-            occurredAt: openOccurredAt,
+            clientOpId: "10000000-0000-4000-8000-000000000055",
+            operationType: "order.manualExternalPaymentClaim.capture",
+            occurredAt: "2026-03-19T09:12:00.000Z",
             payload: {
-              openingFloatUsd: 25,
-              openingFloatKhr: 0,
-              note: "offline claim open",
-            },
-          },
-        ],
-      });
-    expect(openResponse.status).toBe(200);
-    expect(openResponse.body.data.results[0]).toMatchObject({
-      status: "APPLIED",
-      operationType: "cashSession.open",
-    });
-
-    const payload = {
-      orderId,
-      items: [
-        {
-          menuItemId: "10000000-0000-4000-8000-000000000932",
-          menuItemNameSnapshot: "Offline Claim Latte",
-          unitPrice: 3.5,
-          quantity: 2,
-          modifierSnapshot: [],
-          note: "Customer paid via static QR during outage",
-        },
-      ],
-    };
-
-    const first = await request(app)
-      .post("/v0/sync/push")
-      .set("Authorization", `Bearer ${setup.branchToken}`)
-      .send({
-        operations: [
-          {
-            clientOpId,
-            operationType: "order.manualExternalPaymentClaim.capture",
-            occurredAt: captureOccurredAt,
-            payload,
-          },
-        ],
-      });
-    expect(first.status).toBe(200);
-    expect(first.body.data.results[0]).toMatchObject({
-      status: "APPLIED",
-      operationType: "order.manualExternalPaymentClaim.capture",
-      clientOpId,
-      resultRefId: orderId,
-    });
-
-    const orderRows = await pool.query<{
-      id: string;
-      status: string;
-      source_mode: string;
-      created_at: Date;
-    }>(
-      `SELECT id, status, source_mode, created_at
-       FROM v0_order_tickets
-       WHERE tenant_id = $1
-         AND branch_id = $2
-         AND id = $3`,
-      [setup.tenantId, setup.branchId, orderId]
-    );
-    expect(orderRows.rows).toHaveLength(1);
-    expect(orderRows.rows[0]).toMatchObject({
-      id: orderId,
-      status: "OPEN",
-      source_mode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
-    });
-    expect(orderRows.rows[0].created_at.toISOString()).toBe(captureOccurredAt);
-
-    const orderLineRows = await pool.query<{
-      order_ticket_id: string;
-      menu_item_name_snapshot: string;
-      unit_price: number;
-      quantity: number;
-    }>(
-      `SELECT
-         order_ticket_id,
-         menu_item_name_snapshot,
-         unit_price::FLOAT8 AS unit_price,
-         quantity::FLOAT8 AS quantity
-       FROM v0_order_ticket_lines
-       WHERE tenant_id = $1
-         AND branch_id = $2
-         AND order_ticket_id = $3`,
-      [setup.tenantId, setup.branchId, orderId]
-    );
-    expect(orderLineRows.rows).toHaveLength(1);
-    expect(orderLineRows.rows[0]).toMatchObject({
-      order_ticket_id: orderId,
-      menu_item_name_snapshot: "Offline Claim Latte",
-      unit_price: 3.5,
-      quantity: 2,
-    });
-
-    const claimCount = await pool.query<{ count: string }>(
-      `SELECT COUNT(*)::TEXT AS count
-       FROM v0_order_manual_payment_claims
-       WHERE tenant_id = $1
-         AND branch_id = $2
-         AND order_ticket_id = $3`,
-      [setup.tenantId, setup.branchId, orderId]
-    );
-    expect(Number(claimCount.rows[0]?.count ?? "0")).toBe(0);
-
-    const syncChanges = await pool.query<{ entity_type: string; entity_id: string }>(
-      `SELECT entity_type, entity_id
-       FROM v0_sync_changes
-       WHERE tenant_id = $1
-         AND branch_id = $2
-         AND module_key = 'saleOrder'`,
-      [setup.tenantId, setup.branchId]
-    );
-    expect(syncChanges.rows).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ entity_type: "order_ticket", entity_id: orderId }),
-        expect.objectContaining({ entity_type: "order_ticket_line" }),
-      ])
-    );
-
-    const replay = await request(app)
-      .post("/v0/sync/push")
-      .set("Authorization", `Bearer ${setup.branchToken}`)
-      .send({
-        operations: [
-          {
-            clientOpId,
-            operationType: "order.manualExternalPaymentClaim.capture",
-            occurredAt: captureOccurredAt,
-            payload,
-          },
-        ],
-      });
-    expect(replay.status).toBe(200);
-    expect(replay.body.data.results[0]).toMatchObject({
-      status: "DUPLICATE",
-      operationType: "order.manualExternalPaymentClaim.capture",
-      clientOpId,
-      resultRefId: orderId,
-    });
-
-    const conflict = await request(app)
-      .post("/v0/sync/push")
-      .set("Authorization", `Bearer ${setup.branchToken}`)
-      .send({
-        operations: [
-          {
-            clientOpId,
-            operationType: "order.manualExternalPaymentClaim.capture",
-            occurredAt: captureOccurredAt,
-            payload: {
-              ...payload,
+              orderId: "10000000-0000-4000-8000-000000000931",
               items: [
                 {
-                  ...payload.items[0],
-                  quantity: 3,
+                  menuItemId: "10000000-0000-4000-8000-000000000932",
+                  menuItemNameSnapshot: "Offline Claim Latte",
+                  unitPrice: 3.5,
+                  quantity: 2,
+                  modifierSnapshot: [],
+                  note: "Customer paid via static QR during outage",
                 },
               ],
             },
           },
         ],
       });
-    expect(conflict.status).toBe(200);
-    expect(conflict.body.data.results[0]).toMatchObject({
-      status: "FAILED",
-      code: "OFFLINE_SYNC_PAYLOAD_CONFLICT",
-      operationType: "order.manualExternalPaymentClaim.capture",
-      clientOpId,
+
+    expect(response.status).toBe(422);
+    expect(response.body).toMatchObject({
+      success: false,
+      code: "OFFLINE_SYNC_OPERATION_NOT_SUPPORTED",
     });
   });
 
@@ -1307,10 +1155,8 @@ describe("v0 push sync integration", () => {
     });
   });
 
-  it("rejects offline manual external-payment-claim capture when no cash session is open at replay time", async () => {
+  it("rejects offline manual external-payment-claim capture before replay execution", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
-    const occurredAt = "2026-03-19T10:10:00.000Z";
-
     const response = await request(app)
       .post("/v0/sync/push")
       .set("Authorization", `Bearer ${setup.branchToken}`)
@@ -1319,7 +1165,7 @@ describe("v0 push sync integration", () => {
           {
             clientOpId: "10000000-0000-4000-8000-000000000057",
             operationType: "order.manualExternalPaymentClaim.capture",
-            occurredAt,
+            occurredAt: "2026-03-19T10:10:00.000Z",
             payload: {
               orderId: "10000000-0000-4000-8000-000000000941",
               items: [
@@ -1337,14 +1183,10 @@ describe("v0 push sync integration", () => {
         ],
       });
 
-    expect(response.status).toBe(200);
-    expect(response.body.data.results[0]).toMatchObject({
-      status: "FAILED",
-      code: "ORDER_REQUIRES_OPEN_CASH_SESSION",
-      resolution: {
-        category: "MANUAL",
-        action: "requires_user_intervention",
-      },
+    expect(response.status).toBe(422);
+    expect(response.body).toMatchObject({
+      success: false,
+      code: "OFFLINE_SYNC_OPERATION_NOT_SUPPORTED",
     });
   });
 

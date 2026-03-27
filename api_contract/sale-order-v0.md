@@ -1,134 +1,110 @@
 # Sale + Order Module (`/v0`) — API Contract
 
-This document locks the canonical `/v0` sale/order HTTP contract and includes request/response examples.
+This document locks the final active `/v0` sale/order HTTP contract.
 
 Base prefixes:
 - `/v0/orders`
 - `/v0/sales`
+- `/v0/checkout`
 
-Implementation status:
-- Online command/query + ACL surface is implemented on `/v0/orders` and `/v0/sales`.
-- Local-cart checkout bridge is implemented on `/v0/checkout/*`:
-  - `POST /v0/checkout/cash/finalize`
-  - `POST /v0/checkout/khqr/initiate`
-  - `GET /v0/checkout/khqr/intents/:intentId`
-  - `POST /v0/checkout/khqr/intents/:intentId/cancel`
-- Pay-later lane remains on `/v0/orders*` (open ticket lifecycle).
-- Push replay remains partial for sale/order writes, but offline pay-first cash replay is now implemented via `checkout.cash.finalize`, and offline outage manual-claim capture is implemented via `order.manualExternalPaymentClaim.capture`.
-- Dedicated void-request reviewer queue is implemented on `GET /v0/sales/void-requests`.
+## Final Scope
 
-Frontend rollout note:
-- Treat all listed `/v0/orders` + `/v0/sales` endpoints as online-ready.
-- Always send `Idempotency-Key` for write endpoints.
-- Do not route general sale/order flow through `pushSync` yet.
-- Supported exception: offline pay-first cash replay uses push sync operation `checkout.cash.finalize`.
-- Supported exception: offline outage/manual-proof claim capture uses push sync operation `order.manualExternalPaymentClaim.capture`.
-- Cash quick checkout now materializes an order anchor and starts fulfillment at `PENDING`.
-- Quick-pay KHQR remains payment-intent-first at initiate, but successful confirmation now materializes an order anchor and starts fulfillment at `PENDING`.
-- For quick-pay KHQR, keep both `paymentIntentId` and `attempt.md5` from initiate:
-  - webhook is the primary finalization path
-  - if poll later shows `status = PAID_CONFIRMED` but `saleId = null`, call `POST /v0/payments/khqr/confirm` with `md5` as the cashier fallback to materialize the finalized sale/order
+Final operational lane:
+- pay-first checkout only
+- cash quick checkout via local cart
+- KHQR quick checkout via payment-intent flow
+- checked-out order anchor is retained for fulfillment continuity after payment
+- sale detail, receipt, and void workflow remain active
 
-Offline-first clarification:
-- Current backend supports offline replay for pay-first cash settlement via push sync operation `checkout.cash.finalize`.
-- Current backend supports offline replay for outage/manual-proof order capture via push sync operation `order.manualExternalPaymentClaim.capture`.
-- Full sale/order replay still remains partial:
-  - pay-later/order-mutation writes do not support offline replay
-  - general sale settlement should not be routed through push sync yet
-- Offline-first direction for this module is order-first:
-  - capture `OPEN` order tickets offline
-  - settle/finalize payment online when connectivity returns
-- KHQR remains online-only and must not be modeled as cash during outages.
-- If outage/manual-proof fallback is used, it must be a separate manual external-payment-claim lane, not a reinterpretation of normal cash checkout.
-- For outage static-QR / external-transfer handling, staff must capture a photo of the customer's transaction proof during downtime and submit it as claim evidence when connectivity returns.
+Deferred / rolled-back lane:
+- open-ticket / pay-later order placement and later settlement
+- manual external-payment-claim workflow
+- outage/manual-proof order capture
 
-Frontend cutover map (online lane):
-- Fulfillment queue:
-  - `GET /v0/orders?view=FULFILLMENT_ACTIVE`
-- Pay-later management queue:
-  - `GET /v0/orders?view=PAY_LATER_EDITABLE`
-- Manual-claim review queue:
-  - `GET /v0/orders?view=MANUAL_CLAIM_REVIEW`
-- Cashier checkout:
-  - `POST /v0/checkout/cash/finalize`
-  - `POST /v0/checkout/khqr/initiate`
-  - `GET /v0/checkout/khqr/intents/:intentId`
-  - `POST /v0/payments/khqr/confirm` as manual fallback when payment is confirmed but sale materialization is still pending
-  - `POST /v0/checkout/khqr/intents/:intentId/cancel`
-- Fulfillment/kitchen queue:
-  - `GET /v0/orders?view=FULFILLMENT_ACTIVE`
-  - `PATCH /v0/orders/:orderId/fulfillment`
-- Void-request reviewer queue:
-  - target endpoint: `GET /v0/sales/void-requests`
-- Pay-later ticket lane:
-  - `GET|POST /v0/orders*`
-  - `PATCH /v0/orders/:orderId/fulfillment`
-  - `POST /v0/orders/:orderId/cancel`
-  - Requires branch policy `saleAllowPayLater = true` for place/add writes
-- Manual external-payment-claim lane:
-  - `POST /v0/orders` with `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`
-  - offline reconnect capture may materialize this order early via push sync operation `order.manualExternalPaymentClaim.capture`
-  - `GET|POST /v0/orders/:orderId/manual-payment-claims`
-  - `POST /v0/orders/:orderId/manual-payment-claims/:claimId/approve`
-  - `POST /v0/orders/:orderId/manual-payment-claims/:claimId/reject`
+Rollback rule:
+- deferred order endpoints are hard-disabled and return `ORDER_OPEN_TICKET_DISABLED`
+- direct-checkout order reads remain active for fulfillment only
+- legacy internal scaffolding may remain in storage/ACL/runtime code, but it is not part of the active operational contract
 
-## Checkout Rule (Locked)
+## Frontend Cutover Map
 
-Use this rule to avoid ambiguous behavior:
+Cashier checkout:
+- `POST /v0/checkout/cash/finalize`
+- `POST /v0/checkout/khqr/initiate`
+- `GET /v0/checkout/khqr/intents/:intentId`
+- `POST /v0/payments/khqr/confirm`
+- `POST /v0/checkout/khqr/intents/:intentId/cancel`
 
-1) **Not pay-later (pay-now checkout)**
-- Source: local cart
-- Endpoints: `/v0/checkout/cash/finalize` or `/v0/checkout/khqr/*`
-- `POST /v0/checkout/cash/finalize`:
-  - backend records a **FINALIZED sale**
-  - backend also records a **CHECKED_OUT order** for fulfillment continuity
-- `POST /v0/checkout/khqr/*`:
-  - backend still starts from payment intent lifecycle at initiate
-  - webhook is the primary finalization path
-  - `POST /v0/payments/khqr/confirm` remains the cashier/manual fallback
-  - if `GET /v0/checkout/khqr/intents/:intentId` reaches `PAID_CONFIRMED` but `saleId` is still `null`, frontend should call the confirm endpoint with the initiate `md5`
-  - after successful KHQR finalization, backend records a **FINALIZED sale**
-  - backend also records a **CHECKED_OUT order** for fulfillment continuity
+Fulfillment:
+- `GET /v0/orders`
+- `GET /v0/orders?view=FULFILLMENT_ACTIVE`
+- `GET /v0/orders/:orderId`
+- `PATCH /v0/orders/:orderId/fulfillment`
 
-2) **Pay-later**
-- Source: open ticket workflow
-- Endpoints: `/v0/orders`, `/v0/orders/:orderId/items`, `/v0/orders/:orderId/cancel`
-- Result: backend records an **OPEN order ticket** that can be updated before payment
-- Sale: **not created yet**
+Sales / void:
+- `GET /v0/sales`
+- `GET /v0/sales/:saleId`
+- `GET /v0/sales/void-requests`
+- `GET /v0/sales/:saleId/void-request`
+- `POST /v0/sales/:saleId/void/request`
+- `POST /v0/sales/:saleId/void/approve`
+- `POST /v0/sales/:saleId/void/reject`
+- `POST /v0/sales/:saleId/void/execute`
 
-2a) **Manual external-payment-claim order**
-- Source: outage/manual proof workflow
-- Endpoint: `POST /v0/orders` with `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`
-- Result: backend records an `OPEN` order ticket reserved for later manual claim review
-- Normal `saleAllowPayLater` policy is not used for this source mode
-- If the claim comes from outage static-QR / external-transfer handling, staff should capture transaction photo evidence during downtime and attach/upload it when later submitting the claim online.
+## Conventions
 
-3) **Pay-later settlement**
-- Endpoint: `/v0/orders/:orderId/checkout` (settlement from an existing open ticket)
-- `paymentMethod = CASH`: checkout settles and returns **FINALIZED sale** in one command
-- `paymentMethod = KHQR`: checkout creates **PENDING sale**; finalize after KHQR confirmation
+- JSON casing: `camelCase`
+- Envelope:
+  - success: `{ "success": true, "data": ... }`
+  - failure: `{ "success": false, "error": "...", "code": "..." }`
+- Auth: `Authorization: Bearer <accessToken>`
+- Working context:
+  - `tenantId` and `branchId` come from token context only
+  - no request-time context override
+- Idempotency:
+  - all write endpoints require `Idempotency-Key`
+  - replayed responses include `Idempotency-Replayed: true`
 
----
+## Types
 
-## Checkout Remodel Draft (Partially Implemented)
+```ts
+type OrderStatus = "OPEN" | "CHECKED_OUT" | "CANCELLED";
+type OrderSourceMode = "STANDARD" | "MANUAL_EXTERNAL_PAYMENT_CLAIM" | "DIRECT_CHECKOUT";
+type SaleStatus = "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
+type VoidRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+type SaleType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
 
-Status:
-- Checkout endpoints listed below are implemented.
-- Full cutover is still pending; `/v0/orders*` remains for pay-later order tickets.
+type OrderItemModifierSelection = {
+  groupId: string;
+  optionIds: string[];
+};
 
-Goals:
-- Remove server-side cart as default checkout lane.
-- Record `sale` only when payment is committed.
-- Use KHQR webhook as primary confirmation path.
-- Keep manual confirm as fallback action for cashier.
+type OrderItemInput = {
+  menuItemId: string;
+  quantity: number;
+  modifierSelections?: OrderItemModifierSelection[];
+  note?: string | null;
+};
+```
 
-### Checkout (client-local cart)
+## Order vs Sale Boundary
 
-#### 1) Cash checkout finalize
-`POST /v0/checkout/cash/finalize`  
+- `Sale` is the financial settlement record.
+- `Order` is the operational fulfillment anchor.
+- In the final active scope, orders exposed by `/v0/orders` are direct-checkout fulfillment orders only.
+- Those active order reads are effectively `sourceMode = DIRECT_CHECKOUT`.
+- Deferred open-ticket order workflows are not part of the active contract.
+
+## Active Checkout Contract
+
+### 1) Cash checkout finalize
+
+`POST /v0/checkout/cash/finalize`
+
 Action key: `checkout.cash.finalize`
 
 Body:
+
 ```json
 {
   "items": [
@@ -148,6 +124,7 @@ Body:
 ```
 
 Response `200`:
+
 ```json
 {
   "success": true,
@@ -155,7 +132,7 @@ Response `200`:
     "id": "sale-uuid",
     "orderId": "order-uuid",
     "status": "FINALIZED",
-    "saleType": "TAKEAWAY",
+    "saleType": "DINE_IN",
     "paymentMethod": "CASH",
     "tenderCurrency": "USD",
     "tenderAmount": 8,
@@ -183,62 +160,39 @@ Response `200`:
     "batch": {
       "id": "batch-uuid",
       "orderId": "order-uuid",
-      "status": "PENDING",
-      "note": null,
-      "completedAt": null,
-      "createdAt": "2026-02-23T18:00:00.000Z",
-      "updatedAt": "2026-02-23T18:00:00.000Z"
+      "status": "PENDING"
     },
     "orderLines": [],
     "lines": [],
     "receipt": {
       "receiptId": "sale-uuid",
       "saleId": "sale-uuid",
-      "statusDisplay": "NORMAL",
-      "issuedAt": "2026-02-23T18:00:00.000Z",
-      "saleSnapshot": {
-        "paymentMethod": "CASH",
-        "tenderCurrency": "USD",
-        "subtotalUsd": 8,
-        "subtotalKhr": 32800,
-        "discountUsd": 0,
-        "discountKhr": 0,
-        "vatUsd": 0,
-        "vatKhr": 0,
-        "grandTotalUsd": 8,
-        "grandTotalKhr": 32800,
-        "tenderAmount": 8,
-        "paidAmount": 8,
-        "cashReceivedTenderAmount": 10,
-        "cashChangeTenderAmount": 2
-      },
-      "lines": []
+      "statusDisplay": "NORMAL"
     }
   }
 }
 ```
 
 Rules:
-- Server reprices from catalog/policy and ignores client price snapshots.
-- Atomic write: checked-out order + order lines + sale + sale lines + side effects (inventory/cash movement/outbox).
-- `saleType` defaults to `DINE_IN` when omitted.
-- For `paymentMethod = CASH`, `tenderAmount` must match grand total and `cashReceivedTenderAmount` must be `>= tenderAmount`.
-- Successful cash finalize materializes `order.sourceMode = DIRECT_CHECKOUT` and creates an initial fulfillment batch with `status = PENDING`.
-- The response includes that initial fulfillment batch as `data.batch`.
-- Finalized responses include `data.receipt` for local immediate print (no extra receipt API call required).
-- For cash receipts, use `cashReceivedTenderAmount` and `cashChangeTenderAmount` from the receipt payload.
+- server reprices from canonical menu/policy data
+- successful finalize writes `sale + order + order lines + sale lines + initial fulfillment batch` atomically
+- active fulfillment continuity starts from `order.sourceMode = DIRECT_CHECKOUT`
+- finalized response includes `data.receipt`
 
-#### 2) KHQR checkout initiate
-`POST /v0/checkout/khqr/initiate`  
+### 2) KHQR checkout initiate
+
+`POST /v0/checkout/khqr/initiate`
+
 Action key: `checkout.khqr.initiate`
 
 Body:
+
 ```json
 {
   "items": [
     {
       "menuItemId": "uuid",
-      "quantity": 2,
+      "quantity": 1,
       "modifierSelections": [],
       "note": null
     }
@@ -249,6 +203,7 @@ Body:
 ```
 
 Response `200`:
+
 ```json
 {
   "success": true,
@@ -283,20 +238,18 @@ Response `200`:
 ```
 
 Rules:
-- No `sale` row is created at initiate.
-- Intent stores immutable checkout snapshot for later finalization.
-- `saleType` defaults to `DINE_IN` when omitted and is applied when sale is materialized after KHQR confirmation.
-- Frontend should keep both:
-  - `intent.paymentIntentId` for polling
-  - `attempt.md5` for manual confirm fallback
-- Successful KHQR confirmation/finalization materializes `CHECKED_OUT order + order lines + sale + sale lines` atomically.
-- Successful KHQR confirmation/finalization also creates an initial fulfillment batch with `status = PENDING`.
-- The finalized sale is linked to `order.sourceMode = DIRECT_CHECKOUT`, so fulfillment can continue on `PATCH /v0/orders/:orderId/fulfillment`.
+- no sale row is created at initiate
+- frontend must keep:
+  - `intent.paymentIntentId`
+  - `attempt.md5`
+- confirmation finalizes the sale and materializes a `DIRECT_CHECKOUT` order anchor for fulfillment
 
-#### 3) Read intent status
+### 3) Read KHQR intent status
+
 `GET /v0/checkout/khqr/intents/:intentId`
 
 Response `200`:
+
 ```json
 {
   "success": true,
@@ -310,18 +263,18 @@ Response `200`:
 ```
 
 Rules:
-- This endpoint is a payment-intent status read, not a finalize command.
-- If response shows:
-  - `status = FINALIZED` and `saleId != null`, sale/order materialization is complete.
-  - `status = PAID_CONFIRMED` and `saleId = null`, payment proof is already confirmed but sale/order materialization is still pending.
-- In the `PAID_CONFIRMED` + `saleId = null` case, frontend should call `POST /v0/payments/khqr/confirm` with the initiate `attempt.md5` as the cashier/manual fallback.
-- Webhook may finalize the intent without frontend calling confirm. Polling alone must not be treated as the only finalization step.
+- this is a read endpoint, not a finalize command
+- if `status = PAID_CONFIRMED` and `saleId = null`, cashier fallback is:
+  - `POST /v0/payments/khqr/confirm` with the initiate `md5`
 
-#### 4) Cancel intent
-`POST /v0/checkout/khqr/intents/:intentId/cancel`  
+### 4) Cancel KHQR intent
+
+`POST /v0/checkout/khqr/intents/:intentId/cancel`
+
 Action key: `checkout.khqr.intent.cancel`
 
 Response `200`:
+
 ```json
 {
   "success": true,
@@ -332,452 +285,108 @@ Response `200`:
 }
 ```
 
-Rules:
-- Allowed only when not finalized.
-- Cancelled/expired intent does not create sale.
+## Active Order Read Surface
 
-### Sale lifecycle (target)
-```ts
-type SaleStatus = "FINALIZED" | "VOID_PENDING" | "VOIDED";
-```
+### 5) List fulfillment orders
 
----
+`GET /v0/orders?status=CHECKED_OUT|ALL&sourceMode=DIRECT_CHECKOUT|ALL&view=FULFILLMENT_ACTIVE|ALL&limit=20&offset=0`
 
-## Current Implemented Contract (Live)
+Action key: `order.list`
 
-The sections below (`Conventions`, `Types`, `Orders`, `Sales`, sync notes, and errors) describe the current implemented `/v0` behavior.
+Response `200`:
 
----
-
-## Conventions
-
-- JSON casing: `camelCase`
-- Envelope:
-  - success: `{ "success": true, "data": ... }`
-  - failure: `{ "success": false, "error": "...", "code": "..." }`
-- Auth: `Authorization: Bearer <accessToken>`
-- Working context:
-  - `tenantId` + `branchId` come from token context only
-  - no context override in request body/query/header
-- Idempotency:
-  - all write endpoints require `Idempotency-Key`
-  - replayed responses include `Idempotency-Replayed: true`
-
-Example write headers:
-```http
-Authorization: Bearer <accessToken>
-Idempotency-Key: 2b0b0f12-84be-4ac2-b9ba-f8a8b8b5f2f0
-Content-Type: application/json
-```
-
----
-
-## Types
-
-```ts
-type OrderStatus = "OPEN" | "CHECKED_OUT" | "CANCELLED";
-type OrderSourceMode =
-  | "STANDARD"
-  | "MANUAL_EXTERNAL_PAYMENT_CLAIM"
-  | "DIRECT_CHECKOUT";
-type SaleStatus = "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
-type VoidRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
-type SaleType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
-
-type OrderItemModifierSelection = {
-  groupId: string;
-  optionIds: string[];
-};
-
-type OrderItemInput = {
-  menuItemId: string;
-  quantity: number;
-  modifierSelections?: OrderItemModifierSelection[];
-  note?: string | null;
-};
-```
-
-## Order vs Sale Boundary (Locked)
-
-- `Order` is the operational ticket / fulfillment object.
-  - It exists for open-ticket editing, fulfillment workflow, manual-claim review, and fulfillment continuity after payment.
-- `Sale` is the financial settlement object.
-  - It exists for payment state, receipt, monetary history, and void workflow.
-- `Order` can exist without `Sale`.
-  - Example: open pay-later ticket or manual external-payment-claim order.
-- In the intended v0 workflow model, a persisted `Sale` is always order-backed.
-- After checkout/payment materialization, treat the relationship as `1 order -> 1 sale`.
-- Workflow ownership:
-  - `Order`: fulfillment updates, pay-later item mutation, unpaid cancellation, manual-claim review lane
-  - `Sale`: payment finalization, receipt, void request/approve/reject/execute
-- Therefore, checked-out / sale-backed order reads should expose the `order -> sale` bridge explicitly via `saleId`.
-
----
-
-## Orders
-
-### 1) Place order ticket
-`POST /v0/orders`  
-Action key: `order.place`
-
-Body example:
-```json
-{
-  "items": [
-    {
-      "menuItemId": "a7f5dc8a-02ce-4c88-8f39-6e6ec0c4ed42",
-      "quantity": 2,
-      "modifierSelections": [
-        {
-          "groupId": "2b5f4f4b-3f6c-4900-a4b1-77bb0ee7f47b",
-          "optionIds": [
-            "0b38f877-eed2-47b5-a9be-43f7f04b7e15"
-          ]
-        }
-      ],
-      "note": "Less ice"
-    }
-  ]
-}
-```
-
-Response example (`200`):
 ```json
 {
   "success": true,
   "data": {
-    "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-    "openedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-    "status": "OPEN",
-    "sourceMode": "STANDARD",
-    "checkedOutAt": null,
-    "checkedOutByAccountId": null,
-    "cancelledAt": null,
-    "cancelledByAccountId": null,
-    "cancelReason": null,
-    "createdAt": "2026-02-22T10:00:00.000Z",
-    "updatedAt": "2026-02-22T10:00:00.000Z",
-    "lines": [
+    "items": [
       {
-        "id": "d04dd5b8-f31c-4b1f-a111-c1314437f4e1",
-        "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-        "menuItemId": "a7f5dc8a-02ce-4c88-8f39-6e6ec0c4ed42",
-        "menuItemNameSnapshot": "Iced Latte",
-        "unitPrice": 2.5,
-        "quantity": 2,
-        "lineSubtotal": 5,
-        "modifierSnapshot": [],
-        "note": "Less ice",
-        "createdAt": "2026-02-22T10:00:00.000Z",
-        "updatedAt": "2026-02-22T10:00:00.000Z"
-      }
-    ]
-  }
-}
-```
-
-Rules:
-- requires open cash session (`ORDER_REQUIRES_OPEN_CASH_SESSION`)
-- server ignores client price/name snapshots and resolves canonical values from menu catalog
-- server validates branch visibility + modifier selections; invalid combos are rejected
-- default `sourceMode` is `STANDARD`
-- `STANDARD` source mode is denied when branch policy `saleAllowPayLater = false` (`ORDER_PAY_LATER_DISABLED`)
-- `MANUAL_EXTERNAL_PAYMENT_CLAIM` is a supported outage/manual-proof workflow and is not denied by branch policy
-
----
-
-### 2) Add items to open order
-`POST /v0/orders/:orderId/items`  
-Action key: `order.items.add`
-
-Body example:
-```json
-{
-  "items": [
-    {
-      "menuItemId": "0ce7a7b6-d10f-4f0f-b2be-9f1fc56cf82f",
-      "quantity": 1,
-      "modifierSelections": [],
-      "note": null
-    }
-  ]
-}
-```
-
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-    "status": "OPEN",
-    "sourceMode": "STANDARD",
-    "addedLines": [
-      {
-        "id": "38432852-4d11-43e9-b2ec-f5dfce3d8ef8",
-        "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-        "menuItemId": "0ce7a7b6-d10f-4f0f-b2be-9f1fc56cf82f",
-        "menuItemNameSnapshot": "Mocha",
-        "unitPrice": 3,
-        "quantity": 1,
-        "lineSubtotal": 3,
-        "modifierSnapshot": [],
-        "note": null,
-        "createdAt": "2026-02-22T10:03:00.000Z",
-        "updatedAt": "2026-02-22T10:03:00.000Z"
-      }
-    ]
-  }
-}
-```
-
-Rules:
-- requires open cash session (`ORDER_REQUIRES_OPEN_CASH_SESSION`)
-- `STANDARD` source mode is denied when branch policy `saleAllowPayLater = false` (`ORDER_PAY_LATER_DISABLED`)
-- denied when order has pending manual claim (`ORDER_MANUAL_PAYMENT_CLAIM_PENDING`)
-
----
-
-### 3) Checkout order
-`POST /v0/orders/:orderId/checkout`  
-Action key: `order.checkout`
-
-Body example (KHQR):
-```json
-{
-  "paymentMethod": "KHQR",
-  "saleType": "DELIVERY",
-  "tenderCurrency": "USD",
-  "tenderAmount": 8,
-  "subtotalUsd": 8,
-  "discountUsd": 0,
-  "vatUsd": 0,
-  "grandTotalUsd": 8,
-  "saleFxRateKhrPerUsd": 4100
-}
-```
-
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-    "status": "PENDING",
-    "saleType": "DELIVERY",
-    "paymentMethod": "KHQR",
-    "tenderCurrency": "USD",
-    "tenderAmount": 8,
-    "cashReceivedTenderAmount": null,
-    "cashChangeTenderAmount": 0,
-    "subtotalUsd": 8,
-    "subtotalKhr": 32800,
-    "discountUsd": 0,
-    "discountKhr": 0,
-    "vatUsd": 0,
-    "vatKhr": 0,
-    "grandTotalUsd": 8,
-    "grandTotalKhr": 32800,
-    "saleFxRateKhrPerUsd": 4100,
-    "saleKhrRoundingEnabled": true,
-    "saleKhrRoundingMode": "NEAREST",
-    "saleKhrRoundingGranularity": "100",
-    "khqrMd5": null,
-    "khqrToAccountId": null,
-    "khqrHash": null,
-    "khqrConfirmedAt": null,
-    "finalizedAt": null,
-    "voidedAt": null,
-    "voidReason": null,
-    "createdAt": "2026-02-22T10:05:00.000Z",
-    "updatedAt": "2026-02-22T10:05:00.000Z",
-    "order": {
-      "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-      "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-      "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-      "openedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-      "status": "CHECKED_OUT",
-      "checkedOutAt": "2026-02-22T10:05:00.000Z",
-      "checkedOutByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-      "cancelledAt": null,
-      "cancelledByAccountId": null,
-      "cancelReason": null,
-      "createdAt": "2026-02-22T10:00:00.000Z",
-      "updatedAt": "2026-02-22T10:05:00.000Z"
-    },
-    "lines": [
-      {
-        "id": "5c977953-e0ab-4f10-98e0-bce3cf0f44a6",
-        "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-        "orderLineId": "d04dd5b8-f31c-4b1f-a111-c1314437f4e1",
-        "menuItemId": "a7f5dc8a-02ce-4c88-8f39-6e6ec0c4ed42",
-        "menuItemNameSnapshot": "Iced Latte",
-        "unitPrice": 2.5,
-        "quantity": 2,
-        "lineDiscountAmount": 0,
-        "lineTotalAmount": 5,
-        "modifierSnapshot": [],
+        "id": "order-uuid",
+        "status": "CHECKED_OUT",
+        "sourceMode": "DIRECT_CHECKOUT",
+        "openedByAccountId": "uuid",
+        "openedByDisplayName": "Sale Order",
+        "fulfillmentStatus": "PENDING",
+        "totalUsdExact": 3.5,
+        "linesPreview": [
+          {
+            "menuItemNameSnapshot": "Iced Latte",
+            "quantity": 1,
+            "modifierLabels": []
+          }
+        ],
+        "checkedOutAt": "2026-02-22T10:05:00.000Z",
+        "saleId": "sale-uuid",
+        "saleStatus": "FINALIZED",
+        "paymentMethod": "CASH",
         "createdAt": "2026-02-22T10:05:00.000Z",
         "updatedAt": "2026-02-22T10:05:00.000Z"
       }
-    ]
+    ],
+    "limit": 20,
+    "offset": 0,
+    "total": 1,
+    "hasMore": false
   }
 }
 ```
 
 Rules:
-- requires open cash session (`SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION`)
-- `saleType` defaults to `DINE_IN` when omitted
-- `paymentMethod = CASH` settles and returns `sale.status = FINALIZED` in one command
-- `paymentMethod = KHQR` returns `sale.status = PENDING` until KHQR is confirmed
+- active list surface is narrowed to direct-checkout orders
+- if `sourceMode` is omitted, backend behaves as direct-checkout-only
+- supported `view` values in the active contract:
+  - omitted / `ALL`
+  - `FULFILLMENT_ACTIVE`
+- deprecated views `PAY_LATER_EDITABLE` and `MANUAL_CLAIM_REVIEW` return `ORDER_LIST_VIEW_INVALID`
+- deprecated `sourceMode` filters `STANDARD` and `MANUAL_EXTERNAL_PAYMENT_CLAIM` return `ORDER_LIST_SOURCE_MODE_INVALID`
+- dormant legacy non-direct rows are not exposed through the active order read surface
 
----
+### 6) Get fulfillment order detail
 
-### 4) Cancel unpaid order ticket
-`POST /v0/orders/:orderId/cancel`  
-Action key: `order.cancel`
+`GET /v0/orders/:orderId`
 
-Body example:
-```json
-{
-  "reason": "Customer left before payment"
-}
-```
+Action key: `order.read`
 
-Response example (`200`):
+Response `200`:
+
 ```json
 {
   "success": true,
   "data": {
-    "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-    "status": "CANCELLED",
-    "cancelReason": "Customer left before payment",
-    "cancelledAt": "2026-02-22T10:06:00.000Z",
-    "cancelledByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7"
+    "id": "order-uuid",
+    "tenantId": "uuid",
+    "branchId": "uuid",
+    "openedByAccountId": "uuid",
+    "status": "CHECKED_OUT",
+    "sourceMode": "DIRECT_CHECKOUT",
+    "checkedOutAt": "2026-02-22T10:05:00.000Z",
+    "checkedOutByAccountId": "uuid",
+    "saleId": "sale-uuid",
+    "saleStatus": "FINALIZED",
+    "paymentMethod": "CASH",
+    "cancelledAt": null,
+    "cancelledByAccountId": null,
+    "cancelReason": null,
+    "createdAt": "2026-02-22T10:05:00.000Z",
+    "updatedAt": "2026-02-22T10:05:00.000Z",
+    "lines": [],
+    "fulfillmentBatches": []
   }
 }
 ```
 
 Rules:
-- Allowed only for unpaid/open tickets.
-- Requires non-empty `reason`.
-- Retrying cancel on an already cancelled ticket returns success (idempotent no-op).
-- denied when order has pending manual claim (`ORDER_MANUAL_PAYMENT_CLAIM_PENDING`)
+- active detail surface is direct-checkout-only
+- dormant legacy non-direct orders return `ORDER_NOT_FOUND`
 
----
+### 7) Update fulfillment status
 
-### 5) Create manual payment claim
-`POST /v0/orders/:orderId/manual-payment-claims`  
-Action key: `order.manualPaymentClaim.create`
+`PATCH /v0/orders/:orderId/fulfillment`
 
-Body example:
-```json
-{
-  "claimedPaymentMethod": "KHQR",
-  "saleType": "TAKEAWAY",
-  "tenderCurrency": "USD",
-  "claimedTenderAmount": 3.5,
-  "proofImageUrl": "https://cdn.example.com/proof/khqr-001.jpg",
-  "customerReference": "ABA-REF-001",
-  "note": "Customer showed transfer screenshot"
-}
-```
-
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "54a9f58a-4d3a-4fb3-8a7d-78f23254a59d",
-    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-    "saleId": null,
-    "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-    "reviewedByAccountId": null,
-    "status": "PENDING",
-    "claimedPaymentMethod": "KHQR",
-    "saleType": "TAKEAWAY",
-    "tenderCurrency": "USD",
-    "claimedTenderAmount": 3.5,
-    "proofImageUrl": "https://cdn.example.com/proof/khqr-001.jpg",
-    "customerReference": "ABA-REF-001",
-    "note": "Customer showed transfer screenshot",
-    "reviewNote": null,
-    "requestedAt": "2026-02-22T10:06:00.000Z",
-    "reviewedAt": null,
-    "createdAt": "2026-02-22T10:06:00.000Z",
-    "updatedAt": "2026-02-22T10:06:00.000Z"
-  }
-}
-```
-
-Rules:
-- order must remain `OPEN`
-- order must still have no sale
-- order must have at least one line
-- if a pending claim already exists, backend returns that pending claim instead of creating a second pending row
-- `proofImageUrl` is the submitted evidence reference.
-- For outage/static-QR handling, the expected reconnect flow is:
-  1. capture the customer's transaction photo locally during downtime
-  2. after connectivity returns, upload it via `POST /v0/media/images/upload` with `area = payment-proof`
-  3. submit the returned `imageUrl` as `proofImageUrl`
-- Staff handling this reconnect flow, including `CASHIER`, are allowed to upload `payment-proof` media for claim evidence.
-- When `proofImageUrl` references a pending `payment-proof` upload for the same tenant, backend marks that upload as `LINKED` to the created manual claim.
-
----
-
-### 6) Approve manual payment claim
-`POST /v0/orders/:orderId/manual-payment-claims/:claimId/approve`  
-Action key: `order.manualPaymentClaim.approve`
-
-Body example:
-```json
-{
-  "note": "Verified against bank evidence"
-}
-```
-
-Rules:
-- allowed only for `OWNER|ADMIN|MANAGER`
-- approving a pending claim creates and finalizes a `KHQR` sale in one transaction
-- approved manual claims emit finalized-sale side effects as non-cash payment, so cash-session `SALE_IN` must not be appended
-
----
-
-### 7) Reject manual payment claim
-`POST /v0/orders/:orderId/manual-payment-claims/:claimId/reject`  
-Action key: `order.manualPaymentClaim.reject`
-
-Body example:
-```json
-{
-  "note": "Proof was not sufficient"
-}
-```
-
-Rules:
-- allowed only for `OWNER|ADMIN|MANAGER`
-- rejection keeps the order open and unpaid
-
----
-
-### 8) List manual payment claims
-`GET /v0/orders/:orderId/manual-payment-claims`  
-Action key: `order.manualPaymentClaim.list`
-
----
-
-### 9) Update fulfillment status
-`PATCH /v0/orders/:orderId/fulfillment`  
 Action key: `order.fulfillment.status.update`
 
-Body example:
+Body:
+
 ```json
 {
   "status": "PREPARING",
@@ -785,679 +394,119 @@ Body example:
 }
 ```
 
-Response example (`200`):
+Response `200`:
+
 ```json
 {
   "success": true,
   "data": {
-    "id": "11f57e4d-c5fb-4f29-bbc5-4f6f17f99373",
-    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
+    "id": "batch-uuid",
+    "orderId": "order-uuid",
     "status": "PREPARING",
-    "note": "Started by kitchen",
-    "createdByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-    "completedAt": null,
-    "createdAt": "2026-02-22T10:07:00.000Z",
-    "updatedAt": "2026-02-22T10:07:00.000Z"
+    "note": "Started by kitchen"
   }
 }
 ```
 
----
+## Disabled Deferred-Order Endpoints
 
-### 10) List orders
-`GET /v0/orders?status=OPEN|CHECKED_OUT|CANCELLED|ALL&sourceMode=STANDARD|DIRECT_CHECKOUT|MANUAL_EXTERNAL_PAYMENT_CLAIM|ALL&view=FULFILLMENT_ACTIVE|PAY_LATER_EDITABLE|MANUAL_CLAIM_REVIEW|ALL&limit=20&offset=0`  
-Action key: `order.list`
+These endpoints remain registered only for compatibility/error handling and are not part of the active final workflow:
 
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "items": [
-      {
-        "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-        "status": "OPEN",
-        "sourceMode": "STANDARD",
-        "openedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-        "openedByDisplayName": "Sale Order",
-        "fulfillmentStatus": "PREPARING",
-        "totalUsdExact": 5,
-        "linesPreview": [
-          {
-            "menuItemNameSnapshot": "Iced Latte",
-            "quantity": 2,
-            "modifierLabels": ["Less ice"]
-          }
-        ],
-        "checkedOutAt": null,
-        "saleId": null,
-        "saleStatus": null,
-        "paymentMethod": null,
-        "manualPaymentClaimId": null,
-        "manualPaymentClaimStatus": null,
-        "manualPaymentClaimRequestedByAccountId": null,
-        "manualPaymentClaimRequestedByDisplayName": null,
-        "manualPaymentClaimRequestedAt": null,
-        "createdAt": "2026-02-22T10:00:00.000Z",
-        "updatedAt": "2026-02-22T10:03:00.000Z"
-      }
-    ],
-    "limit": 20,
-    "offset": 0,
-    "total": 1,
-    "hasMore": false
-  }
-}
-```
+- `POST /v0/orders`
+- `POST /v0/orders/:orderId/items`
+- `POST /v0/orders/:orderId/cancel`
+- `POST /v0/orders/:orderId/checkout`
+- `GET /v0/orders/:orderId/manual-payment-claims`
+- `POST /v0/orders/:orderId/manual-payment-claims`
+- `POST /v0/orders/:orderId/manual-payment-claims/:claimId/approve`
+- `POST /v0/orders/:orderId/manual-payment-claims/:claimId/reject`
 
-Rules:
-- `sourceMode` narrows the list to an exact order source mode when provided.
-- `view = FULFILLMENT_ACTIVE` returns orders that still need fulfillment work:
-  - includes `OPEN` and `CHECKED_OUT` orders
-  - excludes `CANCELLED` orders
-  - excludes orders whose latest fulfillment status is `COMPLETED` or `CANCELLED`
-  - can be combined with `status` and `sourceMode` as additional narrowing filters
-- `view = PAY_LATER_EDITABLE` returns the mutable unpaid pay-later queue:
-  - includes only `OPEN` orders
-  - includes only `sourceMode = STANDARD`
-  - excludes orders whose latest manual payment claim already exists
-  - can be combined with `status` and `sourceMode` as additional narrowing filters
-- `view = MANUAL_CLAIM_REVIEW` returns the payment-proof review queue:
-  - includes only `OPEN` orders
-  - includes `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`
-  - also includes any open order whose latest manual payment claim exists
-  - can be combined with `status` and `sourceMode` as additional narrowing filters
-- `fulfillmentStatus` reflects the latest fulfillment batch status for the order.
-- `fulfillmentStatus = null` when no fulfillment batch has been created yet.
-- Quick-pay `DIRECT_CHECKOUT` orders start with `fulfillmentStatus = PENDING` immediately after successful cash finalize or KHQR finalization.
-- `totalUsdExact` is the exact USD total computed from current order lines (`sum(lineSubtotal)`).
-- `linesPreview` is a lightweight line summary for list rendering and includes readable modifier labels when present.
-- `openedByAccountId` and `openedByDisplayName` identify the staff who created the order.
-- `checkedOutAt`, `saleId`, `saleStatus`, and `paymentMethod` are `null` until the order has an associated sale/checkout state.
-- Once a checked-out order has an associated sale row, `saleId` exposes the canonical bridge into sale-based workflows such as void.
-- `manualPaymentClaimId` and `manualPaymentClaimStatus` reflect the latest manual payment claim for the order, or `null` when no claim exists.
-- `manualPaymentClaimRequestedByAccountId`, `manualPaymentClaimRequestedByDisplayName`, and `manualPaymentClaimRequestedAt` reflect the latest manual payment claim requester, or `null` when no claim exists yet.
-- `sourceMode = DIRECT_CHECKOUT` indicates a pay-now order anchor materialized by quick cash or quick KHQR checkout finalization.
+Current rollback behavior:
+- backend returns `422 ORDER_OPEN_TICKET_DISABLED`
 
----
+## Active Sales Surface
 
-### 11) Get order detail
-`GET /v0/orders/:orderId`  
-Action key: `order.read`
+### 8) List sales
 
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-    "openedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-    "status": "OPEN",
-    "sourceMode": "STANDARD",
-    "checkedOutAt": null,
-    "checkedOutByAccountId": null,
-    "saleId": null,
-    "saleStatus": null,
-    "paymentMethod": null,
-    "cancelledAt": null,
-    "cancelledByAccountId": null,
-    "cancelReason": null,
-    "createdAt": "2026-02-22T10:00:00.000Z",
-    "updatedAt": "2026-02-22T10:03:00.000Z",
-    "lines": [
-      {
-        "id": "d04dd5b8-f31c-4b1f-a111-c1314437f4e1",
-        "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-        "menuItemId": "a7f5dc8a-02ce-4c88-8f39-6e6ec0c4ed42",
-        "menuItemNameSnapshot": "Iced Latte",
-        "unitPrice": 2.5,
-        "quantity": 2,
-        "lineSubtotal": 5,
-        "modifierSnapshot": [],
-        "note": "Less ice",
-        "createdAt": "2026-02-22T10:00:00.000Z",
-        "updatedAt": "2026-02-22T10:00:00.000Z"
-      }
-    ],
-    "fulfillmentBatches": [],
-    "manualPaymentClaims": []
-  }
-}
-```
+`GET /v0/sales?status=FINALIZED&limit=20&offset=0`
 
-Rules:
-- `saleId`, `saleStatus`, and `paymentMethod` are `null` until the order has an associated sale.
-- For checked-out / sale-backed orders, `saleId` is the canonical bridge to sale detail, receipt, and void workflows.
-
----
-
-## Sales
-
-### 12) Finalize sale
-`POST /v0/sales/:saleId/finalize`  
-Action key: `sale.finalize`
-
-Body example (KHQR):
-```json
-{
-  "paidAmount": 8,
-  "khqrMd5": "8b4a2b3a0512451d6d7aab75187998254d517f77c48a151617f75ea77e5e7f64"
-}
-```
-
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-    "status": "FINALIZED",
-    "paymentMethod": "KHQR",
-    "tenderCurrency": "USD",
-    "tenderAmount": 8,
-    "cashReceivedTenderAmount": null,
-    "cashChangeTenderAmount": 0,
-    "subtotalUsd": 8,
-    "subtotalKhr": 32800,
-    "discountUsd": 0,
-    "discountKhr": 0,
-    "vatUsd": 0,
-    "vatKhr": 0,
-    "grandTotalUsd": 8,
-    "grandTotalKhr": 32800,
-    "saleFxRateKhrPerUsd": 4100,
-    "saleKhrRoundingEnabled": true,
-    "saleKhrRoundingMode": "NEAREST",
-    "saleKhrRoundingGranularity": "100",
-    "khqrMd5": "8b4a2b3a0512451d6d7aab75187998254d517f77c48a151617f75ea77e5e7f64",
-    "khqrToAccountId": "ieangzorng_lim@bkrt",
-    "khqrHash": "db_hash",
-    "khqrConfirmedAt": "2026-02-22T10:10:00.000Z",
-    "finalizedAt": "2026-02-22T10:10:01.000Z",
-    "voidedAt": null,
-    "voidReason": null,
-    "createdAt": "2026-02-22T10:05:00.000Z",
-    "updatedAt": "2026-02-22T10:10:01.000Z"
-    ,
-    "receipt": {
-      "receiptId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-      "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-      "statusDisplay": "NORMAL",
-      "issuedAt": "2026-02-22T10:10:01.000Z",
-      "saleSnapshot": {
-        "paymentMethod": "KHQR",
-        "tenderCurrency": "USD",
-        "subtotalUsd": 8,
-        "subtotalKhr": 32800,
-        "discountUsd": 0,
-        "discountKhr": 0,
-        "vatUsd": 0,
-        "vatKhr": 0,
-        "grandTotalUsd": 8,
-        "grandTotalKhr": 32800,
-        "tenderAmount": 8,
-        "paidAmount": 8,
-        "cashReceivedTenderAmount": null,
-        "cashChangeTenderAmount": 0
-      },
-      "lines": []
-    }
-  }
-}
-```
-
-Rules:
-- requires open cash session (`SALE_FINALIZE_REQUIRES_OPEN_CASH_SESSION`)
-- KHQR requires backend-confirmed proof:
-  - `SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED`
-  - `SALE_FINALIZE_KHQR_PROOF_MISMATCH`
-- KHQR generation endpoint:
-  - `POST /v0/payments/khqr/sales/:saleId/generate`
-
----
-
-### 9) Request void (team mode)
-`POST /v0/sales/:saleId/void/request`  
-Action key: `sale.void.request`
-
-Body example:
-```json
-{
-  "reason": "Wrong item prepared"
-}
-```
-
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "6b89fb1a-b2e9-4698-a7c2-79ea5c187c81",
-    "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-    "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-    "reviewedByAccountId": null,
-    "status": "PENDING",
-    "reason": "Wrong item prepared",
-    "reviewNote": null,
-    "requestedAt": "2026-02-22T10:12:00.000Z",
-    "reviewedAt": null,
-    "createdAt": "2026-02-22T10:12:00.000Z",
-    "updatedAt": "2026-02-22T10:12:00.000Z"
-  }
-}
-```
-
----
-
-### 10) Approve void request (team mode)
-`POST /v0/sales/:saleId/void/approve`  
-Action key: `sale.void.approve`
-
-Body example:
-```json
-{
-  "note": "Approved by manager"
-}
-```
-
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "6b89fb1a-b2e9-4698-a7c2-79ea5c187c81",
-    "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-    "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-    "reviewedByAccountId": "d2453d8c-0f70-4efd-a522-23ac3d690955",
-    "status": "APPROVED",
-    "reason": "Wrong item prepared",
-    "reviewNote": "Approved by manager",
-    "requestedAt": "2026-02-22T10:12:00.000Z",
-    "reviewedAt": "2026-02-22T10:13:00.000Z",
-    "createdAt": "2026-02-22T10:12:00.000Z",
-    "updatedAt": "2026-02-22T10:13:00.000Z"
-  }
-}
-```
-
----
-
-### 11) Reject void request (team mode)
-`POST /v0/sales/:saleId/void/reject`  
-Action key: `sale.void.reject`
-
-Body example:
-```json
-{
-  "note": "Keep sale record"
-}
-```
-
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "6b89fb1a-b2e9-4698-a7c2-79ea5c187c81",
-    "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-    "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-    "reviewedByAccountId": "d2453d8c-0f70-4efd-a522-23ac3d690955",
-    "status": "REJECTED",
-    "reason": "Wrong item prepared",
-    "reviewNote": "Keep sale record",
-    "requestedAt": "2026-02-22T10:12:00.000Z",
-    "reviewedAt": "2026-02-22T10:13:30.000Z",
-    "createdAt": "2026-02-22T10:12:00.000Z",
-    "updatedAt": "2026-02-22T10:13:30.000Z"
-  }
-}
-```
-
----
-
-### 12) Execute void
-`POST /v0/sales/:saleId/void/execute`  
-Action key: `sale.void.execute`
-
-Body example:
-```json
-{
-  "reason": "Operator corrected sale"
-}
-```
-
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-    "status": "VOIDED",
-    "paymentMethod": "CASH",
-    "tenderCurrency": "USD",
-    "tenderAmount": 8,
-    "cashReceivedTenderAmount": 10,
-    "cashChangeTenderAmount": 2,
-    "subtotalUsd": 8,
-    "subtotalKhr": 32800,
-    "discountUsd": 0,
-    "discountKhr": 0,
-    "vatUsd": 0,
-    "vatKhr": 0,
-    "grandTotalUsd": 8,
-    "grandTotalKhr": 32800,
-    "saleFxRateKhrPerUsd": 4100,
-    "saleKhrRoundingEnabled": true,
-    "saleKhrRoundingMode": "NEAREST",
-    "saleKhrRoundingGranularity": "100",
-    "khqrMd5": null,
-    "khqrToAccountId": null,
-    "khqrHash": null,
-    "khqrConfirmedAt": null,
-    "finalizedAt": "2026-02-22T10:10:00.000Z",
-    "voidedAt": "2026-02-22T10:15:00.000Z",
-    "voidReason": "Operator corrected sale",
-    "createdAt": "2026-02-22T10:05:00.000Z",
-    "updatedAt": "2026-02-22T10:15:00.000Z"
-  }
-}
-```
-
-Rules:
-- workforce OFF: direct execute path (no second actor approval required)
-- workforce ON: requires approved void request (`VOID_APPROVAL_REQUIRED`)
-
----
-
-### 13) List sales
-`GET /v0/sales?status=FINALIZED&limit=20&offset=0`  
 Action key: `sale.list`
 
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "items": [
-      {
-        "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-        "status": "FINALIZED",
-        "paymentMethod": "KHQR",
-        "tenderCurrency": "USD",
-        "grandTotalUsd": 8,
-        "grandTotalKhr": 32800,
-        "finalizedAt": "2026-02-22T10:10:01.000Z",
-        "voidedAt": null,
-        "createdAt": "2026-02-22T10:05:00.000Z",
-        "updatedAt": "2026-02-22T10:10:01.000Z"
-      }
-    ],
-    "limit": 20,
-    "offset": 0,
-    "total": 1,
-    "hasMore": false
-  }
-}
-```
+### 9) Get sale detail
 
----
+`GET /v0/sales/:saleId`
+
+Action key: `sale.read`
+
+### 10) Request void
+
+`POST /v0/sales/:saleId/void/request`
+
+Action key: `sale.void.request`
+
+### 11) Approve void request
+
+`POST /v0/sales/:saleId/void/approve`
+
+Action key: `sale.void.approve`
+
+### 12) Reject void request
+
+`POST /v0/sales/:saleId/void/reject`
+
+Action key: `sale.void.reject`
+
+### 13) Execute void
+
+`POST /v0/sales/:saleId/void/execute`
+
+Action key: `sale.void.execute`
 
 ### 14) List void-request reviewer queue
-`GET /v0/sales/void-requests?status=PENDING|APPROVED|REJECTED|ALL&limit=20&offset=0`  
+
+`GET /v0/sales/void-requests?status=PENDING|APPROVED|REJECTED|ALL&limit=20&offset=0`
+
 Action key: `sale.void.request.list`
 
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "items": [
-      {
-        "voidRequestId": "6b89fb1a-b2e9-4698-a7c2-79ea5c187c81",
-        "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-        "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-        "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-        "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-        "branchName": "Main Branch",
-        "saleStatus": "FINALIZED",
-        "voidRequestStatus": "PENDING",
-        "requestedAt": "2026-02-22T10:12:00.000Z",
-        "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-        "requestedByDisplayName": "Sale Order",
-        "reason": "Wrong item prepared",
-        "paymentMethod": "CASH",
-        "grandTotalUsd": 8,
-        "grandTotalKhr": 32800,
-        "fulfillmentStatus": "READY",
-        "saleCreatedAt": "2026-02-22T10:05:00.000Z"
-      },
-      {
-        "voidRequestId": "c09ab29c-20d1-4f1b-8085-4eaf4fc50a02",
-        "saleId": "53cbca70-7de3-4ea7-8be7-c76db6be0bc9",
-        "orderId": "b4b9de8d-d3ea-42bf-a0ac-0c977d5ff9b8",
-        "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-        "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-        "branchName": "Main Branch",
-        "saleStatus": "FINALIZED",
-        "voidRequestStatus": "APPROVED",
-        "requestedAt": "2026-02-22T09:45:00.000Z",
-        "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-        "requestedByDisplayName": "Sale Order",
-        "reason": "Duplicate checkout attempt",
-        "paymentMethod": "KHQR",
-        "grandTotalUsd": 3.5,
-        "grandTotalKhr": 14300,
-        "fulfillmentStatus": "COMPLETED",
-        "saleCreatedAt": "2026-02-22T09:40:00.000Z"
-      },
-      {
-        "voidRequestId": "e4b116dc-bce1-4bd4-9350-a92cc9e1edfd",
-        "saleId": "6d3eb0de-57a9-47da-a00a-4c03e59a7ca3",
-        "orderId": "7c186bdb-6d04-4903-ac09-18b6576aa8f7",
-        "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-        "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-        "branchName": "Main Branch",
-        "saleStatus": "FINALIZED",
-        "voidRequestStatus": "REJECTED",
-        "requestedAt": "2026-02-22T08:30:00.000Z",
-        "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-        "requestedByDisplayName": "Sale Order",
-        "reason": "Operator selected wrong sale",
-        "paymentMethod": "CASH",
-        "grandTotalUsd": 5,
-        "grandTotalKhr": 20500,
-        "fulfillmentStatus": "COMPLETED",
-        "saleCreatedAt": "2026-02-22T08:20:00.000Z"
-      }
-    ],
-    "limit": 20,
-    "offset": 0,
-    "total": 3,
-    "hasMore": false
-  }
-}
-```
-
-Row field semantics:
-- `voidRequestId`: `string`, non-null
-- `saleId`: `string`, non-null
-- `orderId`: `string | null`
-  - intended v0 sale flows are order-backed, but queue payload remains defensive for compatibility
-- `tenantId`: `string`, non-null
-- `branchId`: `string`, non-null
-- `branchName`: `string | null`
-- `saleStatus`: `SaleStatus`, non-null
-- `voidRequestStatus`: `VoidRequestStatus`, non-null
-- `requestedAt`: ISO datetime, non-null
-- `requestedByAccountId`: `string`, non-null
-- `requestedByDisplayName`: `string | null`
-- `reason`: `string`, non-null
-- `paymentMethod`: `"CASH" | "KHQR"`, non-null
-- `grandTotalUsd`: `number`, non-null
-- `grandTotalKhr`: `number`, non-null
-- `fulfillmentStatus`: latest fulfillment batch status or `null` when no batch exists yet
-- `saleCreatedAt`: ISO datetime, non-null
-  - use `requestedAt` as the primary queue timestamp
-  - use `saleCreatedAt` only as secondary age/context display
-
 Rules:
-- Intended reviewer workspace read surface for the new `Void Requests` tab.
-- Access is reviewer-only and backend-authoritative:
+- intended reviewer discovery surface for the `Void Requests` tab
+- access is reviewer-only:
   - `OWNER`
   - `ADMIN`
   - `MANAGER`
-- First-cut supported query params:
-  - `status`
-  - `limit`
-  - `offset`
-- Deferred filters for later phase:
-  - `requestedByAccountId`
-  - `saleId`
-  - `orderId`
-- Default ordering:
-  - `requestedAt DESC`
-  - tie-break `voidRequestId DESC`
-- Default `status` when omitted is `PENDING`.
-- `tenantName` is not included in the first-cut queue payload.
-- `saleId` is always non-null for queue rows.
-- `voidRequestStatus` is always non-null for queue rows.
-- Frontend must not assume `voidRequestStatus` mechanically determines `saleStatus`.
-  - Example: a row with `voidRequestStatus = PENDING` may still have `saleStatus = FINALIZED`.
-  - `sale.status = VOID_PENDING` is an execution-stage state and is not guaranteed at request-create time.
-- Sale detail remains the authoritative single-record review surface.
-- Queue rows are designed to avoid per-row `GET /v0/sales/:saleId/void-request` fan-out for reviewer discovery UX.
+- default `status` when omitted is `PENDING`
 
----
+### 15) Get void request detail
 
-### 15) Get sale detail
-`GET /v0/sales/:saleId`  
-Action key: `sale.read`
+`GET /v0/sales/:saleId/void-request`
 
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-    "orderId": "a57c4b5d-f57e-4e4c-95ab-8f1b44ec7b3f",
-    "status": "FINALIZED",
-    "paymentMethod": "KHQR",
-    "tenderCurrency": "USD",
-    "tenderAmount": 8,
-    "cashReceivedTenderAmount": null,
-    "cashChangeTenderAmount": 0,
-    "subtotalUsd": 8,
-    "subtotalKhr": 32800,
-    "discountUsd": 0,
-    "discountKhr": 0,
-    "vatUsd": 0,
-    "vatKhr": 0,
-    "grandTotalUsd": 8,
-    "grandTotalKhr": 32800,
-    "saleFxRateKhrPerUsd": 4100,
-    "saleKhrRoundingEnabled": true,
-    "saleKhrRoundingMode": "NEAREST",
-    "saleKhrRoundingGranularity": "100",
-    "khqrMd5": "8b4a2b3a0512451d6d7aab75187998254d517f77c48a151617f75ea77e5e7f64",
-    "khqrToAccountId": "ieangzorng_lim@bkrt",
-    "khqrHash": "db_hash",
-    "khqrConfirmedAt": "2026-02-22T10:10:00.000Z",
-    "finalizedAt": "2026-02-22T10:10:01.000Z",
-    "voidedAt": null,
-    "voidReason": null,
-    "createdAt": "2026-02-22T10:05:00.000Z",
-    "updatedAt": "2026-02-22T10:10:01.000Z",
-    "lines": [
-      {
-        "id": "5c977953-e0ab-4f10-98e0-bce3cf0f44a6",
-        "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-        "orderLineId": "d04dd5b8-f31c-4b1f-a111-c1314437f4e1",
-        "menuItemId": "a7f5dc8a-02ce-4c88-8f39-6e6ec0c4ed42",
-        "menuItemNameSnapshot": "Iced Latte",
-        "unitPrice": 2.5,
-        "quantity": 2,
-        "lineDiscountAmount": 0,
-        "lineTotalAmount": 5,
-        "modifierSnapshot": [],
-        "createdAt": "2026-02-22T10:05:00.000Z",
-        "updatedAt": "2026-02-22T10:05:00.000Z"
-      }
-    ]
-  }
-}
-```
-
----
-
-### 16) Get void request detail
-`GET /v0/sales/:saleId/void-request`  
 Action key: `sale.void.request.read`
 
-Response example (`200`):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "6b89fb1a-b2e9-4698-a7c2-79ea5c187c81",
-    "saleId": "7ac9b0cd-9f24-42bc-9ea0-9f6551eb1e7f",
-    "tenantId": "3ec0c5e6-ab74-4106-bc01-8d8cb74f3c40",
-    "branchId": "eff8aa83-a98b-43f6-8bd0-c60bd1fc4747",
-    "requestedByAccountId": "9ae622cf-49a7-491c-8d01-a009e156f6a7",
-    "reviewedByAccountId": "d2453d8c-0f70-4efd-a522-23ac3d690955",
-    "status": "APPROVED",
-    "reason": "Wrong item prepared",
-    "reviewNote": "Approved by manager",
-    "requestedAt": "2026-02-22T10:12:00.000Z",
-    "reviewedAt": "2026-02-22T10:13:00.000Z",
-    "createdAt": "2026-02-22T10:12:00.000Z",
-    "updatedAt": "2026-02-22T10:13:00.000Z"
-  }
-}
-```
+## Legacy Compatibility Note
 
----
+`POST /v0/sales/:saleId/finalize` remains available as a legacy compatibility endpoint for existing pending-sale records, but it is not part of the active final checkout lane.
+
+Final active KHQR checkout lane is:
+- `/v0/checkout/khqr/initiate`
+- webhook or `POST /v0/payments/khqr/confirm`
 
 ## Push Sync + Pull Sync Notes
 
-- Replay-enabled target operations:
-  - `checkout.cash.finalize`
-  - `order.manualExternalPaymentClaim.capture`
-  - `sale.void.execute`
-- Accepted but not yet replay-implemented:
-  - `sale.finalize` (currently returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`; KHQR confirmation checks still run before that fallback)
-- Online-only operations (replay returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`):
-  - `order.place`
-  - `order.items.add`
-  - `order.checkout`
-  - `order.fulfillment.status.update`
-  - `sale.void.request`
-  - `sale.void.approve`
-  - `sale.void.reject`
-- Sale/order writes append `moduleKey = saleOrder` pull deltas in same transaction.
+Replay-enabled sale-order operation:
+- `checkout.cash.finalize`
 
----
+Legacy accepted but unsupported:
+- `sale.finalize`
+  - returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`
+
+Removed from active final scope:
+- `order.manualExternalPaymentClaim.capture`
 
 ## Locked Error Codes
 
 - `SALE_NOT_FOUND`
 - `SALE_ALREADY_VOIDED`
-- `ORDER_REQUIRES_OPEN_CASH_SESSION`
+- `ORDER_OPEN_TICKET_DISABLED`
 - `SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION`
 - `SALE_FINALIZE_REQUIRES_OPEN_CASH_SESSION`
 - `SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED`
@@ -1466,10 +515,6 @@ Response example (`200`):
 - `SALE_CASH_TENDER_AMOUNT_INVALID`
 - `SALE_CASH_RECEIVED_INSUFFICIENT`
 - `ORDER_NOT_FOUND`
-- `ORDER_NOT_UNPAID`
-- `ORDER_PAY_LATER_DISABLED`
-- `ORDER_CANCEL_NOT_ALLOWED`
-- `ORDER_CANCEL_REASON_REQUIRED`
 - `ORDER_LIST_VIEW_INVALID`
 - `ORDER_LIST_SOURCE_MODE_INVALID`
 - `VOID_REQUEST_NOT_FOUND`
@@ -1479,13 +524,7 @@ Response example (`200`):
 - `VOID_NOT_ALLOWED_FOR_PAYMENT_METHOD`
 - `VOID_NOT_ALLOWED_FOR_STATUS`
 - `SALE_VOID_STATE_CONFLICT`
-- standard idempotency/access-control/entitlement denials
 
----
+## Report-Safe Scope Summary
 
-## Notification Lock
-
-- ON-01 (`void requires attention`) is emitted on `VoidRequest(status=PENDING)` creation.
-- Do not emit ON-01 from `sale.status=VOID_PENDING` transition alone.
-- ON-02 (`void approved`) is emitted on `VoidRequest(status=APPROVED)`.
-- ON-03 (`void rejected`) is emitted on `VoidRequest(status=REJECTED)`.
+The final backend scope for sale/order is pay-first. Active checkout is limited to direct cash finalize and KHQR intent-based payment confirmation, with a checked-out order anchor retained only for fulfillment continuity. Deferred open-order, pay-later, and manual external-payment-claim workflows are rolled back from the active operational contract and are now hard-disabled.

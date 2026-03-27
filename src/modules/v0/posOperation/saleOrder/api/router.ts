@@ -12,7 +12,10 @@ import { V0MediaUploadRepository } from "../../../../../platform/media-uploads/r
 import { V0PullSyncRepository } from "../../../platformSystem/pullSync/infra/repository.js";
 import { V0AuditService } from "../../../audit/app/service.js";
 import { V0AuditRepository } from "../../../audit/infra/repository.js";
-import { V0KhqrPaymentService } from "../../../platformSystem/khqrPayment/app/service.js";
+import {
+  V0KhqrPaymentError,
+  V0KhqrPaymentService,
+} from "../../../platformSystem/khqrPayment/app/service.js";
 import { V0KhqrPaymentRepository } from "../../../platformSystem/khqrPayment/infra/repository.js";
 import type { V0KhqrPaymentProvider } from "../../../platformSystem/khqrPayment/app/payment-provider.js";
 import { buildSaleReceiptPreview } from "../../receipt/app/preview.js";
@@ -975,6 +978,15 @@ function handleError(res: Response, error: unknown): void {
   }
 
   if (error instanceof V0SaleOrderError) {
+    res.status(error.statusCode).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+    });
+    return;
+  }
+
+  if (error instanceof V0KhqrPaymentError) {
     res.status(error.statusCode).json({
       success: false,
       error: error.message,

@@ -147,7 +147,7 @@ export class V0SaleOrderService {
   }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
     const actor = assertBranchContext(input.actor);
     const status = parseOrderStatusFilter(input.status);
-    const sourceMode = parseOrderSourceModeFilter(input.sourceMode);
+    const sourceMode = parseOrderSourceModeFilter(input.sourceMode) ?? "DIRECT_CHECKOUT";
     const view = parseOrderListView(input.view);
     const limit = normalizeLimit(input.limit);
     const offset = normalizeOffset(input.offset);
@@ -168,13 +168,7 @@ export class V0SaleOrderService {
       offset,
     });
     const nameMap = await this.repo.listAccountDisplayNames({
-      accountIds: uniq(
-        rows.flatMap((row) =>
-          [row.opened_by_account_id, row.manual_payment_claim_requested_by_account_id].filter(
-            (value): value is string => Boolean(value)
-          )
-        )
-      ),
+      accountIds: uniq(rows.map((row) => row.opened_by_account_id)),
     });
     const items = await Promise.all(
       rows.map((row) =>
@@ -209,15 +203,12 @@ export class V0SaleOrderService {
     if (!order) {
       throw new V0SaleOrderError(404, "order not found", "ORDER_NOT_FOUND");
     }
+    this.assertDirectCheckoutOrderAccessible(order);
     const lines = await this.repo.listOrderTicketLines({
       tenantId: actor.tenantId,
       orderTicketId: order.id,
     });
     const fulfillmentBatches = await this.repo.listFulfillmentBatchesByOrder({
-      tenantId: actor.tenantId,
-      orderTicketId: order.id,
-    });
-    const manualPaymentClaims = await this.repo.listManualPaymentClaimsByOrder({
       tenantId: actor.tenantId,
       orderTicketId: order.id,
     });
@@ -231,7 +222,6 @@ export class V0SaleOrderService {
       ...mapOrderTicketWithSale(order, sale),
       lines: lines.map(mapOrderTicketLine),
       fulfillmentBatches: fulfillmentBatches.map(mapFulfillmentBatch),
-      manualPaymentClaims: manualPaymentClaims.map(mapManualPaymentClaim),
     };
   }
 
@@ -239,47 +229,8 @@ export class V0SaleOrderService {
     actor: ActorContext;
     body: unknown;
   }): Promise<Record<string, unknown>> {
-    const actor = assertBranchContext(input.actor);
-    const body = toRecord(input.body);
-    const sourceMode = parseOrderSourceMode(body.sourceMode);
-    await this.requireOrderPlacementEnabled(actor, sourceMode);
-    await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
-    const itemDrafts = parseOrderItems(body.items, false);
-    const items = await this.hydrateOrderItems({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      itemDrafts,
-    });
-
-    const order = await this.repo.createOrderTicket({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      openedByAccountId: actor.accountId,
-      sourceMode,
-    });
-
-    const lines: V0OrderTicketLineRow[] = [];
-    for (const item of items) {
-      const created = await this.repo.createOrderTicketLine({
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
-        orderTicketId: order.id,
-        menuItemId: item.menuItemId,
-        menuItemNameSnapshot: item.menuItemNameSnapshot,
-        unitPrice: item.unitPrice,
-        quantity: item.quantity,
-        lineSubtotal: roundMoney(item.unitPrice * item.quantity),
-        modifierSnapshot: item.modifierSnapshot,
-        note: item.note,
-      });
-      lines.push(created);
-    }
-
-    const payload: Record<string, unknown> = {
-      ...mapOrderTicket(order),
-      lines: lines.map(mapOrderTicketLine),
-    };
-    return payload;
+    void input;
+    this.throwDeferredOrderWorkflowDisabled();
   }
 
   async captureManualExternalPaymentClaimOrderFromOfflineSnapshot(input: {
@@ -287,43 +238,8 @@ export class V0SaleOrderService {
     body: unknown;
     occurredAt: Date;
   }): Promise<Record<string, unknown>> {
-    const actor = assertBranchContext(input.actor);
-    await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
-    const body = toRecord(input.body);
-    const orderId = requireUuid(body.orderId, "orderId");
-    const items = parseOfflineCheckoutSnapshotItems(body.items);
-
-    const order = await this.repo.createOrderTicket({
-      id: orderId,
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      openedByAccountId: actor.accountId,
-      sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
-      createdAt: input.occurredAt,
-      updatedAt: input.occurredAt,
-    });
-
-    const lines: V0OrderTicketLineRow[] = [];
-    for (const item of items) {
-      const created = await this.repo.createOrderTicketLine({
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
-        orderTicketId: order.id,
-        menuItemId: item.menuItemId,
-        menuItemNameSnapshot: item.menuItemNameSnapshot,
-        unitPrice: item.unitPrice,
-        quantity: item.quantity,
-        lineSubtotal: roundMoney(item.unitPrice * item.quantity),
-        modifierSnapshot: item.modifierSnapshot,
-        note: item.note,
-      });
-      lines.push(created);
-    }
-
-    return {
-      ...mapOrderTicket(order),
-      lines: lines.map(mapOrderTicketLine),
-    };
+    void input;
+    this.throwDeferredOrderWorkflowDisabled();
   }
 
   async addOrderItems(input: {
@@ -331,57 +247,8 @@ export class V0SaleOrderService {
     orderId: string;
     body: unknown;
   }): Promise<Record<string, unknown>> {
-    const actor = assertBranchContext(input.actor);
-    const orderId = requireUuid(input.orderId, "orderId");
-    const order = await this.repo.getOrderTicketById({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: orderId,
-    });
-    if (!order) {
-      throw new V0SaleOrderError(404, "order not found", "ORDER_NOT_FOUND");
-    }
-    if (order.status !== "OPEN") {
-      throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
-    }
-    await this.requireOrderPlacementEnabled(actor, order.source_mode);
-    await this.requireNoPendingManualPaymentClaim({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-    });
-    await this.requireOpenCashSession(actor, "ORDER_REQUIRES_OPEN_CASH_SESSION");
-
-    const body = toRecord(input.body);
-    const itemDrafts = parseOrderItems(body.items, true);
-    const items = await this.hydrateOrderItems({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      itemDrafts,
-    });
-    const createdLines: V0OrderTicketLineRow[] = [];
-    for (const item of items) {
-      const created = await this.repo.createOrderTicketLine({
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
-        orderTicketId: order.id,
-        menuItemId: item.menuItemId,
-        menuItemNameSnapshot: item.menuItemNameSnapshot,
-        unitPrice: item.unitPrice,
-        quantity: item.quantity,
-        lineSubtotal: roundMoney(item.unitPrice * item.quantity),
-        modifierSnapshot: item.modifierSnapshot,
-        note: item.note,
-      });
-      createdLines.push(created);
-    }
-
-    return {
-      id: order.id,
-      status: order.status,
-      sourceMode: order.source_mode,
-      addedLines: createdLines.map(mapOrderTicketLine),
-    };
+    void input;
+    this.throwDeferredOrderWorkflowDisabled();
   }
 
   async cancelOrder(input: {
@@ -389,77 +256,8 @@ export class V0SaleOrderService {
     orderId: string;
     body: unknown;
   }): Promise<Record<string, unknown>> {
-    const actor = assertBranchContext(input.actor);
-    const orderId = requireUuid(input.orderId, "orderId");
-    const order = await this.repo.getOrderTicketById({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: orderId,
-    });
-    if (!order) {
-      throw new V0SaleOrderError(404, "order not found", "ORDER_NOT_FOUND");
-    }
-    if (order.status === "CANCELLED") {
-      const existingBatches = await this.repo.listFulfillmentBatchesByOrder({
-        tenantId: actor.tenantId,
-        orderTicketId: order.id,
-      });
-      return {
-        ...mapOrderTicket(order),
-        fulfillmentBatches: existingBatches.map(mapFulfillmentBatch),
-      };
-    }
-    if (order.status !== "OPEN") {
-      throw new V0SaleOrderError(
-        409,
-        "only open unpaid order can be cancelled",
-        "ORDER_CANCEL_NOT_ALLOWED"
-      );
-    }
-    await this.requireNoPendingManualPaymentClaim({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-    });
-
-    const body = toRecord(input.body);
-    const reason = normalizeOptionalString(body.reason);
-    if (!reason) {
-      throw new V0SaleOrderError(
-        422,
-        "cancel reason is required",
-        "ORDER_CANCEL_REASON_REQUIRED"
-      );
-    }
-
-    const cancelled = await this.repo.cancelOrderTicket({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-      cancelledByAccountId: actor.accountId,
-      cancelReason: reason,
-    });
-    if (!cancelled) {
-      throw new V0SaleOrderError(
-        409,
-        "order is not cancelable",
-        "ORDER_CANCEL_NOT_ALLOWED"
-      );
-    }
-    await this.repo.cancelFulfillmentBatchesByOrder({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-    });
-    const batches = await this.repo.listFulfillmentBatchesByOrder({
-      tenantId: actor.tenantId,
-      orderTicketId: order.id,
-    });
-
-    return {
-      ...mapOrderTicket(cancelled),
-      fulfillmentBatches: batches.map(mapFulfillmentBatch),
-    };
+    void input;
+    this.throwDeferredOrderWorkflowDisabled();
   }
 
   async checkoutOrder(input: {
@@ -467,145 +265,16 @@ export class V0SaleOrderService {
     orderId: string;
     body: unknown;
   }): Promise<Record<string, unknown>> {
-    const actor = assertBranchContext(input.actor);
-    const orderId = requireUuid(input.orderId, "orderId");
-    const order = await this.repo.getOrderTicketById({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: orderId,
-    });
-    if (!order) {
-      throw new V0SaleOrderError(404, "order not found", "ORDER_NOT_FOUND");
-    }
-    if (order.status !== "OPEN") {
-      throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
-    }
-
-    const existingSale = await this.repo.getSaleByOrderTicketId({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-    });
-    if (existingSale) {
-      throw new V0SaleOrderError(409, "order already checked out", "ORDER_NOT_UNPAID");
-    }
-    await this.requireNoPendingManualPaymentClaim({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-    });
-
-    const lines = await this.repo.listOrderTicketLines({
-      tenantId: actor.tenantId,
-      orderTicketId: order.id,
-    });
-    if (lines.length === 0) {
-      throw new V0SaleOrderError(422, "order has no items", "ORDER_NO_ITEMS");
-    }
-    await this.requireOpenCashSession(actor, "SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION");
-
-    const body = toRecord(input.body);
-    const checkout = parseCheckoutBody(body, lines);
-
-    const sale = await this.repo.createSale({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-      saleType: checkout.saleType,
-      paymentMethod: checkout.paymentMethod,
-      tenderCurrency: checkout.tenderCurrency,
-      tenderAmount: checkout.tenderAmount,
-      cashReceivedTenderAmount: checkout.cashReceivedTenderAmount,
-      cashChangeTenderAmount: checkout.cashChangeTenderAmount,
-      khqrMd5: checkout.khqrMd5,
-      khqrToAccountId: checkout.khqrToAccountId,
-      khqrHash: checkout.khqrHash,
-      khqrConfirmedAt: checkout.khqrConfirmedAt,
-      subtotalUsd: checkout.subtotalUsd,
-      subtotalKhr: checkout.subtotalKhr,
-      discountUsd: checkout.discountUsd,
-      discountKhr: checkout.discountKhr,
-      vatUsd: checkout.vatUsd,
-      vatKhr: checkout.vatKhr,
-      grandTotalUsd: checkout.grandTotalUsd,
-      grandTotalKhr: checkout.grandTotalKhr,
-      saleFxRateKhrPerUsd: checkout.saleFxRateKhrPerUsd,
-      saleKhrRoundingEnabled: checkout.saleKhrRoundingEnabled,
-      saleKhrRoundingMode: checkout.saleKhrRoundingMode,
-      saleKhrRoundingGranularity: checkout.saleKhrRoundingGranularity,
-      paidAmount: checkout.paidAmount,
-    });
-
-    const saleLines: V0SaleLineRow[] = [];
-    for (const line of lines) {
-      const saleLine = await this.repo.createSaleLine({
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
-        saleId: sale.id,
-        orderTicketLineId: line.id,
-        menuItemId: line.menu_item_id,
-        menuItemNameSnapshot: line.menu_item_name_snapshot,
-        unitPrice: line.unit_price,
-        quantity: line.quantity,
-        lineDiscountAmount: 0,
-        lineTotalAmount: line.line_subtotal,
-        lineTotalKhrSnapshot: computeSaleLineKhrSnapshot({
-          lineTotalAmountUsd: line.line_subtotal,
-          checkout,
-        }),
-        modifierSnapshot: line.modifier_snapshot,
-      });
-      saleLines.push(saleLine);
-    }
-
-    const checkedOutOrder = await this.repo.markOrderTicketCheckedOut({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-      checkedOutByAccountId: actor.accountId,
-    });
-    if (!checkedOutOrder) {
-      throw new V0SaleOrderError(409, "order checkout failed", "ORDER_NOT_UNPAID");
-    }
-
-    let saleForResponse = sale;
-    if (checkout.paymentMethod === "CASH") {
-      const finalized = await this.repo.markSaleFinalized({
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
-        saleId: sale.id,
-        finalizedByAccountId: actor.accountId,
-        paidAmount: checkout.paidAmount,
-        tenderAmount: checkout.tenderAmount,
-        cashReceivedTenderAmount: checkout.cashReceivedTenderAmount,
-        cashChangeTenderAmount: checkout.cashChangeTenderAmount,
-        khqrHash: null,
-        khqrConfirmedAt: null,
-      });
-      if (!finalized) {
-        throw new V0SaleOrderError(409, "sale finalize failed", "SALE_NOT_FOUND");
-      }
-      saleForResponse = finalized;
-    }
-
-    return {
-      ...mapSale(saleForResponse),
-      order: mapOrderTicket(checkedOutOrder),
-      lines: saleLines.map(mapSaleLine),
-    };
+    void input;
+    this.throwDeferredOrderWorkflowDisabled();
   }
 
   async listManualPaymentClaims(input: {
     actor: ActorContext;
     orderId: string;
   }): Promise<Array<Record<string, unknown>>> {
-    const actor = assertBranchContext(input.actor);
-    const order = await this.requireOrder(actor, input.orderId);
-    const claims = await this.repo.listManualPaymentClaimsByOrder({
-      tenantId: actor.tenantId,
-      orderTicketId: order.id,
-    });
-    return claims.map(mapManualPaymentClaim);
+    void input;
+    this.throwDeferredOrderWorkflowDisabled();
   }
 
   async createManualPaymentClaim(input: {
@@ -613,57 +282,8 @@ export class V0SaleOrderService {
     orderId: string;
     body: unknown;
   }): Promise<Record<string, unknown>> {
-    const actor = assertBranchContext(input.actor);
-    const order = await this.requireOrder(actor, input.orderId);
-    if (order.status !== "OPEN") {
-      throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
-    }
-    const existingSale = await this.repo.getSaleByOrderTicketId({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-    });
-    if (existingSale) {
-      throw new V0SaleOrderError(409, "order already checked out", "ORDER_NOT_UNPAID");
-    }
-    const lines = await this.repo.listOrderTicketLines({
-      tenantId: actor.tenantId,
-      orderTicketId: order.id,
-    });
-    if (lines.length === 0) {
-      throw new V0SaleOrderError(422, "order has no items", "ORDER_NO_ITEMS");
-    }
-
-    const pending = await this.repo.getPendingManualPaymentClaimByOrder({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-    });
-    if (pending) {
-      return mapManualPaymentClaim(pending);
-    }
-
-    const body = toRecord(input.body);
-    const claim = parseManualPaymentClaimBody(body);
-    const created = await this.repo.createManualPaymentClaim({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-      requestedByAccountId: actor.accountId,
-      claimedPaymentMethod: claim.claimedPaymentMethod,
-      saleType: claim.saleType,
-      tenderCurrency: claim.tenderCurrency,
-      claimedTenderAmount: claim.claimedTenderAmount,
-      proofImageUrl: claim.proofImageUrl,
-      customerReference: claim.customerReference,
-      note: claim.note,
-    });
-    await this.linkManualPaymentClaimProofUpload({
-      tenantId: actor.tenantId,
-      claimId: created.id,
-      proofImageUrl: created.proof_image_url,
-    });
-    return mapManualPaymentClaim(created);
+    void input;
+    this.throwDeferredOrderWorkflowDisabled();
   }
 
   async approveManualPaymentClaim(input: {
@@ -672,181 +292,8 @@ export class V0SaleOrderService {
     claimId: string;
     body: unknown;
   }): Promise<Record<string, unknown>> {
-    const actor = assertBranchContext(input.actor);
-    const order = await this.requireOrder(actor, input.orderId);
-    const claimId = requireUuid(input.claimId, "claimId");
-    const claim = await this.repo.getManualPaymentClaimById({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-      claimId,
-    });
-    if (!claim) {
-      throw new V0SaleOrderError(
-        404,
-        "manual payment claim not found",
-        "ORDER_MANUAL_PAYMENT_CLAIM_NOT_FOUND"
-      );
-    }
-    if (claim.status === "APPROVED") {
-      if (claim.sale_id) {
-        const sale = await this.repo.getSaleById({
-          tenantId: actor.tenantId,
-          branchId: actor.branchId,
-          saleId: claim.sale_id,
-        });
-        if (sale) {
-          const saleLines = await this.repo.listSaleLines({
-            tenantId: actor.tenantId,
-            saleId: sale.id,
-          });
-          return {
-            ...mapSale(sale),
-            order: mapOrderTicket(order),
-            lines: saleLines.map(mapSaleLine),
-            manualPaymentClaim: mapManualPaymentClaim(claim),
-          };
-        }
-      }
-      throw new V0SaleOrderError(
-        409,
-        "manual payment claim already resolved",
-        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
-      );
-    }
-    if (claim.status === "REJECTED") {
-      throw new V0SaleOrderError(
-        409,
-        "manual payment claim already resolved",
-        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
-      );
-    }
-    if (order.status !== "OPEN") {
-      throw new V0SaleOrderError(409, "order is not open", "ORDER_NOT_UNPAID");
-    }
-    const existingSale = await this.repo.getSaleByOrderTicketId({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-    });
-    if (existingSale) {
-      throw new V0SaleOrderError(409, "order already checked out", "ORDER_NOT_UNPAID");
-    }
-    const lines = await this.repo.listOrderTicketLines({
-      tenantId: actor.tenantId,
-      orderTicketId: order.id,
-    });
-    if (lines.length === 0) {
-      throw new V0SaleOrderError(422, "order has no items", "ORDER_NO_ITEMS");
-    }
-
-    const checkout = buildCheckoutFromManualPaymentClaim({
-      claim,
-      lines,
-    });
-    const reviewNote = normalizeOptionalString(toRecord(input.body).note);
-
-    const sale = await this.repo.createSale({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-      saleType: checkout.saleType,
-      paymentMethod: "KHQR",
-      tenderCurrency: checkout.tenderCurrency,
-      tenderAmount: checkout.tenderAmount,
-      cashReceivedTenderAmount: null,
-      cashChangeTenderAmount: 0,
-      khqrMd5: null,
-      khqrToAccountId: null,
-      khqrHash: null,
-      khqrConfirmedAt: null,
-      subtotalUsd: checkout.subtotalUsd,
-      subtotalKhr: checkout.subtotalKhr,
-      discountUsd: checkout.discountUsd,
-      discountKhr: checkout.discountKhr,
-      vatUsd: checkout.vatUsd,
-      vatKhr: checkout.vatKhr,
-      grandTotalUsd: checkout.grandTotalUsd,
-      grandTotalKhr: checkout.grandTotalKhr,
-      saleFxRateKhrPerUsd: checkout.saleFxRateKhrPerUsd,
-      saleKhrRoundingEnabled: checkout.saleKhrRoundingEnabled,
-      saleKhrRoundingMode: checkout.saleKhrRoundingMode,
-      saleKhrRoundingGranularity: checkout.saleKhrRoundingGranularity,
-      paidAmount: checkout.paidAmount,
-    });
-
-    const saleLines: V0SaleLineRow[] = [];
-    for (const line of lines) {
-      const saleLine = await this.repo.createSaleLine({
-        tenantId: actor.tenantId,
-        branchId: actor.branchId,
-        saleId: sale.id,
-        orderTicketLineId: line.id,
-        menuItemId: line.menu_item_id,
-        menuItemNameSnapshot: line.menu_item_name_snapshot,
-        unitPrice: line.unit_price,
-        quantity: line.quantity,
-        lineDiscountAmount: 0,
-        lineTotalAmount: line.line_subtotal,
-        lineTotalKhrSnapshot: computeSaleLineKhrSnapshot({
-          lineTotalAmountUsd: line.line_subtotal,
-          checkout,
-        }),
-        modifierSnapshot: line.modifier_snapshot,
-      });
-      saleLines.push(saleLine);
-    }
-
-    const checkedOutOrder = await this.repo.markOrderTicketCheckedOut({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-      checkedOutByAccountId: actor.accountId,
-    });
-    if (!checkedOutOrder) {
-      throw new V0SaleOrderError(409, "order checkout failed", "ORDER_NOT_UNPAID");
-    }
-
-    const finalized = await this.repo.markSaleFinalized({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      saleId: sale.id,
-      finalizedByAccountId: actor.accountId,
-      paidAmount: checkout.paidAmount,
-      tenderAmount: checkout.tenderAmount,
-      cashReceivedTenderAmount: null,
-      cashChangeTenderAmount: 0,
-      khqrHash: null,
-      khqrConfirmedAt: new Date(),
-    });
-    if (!finalized) {
-      throw new V0SaleOrderError(409, "sale finalize failed", "SALE_NOT_FOUND");
-    }
-
-    const approvedClaim = await this.repo.resolveManualPaymentClaim({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      claimId: claim.id,
-      reviewedByAccountId: actor.accountId,
-      status: "APPROVED",
-      reviewNote,
-      saleId: finalized.id,
-      reviewedAt: new Date(),
-    });
-    if (!approvedClaim) {
-      throw new V0SaleOrderError(
-        409,
-        "manual payment claim already resolved",
-        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
-      );
-    }
-
-    return {
-      ...mapSale(finalized),
-      order: mapOrderTicket(checkedOutOrder),
-      lines: saleLines.map(mapSaleLine),
-      manualPaymentClaim: mapManualPaymentClaim(approvedClaim),
-    };
+    void input;
+    this.throwDeferredOrderWorkflowDisabled();
   }
 
   async rejectManualPaymentClaim(input: {
@@ -855,50 +302,8 @@ export class V0SaleOrderService {
     claimId: string;
     body: unknown;
   }): Promise<Record<string, unknown>> {
-    const actor = assertBranchContext(input.actor);
-    const order = await this.requireOrder(actor, input.orderId);
-    const claimId = requireUuid(input.claimId, "claimId");
-    const claim = await this.repo.getManualPaymentClaimById({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      orderTicketId: order.id,
-      claimId,
-    });
-    if (!claim) {
-      throw new V0SaleOrderError(
-        404,
-        "manual payment claim not found",
-        "ORDER_MANUAL_PAYMENT_CLAIM_NOT_FOUND"
-      );
-    }
-    if (claim.status === "REJECTED") {
-      return mapManualPaymentClaim(claim);
-    }
-    if (claim.status === "APPROVED") {
-      throw new V0SaleOrderError(
-        409,
-        "manual payment claim already resolved",
-        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
-      );
-    }
-    const reviewNote = normalizeOptionalString(toRecord(input.body).note);
-    const rejected = await this.repo.resolveManualPaymentClaim({
-      tenantId: actor.tenantId,
-      branchId: actor.branchId,
-      claimId: claim.id,
-      reviewedByAccountId: actor.accountId,
-      status: "REJECTED",
-      reviewNote,
-      reviewedAt: new Date(),
-    });
-    if (!rejected) {
-      throw new V0SaleOrderError(
-        409,
-        "manual payment claim already resolved",
-        "ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED"
-      );
-    }
-    return mapManualPaymentClaim(rejected);
+    void input;
+    this.throwDeferredOrderWorkflowDisabled();
   }
 
   async updateFulfillmentStatus(input: {
@@ -916,6 +321,7 @@ export class V0SaleOrderService {
     if (!order) {
       throw new V0SaleOrderError(404, "order not found", "ORDER_NOT_FOUND");
     }
+    this.assertDirectCheckoutOrderAccessible(order);
 
     const body = toRecord(input.body);
     const status = parseFulfillmentStatus(body.status);
@@ -1914,6 +1320,20 @@ export class V0SaleOrderService {
       linkedEntityId: input.claimId,
     });
   }
+
+  private throwDeferredOrderWorkflowDisabled(): never {
+    throw new V0SaleOrderError(
+      422,
+      "open-ticket/deferred order workflow is disabled",
+      "ORDER_OPEN_TICKET_DISABLED"
+    );
+  }
+
+  private assertDirectCheckoutOrderAccessible(order: V0OrderTicketRow): void {
+    if (order.source_mode !== "DIRECT_CHECKOUT") {
+      throw new V0SaleOrderError(404, "order not found", "ORDER_NOT_FOUND");
+    }
+  }
 }
 
 function assertBranchContext(input: ActorContext): { accountId: string; tenantId: string; branchId: string } {
@@ -2358,11 +1778,7 @@ function parseOrderListView(input: string | undefined): V0OrderListView | null {
   if (!view || view === "ALL") {
     return null;
   }
-  if (
-    view === "FULFILLMENT_ACTIVE" ||
-    view === "PAY_LATER_EDITABLE" ||
-    view === "MANUAL_CLAIM_REVIEW"
-  ) {
+  if (view === "FULFILLMENT_ACTIVE") {
     return view;
   }
   throw new V0SaleOrderError(422, "invalid order list view", "ORDER_LIST_VIEW_INVALID");
@@ -2373,11 +1789,7 @@ function parseOrderSourceModeFilter(input: string | undefined): V0OrderTicketSou
   if (!value || value === "ALL") {
     return null;
   }
-  if (
-    value === "STANDARD" ||
-    value === "MANUAL_EXTERNAL_PAYMENT_CLAIM" ||
-    value === "DIRECT_CHECKOUT"
-  ) {
+  if (value === "DIRECT_CHECKOUT") {
     return value;
   }
   throw new V0SaleOrderError(
@@ -2728,12 +2140,6 @@ async function buildOrderTicketSummary(input: {
   const totalUsdExact = roundMoney(lines.reduce((sum, line) => sum + line.line_subtotal, 0));
   const openedByDisplayName =
     input.nameMap.get(input.row.opened_by_account_id) ?? input.row.opened_by_account_id;
-  const manualPaymentClaimRequestedByAccountId =
-    input.row.manual_payment_claim_requested_by_account_id;
-  const manualPaymentClaimRequestedByDisplayName = manualPaymentClaimRequestedByAccountId
-    ? input.nameMap.get(manualPaymentClaimRequestedByAccountId) ??
-      manualPaymentClaimRequestedByAccountId
-    : null;
 
   return {
     id: input.row.id,
@@ -2748,12 +2154,6 @@ async function buildOrderTicketSummary(input: {
     saleId: sale?.id ?? null,
     saleStatus: sale?.status ?? null,
     paymentMethod: sale?.payment_method ?? null,
-    manualPaymentClaimId: input.row.manual_payment_claim_id,
-    manualPaymentClaimStatus: input.row.manual_payment_claim_status,
-    manualPaymentClaimRequestedByAccountId,
-    manualPaymentClaimRequestedByDisplayName,
-    manualPaymentClaimRequestedAt:
-      input.row.manual_payment_claim_requested_at?.toISOString() ?? null,
     createdAt: input.row.created_at.toISOString(),
     updatedAt: input.row.updated_at.toISOString(),
   };
@@ -2786,31 +2186,6 @@ function mapOrderTicketWithSale(
     saleId: sale?.id ?? null,
     saleStatus: sale?.status ?? null,
     paymentMethod: sale?.payment_method ?? null,
-  };
-}
-
-function mapManualPaymentClaim(row: V0OrderManualPaymentClaimRow): Record<string, unknown> {
-  return {
-    id: row.id,
-    tenantId: row.tenant_id,
-    branchId: row.branch_id,
-    orderId: row.order_ticket_id,
-    saleId: row.sale_id,
-    requestedByAccountId: row.requested_by_account_id,
-    reviewedByAccountId: row.reviewed_by_account_id,
-    status: row.status,
-    claimedPaymentMethod: row.claimed_payment_method,
-    saleType: row.sale_type,
-    tenderCurrency: row.tender_currency,
-    claimedTenderAmount: row.claimed_tender_amount,
-    proofImageUrl: row.proof_image_url,
-    customerReference: row.customer_reference,
-    note: row.note,
-    reviewNote: row.review_note,
-    requestedAt: row.requested_at.toISOString(),
-    reviewedAt: row.reviewed_at?.toISOString() ?? null,
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString(),
   };
 }
 

@@ -59,7 +59,7 @@ Area prefix mapping:
 - `payment-proof` -> `payment-proof-images`
 
 Role notes:
-- `payment-proof` is allowed for staff handling reconnect-time outage/manual external-payment-claim workflow, including `CASHIER`.
+- `payment-proof` remains reserved for deferred future reconnect/evidence workflows, including staff-operated capture if that scope is re-enabled later.
 - This does not imply broader cashier upload rights for unrelated areas such as `tenant`, `menu`, or `inventory`.
 
 Errors:

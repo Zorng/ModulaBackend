@@ -348,8 +348,8 @@ describe("v0 sync integration", () => {
       .set("Authorization", `Bearer ${setup.branchToken}`)
       .set("Idempotency-Key", `sync-policy-${uniqueSuffix()}`)
       .send({
-        saleAllowPayLater: true,
-        saleAllowManualExternalPaymentClaim: true,
+        saleVatEnabled: true,
+        saleVatRatePercent: 10,
       });
     expect(policyRes.status).toBe(200);
 
