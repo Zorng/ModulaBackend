@@ -29,10 +29,21 @@ import {
 
 const app = express();
 const dispatchers = createRuntimeDispatchers(pool);
+const rawCorsOrigin = String(process.env.CORS_ORIGIN ?? "").trim();
+const configuredCorsOrigins = rawCorsOrigin
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+const corsOrigin =
+  configuredCorsOrigins.length === 0 || configuredCorsOrigins.includes("*")
+    ? "*"
+    : configuredCorsOrigins.length === 1
+      ? configuredCorsOrigins[0]
+      : configuredCorsOrigins;
 
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: corsOrigin,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id", "Idempotency-Key"],
