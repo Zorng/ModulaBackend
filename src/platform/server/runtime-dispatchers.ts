@@ -2,7 +2,10 @@ import type { Pool } from "pg";
 import { log } from "#logger";
 import { startV0CommandOutboxDispatcher } from "../outbox/dispatcher.js";
 import { startV0MediaUploadCleanupDispatcher } from "../media-uploads/cleanup-dispatcher.js";
-import { startV0KhqrReconciliationDispatcher } from "#modules/v0/platformSystem/khqrPayment/index.js";
+import {
+  getV0KhqrRuntimeDiagnosticsFromEnv,
+  startV0KhqrReconciliationDispatcher,
+} from "#modules/v0/platformSystem/khqrPayment/index.js";
 
 type OutboxDispatcher = ReturnType<typeof startV0CommandOutboxDispatcher>;
 type MediaCleanupDispatcher = ReturnType<typeof startV0MediaUploadCleanupDispatcher>;
@@ -143,6 +146,8 @@ export function createRuntimeDispatchers(db: Pool): RuntimeDispatchers {
 }
 
 export function logRuntimeDispatchersStarted(dispatchers: RuntimeDispatchers): void {
+  logKhqrRuntimeDiagnostics(dispatchers);
+
   if (dispatchers.outbox.enabled) {
     log.info("outbox.dispatcher.started", {
       event: "outbox.dispatcher.started",
@@ -175,6 +180,47 @@ export function logRuntimeDispatchersStarted(dispatchers: RuntimeDispatchers): v
   }
 }
 
+function logKhqrRuntimeDiagnostics(dispatchers: RuntimeDispatchers): void {
+  const diagnostics = getV0KhqrRuntimeDiagnosticsFromEnv();
+  const context = {
+    event: "khqr.config.loaded",
+    nodeEnv: normalizeEnvValue(process.env.NODE_ENV),
+    appEnv: normalizeEnvValue(process.env.APP_ENV),
+    provider: diagnostics.provider,
+    transport: diagnostics.transport,
+    isOfficialBakongOpenApi: diagnostics.isOfficialBakongOpenApi,
+    generateMode: diagnostics.generateMode,
+    baseUrlOrigin: diagnostics.baseUrlOrigin,
+    baseUrlPath: diagnostics.baseUrlPath,
+    generateUrlOrigin: diagnostics.generateUrlOrigin,
+    generateUrlPath: diagnostics.generateUrlPath,
+    verifyUrlOrigin: diagnostics.verifyUrlOrigin,
+    verifyUrlPath: diagnostics.verifyUrlPath,
+    timeoutMs: diagnostics.timeoutMs,
+    apiKeyConfigured: diagnostics.apiKeyConfigured,
+    apiKeyHeader: diagnostics.apiKeyHeader,
+    apiKeyLength: diagnostics.apiKeyLength,
+    apiKeyFingerprint: diagnostics.apiKeyFingerprint,
+    apiKeyUsesBearerPrefix: diagnostics.apiKeyUsesBearerPrefix,
+    webhookSecretConfigured: diagnostics.webhookSecretConfigured,
+    webhookSecretHeader: diagnostics.webhookSecretHeader,
+    reconciliationEnabled: dispatchers.khqrReconciliation.enabled,
+    reconciliationIntervalMs: dispatchers.khqrReconciliation.pollIntervalMs,
+    reconciliationBatchSize: dispatchers.khqrReconciliation.batchSize,
+    reconciliationRecheckWindowMinutes: dispatchers.khqrReconciliation.recheckWindowMinutes,
+    suspectedIssues: diagnostics.suspectedIssues,
+  };
+
+  log.info("khqr.config.loaded", context);
+  if (diagnostics.suspectedIssues.length > 0) {
+    log.warn("khqr.config.suspect", {
+      event: "khqr.config.suspect",
+      provider: diagnostics.provider,
+      suspectedIssues: diagnostics.suspectedIssues,
+    });
+  }
+}
+
 export function stopRuntimeDispatchers(dispatchers: RuntimeDispatchers): void {
   dispatchers.outbox.dispatcher?.stop();
   dispatchers.mediaCleanup.dispatcher?.stop();
@@ -184,4 +230,9 @@ export function stopRuntimeDispatchers(dispatchers: RuntimeDispatchers): void {
 function toNumberOrDefault(raw: string | undefined, fallback: number): number {
   const parsed = Number(raw ?? fallback);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeEnvValue(value: string | undefined): string | null {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : null;
 }

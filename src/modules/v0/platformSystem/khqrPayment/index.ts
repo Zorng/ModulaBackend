@@ -30,7 +30,9 @@ export { V0KhqrPaymentService, V0KhqrPaymentError } from "./app/service.js";
 export { startV0KhqrReconciliationDispatcher } from "./app/reconciliation-dispatcher.js";
 export {
   type V0KhqrPaymentProvider,
+  type V0KhqrRuntimeDiagnostics,
   V0KhqrProviderError,
   StubV0KhqrPaymentProvider,
+  getV0KhqrRuntimeDiagnosticsFromEnv,
 } from "./app/payment-provider.js";
 export { V0_KHQR_PAYMENT_ACTION_KEYS } from "./app/command-contract.js";

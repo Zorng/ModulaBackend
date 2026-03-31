@@ -122,6 +122,28 @@ type BakongHttpProviderConfig = {
   enableSdkGeneration: boolean;
 };
 
+export type V0KhqrRuntimeDiagnostics = {
+  provider: string;
+  transport: "stub" | "bakong_http" | "unknown";
+  isOfficialBakongOpenApi: boolean;
+  generateMode: "stub" | "sdk" | "http" | "unavailable";
+  baseUrlOrigin: string | null;
+  baseUrlPath: string | null;
+  generateUrlOrigin: string | null;
+  generateUrlPath: string | null;
+  verifyUrlOrigin: string | null;
+  verifyUrlPath: string | null;
+  timeoutMs: number | null;
+  apiKeyConfigured: boolean;
+  apiKeyHeader: string | null;
+  apiKeyLength: number | null;
+  apiKeyFingerprint: string | null;
+  apiKeyUsesBearerPrefix: boolean | null;
+  webhookSecretConfigured: boolean;
+  webhookSecretHeader: string | null;
+  suspectedIssues: string[];
+};
+
 class BakongHttpV0KhqrPaymentProvider implements V0KhqrPaymentProvider {
   constructor(private readonly config: BakongHttpProviderConfig) {}
 
@@ -552,6 +574,141 @@ export function buildV0KhqrPaymentProviderFromEnv(): V0KhqrPaymentProvider {
   throw new Error(`Unsupported V0_KHQR_PROVIDER: ${providerName}`);
 }
 
+export function getV0KhqrRuntimeDiagnosticsFromEnv(): V0KhqrRuntimeDiagnostics {
+  const providerName = String(process.env.V0_KHQR_PROVIDER ?? "stub")
+    .trim()
+    .toLowerCase();
+
+  if (providerName === "stub") {
+    return {
+      provider: providerName,
+      transport: "stub",
+      isOfficialBakongOpenApi: false,
+      generateMode: "stub",
+      baseUrlOrigin: null,
+      baseUrlPath: null,
+      generateUrlOrigin: null,
+      generateUrlPath: null,
+      verifyUrlOrigin: null,
+      verifyUrlPath: null,
+      timeoutMs: null,
+      apiKeyConfigured: false,
+      apiKeyHeader: null,
+      apiKeyLength: null,
+      apiKeyFingerprint: null,
+      apiKeyUsesBearerPrefix: null,
+      webhookSecretConfigured: Boolean(
+        normalizeOptionalString(process.env.V0_KHQR_WEBHOOK_SECRET)
+      ),
+      webhookSecretHeader:
+        normalizeOptionalString(process.env.V0_KHQR_WEBHOOK_SECRET_HEADER)
+        ?? "x-khqr-webhook-secret",
+      suspectedIssues: [],
+    };
+  }
+
+  if (providerName !== "bakong" && providerName !== "bakong_http") {
+    return {
+      provider: providerName,
+      transport: "unknown",
+      isOfficialBakongOpenApi: false,
+      generateMode: "unavailable",
+      baseUrlOrigin: null,
+      baseUrlPath: null,
+      generateUrlOrigin: null,
+      generateUrlPath: null,
+      verifyUrlOrigin: null,
+      verifyUrlPath: null,
+      timeoutMs: null,
+      apiKeyConfigured: false,
+      apiKeyHeader: null,
+      apiKeyLength: null,
+      apiKeyFingerprint: null,
+      apiKeyUsesBearerPrefix: null,
+      webhookSecretConfigured: Boolean(
+        normalizeOptionalString(process.env.V0_KHQR_WEBHOOK_SECRET)
+      ),
+      webhookSecretHeader:
+        normalizeOptionalString(process.env.V0_KHQR_WEBHOOK_SECRET_HEADER)
+        ?? "x-khqr-webhook-secret",
+      suspectedIssues: ["UNSUPPORTED_PROVIDER"],
+    };
+  }
+
+  const baseUrl = normalizeOptionalString(process.env.V0_KHQR_PROVIDER_BASE_URL);
+  const isOfficialBakongOpenApi = Boolean(baseUrl?.includes("api-bakong.nbc.gov.kh"));
+  const enableSdkGeneration = parseBooleanWithDefault(
+    process.env.V0_KHQR_ENABLE_SDK_GENERATION,
+    isOfficialBakongOpenApi
+  );
+  const defaultApiKeyHeader = isOfficialBakongOpenApi ? "authorization" : "x-api-key";
+  const configuredApiKeyHeader =
+    normalizeOptionalString(process.env.V0_KHQR_PROVIDER_API_KEY_HEADER)
+    ?? defaultApiKeyHeader;
+  const apiKey = normalizeOptionalString(process.env.V0_KHQR_PROVIDER_API_KEY);
+  const webhookSecret = normalizeOptionalString(process.env.V0_KHQR_WEBHOOK_SECRET);
+  const timeoutMs = Number.parseInt(String(process.env.V0_KHQR_PROVIDER_TIMEOUT_MS ?? "5000"), 10);
+  const normalizedTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000;
+  const generateUrl =
+    normalizeOptionalString(process.env.V0_KHQR_PROVIDER_GENERATE_URL)
+    ?? (!enableSdkGeneration && baseUrl ? `${baseUrl.replace(/\/+$/, "")}/khqr/generate` : null);
+  const verifyUrl =
+    normalizeOptionalString(process.env.V0_KHQR_PROVIDER_VERIFY_URL)
+    ?? (
+      baseUrl
+        ? (
+          isOfficialBakongOpenApi
+            ? `${baseUrl.replace(/\/+$/, "")}/check_transaction_by_md5`
+            : `${baseUrl.replace(/\/+$/, "")}/khqr/verify`
+        )
+        : null
+    );
+
+  const suspectedIssues: string[] = [];
+  if (!baseUrl && !verifyUrl) {
+    suspectedIssues.push("VERIFY_URL_MISSING");
+  }
+  if (!apiKey) {
+    suspectedIssues.push("API_KEY_MISSING");
+  } else {
+    if (looksLikePlaceholderSecret(apiKey)) {
+      suspectedIssues.push("API_KEY_PLACEHOLDER_LIKE");
+    }
+    if (isOfficialBakongOpenApi && configuredApiKeyHeader.toLowerCase() !== "authorization") {
+      suspectedIssues.push("API_KEY_HEADER_UNEXPECTED");
+    }
+  }
+  if (!webhookSecret) {
+    suspectedIssues.push("WEBHOOK_SECRET_MISSING");
+  } else if (looksLikePlaceholderSecret(webhookSecret)) {
+    suspectedIssues.push("WEBHOOK_SECRET_PLACEHOLDER_LIKE");
+  }
+
+  return {
+    provider: providerName,
+    transport: "bakong_http",
+    isOfficialBakongOpenApi,
+    generateMode: enableSdkGeneration ? "sdk" : generateUrl ? "http" : "unavailable",
+    baseUrlOrigin: summarizeUrl(baseUrl)?.origin ?? null,
+    baseUrlPath: summarizeUrl(baseUrl)?.path ?? null,
+    generateUrlOrigin: summarizeUrl(generateUrl)?.origin ?? null,
+    generateUrlPath: summarizeUrl(generateUrl)?.path ?? null,
+    verifyUrlOrigin: summarizeUrl(verifyUrl)?.origin ?? null,
+    verifyUrlPath: summarizeUrl(verifyUrl)?.path ?? null,
+    timeoutMs: normalizedTimeoutMs,
+    apiKeyConfigured: Boolean(apiKey),
+    apiKeyHeader: configuredApiKeyHeader,
+    apiKeyLength: apiKey?.length ?? null,
+    apiKeyFingerprint: apiKey ? createHash("sha256").update(apiKey).digest("hex").slice(0, 12) : null,
+    apiKeyUsesBearerPrefix: apiKey ? apiKey.toLowerCase().startsWith("bearer ") : null,
+    webhookSecretConfigured: Boolean(webhookSecret),
+    webhookSecretHeader:
+      normalizeOptionalString(process.env.V0_KHQR_WEBHOOK_SECRET_HEADER)
+      ?? "x-khqr-webhook-secret",
+    suspectedIssues,
+  };
+}
+
 function buildBakongHttpProviderConfig(): BakongHttpProviderConfig {
   const baseUrl = normalizeOptionalString(process.env.V0_KHQR_PROVIDER_BASE_URL);
   const isOfficialBakongOpenApi = Boolean(baseUrl?.includes("api-bakong.nbc.gov.kh"));
@@ -614,6 +771,34 @@ function summarizeProviderResponsePreview(text: string): string {
     return JSON.stringify(normalized);
   }
   return `${JSON.stringify(normalized.slice(0, 160))}...`;
+}
+
+function summarizeUrl(rawUrl: string | null): { origin: string; path: string } | null {
+  if (!rawUrl) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(rawUrl);
+    return {
+      origin: parsed.origin,
+      path: parsed.pathname || "/",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function looksLikePlaceholderSecret(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "token"
+    || normalized === "secret"
+    || normalized === "your-secret-for-development"
+    || normalized === "changeme"
+    || normalized === "your-api-key"
+    || normalized.length < 16
+  );
 }
 
 function parseBooleanWithDefault(value: unknown, fallback: boolean): boolean {
