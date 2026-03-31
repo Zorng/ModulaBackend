@@ -22,6 +22,11 @@ export { V0ReceiptRepository } from "./infra/repository.js";
 export { V0ReceiptService, V0ReceiptError } from "./app/service.js";
 export { buildSaleReceiptPreview, type V0SaleReceiptPreview } from "./app/preview.js";
 export {
+  deriveSaleReceiptNumber,
+  formatReceiptNumber,
+  resolveReceiptIssuedAt,
+} from "./app/reference.js";
+export {
   V0_RECEIPT_ACTION_KEYS,
   V0_RECEIPT_EVENT_TYPES,
   V0_RECEIPT_IDEMPOTENCY_SCOPE,

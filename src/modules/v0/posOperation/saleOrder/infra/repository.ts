@@ -213,6 +213,8 @@ export type V0VoidRequestQueueRow = {
   grand_total_usd: number;
   grand_total_khr: number;
   fulfillment_status: V0OrderFulfillmentBatchStatus | null;
+  sale_finalized_at: Date | null;
+  sale_updated_at: Date;
   sale_created_at: Date;
 };
 
@@ -1591,6 +1593,8 @@ export class V0SaleOrderRepository {
          s.grand_total_usd::FLOAT8 AS grand_total_usd,
          s.grand_total_khr::FLOAT8 AS grand_total_khr,
          latest_fulfillment.status AS fulfillment_status,
+         s.finalized_at AS sale_finalized_at,
+         s.updated_at AS sale_updated_at,
          s.created_at AS sale_created_at
        FROM v0_void_requests vr
        INNER JOIN v0_sales s

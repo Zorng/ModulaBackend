@@ -134,6 +134,8 @@ export type V0SaleKhqrSnapshotRow = {
   khqr_confirmed_at: Date | null;
   finalized_at: Date | null;
   finalized_by_account_id: string | null;
+  created_at: Date;
+  updated_at: Date;
 };
 
 export type V0SaleKhqrLineSnapshotInput = {
@@ -290,7 +292,9 @@ export class V0KhqrPaymentRepository {
          khqr_hash,
          khqr_confirmed_at,
          finalized_at,
-         finalized_by_account_id
+         finalized_by_account_id,
+         created_at,
+         updated_at
        FROM v0_sales
        WHERE tenant_id = $1
          AND branch_id = $2
@@ -372,7 +376,9 @@ export class V0KhqrPaymentRepository {
          khqr_hash,
          khqr_confirmed_at,
          finalized_at,
-         finalized_by_account_id`,
+         finalized_by_account_id,
+         created_at,
+         updated_at`,
       [
         input.tenantId,
         input.branchId,
@@ -497,7 +503,9 @@ export class V0KhqrPaymentRepository {
          khqr_hash,
          khqr_confirmed_at,
          finalized_at,
-         finalized_by_account_id`,
+         finalized_by_account_id,
+         created_at,
+         updated_at`,
       [
         input.tenantId,
         input.branchId,

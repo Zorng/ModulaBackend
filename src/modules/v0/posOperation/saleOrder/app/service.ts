@@ -1,6 +1,7 @@
 import { normalizeOptionalString } from "../../../../../shared/utils/string.js";
 import { V0MediaUploadRepository } from "../../../../../platform/media-uploads/repository.js";
 import { deriveObjectKeyFromImageUrl } from "../../../../../platform/storage/r2-image-storage.js";
+import { deriveSaleReceiptNumber } from "../../receipt/app/reference.js";
 import {
   buildOffsetPaginatedResult,
   type OffsetPaginatedResult,
@@ -2579,6 +2580,11 @@ function mapOrderTicketLinePreview(row: V0OrderTicketLineRow): Record<string, un
 function mapSaleSummary(row: V0SaleRow): Record<string, unknown> {
   return {
     id: row.id,
+    receiptNumber: deriveSaleReceiptNumber({
+      finalizedAt: row.finalized_at,
+      updatedAt: row.updated_at,
+      createdAt: row.created_at,
+    }),
     status: row.status,
     saleType: row.sale_type,
     paymentMethod: row.payment_method,
@@ -2617,6 +2623,11 @@ function extractModifierLabels(snapshot: unknown): string[] {
 function mapSale(row: V0SaleRow): Record<string, unknown> {
   return {
     id: row.id,
+    receiptNumber: deriveSaleReceiptNumber({
+      finalizedAt: row.finalized_at,
+      updatedAt: row.updated_at,
+      createdAt: row.created_at,
+    }),
     tenantId: row.tenant_id,
     branchId: row.branch_id,
     orderId: row.order_ticket_id,
@@ -2718,6 +2729,11 @@ function mapVoidRequestQueueRow(
   return {
     voidRequestId: row.void_request_id,
     saleId: row.sale_id,
+    receiptNumber: deriveSaleReceiptNumber({
+      finalizedAt: row.sale_finalized_at,
+      updatedAt: row.sale_updated_at,
+      createdAt: row.sale_created_at,
+    }),
     orderId: row.order_ticket_id,
     tenantId: row.tenant_id,
     branchId: row.branch_id,

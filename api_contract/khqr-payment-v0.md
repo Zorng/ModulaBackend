@@ -54,9 +54,16 @@ Target response `200`:
     },
     "sale": {
       "id": "uuid",
+      "receiptNumber": "RCP-20260223-000000",
       "orderId": "uuid",
       "status": "FINALIZED",
       "saleType": "DINE_IN"
+    },
+    "receipt": {
+      "receiptId": "uuid",
+      "saleId": "uuid",
+      "receiptNumber": "RCP-20260223-000000",
+      "statusDisplay": "NORMAL"
     }
   }
 }

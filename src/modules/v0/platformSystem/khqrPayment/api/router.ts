@@ -31,6 +31,7 @@ import {
   type V0SaleRow,
 } from "../../../posOperation/saleOrder/infra/repository.js";
 import { buildSaleReceiptPreview } from "../../../posOperation/receipt/app/preview.js";
+import { deriveSaleReceiptNumber } from "../../../posOperation/receipt/app/reference.js";
 
 type KhqrResponseBody =
   | {
@@ -613,6 +614,7 @@ async function appendSaleFinalizedSideEffects(input: {
 function mapFinalizedSaleSyncData(sale: V0KhqrFinalizedSaleView): Record<string, unknown> {
   return {
     id: sale.saleId,
+    receiptNumber: sale.receiptNumber,
     orderId: sale.orderId,
     status: sale.status,
     saleType: sale.saleType,
@@ -634,6 +636,11 @@ function mapFinalizedSaleSyncData(sale: V0KhqrFinalizedSaleView): Record<string,
 function mapSaleSyncData(row: V0SaleRow): Record<string, unknown> {
   return {
     id: row.id,
+    receiptNumber: deriveSaleReceiptNumber({
+      finalizedAt: row.finalized_at,
+      updatedAt: row.updated_at,
+      createdAt: row.created_at,
+    }),
     tenantId: row.tenant_id,
     branchId: row.branch_id,
     orderId: row.order_ticket_id,

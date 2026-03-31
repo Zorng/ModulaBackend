@@ -1,4 +1,5 @@
 import type { V0AuthRequest } from "../../../auth/api/middleware.js";
+import { deriveSaleReceiptNumber } from "../../../posOperation/receipt/app/reference.js";
 import type {
   V0KhqrCurrency,
   V0KhqrPaymentAttemptRow,
@@ -1226,6 +1227,7 @@ export type V0KhqrGenerateResult = {
 
 export type V0KhqrFinalizedSaleView = {
   saleId: string;
+  receiptNumber: string;
   orderId: string | null;
   status: "PENDING" | "FINALIZED" | "VOID_PENDING" | "VOIDED";
   saleType: V0SaleType;
@@ -1264,6 +1266,11 @@ function mapAttempt(row: V0KhqrPaymentAttemptRow): V0KhqrPaymentAttemptView {
 function mapFinalizedSale(row: V0SaleKhqrSnapshotRow): V0KhqrFinalizedSaleView {
   return {
     saleId: row.id,
+    receiptNumber: deriveSaleReceiptNumber({
+      finalizedAt: row.finalized_at,
+      updatedAt: row.updated_at,
+      createdAt: row.created_at,
+    }),
     orderId: row.order_ticket_id,
     status: row.status,
     saleType: row.sale_type,

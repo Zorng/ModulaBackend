@@ -2,10 +2,12 @@ import type {
   V0SaleLineRow,
   V0SaleRow,
 } from "../../saleOrder/infra/repository.js";
+import { deriveSaleReceiptNumber, resolveReceiptIssuedAt } from "./reference.js";
 
 export type V0SaleReceiptPreview = {
   receiptId: string;
   saleId: string;
+  receiptNumber: string;
   statusDisplay: "NORMAL" | "VOID_PENDING" | "VOIDED";
   issuedAt: string;
   saleSnapshot: {
@@ -40,11 +42,20 @@ export function buildSaleReceiptPreview(input: {
   sale: V0SaleRow;
   lines: readonly V0SaleLineRow[];
 }): V0SaleReceiptPreview {
-  const issuedAt = input.sale.finalized_at ?? input.sale.updated_at ?? input.sale.created_at;
+  const issuedAt = resolveReceiptIssuedAt({
+    finalizedAt: input.sale.finalized_at,
+    updatedAt: input.sale.updated_at,
+    createdAt: input.sale.created_at,
+  });
 
   return {
     receiptId: input.sale.id,
     saleId: input.sale.id,
+    receiptNumber: deriveSaleReceiptNumber({
+      finalizedAt: input.sale.finalized_at,
+      updatedAt: input.sale.updated_at,
+      createdAt: input.sale.created_at,
+    }),
     statusDisplay: mapStatusDisplay(input.sale.status),
     issuedAt: issuedAt.toISOString(),
     saleSnapshot: {

@@ -5,6 +5,7 @@ import {
   type ReceiptTenderCurrency,
   V0ReceiptRepository,
 } from "../infra/repository.js";
+import { deriveSaleReceiptNumber } from "./reference.js";
 
 type ActorContext = {
   accountId: string;
@@ -181,9 +182,10 @@ export class V0ReceiptService {
       saleId: sale.id,
       tenantId: sale.tenant_id,
       branchId: sale.branch_id,
-      receiptNumber: formatReceiptNumber({
-        issuedAt,
-        displayNumber: "0",
+      receiptNumber: deriveSaleReceiptNumber({
+        finalizedAt: sale.finalized_at,
+        updatedAt: sale.updated_at,
+        createdAt: sale.created_at,
       }),
       statusDisplay: mapStatusDisplay(sale.status),
       issuedAt: issuedAt.toISOString(),
@@ -297,17 +299,6 @@ function mapDerivedSaleLine(line: V0ReceiptDerivedSaleLineRow): ReceiptLineDto {
     lineTotalAmount: line.line_total_amount,
     modifierSnapshot: line.modifier_snapshot ?? [],
   };
-}
-
-function formatReceiptNumber(input: {
-  issuedAt: Date;
-  displayNumber: string;
-}): string {
-  const year = input.issuedAt.getUTCFullYear();
-  const month = String(input.issuedAt.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(input.issuedAt.getUTCDate()).padStart(2, "0");
-  const serial = input.displayNumber.padStart(6, "0");
-  return `RCP-${year}${month}${day}-${serial}`;
 }
 
 function isUuid(value: string): boolean {

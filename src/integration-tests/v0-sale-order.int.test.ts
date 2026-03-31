@@ -1408,6 +1408,7 @@ describe("v0 sale-order integration", () => {
     const saleId = finalized.body.data.id as string;
 
     expect(finalized.body.data.receipt.saleId).toBe(saleId);
+    expect(finalized.body.data.receipt.receiptNumber).toMatch(/^RCP-\d{8}-000000$/);
     expect(finalized.body.data.receipt.statusDisplay).toBe("NORMAL");
     expect(finalized.body.data.receipt.saleSnapshot.paymentMethod).toBe("CASH");
     expect(finalized.body.data.receipt.saleSnapshot.tenderCurrency).toBe("USD");
@@ -1424,6 +1425,7 @@ describe("v0 sale-order integration", () => {
 
     expect(receiptRead.status).toBe(200);
     expect(receiptRead.body.data.receiptId).toBe(saleId);
+    expect(receiptRead.body.data.receiptNumber).toBe(finalized.body.data.receipt.receiptNumber);
     expect(receiptRead.body.data.saleSnapshot.paymentMethod).toBe("CASH");
     expect(receiptRead.body.data.saleSnapshot.tenderCurrency).toBe("USD");
     expect(receiptRead.body.data.saleSnapshot.tenderAmount).toBe(7);
@@ -1792,6 +1794,7 @@ describe("v0 sale-order integration", () => {
     expect(pendingQueue.body.data.items[0]).toMatchObject({
       voidRequestId: expect.any(String),
       saleId: pendingSale.saleId,
+      receiptNumber: expect.stringMatching(/^RCP-\d{8}-000000$/),
       orderId: pendingSale.orderId,
       tenantId: setup.tenantId,
       branchId: setup.branchId,
@@ -1816,6 +1819,7 @@ describe("v0 sale-order integration", () => {
     expect(approvedQueue.body.data.total).toBe(1);
     expect(approvedQueue.body.data.items[0]).toMatchObject({
       saleId: approvedSale.saleId,
+      receiptNumber: expect.stringMatching(/^RCP-\d{8}-000000$/),
       saleStatus: "FINALIZED",
       voidRequestStatus: "APPROVED",
       reason: "Approved reviewer queue item",
@@ -1828,6 +1832,7 @@ describe("v0 sale-order integration", () => {
     expect(rejectedQueue.body.data.total).toBe(1);
     expect(rejectedQueue.body.data.items[0]).toMatchObject({
       saleId: rejectedSale.saleId,
+      receiptNumber: expect.stringMatching(/^RCP-\d{8}-000000$/),
       saleStatus: "FINALIZED",
       voidRequestStatus: "REJECTED",
       reason: "Rejected reviewer queue item",
@@ -2229,6 +2234,7 @@ describe("v0 sale-order integration", () => {
       expect(approved.status).toBe(200);
       expect(approved.body.success).toBe(true);
       expect(approved.body.data).toMatchObject({
+        receiptNumber: expect.stringMatching(/^RCP-\d{8}-000000$/),
         status: "FINALIZED",
         paymentMethod: "KHQR",
         order: {
@@ -2238,6 +2244,9 @@ describe("v0 sale-order integration", () => {
         manualPaymentClaim: {
           id: claimId,
           status: "APPROVED",
+        },
+        receipt: {
+          receiptNumber: expect.stringMatching(/^RCP-\d{8}-000000$/),
         },
       });
       const saleId = approved.body.data.id as string;
@@ -2423,7 +2432,11 @@ describe("v0 sale-order integration", () => {
     expect(confirmed.body.data.saleFinalized).toBe(true);
     expect(confirmed.body.data.sale.status).toBe("FINALIZED");
     expect(confirmed.body.data.sale.saleType).toBe("DELIVERY");
+    expect(confirmed.body.data.sale.receiptNumber).toMatch(/^RCP-\d{8}-000000$/);
     expect(typeof confirmed.body.data.sale.orderId).toBe("string");
+    expect(confirmed.body.data.receipt.receiptNumber).toBe(
+      confirmed.body.data.sale.receiptNumber
+    );
 
     const directCheckoutOrderId = confirmed.body.data.sale.orderId as string;
     const directCheckoutOrder = await pool.query<{
@@ -2467,6 +2480,7 @@ describe("v0 sale-order integration", () => {
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
     expect(finalizedSale.status).toBe(200);
     expect(finalizedSale.body.data.orderId).toBe(directCheckoutOrderId);
+    expect(finalizedSale.body.data.receiptNumber).toBe(confirmed.body.data.sale.receiptNumber);
 
     const fulfillment = await request(app)
       .patch(`/v0/orders/${directCheckoutOrderId}/fulfillment`)

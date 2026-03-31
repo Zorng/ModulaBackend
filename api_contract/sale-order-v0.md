@@ -185,6 +185,7 @@ Response `200`:
     "receipt": {
       "receiptId": "sale-uuid",
       "saleId": "sale-uuid",
+      "receiptNumber": "RCP-20260223-000000",
       "statusDisplay": "NORMAL"
     }
   }
@@ -195,7 +196,7 @@ Rules:
 - server reprices from canonical menu/policy data
 - successful finalize writes `sale + order + order lines + sale lines + initial fulfillment batch` atomically
 - active fulfillment continuity starts from `order.sourceMode = DIRECT_CHECKOUT`
-- finalized response includes `data.receipt`
+- finalized response includes `data.receipt`, including the human-facing `receiptNumber`
 
 ### 2) KHQR checkout initiate
 
@@ -541,6 +542,10 @@ Action key: `sale.list`
 
 Action key: `sale.read`
 
+Rules:
+- finalized-sale-facing reads include `receiptNumber` as the human-facing receipt reference
+- raw ids (`saleId`, `orderId`, `receiptId`) remain internal linkage fields
+
 ### 10) Request void
 
 `POST /v0/sales/:saleId/void/request`
@@ -578,6 +583,7 @@ Rules:
   - `ADMIN`
   - `MANAGER`
 - default `status` when omitted is `PENDING`
+- queue rows include `receiptNumber` so reviewer UI can show a human-facing finalized-sale reference without falling back to `saleId`
 
 ### 15) Get void request detail
 
