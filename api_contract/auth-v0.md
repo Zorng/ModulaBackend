@@ -120,9 +120,76 @@ Errors:
 - `400` otp not found / expired / attempts exceeded / invalid
 - `422` missing phone or otp
 
+#### 4) Request password reset OTP
+
+`POST /v0/auth/password-reset/request`
+
+Body:
+
+```json
+{
+  "phone": "+10000000001"
+}
+```
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "expiresInMinutes": 10
+  }
+}
+```
+
+Notes:
+- Reuses the existing OTP provider path.
+- In local/test mode, fixed OTP debug behavior remains available under the same environment rules as registration OTP.
+- Successful reset confirmation revokes all active sessions for that account.
+
+Errors:
+- `404` account not found
+- `422` missing phone
+- `429` OTP cooldown/rate-limit
+
+#### 5) Confirm password reset
+
+`POST /v0/auth/password-reset/confirm`
+
+Body:
+
+```json
+{
+  "phone": "+10000000001",
+  "otp": "123456",
+  "newPassword": "NewTest123!"
+}
+```
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": { "reset": true }
+}
+```
+
+Notes:
+- Local mode updates the stored bcrypt password hash.
+- Supabase mode updates the Supabase user password.
+- Successful reset confirmation marks the phone as verified if it was not already verified.
+- All active sessions for the account are revoked immediately after a successful reset.
+
+Errors:
+- `400` otp not found / expired / attempts exceeded / invalid
+- `404` account not found
+- `422` missing phone / otp / newPassword or weak password
+
 ### Session Management
 
-#### 4) Login
+#### 6) Login
 
 `POST /v0/auth/login`
 
@@ -164,7 +231,7 @@ Errors:
 - `403` phone not verified
 - `422` missing phone or password
 
-#### 5) Refresh session
+#### 7) Refresh session
 
 `POST /v0/auth/refresh`
 
@@ -196,7 +263,7 @@ Errors:
 - `401` invalid/expired refresh token or inactive account
 - `422` missing refreshToken
 
-#### 6) Logout
+#### 8) Logout
 
 `POST /v0/auth/logout`
 
@@ -223,9 +290,42 @@ Notes:
 Errors:
 - `422` missing refreshToken
 
+#### 9) Change password
+
+`POST /v0/auth/password/change`
+
+Auth: `Authorization: Bearer <accessToken>`
+
+Body:
+
+```json
+{
+  "currentPassword": "OldTest123!",
+  "newPassword": "NewTest123!"
+}
+```
+
+Success `200`:
+
+```json
+{
+  "success": true,
+  "data": { "changed": true }
+}
+```
+
+Notes:
+- This is an authenticated in-session password change flow.
+- It is separate from forgot-password recovery.
+- Successful password change revokes all active sessions for the account, including the current session.
+
+Errors:
+- `401` invalid access token or invalid current password
+- `422` missing `currentPassword` / `newPassword` or weak password
+
 ### Context Selection
 
-#### 7) List tenant context options
+#### 10) List tenant context options
 
 `GET /v0/auth/context/tenants`
 
@@ -257,7 +357,7 @@ Success `200`:
 - `TENANT_SELECTION_REQUIRED`
 - `TENANT_SELECTED`
 
-#### 8) Select tenant context
+#### 11) Select tenant context
 
 `POST /v0/auth/context/tenant/select`
 
@@ -296,7 +396,7 @@ Errors:
 - `403` no active membership for tenant
 - `422` missing tenantId
 
-#### 9) List branch context options
+#### 12) List branch context options
 
 `GET /v0/auth/context/branches`
 
@@ -328,7 +428,7 @@ Success `200`:
 - `BRANCH_SELECTION_REQUIRED`
 - `BRANCH_SELECTED`
 
-#### 10) Select branch context
+#### 13) Select branch context
 
 `POST /v0/auth/context/branch/select`
 
@@ -371,7 +471,7 @@ Errors:
 ## Boundary Resolution
 
 Auth contract scope is intentionally limited to:
-- account identity lifecycle (`register`, `otp`, `login`, `refresh`, `logout`)
+- account identity lifecycle (`register`, `otp`, `password reset`, `password change`, `login`, `refresh`, `logout`)
 - context selection (`/context/tenants`, `/context/tenant/select`, `/context/branches`, `/context/branch/select`)
 
 Canonical non-auth domains:

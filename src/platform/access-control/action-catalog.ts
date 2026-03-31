@@ -2,6 +2,7 @@ import type { ActionMetadata } from "./types.js";
 
 export const ACTION_METADATA: Record<string, ActionMetadata> = {
   "auth.context.tenants.list": { scope: "GLOBAL", effect: "READ" },
+  "auth.password.change": { scope: "ACCOUNT", effect: "WRITE" },
   "auth.context.tenant.select": { scope: "TENANT", effect: "READ" },
   "auth.context.branches.list": { scope: "TENANT", effect: "READ" },
   "auth.context.branch.select": { scope: "BRANCH", effect: "READ" },

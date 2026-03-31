@@ -15,6 +15,7 @@ import {
 export class V0AuthAccountService extends V0AuthBaseService {
   private readonly authProvider = process.env.V0_AUTH_PROVIDER ?? "supabase";
   private readonly supabase = SupabaseAuthClient.fromEnv();
+  private readonly passwordResetOtpPurpose = "V0_PASSWORD_RESET";
 
   constructor(repo: V0AuthRepository) {
     super(repo);
@@ -159,6 +160,34 @@ export class V0AuthAccountService extends V0AuthBaseService {
       eventKey: "AUTH_LOGOUT",
       outcome: "SUCCESS",
     });
+  }
+
+  async requestPasswordReset(input: {
+    phone: string;
+  }): Promise<{ expiresInMinutes: number; debugOtp?: string }> {
+    return this.isSupabaseEnabled()
+      ? this.requestPasswordResetWithSupabase(input)
+      : this.requestPasswordResetWithLocalAuth(input);
+  }
+
+  async confirmPasswordReset(input: {
+    phone: string;
+    otp: string;
+    newPassword: string;
+  }): Promise<{ reset: true }> {
+    return this.isSupabaseEnabled()
+      ? this.confirmPasswordResetWithSupabase(input)
+      : this.confirmPasswordResetWithLocalAuth(input);
+  }
+
+  async changePassword(input: {
+    accountId: string;
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<{ changed: true }> {
+    return this.isSupabaseEnabled()
+      ? this.changePasswordWithSupabase(input)
+      : this.changePasswordWithLocalAuth(input);
   }
 
   private isSupabaseEnabled(): boolean {
@@ -455,6 +484,418 @@ export class V0AuthAccountService extends V0AuthBaseService {
       });
       throw this.translateSupabaseError(error, 401, "invalid credentials");
     }
+  }
+
+  private async requestPasswordResetWithSupabase(input: {
+    phone: string;
+  }): Promise<{ expiresInMinutes: number }> {
+    const phone = normalizePhone(input.phone);
+    if (!phone) {
+      throw new V0AuthError(422, "phone is required");
+    }
+
+    const account = await this.getPasswordResetEligibleAccount(
+      phone,
+      "AUTH_PASSWORD_RESET_REQUEST"
+    );
+
+    try {
+      const supabase = this.requireSupabase();
+      await supabase.sendOtp(phone);
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_REQUEST",
+        outcome: "SUCCESS",
+      });
+      return { expiresInMinutes: this.otpExpiryMinutes };
+    } catch (error) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_REQUEST",
+        outcome: "FAILED",
+        reasonCode: "SUPABASE_OTP_SEND_FAILED",
+      });
+      throw this.translateSupabaseError(error);
+    }
+  }
+
+  private async confirmPasswordResetWithSupabase(input: {
+    phone: string;
+    otp: string;
+    newPassword: string;
+  }): Promise<{ reset: true }> {
+    const phone = normalizePhone(input.phone);
+    const otp = String(input.otp ?? "").trim();
+    const newPassword = String(input.newPassword ?? "");
+    if (!phone || !otp || !newPassword) {
+      throw new V0AuthError(422, "phone, otp, and newPassword are required");
+    }
+    if (!V0PasswordService.validatePasswordStrength(newPassword)) {
+      throw new V0AuthError(422, "password must be at least 8 characters");
+    }
+
+    if (this.matchesFixedOtp(otp)) {
+      return this.confirmPasswordResetWithSupabaseFixedFallback(phone, newPassword);
+    }
+
+    let account: V0AccountRow | null = null;
+
+    try {
+      const supabase = this.requireSupabase();
+      const verified = await supabase.verifyOtp({ phone, otp });
+
+      account = await this.resolveExistingSupabaseProjectedAccount({
+        verifiedUserId: verified.userId,
+        phone,
+      });
+      if (!this.isPasswordResetEligibleAccount(account)) {
+        throw new V0AuthError(404, "account not found");
+      }
+
+      account = await this.hydrateAccountFromSupabaseProfile(account, verified);
+      await supabase.updateUserPassword(account.supabase_user_id ?? verified.userId, newPassword);
+      await this.repo.markPhoneVerifiedByAccountId(account.id);
+      await this.repo.revokeSessionsByAccountId(account.id);
+
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_CONFIRM",
+        outcome: "SUCCESS",
+      });
+      return { reset: true };
+    } catch (error) {
+      await this.writeAuditEventBestEffort({
+        accountId: account?.id ?? null,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_CONFIRM",
+        outcome: "FAILED",
+        reasonCode: "SUPABASE_PASSWORD_RESET_FAILED",
+      });
+      throw this.translateSupabaseError(error);
+    }
+  }
+
+  private async confirmPasswordResetWithSupabaseFixedFallback(
+    phone: string,
+    newPassword: string
+  ): Promise<{ reset: true }> {
+    const account = await this.getPasswordResetEligibleAccount(
+      phone,
+      "AUTH_PASSWORD_RESET_CONFIRM"
+    );
+    if (!account.supabase_user_id) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_CONFIRM",
+        outcome: "FAILED",
+        reasonCode: "ACCOUNT_NOT_FOUND",
+      });
+      throw new V0AuthError(404, "account not found");
+    }
+
+    try {
+      const supabase = this.requireSupabase();
+      await supabase.updateUserPassword(account.supabase_user_id, newPassword);
+      await this.repo.markPhoneVerifiedByAccountId(account.id);
+      await this.repo.revokeSessionsByAccountId(account.id);
+
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_CONFIRM",
+        outcome: "SUCCESS",
+        metadata: { verificationMode: "FIXED_FALLBACK" },
+      });
+      return { reset: true };
+    } catch (error) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_CONFIRM",
+        outcome: "FAILED",
+        reasonCode: "SUPABASE_PASSWORD_RESET_FAILED",
+      });
+      throw this.translateSupabaseError(error);
+    }
+  }
+
+  private async requestPasswordResetWithLocalAuth(input: {
+    phone: string;
+  }): Promise<{ expiresInMinutes: number; debugOtp?: string }> {
+    const phone = normalizePhone(input.phone);
+    if (!phone) {
+      throw new V0AuthError(422, "phone is required");
+    }
+
+    const account = await this.getPasswordResetEligibleAccount(
+      phone,
+      "AUTH_PASSWORD_RESET_REQUEST"
+    );
+    const latestOtp = await this.repo.findLatestPhoneOtpByPurpose(
+      phone,
+      this.passwordResetOtpPurpose
+    );
+    if (latestOtp) {
+      const cooldownMs = this.otpResendCooldownSeconds * 1000;
+      const remainingMs = latestOtp.created_at.getTime() + cooldownMs - Date.now();
+      if (remainingMs > 0) {
+        const retryAfterSeconds = Math.ceil(remainingMs / 1000);
+        await this.writeAuditEventBestEffort({
+          accountId: account.id,
+          phone,
+          eventKey: "AUTH_PASSWORD_RESET_REQUEST",
+          outcome: "FAILED",
+          reasonCode: "OTP_COOLDOWN",
+          metadata: { retryAfterSeconds },
+        });
+        throw new V0AuthError(
+          429,
+          `otp recently sent; retry in ${retryAfterSeconds} seconds`
+        );
+      }
+    }
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const sentInLastHour = await this.repo.countPhoneOtpsSince({
+      phone,
+      purpose: this.passwordResetOtpPurpose,
+      since: oneHourAgo,
+    });
+    if (sentInLastHour >= this.otpMaxPerHour) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_REQUEST",
+        outcome: "FAILED",
+        reasonCode: "OTP_RATE_LIMIT",
+        metadata: { maxPerHour: this.otpMaxPerHour },
+      });
+      throw new V0AuthError(429, "otp rate limit exceeded; try again later");
+    }
+
+    const otpCode = this.generateOtpCode();
+    const codeHash = sha256(otpCode);
+    const expiresAt = new Date(Date.now() + this.otpExpiryMinutes * 60 * 1000);
+
+    await this.repo.createPhoneOtp({
+      phone,
+      purpose: this.passwordResetOtpPurpose,
+      codeHash,
+      expiresAt,
+      maxAttempts: this.otpMaxAttempts,
+    });
+
+    await this.writeAuditEventBestEffort({
+      accountId: account.id,
+      phone,
+      eventKey: "AUTH_PASSWORD_RESET_REQUEST",
+      outcome: "SUCCESS",
+      metadata: { expiresInMinutes: this.otpExpiryMinutes },
+    });
+
+    return {
+      expiresInMinutes: this.otpExpiryMinutes,
+      ...(this.isOtpDebugMode() ? { debugOtp: otpCode } : {}),
+    };
+  }
+
+  private async confirmPasswordResetWithLocalAuth(input: {
+    phone: string;
+    otp: string;
+    newPassword: string;
+  }): Promise<{ reset: true }> {
+    const phone = normalizePhone(input.phone);
+    const otp = String(input.otp ?? "").trim();
+    const newPassword = String(input.newPassword ?? "");
+    if (!phone || !otp || !newPassword) {
+      throw new V0AuthError(422, "phone, otp, and newPassword are required");
+    }
+    if (!V0PasswordService.validatePasswordStrength(newPassword)) {
+      throw new V0AuthError(422, "password must be at least 8 characters");
+    }
+
+    const account = await this.getPasswordResetEligibleAccount(
+      phone,
+      "AUTH_PASSWORD_RESET_CONFIRM"
+    );
+    const latestOtp = await this.repo.findLatestActivePhoneOtp(
+      phone,
+      this.passwordResetOtpPurpose
+    );
+    if (!latestOtp) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_CONFIRM",
+        outcome: "FAILED",
+        reasonCode: "OTP_NOT_FOUND",
+      });
+      throw new V0AuthError(400, "otp not found");
+    }
+
+    if (latestOtp.expires_at.getTime() <= Date.now()) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_CONFIRM",
+        outcome: "FAILED",
+        reasonCode: "OTP_EXPIRED",
+      });
+      throw new V0AuthError(400, "otp expired");
+    }
+
+    if (latestOtp.attempts >= latestOtp.max_attempts) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_CONFIRM",
+        outcome: "FAILED",
+        reasonCode: "OTP_ATTEMPTS_EXCEEDED",
+      });
+      throw new V0AuthError(400, "otp attempts exceeded");
+    }
+
+    if (sha256(otp) !== latestOtp.code_hash) {
+      await this.repo.incrementPhoneOtpAttempts(latestOtp.id);
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone,
+        eventKey: "AUTH_PASSWORD_RESET_CONFIRM",
+        outcome: "FAILED",
+        reasonCode: "OTP_INVALID",
+      });
+      throw new V0AuthError(400, "invalid otp");
+    }
+
+    await this.repo.consumePhoneOtp(latestOtp.id);
+    const passwordHash = await V0PasswordService.hashPassword(newPassword);
+    await this.repo.updatePasswordHash({
+      accountId: account.id,
+      passwordHash,
+    });
+    await this.repo.markPhoneVerifiedByAccountId(account.id);
+    await this.repo.revokeSessionsByAccountId(account.id);
+    await this.writeAuditEventBestEffort({
+      accountId: account.id,
+      phone,
+      eventKey: "AUTH_PASSWORD_RESET_CONFIRM",
+      outcome: "SUCCESS",
+    });
+    return { reset: true };
+  }
+
+  private async changePasswordWithSupabase(input: {
+    accountId: string;
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<{ changed: true }> {
+    const account = await this.getAuthenticatedAccountForPasswordChange(input.accountId);
+    const currentPassword = String(input.currentPassword ?? "");
+    const newPassword = String(input.newPassword ?? "");
+    if (!currentPassword || !newPassword) {
+      throw new V0AuthError(422, "currentPassword and newPassword are required");
+    }
+    if (!V0PasswordService.validatePasswordStrength(newPassword)) {
+      throw new V0AuthError(422, "password must be at least 8 characters");
+    }
+
+    const supabase = this.requireSupabase();
+    let verifiedSession;
+
+    try {
+      verifiedSession = await supabase.signInWithPassword({
+        phone: account.phone,
+        password: currentPassword,
+      });
+    } catch (error) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone: account.phone,
+        eventKey: "AUTH_PASSWORD_CHANGE",
+        outcome: "FAILED",
+        reasonCode: "CURRENT_PASSWORD_INVALID",
+      });
+      throw this.translateSupabaseError(error, 401, "invalid current password");
+    }
+
+    let targetUserId = account.supabase_user_id;
+    if (!targetUserId) {
+      targetUserId = verifiedSession.userId;
+      await this.repo.attachSupabaseUserId({
+        accountId: account.id,
+        supabaseUserId: targetUserId,
+      });
+    }
+
+    try {
+      await supabase.updateUserPassword(targetUserId, newPassword);
+      await this.repo.revokeSessionsByAccountId(account.id);
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone: account.phone,
+        eventKey: "AUTH_PASSWORD_CHANGE",
+        outcome: "SUCCESS",
+      });
+      return { changed: true };
+    } catch (error) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone: account.phone,
+        eventKey: "AUTH_PASSWORD_CHANGE",
+        outcome: "FAILED",
+        reasonCode: "SUPABASE_PASSWORD_CHANGE_FAILED",
+      });
+      throw this.translateSupabaseError(error);
+    }
+  }
+
+  private async changePasswordWithLocalAuth(input: {
+    accountId: string;
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<{ changed: true }> {
+    const account = await this.getAuthenticatedAccountForPasswordChange(input.accountId);
+    const currentPassword = String(input.currentPassword ?? "");
+    const newPassword = String(input.newPassword ?? "");
+    if (!currentPassword || !newPassword) {
+      throw new V0AuthError(422, "currentPassword and newPassword are required");
+    }
+    if (!V0PasswordService.validatePasswordStrength(newPassword)) {
+      throw new V0AuthError(422, "password must be at least 8 characters");
+    }
+
+    const isValidPassword = await V0PasswordService.verifyPassword(
+      currentPassword,
+      account.password_hash ?? ""
+    );
+    if (!isValidPassword) {
+      await this.writeAuditEventBestEffort({
+        accountId: account.id,
+        phone: account.phone,
+        eventKey: "AUTH_PASSWORD_CHANGE",
+        outcome: "FAILED",
+        reasonCode: "CURRENT_PASSWORD_INVALID",
+      });
+      throw new V0AuthError(401, "invalid current password");
+    }
+
+    const passwordHash = await V0PasswordService.hashPassword(newPassword);
+    await this.repo.updatePasswordHash({
+      accountId: account.id,
+      passwordHash,
+    });
+    await this.repo.revokeSessionsByAccountId(account.id);
+    await this.writeAuditEventBestEffort({
+      accountId: account.id,
+      phone: account.phone,
+      eventKey: "AUTH_PASSWORD_CHANGE",
+      outcome: "SUCCESS",
+    });
+    return { changed: true };
   }
 
   private async registerWithLocalAuth(input: {
@@ -762,6 +1203,92 @@ export class V0AuthAccountService extends V0AuthBaseService {
       outcome: "SUCCESS",
     });
     return this.issueSessionResponse(account, context, activeMembershipsCount);
+  }
+
+  private isPasswordResetEligibleAccount(account: V0AccountRow | null): account is V0AccountRow {
+    if (!account || account.status !== "ACTIVE") {
+      return false;
+    }
+
+    return Boolean(
+      account.password_hash
+      || account.supabase_user_id
+      || account.first_name
+      || account.last_name
+      || account.phone_verified_at
+    );
+  }
+
+  private async getPasswordResetEligibleAccount(
+    phone: string,
+    eventKey: string
+  ): Promise<V0AccountRow> {
+    const account = await this.repo.findAccountByPhone(phone);
+    const accountId = account?.id ?? null;
+    if (this.isPasswordResetEligibleAccount(account)) {
+      return account;
+    }
+
+    await this.writeAuditEventBestEffort({
+      accountId,
+      phone,
+      eventKey,
+      outcome: "FAILED",
+      reasonCode: "ACCOUNT_NOT_FOUND",
+    });
+    throw new V0AuthError(404, "account not found");
+  }
+
+  private async getAuthenticatedAccountForPasswordChange(
+    accountId: string
+  ): Promise<V0AccountRow> {
+    const normalizedAccountId = String(accountId ?? "").trim();
+    if (!normalizedAccountId) {
+      throw new V0AuthError(401, "invalid access token");
+    }
+
+    const account = await this.repo.findAccountById(normalizedAccountId);
+    if (!account || account.status !== "ACTIVE") {
+      await this.writeAuditEventBestEffort({
+        accountId: normalizedAccountId,
+        eventKey: "AUTH_PASSWORD_CHANGE",
+        outcome: "FAILED",
+        reasonCode: "ACCOUNT_INACTIVE",
+      });
+      throw new V0AuthError(401, "invalid access token");
+    }
+
+    return account;
+  }
+
+  private async resolveExistingSupabaseProjectedAccount(input: {
+    verifiedUserId: string;
+    phone: string;
+  }): Promise<V0AccountRow | null> {
+    const accountBySupabaseUserId = input.verifiedUserId
+      ? await this.repo.findAccountBySupabaseUserId(input.verifiedUserId)
+      : null;
+    if (accountBySupabaseUserId) {
+      return accountBySupabaseUserId;
+    }
+
+    const accountByPhone = await this.repo.findAccountByPhone(input.phone);
+    if (!accountByPhone) {
+      return null;
+    }
+
+    if (!accountByPhone.supabase_user_id && input.verifiedUserId) {
+      await this.repo.attachSupabaseUserId({
+        accountId: accountByPhone.id,
+        supabaseUserId: input.verifiedUserId,
+      });
+      return {
+        ...accountByPhone,
+        supabase_user_id: input.verifiedUserId,
+      };
+    }
+
+    return accountByPhone;
   }
 
   private async resolveSupabaseProjectedAccount(input: {

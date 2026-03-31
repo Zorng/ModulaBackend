@@ -8,6 +8,11 @@ export const AUTH_HR_ROUTES: ProtectedRoute[] = [
   },
   {
     method: "POST",
+    pattern: /^\/auth\/password\/change$/,
+    actionKey: "auth.password.change",
+  },
+  {
+    method: "POST",
     pattern: /^\/auth\/context\/tenant\/select$/,
     actionKey: "auth.context.tenant.select",
     tenantSource: "body.tenantId",

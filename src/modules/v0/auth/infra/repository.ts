@@ -336,6 +336,19 @@ export class V0AuthRepository {
     );
   }
 
+  async updatePasswordHash(input: {
+    accountId: string;
+    passwordHash: string;
+  }): Promise<void> {
+    await this.db.query(
+      `UPDATE accounts
+       SET password_hash = $2,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [input.accountId, input.passwordHash]
+    );
+  }
+
   async createPhoneOtp(input: {
     phone: string;
     purpose: string;
@@ -506,6 +519,16 @@ export class V0AuthRepository {
        WHERE refresh_token_hash = $1
          AND revoked_at IS NULL`,
       [refreshTokenHash]
+    );
+  }
+
+  async revokeSessionsByAccountId(accountId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE v0_auth_sessions
+       SET revoked_at = NOW()
+       WHERE account_id = $1
+         AND revoked_at IS NULL`,
+      [accountId]
     );
   }
 

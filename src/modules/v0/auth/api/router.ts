@@ -62,6 +62,30 @@ export function createV0AuthRouter(
     }
   });
 
+  router.post("/password-reset/request", async (req: Request, res: Response) => {
+    try {
+      const data = await service.requestPasswordReset({
+        phone: req.body?.phone,
+      });
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
+
+  router.post("/password-reset/confirm", async (req: Request, res: Response) => {
+    try {
+      const data = await service.confirmPasswordReset({
+        phone: req.body?.phone,
+        otp: req.body?.otp,
+        newPassword: req.body?.newPassword,
+      });
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      handleError(res, error);
+    }
+  });
+
   router.post("/login", async (req: Request, res: Response) => {
     try {
       const data = await service.login({
@@ -95,6 +119,29 @@ export function createV0AuthRouter(
       handleError(res, error);
     }
   });
+
+  router.post(
+    "/password/change",
+    requireV0Auth,
+    async (req: V0AuthRequest, res: Response) => {
+      try {
+        const requesterAccountId = req.v0Auth?.accountId;
+        if (!requesterAccountId) {
+          res.status(401).json({ success: false, error: "authentication required" });
+          return;
+        }
+
+        const data = await service.changePassword({
+          accountId: requesterAccountId,
+          currentPassword: req.body?.currentPassword,
+          newPassword: req.body?.newPassword,
+        });
+        res.status(200).json({ success: true, data });
+      } catch (error) {
+        handleError(res, error);
+      }
+    }
+  );
 
   router.get(
     "/context/tenants",

@@ -100,6 +100,136 @@ describe("v0 auth account service fixed OTP policy", () => {
     );
   });
 
+  it("resets password with fixed OTP fallback in staging", async () => {
+    process.env.V0_AUTH_PROVIDER = "supabase";
+    process.env.APP_ENV = "staging";
+    process.env.V0_AUTH_FIXED_OTP_ENABLED = "true";
+    process.env.AUTH_FIXED_OTP = "123456";
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          user: {
+            id: "supabase-user-reset",
+            phone: "+85512345678",
+            phone_confirmed_at: "2026-03-22T07:00:00.000Z",
+            user_metadata: {
+              firstName: "Reset",
+              lastName: "User",
+            },
+          },
+        }),
+    } as Response);
+
+    const repo = {
+      findAccountByPhone: jest.fn().mockResolvedValue({
+        id: "acc-reset",
+        supabase_user_id: "supabase-user-reset",
+        phone: "+85512345678",
+        password_hash: null,
+        status: "ACTIVE",
+        phone_verified_at: null,
+        first_name: "Reset",
+        last_name: "User",
+        gender: null,
+        date_of_birth: null,
+      }),
+      markPhoneVerifiedByAccountId: jest.fn().mockResolvedValue(undefined),
+      revokeSessionsByAccountId: jest.fn().mockResolvedValue(undefined),
+      createAuditEvent: jest.fn().mockResolvedValue(undefined),
+    } as any;
+
+    const service = new V0AuthAccountService(repo);
+    const result = await service.confirmPasswordReset({
+      phone: "+85512345678",
+      otp: "123456",
+      newPassword: "NewStrong123!",
+    });
+
+    expect(result).toEqual({ reset: true });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(repo.markPhoneVerifiedByAccountId).toHaveBeenCalledWith("acc-reset");
+    expect(repo.revokeSessionsByAccountId).toHaveBeenCalledWith("acc-reset");
+    expect(repo.createAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "acc-reset",
+        eventKey: "AUTH_PASSWORD_RESET_CONFIRM",
+        outcome: "SUCCESS",
+        metadata: { verificationMode: "FIXED_FALLBACK" },
+      })
+    );
+  });
+
+  it("changes password for an authenticated supabase account", async () => {
+    process.env.V0_AUTH_PROVIDER = "supabase";
+    process.env.APP_ENV = "staging";
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            user: {
+              id: "supabase-user-change",
+              phone: "+85512345678",
+              phone_confirmed_at: "2026-03-22T07:00:00.000Z",
+            },
+          }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            user: {
+              id: "supabase-user-change",
+              phone: "+85512345678",
+              phone_confirmed_at: "2026-03-22T07:00:00.000Z",
+            },
+          }),
+      } as Response);
+
+    const repo = {
+      findAccountById: jest.fn().mockResolvedValue({
+        id: "acc-change",
+        supabase_user_id: "supabase-user-change",
+        phone: "+85512345678",
+        password_hash: null,
+        status: "ACTIVE",
+        phone_verified_at: new Date("2026-03-22T07:00:00.000Z"),
+        first_name: "Change",
+        last_name: "User",
+        gender: null,
+        date_of_birth: null,
+      }),
+      revokeSessionsByAccountId: jest.fn().mockResolvedValue(undefined),
+      createAuditEvent: jest.fn().mockResolvedValue(undefined),
+    } as any;
+
+    const service = new V0AuthAccountService(repo);
+    const result = await service.changePassword({
+      accountId: "acc-change",
+      currentPassword: "Current123!",
+      newPassword: "NewStrong123!",
+    });
+
+    expect(result).toEqual({ changed: true });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(repo.revokeSessionsByAccountId).toHaveBeenCalledWith("acc-change");
+    expect(repo.createAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "acc-change",
+        eventKey: "AUTH_PASSWORD_CHANGE",
+        outcome: "SUCCESS",
+      })
+    );
+  });
+
   it("rebuilds missing local account projection after supabase otp verify", async () => {
     process.env.V0_AUTH_PROVIDER = "supabase";
     process.env.APP_ENV = "staging";

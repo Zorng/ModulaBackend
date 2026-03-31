@@ -84,6 +84,15 @@ export class SupabaseAuthClient {
     return mapUser(user);
   }
 
+  async updateUserPassword(userId: string, password: string): Promise<SupabaseUserResult> {
+    const user = await this.request<any>(
+      "PUT",
+      `/auth/v1/admin/users/${encodeURIComponent(userId)}`,
+      { password }
+    );
+    return mapUser(user);
+  }
+
   async sendOtp(phone: string): Promise<void> {
     await this.request("POST", "/auth/v1/otp", {
       phone,

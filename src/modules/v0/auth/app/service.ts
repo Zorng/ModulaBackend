@@ -28,6 +28,18 @@ export class V0AuthService {
     return this.accountService.verifyRegistrationOtp(...args);
   }
 
+  requestPasswordReset(...args: Parameters<V0AuthAccountService["requestPasswordReset"]>) {
+    return this.accountService.requestPasswordReset(...args);
+  }
+
+  confirmPasswordReset(...args: Parameters<V0AuthAccountService["confirmPasswordReset"]>) {
+    return this.accountService.confirmPasswordReset(...args);
+  }
+
+  changePassword(...args: Parameters<V0AuthAccountService["changePassword"]>) {
+    return this.accountService.changePassword(...args);
+  }
+
   login(...args: Parameters<V0AuthAccountService["login"]>) {
     return this.accountService.login(...args);
   }

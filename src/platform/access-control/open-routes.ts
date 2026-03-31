@@ -4,6 +4,8 @@ export const OPEN_ROUTES: OpenRoute[] = [
   { method: "POST", pattern: /^\/auth\/register$/ },
   { method: "POST", pattern: /^\/auth\/otp\/send$/ },
   { method: "POST", pattern: /^\/auth\/otp\/verify$/ },
+  { method: "POST", pattern: /^\/auth\/password-reset\/request$/ },
+  { method: "POST", pattern: /^\/auth\/password-reset\/confirm$/ },
   { method: "POST", pattern: /^\/auth\/login$/ },
   { method: "POST", pattern: /^\/auth\/refresh$/ },
   { method: "POST", pattern: /^\/auth\/logout$/ },

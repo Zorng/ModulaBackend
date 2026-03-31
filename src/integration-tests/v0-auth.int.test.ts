@@ -144,6 +144,164 @@ describe("v0 auth (phase 1 scaffold)", () => {
     await pool.query(`DELETE FROM accounts WHERE phone = $1`, [phone]);
   });
 
+  it("resets password and revokes existing sessions", async () => {
+    const phone = uniquePhone();
+
+    const registerRes = await request(app).post("/v0/auth/register").send({
+      phone,
+      password: "Test123!",
+      firstName: "Reset",
+      lastName: "Case",
+    });
+    expect(registerRes.status).toBe(201);
+
+    const verifyRes = await request(app).post("/v0/auth/otp/verify").send({
+      phone,
+      otp: "123456",
+    });
+    expect(verifyRes.status).toBe(200);
+
+    const loginRes = await request(app).post("/v0/auth/login").send({
+      phone,
+      password: "Test123!",
+    });
+    expect(loginRes.status).toBe(200);
+
+    const oldAccessToken = loginRes.body.data.accessToken as string;
+    const oldRefreshToken = loginRes.body.data.refreshToken as string;
+
+    const resetRequestRes = await request(app)
+      .post("/v0/auth/password-reset/request")
+      .send({ phone });
+    expect(resetRequestRes.status).toBe(200);
+    expect(resetRequestRes.body.success).toBe(true);
+    expect(resetRequestRes.body.data.debugOtp).toBe("123456");
+
+    const resetConfirmRes = await request(app)
+      .post("/v0/auth/password-reset/confirm")
+      .send({
+        phone,
+        otp: "123456",
+        newPassword: "NewTest123!",
+      });
+    expect(resetConfirmRes.status).toBe(200);
+    expect(resetConfirmRes.body.success).toBe(true);
+    expect(resetConfirmRes.body.data.reset).toBe(true);
+
+    const oldPasswordLogin = await request(app).post("/v0/auth/login").send({
+      phone,
+      password: "Test123!",
+    });
+    expect(oldPasswordLogin.status).toBe(401);
+
+    const refreshAfterReset = await request(app).post("/v0/auth/refresh").send({
+      refreshToken: oldRefreshToken,
+    });
+    expect(refreshAfterReset.status).toBe(401);
+
+    const contextAfterReset = await request(app)
+      .get("/v0/auth/context/tenants")
+      .set("Authorization", `Bearer ${oldAccessToken}`);
+    expect(contextAfterReset.status).toBe(401);
+    expect(contextAfterReset.body.code).toBe("INVALID_ACCESS_TOKEN");
+
+    const newPasswordLogin = await request(app).post("/v0/auth/login").send({
+      phone,
+      password: "NewTest123!",
+    });
+    expect(newPasswordLogin.status).toBe(200);
+    expect(newPasswordLogin.body.success).toBe(true);
+
+    const auditRows = await pool.query<{ event_key: string; outcome: string }>(
+      `SELECT event_key, outcome
+       FROM v0_auth_audit_events
+       WHERE phone = $1`,
+      [phone]
+    );
+    const eventKeys = auditRows.rows.map((r) => r.event_key);
+    expect(eventKeys).toEqual(
+      expect.arrayContaining([
+        "AUTH_PASSWORD_RESET_REQUEST",
+        "AUTH_PASSWORD_RESET_CONFIRM",
+      ])
+    );
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [phone]);
+  });
+
+  it("changes password for an authenticated account and revokes the current session", async () => {
+    const phone = uniquePhone();
+
+    const registerRes = await request(app).post("/v0/auth/register").send({
+      phone,
+      password: "Test123!",
+      firstName: "Change",
+      lastName: "Password",
+    });
+    expect(registerRes.status).toBe(201);
+
+    const verifyRes = await request(app).post("/v0/auth/otp/verify").send({
+      phone,
+      otp: "123456",
+    });
+    expect(verifyRes.status).toBe(200);
+
+    const loginRes = await request(app).post("/v0/auth/login").send({
+      phone,
+      password: "Test123!",
+    });
+    expect(loginRes.status).toBe(200);
+
+    const accessToken = loginRes.body.data.accessToken as string;
+    const refreshToken = loginRes.body.data.refreshToken as string;
+
+    const changeRes = await request(app)
+      .post("/v0/auth/password/change")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        currentPassword: "Test123!",
+        newPassword: "Changed123!",
+      });
+    expect(changeRes.status).toBe(200);
+    expect(changeRes.body.success).toBe(true);
+    expect(changeRes.body.data.changed).toBe(true);
+
+    const oldPasswordLogin = await request(app).post("/v0/auth/login").send({
+      phone,
+      password: "Test123!",
+    });
+    expect(oldPasswordLogin.status).toBe(401);
+
+    const refreshAfterChange = await request(app).post("/v0/auth/refresh").send({
+      refreshToken,
+    });
+    expect(refreshAfterChange.status).toBe(401);
+
+    const contextAfterChange = await request(app)
+      .get("/v0/auth/context/tenants")
+      .set("Authorization", `Bearer ${accessToken}`);
+    expect(contextAfterChange.status).toBe(401);
+    expect(contextAfterChange.body.code).toBe("INVALID_ACCESS_TOKEN");
+
+    const newPasswordLogin = await request(app).post("/v0/auth/login").send({
+      phone,
+      password: "Changed123!",
+    });
+    expect(newPasswordLogin.status).toBe(200);
+    expect(newPasswordLogin.body.success).toBe(true);
+
+    const auditRows = await pool.query<{ event_key: string; outcome: string }>(
+      `SELECT event_key, outcome
+       FROM v0_auth_audit_events
+       WHERE phone = $1`,
+      [phone]
+    );
+    const eventKeys = auditRows.rows.map((r) => r.event_key);
+    expect(eventKeys).toEqual(expect.arrayContaining(["AUTH_PASSWORD_CHANGE"]));
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [phone]);
+  });
+
   it("enforces OTP resend cooldown and records rate-limit audit", async () => {
     const phone = uniquePhone();
 
