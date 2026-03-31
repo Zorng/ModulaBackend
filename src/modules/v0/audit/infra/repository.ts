@@ -17,6 +17,11 @@ export type V0AuditEventRow = {
   created_at: Date;
 };
 
+export type V0AuditEventListRow = V0AuditEventRow & {
+  actor_first_name: string | null;
+  actor_last_name: string | null;
+};
+
 export class V0AuditRepository {
   constructor(private readonly db: Queryable) {}
 
@@ -75,27 +80,31 @@ export class V0AuditRepository {
     outcome?: "SUCCESS" | "REJECTED" | "FAILED" | null;
     limit: number;
     offset: number;
-  }): Promise<V0AuditEventRow[]> {
-    const result = await this.db.query<V0AuditEventRow>(
+  }): Promise<V0AuditEventListRow[]> {
+    const result = await this.db.query<V0AuditEventListRow>(
       `SELECT
-         id,
-         tenant_id,
-         branch_id,
-         actor_account_id,
-         action_key,
-         outcome,
-         reason_code,
-         entity_type,
-         entity_id,
-         dedupe_key,
-         metadata,
-         created_at
-       FROM v0_audit_events
+         e.id,
+         e.tenant_id,
+         e.branch_id,
+         e.actor_account_id,
+         e.action_key,
+         e.outcome,
+         e.reason_code,
+         e.entity_type,
+         e.entity_id,
+         e.dedupe_key,
+         e.metadata,
+         e.created_at,
+         a.first_name AS actor_first_name,
+         a.last_name AS actor_last_name
+       FROM v0_audit_events e
+       LEFT JOIN accounts a
+         ON a.id = e.actor_account_id
        WHERE tenant_id = $1
-         AND ($2::uuid IS NULL OR branch_id = $2)
-         AND ($3::text IS NULL OR action_key = $3)
-         AND ($4::text IS NULL OR outcome = $4)
-       ORDER BY created_at DESC, id DESC
+         AND ($2::uuid IS NULL OR e.branch_id = $2)
+         AND ($3::text IS NULL OR e.action_key = $3)
+         AND ($4::text IS NULL OR e.outcome = $4)
+       ORDER BY e.created_at DESC, e.id DESC
        LIMIT $5 OFFSET $6`,
       [
         input.tenantId,

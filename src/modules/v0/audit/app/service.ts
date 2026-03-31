@@ -1,4 +1,7 @@
-import { V0AuditRepository } from "../infra/repository.js";
+import {
+  V0AuditRepository,
+  type V0AuditEventListRow,
+} from "../infra/repository.js";
 import {
   buildOffsetPaginatedResult,
   type OffsetPaginatedResult,
@@ -21,6 +24,21 @@ type ActorContext = {
 };
 
 type AuditOutcome = "SUCCESS" | "REJECTED" | "FAILED";
+
+type AuditEventItem = {
+  id: string;
+  tenantId: string;
+  branchId: string | null;
+  actorAccountId: string | null;
+  actorDisplayName: string | null;
+  actionKey: string;
+  outcome: AuditOutcome;
+  reasonCode: string | null;
+  entityType: string | null;
+  entityId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
 
 export class V0AuditService {
   constructor(private readonly repo: V0AuditRepository) {}
@@ -68,7 +86,7 @@ export class V0AuditService {
     outcome?: string;
     limit?: number;
     offset?: number;
-  }): Promise<OffsetPaginatedResult<Record<string, unknown>>> {
+  }): Promise<OffsetPaginatedResult<AuditEventItem>> {
     const tenantId = assertTenantContext(input.actor);
     const branchId = normalizeOptional(input.branchId);
     if (branchId && !isUuid(branchId)) {
@@ -101,6 +119,7 @@ export class V0AuditService {
         tenantId: row.tenant_id,
         branchId: row.branch_id,
         actorAccountId: row.actor_account_id,
+        actorDisplayName: formatActorDisplayName(row),
         actionKey: row.action_key,
         outcome: row.outcome,
         reasonCode: row.reason_code,
@@ -165,4 +184,11 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value
   );
+}
+
+function formatActorDisplayName(row: Pick<V0AuditEventListRow, "actor_first_name" | "actor_last_name">): string | null {
+  const first = String(row.actor_first_name ?? "").trim();
+  const last = String(row.actor_last_name ?? "").trim();
+  const fullName = [first, last].filter(Boolean).join(" ").trim();
+  return fullName || null;
 }

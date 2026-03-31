@@ -194,6 +194,14 @@ describe("v0 audit (phase f5)", () => {
     expect(listed.status).toBe(200);
     expect(Array.isArray(listed.body.data.items)).toBe(true);
     expect(listed.body.data.items).toHaveLength(2);
+    expect(listed.body.data.items[0]).toMatchObject({
+      actorDisplayName: "Audit User",
+      actorAccountId: expect.any(String),
+    });
+    expect(listed.body.data.items[1]).toMatchObject({
+      actorDisplayName: "Audit User",
+      actorAccountId: expect.any(String),
+    });
 
     await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [ownerPhone, cashierPhone]);
   });

@@ -29,6 +29,7 @@ type AuditEvent = {
   tenantId: string;
   branchId: string | null;
   actorAccountId: string | null;
+  actorDisplayName: string | null;
   actionKey: string;
   outcome: AuditOutcome;
   reasonCode: string | null;
@@ -64,6 +65,7 @@ Success `200`:
         "tenantId": "uuid",
         "branchId": "uuid",
         "actorAccountId": "uuid",
+        "actorDisplayName": "Sok Dara",
         "actionKey": "attendance.checkIn",
         "outcome": "SUCCESS",
         "reasonCode": null,
@@ -83,6 +85,11 @@ Success `200`:
   }
 }
 ```
+
+Actor semantics:
+- account-attributed event with resolvable profile name: `actorAccountId` + `actorDisplayName`
+- system/no actor: both may be `null`
+- unresolved historical account: `actorAccountId` may remain present while `actorDisplayName` is `null`
 
 Errors:
 - `401` missing/invalid access token
