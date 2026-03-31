@@ -71,6 +71,7 @@ type MenuCategoryStatusResult = {
 
 type ModifierOption = {
   id: string;
+  modifierOptionId: string;
   groupId: string;
   label: string;
   priceDelta: number;
@@ -78,10 +79,22 @@ type ModifierOption = {
   componentDeltas: ModifierDelta[];
 };
 
+type MenuItemModifierOption = Omit<ModifierOption, "priceDelta"> & {
+  priceDelta: number | null;
+};
+
+type MenuItemModifierOptionEffect = {
+  modifierOptionId: string;
+  priceDelta: number;
+  componentDeltas: ModifierDelta[];
+};
+
 Notes:
-- `ModifierOption.priceDelta` and `ModifierOption.componentDeltas` returned inside `GET /v0/menu/items/:menuItemId`
-  are the effective values for that menu item.
-- Global modifier option create/update endpoints still manage reusable default values.
+- `MenuItemDetail.modifierGroups[].options[].priceDelta` comes only from item-level configuration.
+- If an attached option has no item-level price yet, item detail returns `priceDelta: null` for that option.
+- `ModifierOption.modifierOptionId` is an explicit alias of `ModifierOption.id` for menu-item-scoped editing.
+- Shared modifier-option `priceDelta` is ignored for menu-item pricing logic.
+- Global modifier option create/update endpoints still manage reusable defaults for structure/backward compatibility.
 - Menu-item-specific overrides are written through the item-scoped modifier-option-effects endpoint below.
 
 type ModifierOptionWriteResult = ModifierOption & {
@@ -106,6 +119,10 @@ type ModifierGroup = {
   isRequired: boolean;
   status: ActiveStatus;
   options: ModifierOption[];
+};
+
+type MenuItemModifierGroup = Omit<ModifierGroup, "options"> & {
+  options: MenuItemModifierOption[];
 };
 
 type ModifierGroupWriteResult = {
@@ -144,7 +161,8 @@ type MenuItem = {
 
 type MenuItemDetail = MenuItem & {
   categoryName: string | null;
-  modifierGroups: ModifierGroup[];
+  modifierGroups: MenuItemModifierGroup[];
+  modifierOptionEffects: MenuItemModifierOptionEffect[];
   baseComponents: Component[];
 };
 
@@ -312,10 +330,23 @@ Body:
   "basePrice": 2.5,
   "categoryId": "uuid-or-null",
   "modifierGroupIds": ["uuid"],
+  "modifierOptionEffects": [
+    {
+      "modifierOptionId": "uuid",
+      "priceDelta": 0.5,
+      "componentDeltas": []
+    }
+  ],
   "visibleBranchIds": ["uuid"],
   "imageUrl": null
 }
 ```
+
+Notes:
+- `modifierOptionEffects` is optional.
+- If provided, each `modifierOptionId` must belong to a modifier group already attached through `modifierGroupIds`.
+- Use this field for item-specific modifier pricing/composition at item create/update time.
+- If an attached modifier option has no item-level entry, item detail returns `priceDelta: null` for that option.
 
 Errors:
 - `422` `IDEMPOTENCY_KEY_REQUIRED`
@@ -341,6 +372,10 @@ Headers:
 - `Idempotency-Key: <client key>`
 
 Body: partial of create payload.
+
+Notes:
+- `modifierOptionEffects` may be sent on update to replace the item-scoped modifier pricing/effect set for the menu item.
+- When `modifierGroupIds` and `modifierOptionEffects` are sent together, validation uses the updated modifier-group assignment.
 
 Errors:
 - `404` `MENU_ITEM_NOT_FOUND`
@@ -669,7 +704,9 @@ Rules:
 - This endpoint owns menu-item-specific pricing and composition effects for reused modifier options.
 - A modifier option may have different `priceDelta` and `componentDeltas` on different menu items.
 - Each `modifierOptionId` must belong to a modifier group already attached to the target menu item.
-- Sending an empty `effects` array clears all item-specific overrides for that menu item and falls back to the reusable global option defaults.
+- `effects` contains only explicitly configured item-level prices/effects; attached options without an entry remain unpriced (`priceDelta: null`) until configured.
+- Sending an empty `effects` array clears all item-specific overrides for that menu item and leaves attached options unpriced for sell-price purposes.
+- Shared modifier-option `priceDelta` is not used as a pricing fallback.
 - If payload includes TRACKED component deltas, caller must use a branch-scoped token so inventory entitlement can be evaluated.
 
 Response `200` shape:

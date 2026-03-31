@@ -110,7 +110,7 @@ export type V0OrderMenuModifierOptionRow = {
   tenant_id: string;
   modifier_group_id: string;
   label: string;
-  price_delta: number;
+  price_delta: number | null;
 };
 
 export type V0OrderMenuItemModifierOptionEffectRow = {

@@ -1500,7 +1500,7 @@ export class V0SaleOrderService {
         );
         const effectiveOptions = options.map((option) => ({
           ...option,
-          price_delta: effectivePriceByOptionId.get(option.id) ?? option.price_delta,
+          price_delta: effectivePriceByOptionId.get(option.id) ?? null,
         }));
         menuData = { item, groups, options: effectiveOptions };
         menuItemCache.set(draft.menuItemId, menuData);
@@ -1906,6 +1906,13 @@ function resolveModifierSelections(input: {
           422,
           `items[${input.itemIndex}] modifier option ${optionId} is invalid for group ${group.id}`,
           "ORDER_ITEM_MODIFIER_INVALID"
+        );
+      }
+      if (option.price_delta === null) {
+        throw new V0SaleOrderError(
+          422,
+          `items[${input.itemIndex}] modifier option ${optionId} has no item-level price configured`,
+          "ORDER_ITEM_MODIFIER_PRICE_NOT_CONFIGURED"
         );
       }
       totalPriceDelta = roundMoney(totalPriceDelta + option.price_delta);

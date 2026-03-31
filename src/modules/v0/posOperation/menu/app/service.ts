@@ -204,12 +204,19 @@ export class V0MenuService {
       tenantId: scope.tenantId,
       groupIds: relevantGroups.map((group) => group.id),
     });
+    const modifierOptionIds = options.map((option) => option.id);
     const effectiveModifierGroups = await buildEffectiveModifierGroupsForMenuItem({
       repo: this.repo,
       tenantId: scope.tenantId,
       menuItemId,
       groups: relevantGroups,
       options,
+    });
+    const modifierOptionEffects = await loadItemScopedModifierOptionEffects({
+      repo: this.repo,
+      tenantId: scope.tenantId,
+      menuItemId,
+      modifierOptionIds,
     });
     const category = row.category_id
       ? await this.repo.getCategoryById({
@@ -235,6 +242,7 @@ export class V0MenuService {
       imageUrl: row.image_url,
       categoryName: category?.name ?? null,
       modifierGroups: effectiveModifierGroups,
+      modifierOptionEffects,
       baseComponents: baseComponents.map((component) => ({
         stockItemId: component.stock_item_id,
         quantityInBaseUnit: component.quantity_in_base_unit,
@@ -517,19 +525,20 @@ export class V0MenuService {
       options: options
         .filter((option) => option.modifier_group_id === group.id)
         .map((option) => ({
-            id: option.id,
-            groupId: option.modifier_group_id,
-            label: option.label,
-            priceDelta: option.price_delta,
-            status: option.status,
-            componentDeltas: optionDeltas
-              .filter((delta) => delta.modifier_option_id === option.id)
-              .map((delta) => ({
-                stockItemId: delta.stock_item_id,
-                quantityDeltaInBaseUnit: delta.quantity_delta_in_base_unit,
-                trackingMode: delta.tracking_mode,
-              })),
-          })),
+          id: option.id,
+          modifierOptionId: option.id,
+          groupId: option.modifier_group_id,
+          label: option.label,
+          priceDelta: option.price_delta,
+          status: option.status,
+          componentDeltas: optionDeltas
+            .filter((delta) => delta.modifier_option_id === option.id)
+            .map((delta) => ({
+              stockItemId: delta.stock_item_id,
+              quantityDeltaInBaseUnit: delta.quantity_delta_in_base_unit,
+              trackingMode: delta.tracking_mode,
+            })),
+        })),
       createdAt: group.created_at.toISOString(),
       updatedAt: group.updated_at.toISOString(),
     }));
@@ -573,6 +582,7 @@ export class V0MenuService {
 
     return {
       id: row.id,
+      modifierOptionId: row.id,
       groupId: row.modifier_group_id,
       label: row.label,
       priceDelta: row.price_delta,
@@ -647,6 +657,7 @@ export class V0MenuService {
 
     return {
       id: updated.id,
+      modifierOptionId: updated.id,
       groupId: updated.modifier_group_id,
       label: updated.label,
       priceDelta: updated.price_delta,
@@ -737,6 +748,7 @@ export class V0MenuService {
     const imageUrl = optionalString(body.imageUrl);
     const visibleBranchIds = toUuidArray(body.visibleBranchIds, "visibleBranchIds");
     const modifierGroupIds = toUuidArray(body.modifierGroupIds, "modifierGroupIds");
+    const hasModifierOptionEffects = hasOwn(body, "modifierOptionEffects");
 
     const created = await this.repo.createMenuItem({
       tenantId: scope.tenantId,
@@ -756,6 +768,13 @@ export class V0MenuService {
       menuItemId: created.id,
       groupIds: modifierGroupIds,
     });
+    if (hasModifierOptionEffects) {
+      await this.replaceModifierOptionEffectsForMenuItem({
+        actor: input.actor,
+        menuItemId: created.id,
+        body: { effects: body.modifierOptionEffects },
+      });
+    }
     await this.linkMenuImageUpload({
       tenantId: scope.tenantId,
       menuItemId: created.id,
@@ -799,6 +818,7 @@ export class V0MenuService {
     const hasModifierGroups = hasOwn(body, "modifierGroupIds");
     const hasVisibleBranches = hasOwn(body, "visibleBranchIds");
     const hasImageUrl = hasOwn(body, "imageUrl");
+    const hasModifierOptionEffects = hasOwn(body, "modifierOptionEffects");
 
     if (
       !hasName &&
@@ -806,7 +826,8 @@ export class V0MenuService {
       !hasCategory &&
       !hasModifierGroups &&
       !hasVisibleBranches &&
-      !hasImageUrl
+      !hasImageUrl &&
+      !hasModifierOptionEffects
     ) {
       throw new V0MenuError(422, "at least one field is required");
     }
@@ -864,6 +885,13 @@ export class V0MenuService {
         tenantId: scope.tenantId,
         menuItemId,
         groupIds: modifierGroupIds,
+      });
+    }
+    if (hasModifierOptionEffects) {
+      await this.replaceModifierOptionEffectsForMenuItem({
+        actor: input.actor,
+        menuItemId,
+        body: { effects: body.modifierOptionEffects },
       });
     }
 
@@ -1205,9 +1233,10 @@ async function buildEffectiveModifierGroupsForMenuItem(input: {
       .filter((option) => option.modifier_group_id === group.id)
       .map((option) => ({
         id: option.id,
+        modifierOptionId: option.id,
         groupId: option.modifier_group_id,
         label: option.label,
-        priceDelta: effectiveState.priceDeltaByOptionId.get(option.id) ?? option.price_delta,
+        priceDelta: effectiveState.priceDeltaByOptionId.get(option.id) ?? null,
         status: option.status,
         componentDeltas: effectiveState.componentDeltasByOptionId.get(option.id) ?? [],
       })),
@@ -1220,7 +1249,6 @@ async function loadEffectiveModifierOptionState(input: {
   menuItemId: string;
   options: ReadonlyArray<{
     id: string;
-    price_delta: number;
   }>;
 }): Promise<{
   priceDeltaByOptionId: Map<string, number>;
@@ -1239,9 +1267,7 @@ async function loadEffectiveModifierOptionState(input: {
     menuItemId: input.menuItemId,
     modifierOptionIds,
   });
-  const priceDeltaByOptionId = new Map(
-    input.options.map((option) => [option.id, option.price_delta] as const)
-  );
+  const priceDeltaByOptionId = new Map<string, number>();
   for (const effectRow of effectRows) {
     priceDeltaByOptionId.set(effectRow.modifier_option_id, effectRow.price_delta);
   }
@@ -1255,6 +1281,45 @@ async function loadEffectiveModifierOptionState(input: {
       modifierOptionIds,
     }),
   };
+}
+
+async function loadItemScopedModifierOptionEffects(input: {
+  repo: V0MenuRepository;
+  tenantId: string;
+  menuItemId: string;
+  modifierOptionIds: readonly string[];
+}): Promise<
+  Array<{
+    modifierOptionId: string;
+    priceDelta: number;
+    componentDeltas: Array<{
+      stockItemId: string;
+      quantityDeltaInBaseUnit: number;
+      trackingMode: MenuTrackingMode;
+    }>;
+  }>
+> {
+  if (input.modifierOptionIds.length === 0) {
+    return [];
+  }
+
+  const effectRows = await input.repo.listModifierOptionEffectsForMenuItem({
+    tenantId: input.tenantId,
+    menuItemId: input.menuItemId,
+    modifierOptionIds: input.modifierOptionIds,
+  });
+  const itemDeltas = await input.repo.listComponentDeltasByMenuItemModifierOptionIds({
+    tenantId: input.tenantId,
+    menuItemId: input.menuItemId,
+    modifierOptionIds: input.modifierOptionIds,
+  });
+  const itemDeltasByOptionId = groupItemComponentDeltasByOptionId(itemDeltas);
+
+  return effectRows.map((effectRow) => ({
+    modifierOptionId: effectRow.modifier_option_id,
+    priceDelta: effectRow.price_delta,
+    componentDeltas: itemDeltasByOptionId.get(effectRow.modifier_option_id) ?? [],
+  }));
 }
 
 async function loadEffectiveComponentDeltasByOptionId(input: {

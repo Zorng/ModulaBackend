@@ -1004,6 +1004,20 @@ describe("v0 sale-order integration", () => {
       isRequired: true,
       options: [{ label: "Normal", priceDelta: 0 }],
     });
+    await setMenuItemModifierOptionEffect({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: setup.defaultMenuItemId,
+      modifierOptionId: sizeGroup.optionIds[0],
+      priceDelta: 0,
+    });
+    await setMenuItemModifierOptionEffect({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: setup.defaultMenuItemId,
+      modifierOptionId: sugarGroup.optionIds[0],
+      priceDelta: 0,
+    });
 
     const finalized = await request(app)
       .post("/v0/checkout/cash/finalize")
@@ -1163,6 +1177,53 @@ describe("v0 sale-order integration", () => {
     expect(
       juiceSale.body.data.orderLines[0]?.modifierSnapshot?.[0]?.selectedOptions?.[0]?.priceDelta
     ).toBe(1.25);
+  });
+
+  it("rejects sale checkout when a selected modifier option has no item-level price", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const sizeGroup = await seedModifierGroupWithOptions({
+      pool,
+      tenantId: setup.tenantId,
+      menuItemId: setup.defaultMenuItemId,
+      name: `Strict Price ${uniqueSuffix()}`,
+      selectionMode: "SINGLE",
+      minSelections: 1,
+      maxSelections: 1,
+      isRequired: true,
+      options: [{ label: "Large", priceDelta: 0.5 }],
+    });
+
+    const finalized = await request(app)
+      .post("/v0/checkout/cash/finalize")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-missing-item-option-price-${uniqueSuffix()}`)
+      .send({
+        items: [
+          {
+            menuItemId: setup.defaultMenuItemId,
+            quantity: 1,
+            modifierSelections: [
+              {
+                groupId: sizeGroup.groupId,
+                optionIds: [sizeGroup.optionIds[0]],
+              },
+            ],
+          },
+        ],
+        saleType: "TAKEAWAY",
+        tenderCurrency: "USD",
+        cashReceivedTenderAmount: 10,
+      });
+
+    expect(finalized.status).toBe(422);
+    expect(finalized.body.code).toBe("ORDER_ITEM_MODIFIER_PRICE_NOT_CONFIGURED");
   });
 
   it("deducts tracked inventory from item-specific modifier effects on finalized sale checkout", async () => {
