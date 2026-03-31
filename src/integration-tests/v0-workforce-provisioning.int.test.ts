@@ -91,6 +91,27 @@ describe("v0 workforce provisioning (phase 4 scaffold)", () => {
     expect(ownerTenantContext.status).toBe(200);
     const ownerTenantToken = ownerTenantContext.body.data.accessToken as string;
 
+    const inviteeRegister = await request(app).post("/v0/auth/register").send({
+      phone: inviteePhone,
+      password: "Test123!",
+      firstName: "Cashier",
+      lastName: "Phase4",
+    });
+    expect(inviteeRegister.status).toBe(201);
+
+    await request(app).post("/v0/auth/otp/send").send({ phone: inviteePhone });
+    await request(app).post("/v0/auth/otp/verify").send({
+      phone: inviteePhone,
+      otp: "123456",
+    });
+
+    const inviteeLogin = await request(app).post("/v0/auth/login").send({
+      phone: inviteePhone,
+      password: "Test123!",
+    });
+    expect(inviteeLogin.status).toBe(200);
+    const inviteeAccessToken = inviteeLogin.body.data.accessToken as string;
+
     const inviteRes = await request(app)
       .post("/v0/auth/memberships/invite")
       .set("Authorization", `Bearer ${ownerAccessToken}`)
@@ -132,28 +153,6 @@ describe("v0 workforce provisioning (phase 4 scaffold)", () => {
       .set("Authorization", `Bearer ${ownerTenantToken}`);
     expect(invitedBranches.status).toBe(200);
     expect(invitedBranches.body.data.pendingBranchIds).toEqual([firstBranchId]);
-
-    const inviteeRegister = await request(app).post("/v0/auth/register").send({
-      phone: inviteePhone,
-      password: "Test123!",
-      firstName: "Cashier",
-      lastName: "Phase4",
-    });
-    expect(inviteeRegister.status).toBe(201);
-    expect(inviteeRegister.body.data.completedExistingInviteAccount).toBe(true);
-
-    await request(app).post("/v0/auth/otp/send").send({ phone: inviteePhone });
-    await request(app).post("/v0/auth/otp/verify").send({
-      phone: inviteePhone,
-      otp: "123456",
-    });
-
-    const inviteeLogin = await request(app).post("/v0/auth/login").send({
-      phone: inviteePhone,
-      password: "Test123!",
-    });
-    expect(inviteeLogin.status).toBe(200);
-    const inviteeAccessToken = inviteeLogin.body.data.accessToken as string;
 
     const acceptRes = await request(app)
       .post(`/v0/auth/memberships/invitations/${inviteMembershipId}/accept`)

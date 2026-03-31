@@ -23,17 +23,20 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
   let app: express.Express;
 
   async function registerAndLogin(phone: string): Promise<string> {
-    await request(app).post("/v0/auth/register").send({
+    const register = await request(app).post("/v0/auth/register").send({
       phone,
       password: "Test123!",
       firstName: "Access",
       lastName: "Control",
     });
-    await request(app).post("/v0/auth/otp/send").send({ phone });
-    await request(app).post("/v0/auth/otp/verify").send({
-      phone,
-      otp: "123456",
-    });
+    expect([201, 409]).toContain(register.status);
+    if (register.status === 201) {
+      await request(app).post("/v0/auth/otp/send").send({ phone });
+      await request(app).post("/v0/auth/otp/verify").send({
+        phone,
+        otp: "123456",
+      });
+    }
     const login = await request(app).post("/v0/auth/login").send({
       phone,
       password: "Test123!",
@@ -145,6 +148,7 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
       branchName: "Main Branch",
     });
     await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
+    await registerAndLogin(memberPhone);
 
     const invite = await request(app)
       .post("/v0/auth/memberships/invite")
@@ -155,23 +159,7 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
         roleKey: "CASHIER",
       });
     const membershipId = invite.body.data.membershipId as string;
-
-    await request(app).post("/v0/auth/register").send({
-      phone: memberPhone,
-      password: "Test123!",
-      firstName: "Member",
-      lastName: "NoBranch",
-    });
-    await request(app).post("/v0/auth/otp/send").send({ phone: memberPhone });
-    await request(app).post("/v0/auth/otp/verify").send({
-      phone: memberPhone,
-      otp: "123456",
-    });
-    const memberLogin = await request(app).post("/v0/auth/login").send({
-      phone: memberPhone,
-      password: "Test123!",
-    });
-    const memberToken = memberLogin.body.data.accessToken as string;
+    const memberToken = await registerAndLogin(memberPhone);
 
     await request(app)
       .post(`/v0/auth/memberships/invitations/${membershipId}/accept`)
@@ -279,6 +267,7 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
       branchName: "Main Branch",
     });
     await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
+    await registerAndLogin(cashierPhone);
 
     const invite = await request(app)
       .post("/v0/auth/memberships/invite")
@@ -342,6 +331,7 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
         tenantName: `Role Deny ${Date.now()}`,
       });
     const tenantId = createdTenant.body.data.tenant.id as string;
+    await registerAndLogin(cashierPhone);
 
     const invited = await request(app)
       .post("/v0/auth/memberships/invite")
@@ -402,6 +392,7 @@ describe("v0 access control hook (phase 6 scaffold)", () => {
       branchName: "Main Branch",
     });
     await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
+    await registerAndLogin(cashierPhone);
 
     const invite = await request(app)
       .post("/v0/auth/memberships/invite")

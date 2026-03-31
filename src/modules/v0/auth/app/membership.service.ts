@@ -41,11 +41,9 @@ export class V0AuthMembershipService extends V0AuthBaseService {
       throw new V0AuthError(403, "requester role cannot invite members");
     }
 
-    let account = await this.repo.findAccountByPhone(phone);
+    const account = await this.repo.findAccountByPhone(phone);
     if (!account) {
-      account = await this.repo.createInvitedAccount({
-        phone,
-      });
+      throw new V0AuthError(404, "account not found");
     }
 
     const existingMembership = await this.repo.findMembershipByTenantAndAccount(

@@ -64,6 +64,28 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
     expect(ownerLogin.status).toBe(200);
     const ownerAccessToken = ownerLogin.body.data.accessToken as string;
 
+    const inviteeRegister = await request(app).post("/v0/auth/register").send({
+      phone: inviteePhone,
+      password: "Test123!",
+      firstName: "Invitee",
+      lastName: "One",
+    });
+    expect(inviteeRegister.status).toBe(201);
+
+    await request(app).post("/v0/auth/otp/send").send({ phone: inviteePhone });
+    await request(app).post("/v0/auth/otp/verify").send({
+      phone: inviteePhone,
+      otp: "123456",
+    });
+
+    const inviteeLogin = await request(app).post("/v0/auth/login").send({
+      phone: inviteePhone,
+      password: "Test123!",
+    });
+    expect(inviteeLogin.status).toBe(200);
+    expect(inviteeLogin.body.data.activeMembershipsCount).toBe(0);
+    const inviteeAccessToken = inviteeLogin.body.data.accessToken as string;
+
     await pool.query(
       `INSERT INTO tenants (id, name, status)
        VALUES ($1, 'Phase 2 Tenant', 'ACTIVE')`,
@@ -92,29 +114,6 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
     expect(inviteRes.status).toBe(201);
     expect(inviteRes.body.data.status).toBe("INVITED");
     const inviteMembershipId = inviteRes.body.data.membershipId as string;
-
-    const inviteeRegister = await request(app).post("/v0/auth/register").send({
-      phone: inviteePhone,
-      password: "Test123!",
-      firstName: "Invitee",
-      lastName: "One",
-    });
-    expect(inviteeRegister.status).toBe(201);
-    expect(inviteeRegister.body.data.completedExistingInviteAccount).toBe(true);
-
-    await request(app).post("/v0/auth/otp/send").send({ phone: inviteePhone });
-    await request(app).post("/v0/auth/otp/verify").send({
-      phone: inviteePhone,
-      otp: "123456",
-    });
-
-    const inviteeLogin = await request(app).post("/v0/auth/login").send({
-      phone: inviteePhone,
-      password: "Test123!",
-    });
-    expect(inviteeLogin.status).toBe(200);
-    expect(inviteeLogin.body.data.activeMembershipsCount).toBe(0);
-    const inviteeAccessToken = inviteeLogin.body.data.accessToken as string;
 
     const inboxBefore = await request(app)
       .get("/v0/org/memberships/invitations")

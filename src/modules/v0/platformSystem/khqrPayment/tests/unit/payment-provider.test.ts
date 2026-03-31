@@ -88,6 +88,60 @@ describe("khqr payment provider builder", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("routes verify through configured proxy with shared secret", async () => {
+    process.env.V0_KHQR_PROVIDER = "bakong";
+    process.env.V0_KHQR_PROVIDER_BASE_URL = "https://api-bakong.nbc.gov.kh/v1";
+    process.env.V0_KHQR_WEBHOOK_SECRET = "secret";
+    process.env.V0_KHQR_PROVIDER_API_KEY = "bakong-api-key";
+    process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_URL = "https://relay.example.com/verify";
+    process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET = "relay-secret";
+
+    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          responseCode: 0,
+          responseMessage: "Success",
+          errorCode: null,
+          data: {
+            hash: "tx-1",
+            toAccountId: "bakong-account-id",
+            currency: "USD",
+            amount: 3.5,
+            createdDateMs: 1771545600000,
+            acknowledgedDateMs: 1771545601000,
+            externalRef: "ref-1",
+          },
+        }),
+        { status: 200 }
+      )
+    );
+
+    const provider = buildV0KhqrPaymentProviderFromEnv();
+    const verified = await provider.verifyByMd5({
+      tenantId: "10000000-0000-4000-8000-000000000001",
+      branchId: "10000000-0000-4000-8000-000000000002",
+      md5: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      expectedAmount: 3.5,
+      expectedCurrency: "USD",
+      expectedToAccountId: "bakong-account-id",
+    });
+
+    expect(verified.verificationStatus).toBe("CONFIRMED");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://relay.example.com/verify",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "content-type": "application/json",
+          "x-khqr-verify-proxy-secret": "relay-secret",
+        }),
+        body: JSON.stringify({
+          md5: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        }),
+      })
+    );
+  });
+
   it("fails fast when bakong provider is missing endpoint config", () => {
     process.env.V0_KHQR_PROVIDER = "bakong";
     delete process.env.V0_KHQR_PROVIDER_BASE_URL;
@@ -95,6 +149,17 @@ describe("khqr payment provider builder", () => {
     delete process.env.V0_KHQR_PROVIDER_VERIFY_URL;
 
     expect(() => buildV0KhqrPaymentProviderFromEnv()).toThrow("KHQR provider is not configured");
+  });
+
+  it("fails fast when verify proxy is configured without proxy secret", () => {
+    process.env.V0_KHQR_PROVIDER = "bakong";
+    process.env.V0_KHQR_PROVIDER_BASE_URL = "https://api-bakong.nbc.gov.kh/v1";
+    process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_URL = "https://relay.example.com/verify";
+    delete process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET;
+
+    expect(() => buildV0KhqrPaymentProviderFromEnv()).toThrow(
+      "KHQR verify proxy is not configured"
+    );
   });
 
   it("rejects webhook when secret header is invalid", () => {

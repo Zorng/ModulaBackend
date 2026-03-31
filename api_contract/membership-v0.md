@@ -56,6 +56,7 @@ Success `201`:
 Errors:
 - `401` missing/invalid access token
 - `403` requester has no permission in tenant
+- `404` account not found
 - `409` membership already active
 - `422` invalid payload
 

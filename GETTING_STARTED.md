@@ -202,6 +202,35 @@ Notes:
 
 - In this repo, KHQR settlement convergence is primarily via reconciliation polling.
 - For pure local development without Bakong, use `V0_KHQR_PROVIDER=stub`.
+- If Bakong verify is blocked from your app host, you can route only verify calls through a trusted relay with:
+  - `V0_KHQR_PROVIDER_VERIFY_PROXY_URL`
+  - `V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET`
+  - optional `V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET_HEADER`
+
+### 2.1) Optional KHQR Verify Relay (static-IP VPS)
+
+If your main backend runs on a platform without fixed outbound IP, deploy the included relay on a VPS/static-IP host:
+
+```bash
+PORT=8081 \
+KHQR_RELAY_SHARED_SECRET=choose-a-long-random-secret \
+KHQR_RELAY_BAKONG_API_KEY=... \
+tsx scripts/khqr-verify-relay.ts
+```
+
+Then point the main backend to it:
+
+```env
+V0_KHQR_PROVIDER_VERIFY_PROXY_URL=https://your-relay.example.com/verify
+V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET=choose-a-long-random-secret
+V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET_HEADER=x-khqr-verify-proxy-secret
+```
+
+Relay notes:
+- backend sends only `md5` to the relay
+- relay forwards verify to Bakong from the VPS static IP
+- protect the relay with the shared-secret header
+- do not expose it as an open proxy
 
 ### 3) Public Expose via ngrok (Local Backend Reachability)
 

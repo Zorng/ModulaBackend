@@ -29,10 +29,12 @@ async function registerAndLogin(app: express.Express, phone: string): Promise<st
     firstName: "Policy",
     lastName: "User",
   });
-  expect(registerRes.status).toBe(201);
+  expect([201, 409]).toContain(registerRes.status);
 
-  await request(app).post("/v0/auth/otp/send").send({ phone });
-  await request(app).post("/v0/auth/otp/verify").send({ phone, otp: "123456" });
+  if (registerRes.status === 201) {
+    await request(app).post("/v0/auth/otp/send").send({ phone });
+    await request(app).post("/v0/auth/otp/verify").send({ phone, otp: "123456" });
+  }
 
   const loginRes = await request(app).post("/v0/auth/login").send({
     phone,
@@ -237,6 +239,7 @@ describe("v0 policy integration", () => {
       ownerPhone,
       tenantName: `Policy Role Guard ${Date.now()}`,
     });
+    await registerAndLogin(app, cashierPhone);
 
     const invite = await request(app)
       .post("/v0/auth/memberships/invite")

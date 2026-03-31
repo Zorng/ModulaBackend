@@ -27,13 +27,15 @@ async function registerAndLogin(app: express.Express, phone: string): Promise<st
     firstName: "Org",
     lastName: "User",
   });
-  expect(register.status).toBe(201);
+  expect([201, 409]).toContain(register.status);
 
-  await request(app).post("/v0/auth/otp/send").send({ phone });
-  await request(app).post("/v0/auth/otp/verify").send({
-    phone,
-    otp: "123456",
-  });
+  if (register.status === 201) {
+    await request(app).post("/v0/auth/otp/send").send({ phone });
+    await request(app).post("/v0/auth/otp/verify").send({
+      phone,
+      otp: "123456",
+    });
+  }
 
   const login = await request(app).post("/v0/auth/login").send({
     phone,
@@ -238,6 +240,7 @@ describe("v0 org account (phase F1 scaffold)", () => {
     const cashierPhone = uniquePhone();
 
     const ownerToken = await registerAndLogin(app, ownerPhone);
+    await registerAndLogin(app, cashierPhone);
     const createdTenant = await request(app)
       .post("/v0/auth/tenants")
       .set("Authorization", `Bearer ${ownerToken}`)

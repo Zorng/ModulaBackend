@@ -16,17 +16,20 @@ function uniquePhone(): string {
 }
 
 async function registerAndLogin(app: express.Express, phone: string): Promise<string> {
-  await request(app).post("/v0/auth/register").send({
+  const register = await request(app).post("/v0/auth/register").send({
     phone,
     password: "Test123!",
     firstName: "User",
     lastName: "Isolation",
   });
-  await request(app).post("/v0/auth/otp/send").send({ phone });
-  await request(app).post("/v0/auth/otp/verify").send({
-    phone,
-    otp: "123456",
-  });
+  expect([201, 409]).toContain(register.status);
+  if (register.status === 201) {
+    await request(app).post("/v0/auth/otp/send").send({ phone });
+    await request(app).post("/v0/auth/otp/verify").send({
+      phone,
+      otp: "123456",
+    });
+  }
   const login = await request(app).post("/v0/auth/login").send({
     phone,
     password: "Test123!",
@@ -62,6 +65,7 @@ describe("v0 tenant isolation (phase 7 sweep)", () => {
 
     const ownerAToken = await registerAndLogin(app, ownerAPhone);
     const ownerBToken = await registerAndLogin(app, ownerBPhone);
+    await registerAndLogin(app, outsiderPhone);
 
     const tenantA = await request(app)
       .post("/v0/auth/tenants")

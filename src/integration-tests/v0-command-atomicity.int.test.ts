@@ -23,10 +23,12 @@ async function registerAndLogin(app: express.Express, phone: string): Promise<st
     firstName: "User",
     lastName: "Atomicity",
   });
-  expect(registerRes.status).toBe(201);
+  expect([201, 409]).toContain(registerRes.status);
 
-  await request(app).post("/v0/auth/otp/send").send({ phone });
-  await request(app).post("/v0/auth/otp/verify").send({ phone, otp: "123456" });
+  if (registerRes.status === 201) {
+    await request(app).post("/v0/auth/otp/send").send({ phone });
+    await request(app).post("/v0/auth/otp/verify").send({ phone, otp: "123456" });
+  }
 
   const loginRes = await request(app).post("/v0/auth/login").send({
     phone,
@@ -50,6 +52,7 @@ async function setupCashierBranchContext(input: {
   cashierBranchToken: string;
 }> {
   const ownerToken = await registerAndLogin(input.app, input.ownerPhone);
+  await registerAndLogin(input.app, input.cashierPhone);
   const createdTenant = await request(input.app)
     .post("/v0/auth/tenants")
     .set("Authorization", `Bearer ${ownerToken}`)
@@ -193,6 +196,7 @@ describe("v0 atomic command contract", () => {
     const ownerPhone = uniquePhone();
     const cashierPhone = uniquePhone();
     const ownerToken = await registerAndLogin(app, ownerPhone);
+    await registerAndLogin(app, cashierPhone);
 
     const createdTenant = await request(app)
       .post("/v0/auth/tenants")

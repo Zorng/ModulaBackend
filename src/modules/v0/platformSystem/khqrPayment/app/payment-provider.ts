@@ -114,6 +114,9 @@ export class V0KhqrProviderError extends Error {
 type BakongHttpProviderConfig = {
   generateUrl: string | null;
   verifyUrl: string;
+  verifyProxyUrl: string | null;
+  verifyProxySecret: string | null;
+  verifyProxySecretHeader: string;
   timeoutMs: number;
   apiKey: string | null;
   apiKeyHeader: string;
@@ -133,6 +136,11 @@ export type V0KhqrRuntimeDiagnostics = {
   generateUrlPath: string | null;
   verifyUrlOrigin: string | null;
   verifyUrlPath: string | null;
+  verifyProxyConfigured: boolean;
+  verifyProxyUrlOrigin: string | null;
+  verifyProxyUrlPath: string | null;
+  effectiveVerifyTargetOrigin: string | null;
+  effectiveVerifyTargetPath: string | null;
   timeoutMs: number | null;
   apiKeyConfigured: boolean;
   apiKeyHeader: string | null;
@@ -141,6 +149,8 @@ export type V0KhqrRuntimeDiagnostics = {
   apiKeyUsesBearerPrefix: boolean | null;
   webhookSecretConfigured: boolean;
   webhookSecretHeader: string | null;
+  verifyProxySecretConfigured: boolean;
+  verifyProxySecretHeader: string | null;
   suspectedIssues: string[];
 };
 
@@ -313,7 +323,19 @@ class BakongHttpV0KhqrPaymentProvider implements V0KhqrPaymentProvider {
       const headers: Record<string, string> = {
         "content-type": "application/json",
       };
-      if (this.config.apiKey) {
+      const useVerifyProxy = op === "verify" && Boolean(this.config.verifyProxyUrl);
+      const requestUrl = useVerifyProxy ? this.config.verifyProxyUrl ?? url : url;
+      const requestBody =
+        useVerifyProxy
+          ? {
+            md5: payload.md5,
+          }
+          : payload;
+      if (useVerifyProxy) {
+        if (this.config.verifyProxySecret) {
+          headers[this.config.verifyProxySecretHeader] = this.config.verifyProxySecret;
+        }
+      } else if (this.config.apiKey) {
         const normalizedHeader = this.config.apiKeyHeader.toLowerCase();
         if (normalizedHeader === "authorization") {
           const normalizedToken = this.config.apiKey.trim();
@@ -324,10 +346,10 @@ class BakongHttpV0KhqrPaymentProvider implements V0KhqrPaymentProvider {
           headers[this.config.apiKeyHeader] = this.config.apiKey;
         }
       }
-      const response = await fetch(url, {
+      const response = await fetch(requestUrl, {
         method: "POST",
         headers,
-        body: JSON.stringify(payload),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
       const text = await response.text();
@@ -591,6 +613,11 @@ export function getV0KhqrRuntimeDiagnosticsFromEnv(): V0KhqrRuntimeDiagnostics {
       generateUrlPath: null,
       verifyUrlOrigin: null,
       verifyUrlPath: null,
+      verifyProxyConfigured: false,
+      verifyProxyUrlOrigin: null,
+      verifyProxyUrlPath: null,
+      effectiveVerifyTargetOrigin: null,
+      effectiveVerifyTargetPath: null,
       timeoutMs: null,
       apiKeyConfigured: false,
       apiKeyHeader: null,
@@ -603,6 +630,10 @@ export function getV0KhqrRuntimeDiagnosticsFromEnv(): V0KhqrRuntimeDiagnostics {
       webhookSecretHeader:
         normalizeOptionalString(process.env.V0_KHQR_WEBHOOK_SECRET_HEADER)
         ?? "x-khqr-webhook-secret",
+      verifyProxySecretConfigured: false,
+      verifyProxySecretHeader:
+        normalizeOptionalString(process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET_HEADER)
+        ?? "x-khqr-verify-proxy-secret",
       suspectedIssues: [],
     };
   }
@@ -619,6 +650,11 @@ export function getV0KhqrRuntimeDiagnosticsFromEnv(): V0KhqrRuntimeDiagnostics {
       generateUrlPath: null,
       verifyUrlOrigin: null,
       verifyUrlPath: null,
+      verifyProxyConfigured: false,
+      verifyProxyUrlOrigin: null,
+      verifyProxyUrlPath: null,
+      effectiveVerifyTargetOrigin: null,
+      effectiveVerifyTargetPath: null,
       timeoutMs: null,
       apiKeyConfigured: false,
       apiKeyHeader: null,
@@ -631,6 +667,10 @@ export function getV0KhqrRuntimeDiagnosticsFromEnv(): V0KhqrRuntimeDiagnostics {
       webhookSecretHeader:
         normalizeOptionalString(process.env.V0_KHQR_WEBHOOK_SECRET_HEADER)
         ?? "x-khqr-webhook-secret",
+      verifyProxySecretConfigured: false,
+      verifyProxySecretHeader:
+        normalizeOptionalString(process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET_HEADER)
+        ?? "x-khqr-verify-proxy-secret",
       suspectedIssues: ["UNSUPPORTED_PROVIDER"],
     };
   }
@@ -663,6 +703,13 @@ export function getV0KhqrRuntimeDiagnosticsFromEnv(): V0KhqrRuntimeDiagnostics {
         )
         : null
     );
+  const verifyProxyUrl = normalizeOptionalString(process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_URL);
+  const verifyProxySecret = normalizeOptionalString(
+    process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET
+  );
+  const verifyProxySecretHeader =
+    normalizeOptionalString(process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET_HEADER)
+    ?? "x-khqr-verify-proxy-secret";
 
   const suspectedIssues: string[] = [];
   if (!baseUrl && !verifyUrl) {
@@ -683,6 +730,9 @@ export function getV0KhqrRuntimeDiagnosticsFromEnv(): V0KhqrRuntimeDiagnostics {
   } else if (looksLikePlaceholderSecret(webhookSecret)) {
     suspectedIssues.push("WEBHOOK_SECRET_PLACEHOLDER_LIKE");
   }
+  if (verifyProxyUrl && !verifyProxySecret) {
+    suspectedIssues.push("VERIFY_PROXY_SECRET_MISSING");
+  }
 
   return {
     provider: providerName,
@@ -695,6 +745,17 @@ export function getV0KhqrRuntimeDiagnosticsFromEnv(): V0KhqrRuntimeDiagnostics {
     generateUrlPath: summarizeUrl(generateUrl)?.path ?? null,
     verifyUrlOrigin: summarizeUrl(verifyUrl)?.origin ?? null,
     verifyUrlPath: summarizeUrl(verifyUrl)?.path ?? null,
+    verifyProxyConfigured: Boolean(verifyProxyUrl),
+    verifyProxyUrlOrigin: summarizeUrl(verifyProxyUrl)?.origin ?? null,
+    verifyProxyUrlPath: summarizeUrl(verifyProxyUrl)?.path ?? null,
+    effectiveVerifyTargetOrigin:
+      summarizeUrl(verifyProxyUrl)?.origin
+      ?? summarizeUrl(verifyUrl)?.origin
+      ?? null,
+    effectiveVerifyTargetPath:
+      summarizeUrl(verifyProxyUrl)?.path
+      ?? summarizeUrl(verifyUrl)?.path
+      ?? null,
     timeoutMs: normalizedTimeoutMs,
     apiKeyConfigured: Boolean(apiKey),
     apiKeyHeader: configuredApiKeyHeader,
@@ -705,6 +766,8 @@ export function getV0KhqrRuntimeDiagnosticsFromEnv(): V0KhqrRuntimeDiagnostics {
     webhookSecretHeader:
       normalizeOptionalString(process.env.V0_KHQR_WEBHOOK_SECRET_HEADER)
       ?? "x-khqr-webhook-secret",
+    verifyProxySecretConfigured: Boolean(verifyProxySecret),
+    verifyProxySecretHeader,
     suspectedIssues,
   };
 }
@@ -730,9 +793,21 @@ function buildBakongHttpProviderConfig(): BakongHttpProviderConfig {
         )
         : null
     );
+  const verifyProxyUrl = normalizeOptionalString(process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_URL);
+  const verifyProxySecret = normalizeOptionalString(
+    process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET
+  );
+  const verifyProxySecretHeader =
+    normalizeOptionalString(process.env.V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET_HEADER)
+    ?? "x-khqr-verify-proxy-secret";
   if (!verifyUrl) {
     throw new Error(
       "KHQR provider is not configured: set V0_KHQR_PROVIDER_BASE_URL or V0_KHQR_PROVIDER_VERIFY_URL"
+    );
+  }
+  if (verifyProxyUrl && !verifyProxySecret) {
+    throw new Error(
+      "KHQR verify proxy is not configured: set V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET when V0_KHQR_PROVIDER_VERIFY_PROXY_URL is used"
     );
   }
 
@@ -751,6 +826,9 @@ function buildBakongHttpProviderConfig(): BakongHttpProviderConfig {
   return {
     generateUrl,
     verifyUrl,
+    verifyProxyUrl,
+    verifyProxySecret,
+    verifyProxySecretHeader,
     timeoutMs: normalizedTimeoutMs,
     apiKey: normalizeOptionalString(process.env.V0_KHQR_PROVIDER_API_KEY),
     apiKeyHeader:

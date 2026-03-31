@@ -37,10 +37,12 @@ async function registerAndLogin(app: express.Express, phone: string): Promise<st
     firstName: "Ops",
     lastName: "User",
   });
-  expect(registerRes.status).toBe(201);
+  expect([201, 409]).toContain(registerRes.status);
 
-  await request(app).post("/v0/auth/otp/send").send({ phone });
-  await request(app).post("/v0/auth/otp/verify").send({ phone, otp: "123456" });
+  if (registerRes.status === 201) {
+    await request(app).post("/v0/auth/otp/send").send({ phone });
+    await request(app).post("/v0/auth/otp/verify").send({ phone, otp: "123456" });
+  }
 
   const loginRes = await request(app).post("/v0/auth/login").send({
     phone,
@@ -170,6 +172,8 @@ async function setupTeamBranchContext(input: {
     tenantId,
     branchId,
   });
+  await registerAndLogin(input.app, managerPhone);
+  await registerAndLogin(input.app, cashierPhone);
 
   const managerInvite = await request(input.app)
     .post("/v0/org/memberships/invite")
@@ -630,6 +634,8 @@ describe("v0 operational notification integration", () => {
       membershipId: ownerMembershipId,
     });
     await seedDefaultBranchEntitlements({ pool, tenantId, branchId });
+    await registerAndLogin(app, managerPhone);
+    await registerAndLogin(app, cashierPhone);
 
     const invite = await request(app)
       .post("/v0/org/memberships/invite")

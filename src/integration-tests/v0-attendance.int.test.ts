@@ -23,13 +23,15 @@ async function registerAndLogin(app: express.Express, phone: string): Promise<st
     firstName: "User",
     lastName: "Attendance",
   });
-  expect(register.status).toBe(201);
+  expect([201, 409]).toContain(register.status);
 
-  await request(app).post("/v0/auth/otp/send").send({ phone });
-  await request(app).post("/v0/auth/otp/verify").send({
-    phone,
-    otp: "123456",
-  });
+  if (register.status === 201) {
+    await request(app).post("/v0/auth/otp/send").send({ phone });
+    await request(app).post("/v0/auth/otp/verify").send({
+      phone,
+      otp: "123456",
+    });
+  }
 
   const login = await request(app).post("/v0/auth/login").send({
     phone,
@@ -68,6 +70,7 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
     const cashierPhone = uniquePhone();
 
     const ownerToken = await registerAndLogin(app, ownerPhone);
+    await registerAndLogin(app, cashierPhone);
     const createdTenant = await request(app)
       .post("/v0/auth/tenants")
       .set("Authorization", `Bearer ${ownerToken}`)
@@ -275,6 +278,8 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
     const cashierPhone = uniquePhone();
 
     const ownerToken = await registerAndLogin(app, ownerPhone);
+    await registerAndLogin(app, managerPhone);
+    await registerAndLogin(app, cashierPhone);
     const createdTenant = await request(app)
       .post("/v0/auth/tenants")
       .set("Authorization", `Bearer ${ownerToken}`)
@@ -449,6 +454,7 @@ describe("v0 attendance (phase 8 vertical slice)", () => {
     const cashierPhone = uniquePhone();
 
     const ownerToken = await registerAndLogin(app, ownerPhone);
+    await registerAndLogin(app, cashierPhone);
     const createdTenant = await request(app)
       .post("/v0/auth/tenants")
       .set("Authorization", `Bearer ${ownerToken}`)

@@ -639,6 +639,9 @@ Runtime env controls:
 - `V0_KHQR_PROVIDER_BASE_URL`
 - `V0_KHQR_PROVIDER_GENERATE_URL` (optional explicit URL)
 - `V0_KHQR_PROVIDER_VERIFY_URL` (optional explicit URL)
+- `V0_KHQR_PROVIDER_VERIFY_PROXY_URL` (optional; when set, backend sends verify requests to a trusted relay instead of Bakong directly)
+- `V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET` (required when proxy URL is set)
+- `V0_KHQR_PROVIDER_VERIFY_PROXY_SECRET_HEADER` (default `x-khqr-verify-proxy-secret`)
 - `V0_KHQR_ENABLE_SDK_GENERATION` (optional boolean; when enabled, generate uses local Bakong SDK EMV builder)
 - `V0_KHQR_PROVIDER_API_KEY` (optional provider API key)
 - `V0_KHQR_PROVIDER_API_KEY_HEADER` (default `x-api-key`)
@@ -665,6 +668,7 @@ These denial codes are intentionally owned by sale-order orchestration, while th
 ## Frontend Notes
 
 - Generation of KHQR payload/QR is frontend-side; payment truth is backend confirmation.
+- If direct Bakong verification from the app host is blocked, backend can route verify calls through a trusted static-IP relay by setting `V0_KHQR_PROVIDER_VERIFY_PROXY_URL`.
 - Register every attempt before waiting for payment confirmation.
 - For checkout-intent KHQR:
   - keep both `paymentIntentId` and `md5` from initiate

@@ -36,10 +36,12 @@ async function registerAndLogin(app: express.Express, phone: string): Promise<st
     firstName: "Cash",
     lastName: "User",
   });
-  expect(registerRes.status).toBe(201);
+  expect([201, 409]).toContain(registerRes.status);
 
-  await request(app).post("/v0/auth/otp/send").send({ phone });
-  await request(app).post("/v0/auth/otp/verify").send({ phone, otp: "123456" });
+  if (registerRes.status === 201) {
+    await request(app).post("/v0/auth/otp/send").send({ phone });
+    await request(app).post("/v0/auth/otp/verify").send({ phone, otp: "123456" });
+  }
 
   const loginRes = await request(app).post("/v0/auth/login").send({
     phone,
@@ -137,6 +139,7 @@ async function inviteAndAcceptBranchUser(input: {
   tenantToken: string;
   branchToken: string;
 }> {
+  await registerAndLogin(input.app, input.phone);
   const invited = await request(input.app)
     .post("/v0/auth/memberships/invite")
     .set("Authorization", `Bearer ${input.ownerToken}`)

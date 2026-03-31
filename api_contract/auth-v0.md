@@ -54,7 +54,7 @@ Success `201`:
 ```
 
 Note:
-- If the phone already exists as an invited shell account (not phone-verified yet), this endpoint completes that account and returns `completedExistingInviteAccount: true`.
+- `completedExistingInviteAccount: true` is a legacy compatibility outcome only when the backend is reconciling an already-existing unverified account shell; membership invite no longer creates new shell accounts for unknown phones.
 
 Errors:
 - `409` account already exists
