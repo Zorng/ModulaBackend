@@ -1,7 +1,10 @@
 import type { Pool } from "pg";
 import { log } from "#logger";
 import { TransactionManager } from "../../../../../platform/db/transactionManager.js";
-import { buildV0KhqrPaymentProviderFromEnv } from "./payment-provider.js";
+import {
+  buildV0KhqrPaymentProviderFromEnv,
+  getV0KhqrRuntimeDiagnosticsFromEnv,
+} from "./payment-provider.js";
 import { V0KhqrPaymentService } from "./service.js";
 import { V0KhqrPaymentRepository } from "../infra/repository.js";
 import { V0_KHQR_PAYMENT_ACTION_KEYS } from "./command-contract.js";
@@ -52,6 +55,7 @@ export function startV0KhqrReconciliationDispatcher(input: DispatcherInput): {
   };
 
   const provider = buildV0KhqrPaymentProviderFromEnv();
+  const providerDiagnostics = getV0KhqrRuntimeDiagnosticsFromEnv();
   const txManager = new TransactionManager(input.db);
 
   const timer = setInterval(async () => {
@@ -104,6 +108,16 @@ export function startV0KhqrReconciliationDispatcher(input: DispatcherInput): {
             attemptId: candidate.id,
             tenantId: candidate.tenant_id,
             branchId: candidate.branch_id,
+            khqrProvider: providerDiagnostics.provider,
+            khqrTransport: providerDiagnostics.transport,
+            verifyUrlOrigin: providerDiagnostics.verifyUrlOrigin,
+            verifyUrlPath: providerDiagnostics.verifyUrlPath,
+            apiKeyConfigured: providerDiagnostics.apiKeyConfigured,
+            apiKeyHeader: providerDiagnostics.apiKeyHeader,
+            apiKeyLength: providerDiagnostics.apiKeyLength,
+            apiKeyFingerprint: providerDiagnostics.apiKeyFingerprint,
+            apiKeyUsesBearerPrefix: providerDiagnostics.apiKeyUsesBearerPrefix,
+            suspectedIssues: providerDiagnostics.suspectedIssues,
             error: formatError(error),
           });
         }
