@@ -54,6 +54,34 @@ async function registerAndLogin(app: express.Express, phone: string): Promise<st
   return loginRes.body.data.accessToken as string;
 }
 
+async function seedPendingMediaUpload(input: {
+  pool: Pool;
+  tenantId: string;
+  area: "payment-proof";
+  imageUrl: string;
+  uploadedByAccountId: string;
+}): Promise<void> {
+  await input.pool.query(
+    `INSERT INTO v0_media_uploads (
+       tenant_id,
+       area,
+       object_key,
+       image_url,
+       mime_type,
+       size_bytes,
+       status,
+       uploaded_by_account_id
+     ) VALUES ($1, $2, $3, $4, 'image/png', 1024, 'PENDING', $5)`,
+    [
+      input.tenantId,
+      input.area,
+      `payment-proof-images/${input.tenantId}/${randomUUID()}.png`,
+      input.imageUrl,
+      input.uploadedByAccountId,
+    ]
+  );
+}
+
 async function setupOwnerBranchContext(input: {
   app: express.Express;
   pool: Pool;
@@ -520,6 +548,28 @@ function buildOrderPayload(input: { menuItemId: string; quantity?: number }) {
   };
 }
 
+function buildManualClaimOrderPayload(input: { menuItemId: string; quantity?: number }) {
+  return {
+    ...buildOrderPayload(input),
+    sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+  };
+}
+
+function buildManualPaymentClaimPayload(input?: {
+  proofImageUrl?: string;
+  claimedTenderAmount?: number;
+}) {
+  return {
+    claimedPaymentMethod: "KHQR",
+    saleType: "TAKEAWAY",
+    tenderCurrency: "USD",
+    claimedTenderAmount: input?.claimedTenderAmount ?? 3.5,
+    proofImageUrl: input?.proofImageUrl ?? "https://example.com/proof.png",
+    customerReference: "ABA-REF-001",
+    note: "Customer transfer screenshot",
+  };
+}
+
 function buildCheckoutCartPayload(input: { menuItemId: string; quantity?: number }) {
   return {
     items: [
@@ -616,7 +666,7 @@ describe("v0 sale-order integration", () => {
     await pool.end();
   });
 
-  it("rejects deferred open-ticket order placement without creating writes", async () => {
+  it("rejects generic deferred open-ticket order placement without creating writes", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     await openCashSession({
       pool,
@@ -665,6 +715,40 @@ describe("v0 sale-order integration", () => {
       [setup.tenantId, setup.branchId]
     );
     expect(Number(outboxCount.rows[0]?.count ?? "0")).toBe(0);
+  });
+
+  it("creates manual external-payment-claim orders while generic pay-later stays disabled", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const created = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-claim-place-${uniqueSuffix()}`)
+      .send(buildManualClaimOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+
+    expect(created.status).toBe(200);
+    expect(created.body.success).toBe(true);
+    expect(created.body.data).toMatchObject({
+      status: "OPEN",
+      sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+    });
+    expect(created.body.data.lines).toHaveLength(1);
+
+    const orderCount = await pool.query<{ count: string; source_mode: string }>(
+      `SELECT COUNT(*)::TEXT AS count, MAX(source_mode)::TEXT AS source_mode
+       FROM v0_order_tickets
+       WHERE tenant_id = $1
+         AND branch_id = $2`,
+      [setup.tenantId, setup.branchId]
+    );
+    expect(Number(orderCount.rows[0]?.count ?? "0")).toBe(1);
+    expect(orderCount.rows[0]?.source_mode).toBe("MANUAL_EXTERNAL_PAYMENT_CLAIM");
   });
 
   it("ignores client-provided price/name snapshots and uses server menu data during direct cash checkout", async () => {
@@ -1806,9 +1890,9 @@ describe("v0 sale-order integration", () => {
     expect(queueRead.status).toBe(403);
   });
 
-  it("rejects deprecated order list views after rollback", async () => {
+  it("rejects invalid and still-disabled pay-later order list views", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
-    for (const view of ["NOT_A_REAL_VIEW", "PAY_LATER_EDITABLE", "MANUAL_CLAIM_REVIEW"]) {
+    for (const view of ["NOT_A_REAL_VIEW", "PAY_LATER_EDITABLE"]) {
       const listed = await request(app)
         .get(`/v0/orders?view=${view}`)
         .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
@@ -1820,13 +1904,9 @@ describe("v0 sale-order integration", () => {
     }
   });
 
-  it("rejects deprecated order list sourceMode filters after rollback", async () => {
+  it("rejects invalid and still-disabled generic sourceMode filters", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
-    for (const sourceMode of [
-      "NOT_A_REAL_SOURCE_MODE",
-      "STANDARD",
-      "MANUAL_EXTERNAL_PAYMENT_CLAIM",
-    ]) {
+    for (const sourceMode of ["NOT_A_REAL_SOURCE_MODE", "STANDARD"]) {
       const listed = await request(app)
         .get(`/v0/orders?sourceMode=${sourceMode}`)
         .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
@@ -1838,7 +1918,7 @@ describe("v0 sale-order integration", () => {
     }
   });
 
-  it("does not expose dormant non-direct orders through active order surfaces", async () => {
+  it("restores manual-claim review and sourceMode order read surfaces without exposing dormant standard orders", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     await openCashSession({
       pool,
@@ -1853,6 +1933,13 @@ describe("v0 sale-order integration", () => {
       branchId: setup.branchId,
       openedByAccountId: setup.ownerAccountId,
       sourceMode: "STANDARD",
+    });
+    const claimOrderId = await seedDormantLegacyOrder({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      openedByAccountId: setup.ownerAccountId,
+      sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
     });
 
     const finalized = await request(app)
@@ -1874,6 +1961,25 @@ describe("v0 sale-order integration", () => {
     const listedIds = listed.body.data.items.map((item: { id: string }) => item.id);
     expect(listedIds).toContain(directOrderId);
     expect(listedIds).not.toContain(legacyOrderId);
+    expect(listedIds).not.toContain(claimOrderId);
+
+    const claimReview = await request(app)
+      .get("/v0/orders?view=MANUAL_CLAIM_REVIEW")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(claimReview.status).toBe(200);
+    const claimReviewIds = claimReview.body.data.items.map((item: { id: string }) => item.id);
+    expect(claimReviewIds).toContain(claimOrderId);
+    expect(claimReviewIds).not.toContain(legacyOrderId);
+    expect(claimReviewIds).not.toContain(directOrderId);
+
+    const claimSourceOnly = await request(app)
+      .get("/v0/orders?sourceMode=MANUAL_EXTERNAL_PAYMENT_CLAIM")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(claimSourceOnly.status).toBe(200);
+    const claimSourceIds = claimSourceOnly.body.data.items.map((item: { id: string }) => item.id);
+    expect(claimSourceIds).toContain(claimOrderId);
+    expect(claimSourceIds).not.toContain(legacyOrderId);
+    expect(claimSourceIds).not.toContain(directOrderId);
 
     const legacyDetail = await request(app)
       .get(`/v0/orders/${legacyOrderId}`)
@@ -1883,6 +1989,19 @@ describe("v0 sale-order integration", () => {
       success: false,
       code: "ORDER_NOT_FOUND",
     });
+
+    const claimDetail = await request(app)
+      .get(`/v0/orders/${claimOrderId}`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(claimDetail.status).toBe(200);
+    expect(claimDetail.body.data).toMatchObject({
+      id: claimOrderId,
+      sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+      saleId: null,
+      saleStatus: null,
+      paymentMethod: null,
+    });
+    expect(Array.isArray(claimDetail.body.data.manualPaymentClaims)).toBe(true);
 
     const legacyFulfillment = await request(app)
       .patch(`/v0/orders/${legacyOrderId}/fulfillment`)
@@ -1899,7 +2018,7 @@ describe("v0 sale-order integration", () => {
     });
   });
 
-  it("rejects deprecated order mutation and manual-claim routes after rollback", async () => {
+  it("keeps generic deferred mutations disabled on manual-claim orders", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
     await openCashSession({
       pool,
@@ -1908,28 +2027,27 @@ describe("v0 sale-order integration", () => {
       accountId: setup.ownerAccountId,
     });
 
-    const legacyOrderId = await seedDormantLegacyOrder({
-      pool,
-      tenantId: setup.tenantId,
-      branchId: setup.branchId,
-      openedByAccountId: setup.ownerAccountId,
-      sourceMode: "STANDARD",
-    });
-    const claimId = randomUUID();
+    const created = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-disabled-manual-mutations-place-${uniqueSuffix()}`)
+      .send(buildManualClaimOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(created.status).toBe(200);
+    const orderId = created.body.data.id as string;
 
     const mutationResponses = await Promise.all([
       request(app)
-        .post(`/v0/orders/${legacyOrderId}/items`)
+        .post(`/v0/orders/${orderId}/items`)
         .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
         .set("Idempotency-Key", `sale-order-disabled-add-${uniqueSuffix()}`)
         .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId })),
       request(app)
-        .post(`/v0/orders/${legacyOrderId}/cancel`)
+        .post(`/v0/orders/${orderId}/cancel`)
         .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
         .set("Idempotency-Key", `sale-order-disabled-cancel-${uniqueSuffix()}`)
         .send({ reason: "Deferred flow removed" }),
       request(app)
-        .post(`/v0/orders/${legacyOrderId}/checkout`)
+        .post(`/v0/orders/${orderId}/checkout`)
         .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
         .set("Idempotency-Key", `sale-order-disabled-checkout-${uniqueSuffix()}`)
         .send({
@@ -1937,30 +2055,6 @@ describe("v0 sale-order integration", () => {
           tenderCurrency: "USD",
           cashReceivedTenderAmount: 10,
         }),
-      request(app)
-        .get(`/v0/orders/${legacyOrderId}/manual-payment-claims`)
-        .set("Authorization", `Bearer ${setup.ownerBranchToken}`),
-      request(app)
-        .post(`/v0/orders/${legacyOrderId}/manual-payment-claims`)
-        .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
-        .set("Idempotency-Key", `sale-order-disabled-claim-create-${uniqueSuffix()}`)
-        .send({
-          claimedPaymentMethod: "KHQR",
-          saleType: "TAKEAWAY",
-          tenderCurrency: "USD",
-          claimedTenderAmount: 3.5,
-          proofImageUrl: "https://example.com/proof.png",
-        }),
-      request(app)
-        .post(`/v0/orders/${legacyOrderId}/manual-payment-claims/${claimId}/approve`)
-        .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
-        .set("Idempotency-Key", `sale-order-disabled-claim-approve-${uniqueSuffix()}`)
-        .send({ note: "Disabled" }),
-      request(app)
-        .post(`/v0/orders/${legacyOrderId}/manual-payment-claims/${claimId}/reject`)
-        .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
-        .set("Idempotency-Key", `sale-order-disabled-claim-reject-${uniqueSuffix()}`)
-        .send({ note: "Disabled" }),
     ]);
 
     for (const response of mutationResponses) {
@@ -1970,6 +2064,320 @@ describe("v0 sale-order integration", () => {
         code: "ORDER_OPEN_TICKET_DISABLED",
       });
     }
+  });
+
+  it("creates and lists manual payment claims on manual-claim orders and links payment-proof uploads", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-claim-create-order-${uniqueSuffix()}`)
+      .send(buildManualClaimOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const proofImageUrl = `/images/${setup.tenantId}/payment-proof/uploaded-${uniqueSuffix()}.png`;
+    await seedPendingMediaUpload({
+      pool,
+      tenantId: setup.tenantId,
+      area: "payment-proof",
+      imageUrl: proofImageUrl,
+      uploadedByAccountId: setup.ownerAccountId,
+    });
+
+    const createdClaim = await request(app)
+      .post(`/v0/orders/${orderId}/manual-payment-claims`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-claim-create-${uniqueSuffix()}`)
+      .send(buildManualPaymentClaimPayload({ proofImageUrl }));
+    expect(createdClaim.status).toBe(200);
+    expect(createdClaim.body.success).toBe(true);
+    expect(createdClaim.body.data).toMatchObject({
+      orderId,
+      status: "PENDING",
+      proofImageUrl,
+      claimedPaymentMethod: "KHQR",
+    });
+
+    const uploadRow = await pool.query<{
+      status: string;
+      linked_entity_type: string | null;
+      linked_entity_id: string | null;
+    }>(
+      `SELECT status, linked_entity_type, linked_entity_id
+       FROM v0_media_uploads
+       WHERE tenant_id = $1
+         AND area = 'payment-proof'
+         AND image_url = $2
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [setup.tenantId, proofImageUrl]
+    );
+    expect(uploadRow.rows[0]).toMatchObject({
+      status: "LINKED",
+      linked_entity_type: "order_manual_payment_claim",
+      linked_entity_id: createdClaim.body.data.id as string,
+    });
+
+    const claimList = await request(app)
+      .get(`/v0/orders/${orderId}/manual-payment-claims`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(claimList.status).toBe(200);
+    expect(claimList.body.success).toBe(true);
+    expect(Array.isArray(claimList.body.data)).toBe(true);
+    expect(claimList.body.data[0]).toMatchObject({
+      id: createdClaim.body.data.id,
+      status: "PENDING",
+    });
+
+    const claimReview = await request(app)
+      .get("/v0/orders?view=MANUAL_CLAIM_REVIEW")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(claimReview.status).toBe(200);
+    const listedOrder = claimReview.body.data.items.find(
+      (item: { id: string }) => item.id === orderId
+    ) as
+      | {
+          manualPaymentClaimId: string | null;
+          manualPaymentClaimStatus: string | null;
+          paymentMethod: string | null;
+        }
+      | undefined;
+    expect(listedOrder).toMatchObject({
+      manualPaymentClaimId: createdClaim.body.data.id,
+      manualPaymentClaimStatus: "PENDING",
+      paymentMethod: null,
+    });
+  });
+
+  it("lets reviewer approve manual KHQR claim into finalized sale without cash movement", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    const sessionId = await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+    const manager = await setupMemberBranchContext({
+      app,
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "MANAGER",
+    });
+    const cashier = await setupMemberBranchContext({
+      app,
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "CASHIER",
+    });
+    const seededComponent = await seedTrackedBaseComponent({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      menuItemId: setup.defaultMenuItemId,
+      quantityInBaseUnit: 1,
+      initialOnHandInBaseUnit: 10,
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${cashier.branchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-approve-place-${uniqueSuffix()}`)
+      .send(buildManualClaimOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const createdClaim = await request(app)
+      .post(`/v0/orders/${orderId}/manual-payment-claims`)
+      .set("Authorization", `Bearer ${cashier.branchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-approve-claim-${uniqueSuffix()}`)
+      .send(buildManualPaymentClaimPayload({
+        proofImageUrl: `https://example.com/proof-approve-${uniqueSuffix()}.png`,
+      }));
+    expect(createdClaim.status).toBe(200);
+    const claimId = createdClaim.body.data.id as string;
+
+    const cashierApprove = await request(app)
+      .post(`/v0/orders/${orderId}/manual-payment-claims/${claimId}/approve`)
+      .set("Authorization", `Bearer ${cashier.branchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-approve-cashier-${uniqueSuffix()}`)
+      .send({ note: "Should not be allowed" });
+    expect(cashierApprove.status).toBe(403);
+
+    const dispatcher = startV0CommandOutboxDispatcher({
+      db: pool,
+      pollIntervalMs: 50,
+      batchSize: 25,
+    });
+
+    try {
+      const approved = await request(app)
+        .post(`/v0/orders/${orderId}/manual-payment-claims/${claimId}/approve`)
+        .set("Authorization", `Bearer ${manager.branchToken}`)
+        .set("Idempotency-Key", `sale-order-manual-approve-manager-${uniqueSuffix()}`)
+        .send({ note: "Verified with bank evidence" });
+
+      expect(approved.status).toBe(200);
+      expect(approved.body.success).toBe(true);
+      expect(approved.body.data).toMatchObject({
+        status: "FINALIZED",
+        paymentMethod: "KHQR",
+        order: {
+          id: orderId,
+          status: "CHECKED_OUT",
+        },
+        manualPaymentClaim: {
+          id: claimId,
+          status: "APPROVED",
+        },
+      });
+      const saleId = approved.body.data.id as string;
+
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const stock = await pool.query<{ on_hand_in_base_unit: number }>(
+          `SELECT on_hand_in_base_unit::FLOAT8 AS on_hand_in_base_unit
+           FROM v0_inventory_branch_stock
+           WHERE tenant_id = $1
+             AND branch_id = $2
+             AND stock_item_id = $3
+           LIMIT 1`,
+          [setup.tenantId, setup.branchId, seededComponent.stockItemId]
+        );
+        if (stock.rows[0]?.on_hand_in_base_unit === 9) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
+      const stock = await pool.query<{ on_hand_in_base_unit: number }>(
+        `SELECT on_hand_in_base_unit::FLOAT8 AS on_hand_in_base_unit
+         FROM v0_inventory_branch_stock
+         WHERE tenant_id = $1
+           AND branch_id = $2
+           AND stock_item_id = $3
+         LIMIT 1`,
+        [setup.tenantId, setup.branchId, seededComponent.stockItemId]
+      );
+      expect(stock.rows[0]?.on_hand_in_base_unit).toBe(9);
+
+      const cashMovements = await pool.query<{ count: string }>(
+        `SELECT COUNT(*)::TEXT AS count
+         FROM v0_cash_movements
+         WHERE tenant_id = $1
+           AND cash_session_id = $2
+           AND movement_type = 'SALE_IN'`,
+        [setup.tenantId, sessionId]
+      );
+      expect(Number(cashMovements.rows[0]?.count ?? "0")).toBe(0);
+
+      const outbox = await pool.query<{ action_key: string; event_type: string; entity_id: string }>(
+        `SELECT action_key, event_type, entity_id
+         FROM v0_command_outbox
+         WHERE tenant_id = $1
+           AND branch_id = $2
+           AND action_key = 'order.manualPaymentClaim.approve'
+         ORDER BY occurred_at DESC
+         LIMIT 1`,
+        [setup.tenantId, setup.branchId]
+      );
+      expect(outbox.rows[0]).toMatchObject({
+        action_key: "order.manualPaymentClaim.approve",
+        event_type: "SALE_FINALIZED",
+        entity_id: saleId,
+      });
+    } finally {
+      dispatcher.stop();
+    }
+  });
+
+  it("lets reviewer reject manual claims and keeps the order open for review", async () => {
+    const setup = await setupOwnerBranchContext({ app, pool });
+    await openCashSession({
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      accountId: setup.ownerAccountId,
+    });
+    const manager = await setupMemberBranchContext({
+      app,
+      pool,
+      tenantId: setup.tenantId,
+      branchId: setup.branchId,
+      roleKey: "MANAGER",
+    });
+
+    const placed = await request(app)
+      .post("/v0/orders")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-reject-place-${uniqueSuffix()}`)
+      .send(buildManualClaimOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+    expect(placed.status).toBe(200);
+    const orderId = placed.body.data.id as string;
+
+    const createdClaim = await request(app)
+      .post(`/v0/orders/${orderId}/manual-payment-claims`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-reject-claim-${uniqueSuffix()}`)
+      .send(buildManualPaymentClaimPayload({
+        proofImageUrl: `https://example.com/proof-reject-${uniqueSuffix()}.png`,
+      }));
+    expect(createdClaim.status).toBe(200);
+    const claimId = createdClaim.body.data.id as string;
+
+    const rejected = await request(app)
+      .post(`/v0/orders/${orderId}/manual-payment-claims/${claimId}/reject`)
+      .set("Authorization", `Bearer ${manager.branchToken}`)
+      .set("Idempotency-Key", `sale-order-manual-reject-manager-${uniqueSuffix()}`)
+      .send({ note: "Proof was insufficient" });
+    expect(rejected.status).toBe(200);
+    expect(rejected.body.data).toMatchObject({
+      id: claimId,
+      status: "REJECTED",
+      reviewNote: "Proof was insufficient",
+    });
+
+    const orderDetail = await request(app)
+      .get(`/v0/orders/${orderId}`)
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(orderDetail.status).toBe(200);
+    expect(orderDetail.body.data).toMatchObject({
+      id: orderId,
+      status: "OPEN",
+      sourceMode: "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+      saleId: null,
+      saleStatus: null,
+      paymentMethod: null,
+    });
+    expect(orderDetail.body.data.manualPaymentClaims[0]).toMatchObject({
+      id: claimId,
+      status: "REJECTED",
+    });
+
+    const claimReview = await request(app)
+      .get("/v0/orders?view=MANUAL_CLAIM_REVIEW")
+      .set("Authorization", `Bearer ${setup.ownerBranchToken}`);
+    expect(claimReview.status).toBe(200);
+    const listedOrder = claimReview.body.data.items.find(
+      (item: { id: string }) => item.id === orderId
+    ) as
+      | {
+          manualPaymentClaimId: string | null;
+          manualPaymentClaimStatus: string | null;
+        }
+      | undefined;
+    expect(listedOrder).toMatchObject({
+      manualPaymentClaimId: claimId,
+      manualPaymentClaimStatus: "REJECTED",
+    });
   });
 
   it("initiates KHQR intent from local cart and finalizes on confirm", async () => {
@@ -2210,18 +2618,18 @@ describe("v0 sale-order integration", () => {
     expect(intentRead.body.data.saleId).toBeNull();
   });
 
-  it("rejects deferred order placement when no active cash session exists", async () => {
+  it("rejects manual external-payment-claim order placement when no active cash session exists", async () => {
     const setup = await setupOwnerBranchContext({ app, pool });
 
     const placed = await request(app)
       .post("/v0/orders")
       .set("Authorization", `Bearer ${setup.ownerBranchToken}`)
       .set("Idempotency-Key", `sale-order-no-session-place-${uniqueSuffix()}`)
-      .send(buildOrderPayload({ menuItemId: setup.defaultMenuItemId }));
+      .send(buildManualClaimOrderPayload({ menuItemId: setup.defaultMenuItemId }));
     expect(placed.status).toBe(422);
     expect(placed.body).toMatchObject({
       success: false,
-      code: "ORDER_OPEN_TICKET_DISABLED",
+      code: "ORDER_REQUIRES_OPEN_CASH_SESSION",
     });
   });
 

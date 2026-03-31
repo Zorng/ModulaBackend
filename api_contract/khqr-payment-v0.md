@@ -8,6 +8,7 @@ Implementation status:
 - K1-K6 completed (`K5` webhook ingest + `K6` reconciliation scheduler baseline).
 - Active final checkout lane uses `POST /v0/checkout/khqr/initiate` plus confirm/webhook convergence.
 - Legacy pending-sale endpoints remain available for compatibility, but are not part of the final active sale-order lane.
+- Outage/manual external-payment-claim is an adjacent sale-order fallback lane, not a KHQR provider-settlement path.
 
 ---
 
@@ -83,6 +84,8 @@ type PaymentIntentStatus =
 Locked outcomes:
 - Unpaid/expired/cancelled intent never creates `sale`.
 - Finalization path is shared/idempotent for both webhook and manual confirm.
+- Normal KHQR flow remains online-only.
+- If branch outage/static-QR proof handling is needed, frontend must use the separate sale-order manual external-payment-claim lane instead of treating that proof flow as KHQR gateway settlement.
 
 ---
 

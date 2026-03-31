@@ -11,7 +11,7 @@ Compatibility alias (transitional):
 Implementation status:
 - replay lane is active for selected offline-safe operations
 - final sale-order scope supports offline replay only for direct cash checkout finalize
-- deferred open-order/manual-claim replay has been removed from the active contract
+- reconnect-submit manual-claim workflow is active in sale-order, but its capture/replay operation is still out of push-sync scope
 
 ## Conventions
 
@@ -134,7 +134,7 @@ Legacy compatibility operation type:
   - still accepted by parser
   - currently returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`
 
-Removed from active final scope:
+Still not replay-enabled in the active push-sync scope:
 - `order.manualExternalPaymentClaim.capture`
 
 ## Deterministic Failure Codes
@@ -158,4 +158,5 @@ Propagated from underlying commands:
 ## Notes
 
 - Final sale-order offline scope is intentionally narrow: replay is supported for pay-first cash checkout only.
-- Deferred open-order/manual-claim replay is no longer part of the active contract.
+- Manual external-payment-claim is active again through normal online HTTP after reconnect.
+- Deferred open-order/manual-claim replay is still not part of the active push-sync contract.

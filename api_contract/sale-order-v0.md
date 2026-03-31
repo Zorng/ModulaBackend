@@ -10,21 +10,27 @@ Base prefixes:
 ## Final Scope
 
 Final operational lane:
-- pay-first checkout only
+- pay-first remains the primary checkout model
 - cash quick checkout via local cart
 - KHQR quick checkout via payment-intent flow
 - checked-out order anchor is retained for fulfillment continuity after payment
 - sale detail, receipt, and void workflow remain active
 
-Deferred / rolled-back lane:
-- open-ticket / pay-later order placement and later settlement
-- manual external-payment-claim workflow
-- outage/manual-proof order capture
+Active exception lane:
+- outage/manual external-payment-claim workflow is active again
+- this is for reconnect-time proof submission and reviewer approval
+- it is not generic pay-later and it is not offline KHQR gateway settlement
 
-Rollback rule:
-- deferred order endpoints are hard-disabled and return `ORDER_OPEN_TICKET_DISABLED`
-- direct-checkout order reads remain active for fulfillment only
-- legacy internal scaffolding may remain in storage/ACL/runtime code, but it is not part of the active operational contract
+Deferred / rolled-back lane:
+- generic `STANDARD` open-ticket / pay-later placement
+- unpaid order editing via add-items / cancel / late checkout
+- offline replay of manual-claim order capture
+
+Scope rule:
+- `POST /v0/orders` is active only for `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`
+- `GET /v0/orders` remains direct-checkout-first by default, with manual-claim review surfaced explicitly via `view=MANUAL_CLAIM_REVIEW` or `sourceMode=MANUAL_EXTERNAL_PAYMENT_CLAIM`
+- generic deferred order mutations remain hard-disabled and return `ORDER_OPEN_TICKET_DISABLED`
+- legacy internal scaffolding may remain in storage/ACL/runtime code, but only the direct-checkout + manual-claim exception lanes are part of the active operational contract
 
 ## Frontend Cutover Map
 
@@ -40,6 +46,16 @@ Fulfillment:
 - `GET /v0/orders?view=FULFILLMENT_ACTIVE`
 - `GET /v0/orders/:orderId`
 - `PATCH /v0/orders/:orderId/fulfillment`
+
+Manual external-payment-claim review:
+- `POST /v0/orders` with `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`
+- `GET /v0/orders?view=MANUAL_CLAIM_REVIEW`
+- `GET /v0/orders?sourceMode=MANUAL_EXTERNAL_PAYMENT_CLAIM`
+- `GET /v0/orders/:orderId/manual-payment-claims`
+- `POST /v0/orders/:orderId/manual-payment-claims`
+- `POST /v0/orders/:orderId/manual-payment-claims/:claimId/approve`
+- `POST /v0/orders/:orderId/manual-payment-claims/:claimId/reject`
+- `POST /v0/media/images/upload` with `area = payment-proof`
 
 Sales / void:
 - `GET /v0/sales`
@@ -91,9 +107,11 @@ type OrderItemInput = {
 
 - `Sale` is the financial settlement record.
 - `Order` is the operational fulfillment anchor.
-- In the final active scope, orders exposed by `/v0/orders` are direct-checkout fulfillment orders only.
-- Those active order reads are effectively `sourceMode = DIRECT_CHECKOUT`.
-- Deferred open-ticket order workflows are not part of the active contract.
+- In the final active scope, `/v0/orders` exposes:
+  - `DIRECT_CHECKOUT` fulfillment orders
+  - `MANUAL_EXTERNAL_PAYMENT_CLAIM` review orders
+- Generic `STANDARD` open-ticket order workflows are not part of the active contract.
+- Manual external-payment-claim is a separate outage/reconnect exception lane, not a synonym for generic pay-later.
 
 ## Active Checkout Contract
 
@@ -285,11 +303,89 @@ Response `200`:
 }
 ```
 
+## Manual External-Payment-Claim Exception Lane
+
+### 5) Create manual-claim order anchor
+
+`POST /v0/orders`
+
+Action key: `order.place`
+
+Body:
+
+```json
+{
+  "sourceMode": "MANUAL_EXTERNAL_PAYMENT_CLAIM",
+  "items": [
+    {
+      "menuItemId": "uuid",
+      "quantity": 1,
+      "modifierSelections": [],
+      "note": null
+    }
+  ]
+}
+```
+
+Rules:
+- active only for `sourceMode = MANUAL_EXTERNAL_PAYMENT_CLAIM`
+- implicit/default `STANDARD` placement remains disabled and returns `ORDER_OPEN_TICKET_DISABLED`
+- backend reprices from canonical menu/policy data
+- order is created as `OPEN` and reserved for later claim review
+- open cash session is still required for this branch-scoped cashier workflow
+
+### 6) Create manual payment claim
+
+`POST /v0/orders/:orderId/manual-payment-claims`
+
+Action key: `order.manualPaymentClaim.create`
+
+Body:
+
+```json
+{
+  "claimedPaymentMethod": "KHQR",
+  "saleType": "TAKEAWAY",
+  "tenderCurrency": "USD",
+  "claimedTenderAmount": 3.5,
+  "proofImageUrl": "/images/<tenantId>/payment-proof/<filename>.png",
+  "customerReference": "ABA-REF-001",
+  "note": "Customer transfer screenshot"
+}
+```
+
+Rules:
+- active only for `MANUAL_EXTERNAL_PAYMENT_CLAIM` orders
+- order must remain `OPEN` and still have no sale
+- if a pending claim already exists, backend returns that pending claim instead of creating a second one
+- when `proofImageUrl` references a pending `payment-proof` upload for the same tenant, backend marks it `LINKED`
+
+### 7) Review manual payment claim
+
+`GET /v0/orders/:orderId/manual-payment-claims`
+
+Action key: `order.manualPaymentClaim.list`
+
+`POST /v0/orders/:orderId/manual-payment-claims/:claimId/approve`
+
+Action key: `order.manualPaymentClaim.approve`
+
+`POST /v0/orders/:orderId/manual-payment-claims/:claimId/reject`
+
+Action key: `order.manualPaymentClaim.reject`
+
+Rules:
+- approve/reject is reviewer-only: `OWNER`, `ADMIN`, `MANAGER`
+- approve creates and finalizes the non-cash sale in one transaction
+- approve checks out the order and links the approved claim to the finalized sale
+- approve must not append cash-session `SALE_IN`
+- reject keeps the order `OPEN` and reviewable
+
 ## Active Order Read Surface
 
-### 5) List fulfillment orders
+### 8) List active orders
 
-`GET /v0/orders?status=CHECKED_OUT|ALL&sourceMode=DIRECT_CHECKOUT|ALL&view=FULFILLMENT_ACTIVE|ALL&limit=20&offset=0`
+`GET /v0/orders?status=OPEN|CHECKED_OUT|ALL&sourceMode=DIRECT_CHECKOUT|MANUAL_EXTERNAL_PAYMENT_CLAIM|ALL&view=FULFILLMENT_ACTIVE|MANUAL_CLAIM_REVIEW|ALL&limit=20&offset=0`
 
 Action key: `order.list`
 
@@ -319,6 +415,11 @@ Response `200`:
         "saleId": "sale-uuid",
         "saleStatus": "FINALIZED",
         "paymentMethod": "CASH",
+        "manualPaymentClaimId": null,
+        "manualPaymentClaimStatus": null,
+        "manualPaymentClaimRequestedByAccountId": null,
+        "manualPaymentClaimRequestedByDisplayName": null,
+        "manualPaymentClaimRequestedAt": null,
         "createdAt": "2026-02-22T10:05:00.000Z",
         "updatedAt": "2026-02-22T10:05:00.000Z"
       }
@@ -332,16 +433,20 @@ Response `200`:
 ```
 
 Rules:
-- active list surface is narrowed to direct-checkout orders
-- if `sourceMode` is omitted, backend behaves as direct-checkout-only
+- if `sourceMode` and `view` are both omitted, backend behaves as direct-checkout-only
 - supported `view` values in the active contract:
   - omitted / `ALL`
   - `FULFILLMENT_ACTIVE`
-- deprecated views `PAY_LATER_EDITABLE` and `MANUAL_CLAIM_REVIEW` return `ORDER_LIST_VIEW_INVALID`
-- deprecated `sourceMode` filters `STANDARD` and `MANUAL_EXTERNAL_PAYMENT_CLAIM` return `ORDER_LIST_SOURCE_MODE_INVALID`
-- dormant legacy non-direct rows are not exposed through the active order read surface
+  - `MANUAL_CLAIM_REVIEW`
+- `MANUAL_CLAIM_REVIEW` returns `OPEN` outage/manual-claim orders and other open orders whose latest manual claim exists
+- supported `sourceMode` filters in the active contract:
+  - `DIRECT_CHECKOUT`
+  - `MANUAL_EXTERNAL_PAYMENT_CLAIM`
+- deprecated view `PAY_LATER_EDITABLE` returns `ORDER_LIST_VIEW_INVALID`
+- deprecated `sourceMode = STANDARD` returns `ORDER_LIST_SOURCE_MODE_INVALID`
+- dormant legacy `STANDARD` rows are not exposed through the active order read surface
 
-### 6) Get fulfillment order detail
+### 9) Get active order detail
 
 `GET /v0/orders/:orderId`
 
@@ -370,16 +475,17 @@ Response `200`:
     "createdAt": "2026-02-22T10:05:00.000Z",
     "updatedAt": "2026-02-22T10:05:00.000Z",
     "lines": [],
-    "fulfillmentBatches": []
+    "fulfillmentBatches": [],
+    "manualPaymentClaims": []
   }
 }
 ```
 
 Rules:
-- active detail surface is direct-checkout-only
-- dormant legacy non-direct orders return `ORDER_NOT_FOUND`
+- active detail surface supports `DIRECT_CHECKOUT` and `MANUAL_EXTERNAL_PAYMENT_CLAIM`
+- dormant legacy `STANDARD` orders return `ORDER_NOT_FOUND`
 
-### 7) Update fulfillment status
+### 10) Update fulfillment status
 
 `PATCH /v0/orders/:orderId/fulfillment`
 
@@ -408,21 +514,18 @@ Response `200`:
 }
 ```
 
-## Disabled Deferred-Order Endpoints
+## Disabled Generic Deferred-Order Endpoints
 
-These endpoints remain registered only for compatibility/error handling and are not part of the active final workflow:
+These generic pay-later endpoints remain registered only for compatibility/error handling and are not part of the active final workflow:
 
-- `POST /v0/orders`
+- `POST /v0/orders` with implicit/default `STANDARD`
 - `POST /v0/orders/:orderId/items`
 - `POST /v0/orders/:orderId/cancel`
 - `POST /v0/orders/:orderId/checkout`
-- `GET /v0/orders/:orderId/manual-payment-claims`
-- `POST /v0/orders/:orderId/manual-payment-claims`
-- `POST /v0/orders/:orderId/manual-payment-claims/:claimId/approve`
-- `POST /v0/orders/:orderId/manual-payment-claims/:claimId/reject`
 
-Current rollback behavior:
+Current behavior:
 - backend returns `422 ORDER_OPEN_TICKET_DISABLED`
+- the manual external-payment-claim exception lane above is not affected by this disablement
 
 ## Active Sales Surface
 
@@ -499,14 +602,21 @@ Legacy accepted but unsupported:
 - `sale.finalize`
   - returns `OFFLINE_SYNC_OPERATION_NOT_SUPPORTED`
 
-Removed from active final scope:
+Not replay-enabled in the current scope:
 - `order.manualExternalPaymentClaim.capture`
+- reconnect-submit manual-claim workflow is active through normal online HTTP, not push replay
 
 ## Locked Error Codes
 
 - `SALE_NOT_FOUND`
 - `SALE_ALREADY_VOIDED`
+- `ORDER_REQUIRES_OPEN_CASH_SESSION`
 - `ORDER_OPEN_TICKET_DISABLED`
+- `ORDER_NOT_UNPAID`
+- `ORDER_NO_ITEMS`
+- `ORDER_MANUAL_PAYMENT_CLAIM_PENDING`
+- `ORDER_MANUAL_PAYMENT_CLAIM_NOT_FOUND`
+- `ORDER_MANUAL_PAYMENT_CLAIM_ALREADY_RESOLVED`
 - `SALE_CHECKOUT_REQUIRES_OPEN_CASH_SESSION`
 - `SALE_FINALIZE_REQUIRES_OPEN_CASH_SESSION`
 - `SALE_FINALIZE_KHQR_CONFIRMATION_REQUIRED`
@@ -527,4 +637,4 @@ Removed from active final scope:
 
 ## Report-Safe Scope Summary
 
-The final backend scope for sale/order is pay-first. Active checkout is limited to direct cash finalize and KHQR intent-based payment confirmation, with a checked-out order anchor retained only for fulfillment continuity. Deferred open-order, pay-later, and manual external-payment-claim workflows are rolled back from the active operational contract and are now hard-disabled.
+The final backend scope for sale/order is pay-first primary with one restored outage exception. Active checkout is limited to direct cash finalize and KHQR intent-based payment confirmation, with a checked-out order anchor retained for fulfillment continuity. A separate manual external-payment-claim lane is active for reconnect-time proof submission and reviewer approval, while generic pay-later/open-ticket workflow remains disabled.

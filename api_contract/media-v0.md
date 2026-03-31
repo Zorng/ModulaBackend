@@ -59,7 +59,8 @@ Area prefix mapping:
 - `payment-proof` -> `payment-proof-images`
 
 Role notes:
-- `payment-proof` remains reserved for deferred future reconnect/evidence workflows, including staff-operated capture if that scope is re-enabled later.
+- `payment-proof` is active for the sale-order manual external-payment-claim lane.
+- Cashier upload is allowed for `payment-proof` so outage/reconnect proof can be submitted by the operating staff member.
 - This does not imply broader cashier upload rights for unrelated areas such as `tenant`, `menu`, or `inventory`.
 
 Errors:
