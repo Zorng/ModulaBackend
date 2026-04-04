@@ -1,3 +1,4 @@
+import { normalizePhone as normalizePhoneInput } from "../../../auth/app/common.js";
 import { V0OrgAccountError } from "../../common/error.js";
 import { V0MembershipRepository } from "../infra/repository.js";
 
@@ -248,7 +249,7 @@ export class V0MembershipService {
 }
 
 function normalizePhone(phone: string): string {
-  return String(phone ?? "").trim();
+  return normalizePhoneInput(phone);
 }
 
 function normalizeRoleKey(input: string | undefined): string {

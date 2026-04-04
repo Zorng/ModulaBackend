@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { comparablePhone } from "../app/common.js";
 
 type Queryable = Pick<Pool, "query"> | Pick<PoolClient, "query">;
 
@@ -87,6 +88,10 @@ export class V0AuthRepository {
   constructor(private readonly db: Queryable) {}
 
   async findAccountByPhone(phone: string): Promise<V0AccountRow | null> {
+    const phoneKey = comparablePhone(phone);
+    if (!phoneKey) {
+      return null;
+    }
     const result = await this.db.query<V0AccountRow>(
       `SELECT
          id,
@@ -100,8 +105,10 @@ export class V0AuthRepository {
          gender,
          date_of_birth
        FROM accounts
-       WHERE phone = $1`,
-      [phone]
+       WHERE REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = $1
+       ORDER BY created_at ASC, id ASC
+       LIMIT 1`,
+      [phoneKey]
     );
     return result.rows[0] ?? null;
   }

@@ -210,15 +210,17 @@ export class V0AuthAccountService extends V0AuthBaseService {
     const existing = await this.repo.findAccountByPhone(phone);
 
     try {
-      if (existing?.phone_verified_at) {
-        await this.writeAuditEventBestEffort({
-          accountId: existing.id,
-          phone,
-          eventKey: "AUTH_REGISTER",
-          outcome: "FAILED",
-          reasonCode: "ACCOUNT_EXISTS",
-        });
-        throw new V0AuthError(409, "account already exists");
+      if (existing) {
+        if (existing.phone_verified_at || !isInvitedShellAccount(existing)) {
+          await this.writeAuditEventBestEffort({
+            accountId: existing.id,
+            phone,
+            eventKey: "AUTH_REGISTER",
+            outcome: "FAILED",
+            reasonCode: "ACCOUNT_EXISTS",
+          });
+          throw new V0AuthError(409, "account already exists");
+        }
       }
 
       let supabaseUserId = existing?.supabase_user_id ?? null;
@@ -244,25 +246,39 @@ export class V0AuthAccountService extends V0AuthBaseService {
       }
 
       let account;
-      if (existing) {
-        account = await this.repo.updateAccountRegistration({
-          accountId: existing.id,
-          supabaseUserId,
-          phone,
-          firstName,
-          lastName,
-          gender: normalizeOptionalText(input.gender),
-          dateOfBirth: normalizeOptionalText(input.dateOfBirth),
-        });
-      } else {
-        account = await this.repo.createAccount({
-          supabaseUserId,
-          phone,
-          firstName,
-          lastName,
-          gender: normalizeOptionalText(input.gender),
-          dateOfBirth: normalizeOptionalText(input.dateOfBirth),
-        });
+      try {
+        if (existing) {
+          account = await this.repo.updateAccountRegistration({
+            accountId: existing.id,
+            supabaseUserId,
+            phone,
+            firstName,
+            lastName,
+            gender: normalizeOptionalText(input.gender),
+            dateOfBirth: normalizeOptionalText(input.dateOfBirth),
+          });
+        } else {
+          account = await this.repo.createAccount({
+            supabaseUserId,
+            phone,
+            firstName,
+            lastName,
+            gender: normalizeOptionalText(input.gender),
+            dateOfBirth: normalizeOptionalText(input.dateOfBirth),
+          });
+        }
+      } catch (error) {
+        if (isAccountsPhoneUniqueViolation(error)) {
+          await this.writeAuditEventBestEffort({
+            accountId: existing?.id ?? null,
+            phone,
+            eventKey: "AUTH_REGISTER",
+            outcome: "FAILED",
+            reasonCode: "ACCOUNT_EXISTS",
+          });
+          throw new V0AuthError(409, "account already exists");
+        }
+        throw error;
       }
 
       await this.writeAuditEventBestEffort({
@@ -487,7 +503,7 @@ export class V0AuthAccountService extends V0AuthBaseService {
 
     const existing = await this.repo.findAccountByPhone(phone);
     if (existing) {
-      if (existing.phone_verified_at) {
+      if (existing.phone_verified_at || !isInvitedShellAccount(existing)) {
         await this.writeAuditEventBestEffort({
           accountId: existing.id,
           phone,
@@ -499,14 +515,29 @@ export class V0AuthAccountService extends V0AuthBaseService {
       }
 
       const passwordHash = await V0PasswordService.hashPassword(input.password);
-      const account = await this.repo.updateAccountRegistration({
-        accountId: existing.id,
-        passwordHash,
-        firstName,
-        lastName,
-        gender: normalizeOptionalText(input.gender),
-        dateOfBirth: normalizeOptionalText(input.dateOfBirth),
-      });
+      let account;
+      try {
+        account = await this.repo.updateAccountRegistration({
+          accountId: existing.id,
+          passwordHash,
+          firstName,
+          lastName,
+          gender: normalizeOptionalText(input.gender),
+          dateOfBirth: normalizeOptionalText(input.dateOfBirth),
+        });
+      } catch (error) {
+        if (isAccountsPhoneUniqueViolation(error)) {
+          await this.writeAuditEventBestEffort({
+            accountId: existing.id,
+            phone,
+            eventKey: "AUTH_REGISTER",
+            outcome: "FAILED",
+            reasonCode: "ACCOUNT_EXISTS",
+          });
+          throw new V0AuthError(409, "account already exists");
+        }
+        throw error;
+      }
       await this.writeAuditEventBestEffort({
         accountId: account.id,
         phone,
@@ -522,14 +553,28 @@ export class V0AuthAccountService extends V0AuthBaseService {
     }
 
     const passwordHash = await V0PasswordService.hashPassword(input.password);
-    const account = await this.repo.createAccount({
-      phone,
-      passwordHash,
-      firstName,
-      lastName,
-      gender: normalizeOptionalText(input.gender),
-      dateOfBirth: normalizeOptionalText(input.dateOfBirth),
-    });
+    let account;
+    try {
+      account = await this.repo.createAccount({
+        phone,
+        passwordHash,
+        firstName,
+        lastName,
+        gender: normalizeOptionalText(input.gender),
+        dateOfBirth: normalizeOptionalText(input.dateOfBirth),
+      });
+    } catch (error) {
+      if (isAccountsPhoneUniqueViolation(error)) {
+        await this.writeAuditEventBestEffort({
+          phone,
+          eventKey: "AUTH_REGISTER",
+          outcome: "FAILED",
+          reasonCode: "ACCOUNT_EXISTS",
+        });
+        throw new V0AuthError(409, "account already exists");
+      }
+      throw error;
+    }
     await this.writeAuditEventBestEffort({
       accountId: account.id,
       phone,
@@ -899,4 +944,32 @@ export class V0AuthAccountService extends V0AuthBaseService {
     }
     return new V0AuthError(fallbackStatusCode, fallbackMessage);
   }
+}
+
+function isAccountsPhoneUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code = "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  if (code !== "23505") {
+    return false;
+  }
+
+  const constraint =
+    "constraint" in error ? String((error as { constraint?: unknown }).constraint ?? "") : "";
+  const detail = "detail" in error ? String((error as { detail?: unknown }).detail ?? "") : "";
+  return constraint.toLowerCase().includes("phone") || detail.toLowerCase().includes("phone");
+}
+
+function isInvitedShellAccount(account: V0AccountRow): boolean {
+  return (
+    account.phone_verified_at === null
+    && account.supabase_user_id === null
+    && account.password_hash === null
+    && account.first_name === null
+    && account.last_name === null
+    && account.gender === null
+    && account.date_of_birth === null
+  );
 }

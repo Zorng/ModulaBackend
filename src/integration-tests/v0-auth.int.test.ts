@@ -144,6 +144,97 @@ describe("v0 auth (phase 1 scaffold)", () => {
     await pool.query(`DELETE FROM accounts WHERE phone = $1`, [phone]);
   });
 
+  it("accepts Cambodian local-format phone input while storing canonical +855 form", async () => {
+    const localPhone = "012 678 990";
+    const canonicalPhone = "+85512678990";
+
+    const registerRes = await request(app).post("/v0/auth/register").send({
+      phone: localPhone,
+      password: "Test123!",
+      firstName: "Cambodia",
+      lastName: "Local",
+    });
+    expect(registerRes.status).toBe(201);
+    expect(registerRes.body.success).toBe(true);
+    expect(registerRes.body.data.phone).toBe(canonicalPhone);
+    expect(registerRes.body.data.phoneVerified).toBe(false);
+
+    const sendOtpRes = await request(app).post("/v0/auth/otp/send").send({
+      phone: "012678990",
+    });
+    expect(sendOtpRes.status).toBe(200);
+    expect(sendOtpRes.body.success).toBe(true);
+
+    const verifyRes = await request(app).post("/v0/auth/otp/verify").send({
+      phone: "012678990",
+      otp: "123456",
+    });
+    expect(verifyRes.status).toBe(200);
+    expect(verifyRes.body.data.verified).toBe(true);
+
+    const loginRes = await request(app).post("/v0/auth/login").send({
+      phone: "012678990",
+      password: "Test123!",
+    });
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body.success).toBe(true);
+    expect(loginRes.body.data.account.phone).toBe(canonicalPhone);
+
+    const accountCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM accounts
+       WHERE phone = $1`,
+      [canonicalPhone]
+    );
+    expect(Number(accountCount.rows[0]?.count ?? "0")).toBe(1);
+
+    await pool.query(`DELETE FROM accounts WHERE phone = $1`, [canonicalPhone]);
+  });
+
+  it("rejects duplicate registration for the same phone when formatting differs", async () => {
+    const canonicalPhone = uniquePhone();
+    const digits = canonicalPhone.replace(/\D/g, "");
+    const formattedPhone = `+${digits.slice(0, 1)} ${digits.slice(1, 4)}-${digits.slice(
+      4,
+      7
+    )}-${digits.slice(7)}`;
+
+    const firstRegister = await request(app).post("/v0/auth/register").send({
+      phone: formattedPhone,
+      password: "Test123!",
+      firstName: "Format",
+      lastName: "Guard",
+    });
+    expect(firstRegister.status).toBe(201);
+    expect(firstRegister.body.data.phone).toBe(canonicalPhone);
+
+    const secondRegister = await request(app).post("/v0/auth/register").send({
+      phone: canonicalPhone,
+      password: "Test123!",
+      firstName: "Duplicate",
+      lastName: "Attempt",
+    });
+    expect(secondRegister.status).toBe(409);
+    expect(secondRegister.body).toMatchObject({
+      success: false,
+      error: "account already exists",
+    });
+
+    const accountCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count
+       FROM accounts
+       WHERE REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = $1`,
+      [digits]
+    );
+    expect(Number(accountCount.rows[0]?.count ?? "0")).toBe(1);
+
+    await pool.query(
+      `DELETE FROM accounts
+       WHERE REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = $1`,
+      [digits]
+    );
+  });
+
   it("enforces OTP resend cooldown and records rate-limit audit", async () => {
     const phone = uniquePhone();
 

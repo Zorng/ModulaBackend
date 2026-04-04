@@ -21,7 +21,34 @@ export class V0AuthError extends Error {
 }
 
 export function normalizePhone(phone: string): string {
-  return String(phone ?? "").trim();
+  const raw = String(phone ?? "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const hasLeadingPlus = raw.startsWith("+");
+  const digitsOnly = raw.replace(/\D/g, "");
+  if (!digitsOnly) {
+    return "";
+  }
+
+  if (hasLeadingPlus) {
+    return `+${digitsOnly}`;
+  }
+
+  if (digitsOnly.startsWith("855")) {
+    return `+${digitsOnly}`;
+  }
+
+  if (isLikelyCambodianLocalPhone(digitsOnly)) {
+    return `+855${digitsOnly.slice(1)}`;
+  }
+
+  return digitsOnly;
+}
+
+export function comparablePhone(phone: string): string {
+  return String(phone ?? "").replace(/\D/g, "");
 }
 
 export function normalizeOptionalText(input: string | undefined): string | null {
@@ -62,4 +89,8 @@ export function parseExpiryToMs(time: string): number {
   }
   const unit = match[2] as keyof typeof units;
   return Number(match[1]) * units[unit];
+}
+
+function isLikelyCambodianLocalPhone(digits: string): boolean {
+  return /^0\d{8,9}$/.test(digits);
 }

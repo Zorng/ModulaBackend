@@ -54,6 +54,8 @@ Success `201`:
 ```
 
 Note:
+- Backend canonicalizes phone input before lookup/store, so formatting variants of the same number are treated as the same account identity.
+- Cambodia-friendly local input such as `012678990` is accepted and normalized to canonical stored form `+85512678990`.
 - If the phone already exists as an invited shell account (not phone-verified yet), this endpoint completes that account and returns `completedExistingInviteAccount: true`.
 
 Errors:

@@ -15,6 +15,18 @@ function uniquePhone(): string {
   return `+1${now}${rand}`;
 }
 
+function uniqueCambodianLocalPhone(): { local: string; formatted: string; canonical: string } {
+  const body = `${Date.now().toString().slice(-7)}${Math.floor(Math.random() * 100)
+    .toString()
+    .padStart(2, "0")}`;
+  const local = `0${body}`;
+  return {
+    local,
+    formatted: `${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}`,
+    canonical: `+855${local.slice(1)}`,
+  };
+}
+
 describe("v0 tenant memberships (phase 2 scaffold)", () => {
   let pool: Pool;
   let app: express.Express;
@@ -188,6 +200,79 @@ describe("v0 tenant memberships (phase 2 scaffold)", () => {
     await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [
       ownerPhone,
       inviteePhone,
+    ]);
+  });
+
+  it("accepts Cambodian local-format phone input for member invitation", async () => {
+    const ownerPhone = uniquePhone();
+    const inviteePhone = uniqueCambodianLocalPhone();
+    const tenantId = crypto.randomUUID();
+
+    const ownerRegister = await request(app).post("/v0/auth/register").send({
+      phone: ownerPhone,
+      password: "Test123!",
+      firstName: "Owner",
+      lastName: "LocalInvite",
+    });
+    expect(ownerRegister.status).toBe(201);
+    const ownerAccountId = ownerRegister.body.data.accountId as string;
+
+    await request(app).post("/v0/auth/otp/send").send({ phone: ownerPhone });
+    await request(app).post("/v0/auth/otp/verify").send({
+      phone: ownerPhone,
+      otp: "123456",
+    });
+
+    const ownerLogin = await request(app).post("/v0/auth/login").send({
+      phone: ownerPhone,
+      password: "Test123!",
+    });
+    expect(ownerLogin.status).toBe(200);
+    const ownerAccessToken = ownerLogin.body.data.accessToken as string;
+
+    await pool.query(
+      `INSERT INTO tenants (id, name, status)
+       VALUES ($1, 'Local Invite Tenant', 'ACTIVE')`,
+      [tenantId]
+    );
+    await pool.query(
+      `INSERT INTO v0_tenant_memberships (
+         tenant_id,
+         account_id,
+         role_key,
+         status,
+         invited_at,
+         accepted_at
+       ) VALUES ($1, $2, 'OWNER', 'ACTIVE', NOW(), NOW())`,
+      [tenantId, ownerAccountId]
+    );
+
+    const inviteRes = await request(app)
+      .post("/v0/org/memberships/invite")
+      .set("Authorization", `Bearer ${ownerAccessToken}`)
+      .send({
+        tenantId,
+        phone: inviteePhone.formatted,
+        roleKey: "CASHIER",
+      });
+    expect(inviteRes.status).toBe(201);
+    expect(inviteRes.body.success).toBe(true);
+    expect(inviteRes.body.data.phone).toBe(inviteePhone.canonical);
+
+    const inviteeAccount = await pool.query<{ phone: string }>(
+      `SELECT phone
+       FROM accounts
+       WHERE REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = $1
+       ORDER BY created_at ASC
+       LIMIT 1`,
+      [inviteePhone.canonical.replace(/\D/g, "")]
+    );
+    expect(inviteeAccount.rows[0]?.phone).toBe(inviteePhone.canonical);
+
+    await pool.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
+    await pool.query(`DELETE FROM accounts WHERE phone IN ($1, $2)`, [
+      ownerPhone,
+      inviteePhone.canonical,
     ]);
   });
 });
