@@ -53,6 +53,11 @@ Success `201`:
 }
 ```
 
+Notes:
+- Invite phone input is canonicalized before lookup/store.
+- Cambodia-friendly local input such as `012678990` is accepted and normalized to canonical stored form `+85512678990`.
+- Success responses return the canonical stored phone value.
+
 Errors:
 - `401` missing/invalid access token
 - `403` requester has no permission in tenant
